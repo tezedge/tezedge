@@ -1,15 +1,22 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::block_meta_storage;
-use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
+use crate::database::backend::{BackendIteratorMode, DBStats, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezdegeDatabaseBackendKV};
 use crate::operations_meta_storage;
 use crate::{BlockMetaStorage, Direction, OperationsMetaStorage};
 use sled::{Config, IVec, Tree};
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use super::backend::BackendIterator;
 
 pub struct SledDBBackend {
+    column_stats: Arc<RwLock<HashMap<&'static str, DBStats>>>,
     db: sled::Db,
 }
 
@@ -22,7 +29,10 @@ impl SledDBBackend {
             .mode(sled::Mode::LowSpace)
             .open()
             .map_err(Error::from)?;
-        Ok(Self { db })
+        Ok(Self {
+            column_stats: Arc::new(Default::default()),
+            db,
+        })
     }
     pub fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
         let tree = self.db.open_tree(name).map_err(Error::from)?;
@@ -42,8 +52,22 @@ impl SledDBBackend {
 
 impl TezedgeDatabaseBackendStore for SledDBBackend {
     fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let tree = self.get_tree(column)?;
         let _ = tree.insert(key, value).map_err(Error::from)?;
+
+        let total_write_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_write_duration += total_write_duration;
+        stat.total_writes += 1;
+
+        stat.current_write_duration = total_write_duration;
+
         Ok(())
     }
 
@@ -60,10 +84,26 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
     }
 
     fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let tree = self.get_tree(column)?;
-        tree.get(key)
+        let value = tree
+            .get(key)
             .map(|value| value.map(|v| v.to_vec()))
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+
+        let total_read_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_read_duration += total_read_duration;
+        stat.total_reads += 1;
+
+        stat.current_read_duration += total_read_duration;
+
+        Ok(value)
     }
 
     fn contains(&self, column: &'static str, key: &[u8]) -> Result<bool, Error> {
@@ -86,6 +126,16 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
 
     fn flush(&self) -> Result<usize, Error> {
         self.db.flush().map_err(Error::from)
+    }
+
+    fn size(&self) -> HashMap<&'static str, usize> {
+        // TODO - TE-721: this doesn't compute anyhting
+        HashMap::new()
+    }
+
+    fn sync(&self) -> Result<(), Error> {
+        // TODO - TE-721: unimplemented
+        Ok(())
     }
 
     fn find<'a>(
@@ -121,6 +171,16 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
         Ok(Box::new(iter.map(|result| {
             result.map(|(k, v)| (k.into_boxed_slice(), v.into_boxed_slice()))
         })))
+    }
+
+    fn column_stats(&self) -> HashMap<&'static str, DBStats> {
+        let stats = match self.column_stats.read().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        }) {
+            Ok(stats) => stats,
+            Err(_) => return Default::default(),
+        };
+        stats.clone()
     }
 }
 

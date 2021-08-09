@@ -12,7 +12,7 @@ pub enum Error {
     #[error("Guard Poison {error}")]
     GuardPoison { error: String },
     #[error("Value Missing {error}")]
-    NutosError { error: String },
+    EdgeKVError { error: String },
     #[error("Missing sub tree {error}")]
     MissingSubTree { error: String },
     #[error("SledDB error: {error}")]

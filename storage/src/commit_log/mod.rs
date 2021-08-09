@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-/// ## Commit Log
-/// append only - adds data in a file then returns the data size and location in  file
-/// uses zstd as a compression library
+
+//! ## Commit Log
+//! append only - adds data in a file then returns the data size and location in  file
+//! uses zstd as a compression library
+
 mod compression;
 
 use serde::{Deserialize, Serialize};

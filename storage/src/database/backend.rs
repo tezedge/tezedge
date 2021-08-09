@@ -1,5 +1,11 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::database::error::Error;
 use crate::Direction;
+use serde::{Deserialize, Serialize, Serializer};
+use std::collections::HashMap;
+use std::time::Duration;
 
 pub type BoxedSliceKV = (Box<[u8]>, Box<[u8]>);
 pub type BackendIterator<'a> = Box<dyn 'a + Send + Iterator<Item = Result<BoxedSliceKV, Error>>>;
@@ -9,6 +15,27 @@ pub enum BackendIteratorMode {
     Start,
     End,
     From(Vec<u8>, Direction),
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct DBStats {
+    pub total_reads: u64,
+    #[serde(serialize_with = "to_u128")]
+    pub total_read_duration: Duration,
+    pub total_writes: u64,
+    #[serde(serialize_with = "to_u128")]
+    pub total_write_duration: Duration,
+    #[serde(serialize_with = "to_u128")]
+    pub current_read_duration: Duration,
+    #[serde(serialize_with = "to_u128")]
+    pub current_write_duration: Duration,
+}
+
+fn to_u128<S>(x: &Duration, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_some(&x.as_micros())
 }
 
 pub trait TezedgeDatabaseBackendStore {
@@ -23,7 +50,8 @@ pub trait TezedgeDatabaseBackendStore {
         batch: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<(), Error>;
     fn flush(&self) -> Result<usize, Error>;
-
+    fn size(&self) -> HashMap<&'static str, usize>;
+    fn sync(&self) -> Result<(), Error>;
     fn find<'a>(
         &'a self,
         column: &'static str,
@@ -35,4 +63,6 @@ pub trait TezedgeDatabaseBackendStore {
         key: &Vec<u8>,
         max_key_len: usize,
     ) -> Result<BackendIterator<'a>, Error>;
+
+    fn column_stats(&self) -> HashMap<&'static str, DBStats>;
 }

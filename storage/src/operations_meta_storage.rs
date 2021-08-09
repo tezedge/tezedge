@@ -319,6 +319,46 @@ fn expected_data_length(validation_passes: u8) -> usize {
         + (validation_passes as usize) * std::mem::size_of::<u8>() // is_validation_pass_present
 }
 
+pub fn merge_meta_value_edgekv(
+    _new_key: &[u8],
+    existing_val: Option<Vec<u8>>,
+    merged_bytes: &[u8],
+) -> Option<Vec<u8>> {
+    let mut result = existing_val;
+    match result {
+        None => return Some(merged_bytes.to_vec()),
+        Some(ref mut val) => {
+            debug_assert_eq!(
+                val.len(),
+                merged_bytes.len(),
+                "Value length is fixed. expected={}, found={}",
+                val.len(),
+                merged_bytes.len()
+            );
+            debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+            debug_assert_eq!(
+                val[0], merged_bytes[0],
+                "Value of validation passes cannot change"
+            );
+            // in case of inconsistency, return `None`
+            if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
+                return None;
+            }
+
+            let validation_passes = val[0] as usize;
+            // merge `is_validation_pass_present`
+            for i in 1..=validation_passes {
+                val[i] |= merged_bytes[i]
+            }
+            // merge `is_complete`
+            let is_complete_idx = validation_passes + 1;
+            val[is_complete_idx] |= merged_bytes[is_complete_idx];
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use std::{convert::TryInto, path::Path};
