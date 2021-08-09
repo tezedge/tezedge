@@ -6009,7 +6009,119 @@ depends_on:
   - build-tezedge-binaries
   - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
+---
+##############################################################################################################
+# This pipeline calculates the node's p2p latency
+##############################################################################################################
+kind: pipeline
+name: perf/node-latency
 
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+
+steps:
+  - name: octez-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: octez-data
+        path: /data
+    commands:
+      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+
+  - name: tezedge-node-latency-pref
+    image: tezedge/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /build
+      - name: cache
+        path: /cache
+      - name: tezos-data
+        path: /data
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      THROTTLING_QUOTA_DISABLE: true
+    commands:
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+      - >
+        /build/build_files/light-node
+        --config-file=/build/build_files/tezedge/tezedge_drone.config
+        --identity-file=/build/build_files/identities/identity_2.json
+        --protocol-runner=/build/build_files/protocol-runner
+        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+        --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+        --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
+        echo $! > /var/run/tezedge.pid
+      # this command waits the node to be on level 20000
+      - |
+        sh -c '
+        block=0
+        while [ $block -lt 20000 ]; do
+          sleep 5
+          b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+          block=$${b:-$block}
+          echo "===> Block level $block"
+        done
+        '
+      - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+      # terminate the node gracefully and wait to allow `valgrind` dump data
+      - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+      # restart node for client to connect
+      # ------------------------------------------
+      - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
+      - cd latency && cargo build --bin storage-metrics --release
+      - cd ../
+      - >
+        /build/build_files/light-node
+        --config-file=/build/build_files/tezedge/tezedge_drone.config
+        --identity-file=/build/build_files/identities/identity_2.json
+        --protocol-runner=/build/build_files/protocol-runner
+        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+        --network "$${NETWORK}"
+        --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --disable-peer-blacklist &
+        echo $! > /var/run/tezedge-1.pid
+      - cd latency && sleep 15 && cargo run --bin storage-metrics --release --quiet > statslog
+      - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+      # terminate the node gracefully and wait to allow `valgrind` dump data
+      - kill -INT $(cat /var/run/tezedge-1.pid)
+      # print results after gracefully stopped
+      - tail statslog
+
+depends_on:
+  - build-tezedge-binaries
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: octez-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER}
+
+trigger:
+  branch:
+    - master
+    - develop
 ---
 ##############################################################################################################
 # This pipeline runs tezedge and octez nodes in isolation, bootstrapped to level 20000
