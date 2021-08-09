@@ -6,6 +6,9 @@ use crypto::nonce::Nonce;
 
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
 
+mod effects_recorder;
+pub use effects_recorder::*;
+
 /// Effects are source of randomness.
 pub trait Effects: Debug {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce;
@@ -33,8 +36,7 @@ impl<R> Effects for R
 where
     R: Rng + Debug,
 {
-    fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
-        let _ = peer;
+    fn get_nonce(&mut self, _: &PeerAddress) -> Nonce {
         let mut b = [0; 24];
         self.fill(&mut b);
         Nonce::new(&b)
