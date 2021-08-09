@@ -116,6 +116,8 @@ async fn main() {
             panic!("Cannot start netinfo, reason: {}", e)
         }
 
+        netinfo.clear().expect("Cannot clear netinfo");
+
         let mut resource_monitor = ResourceMonitor::new(
             storages.clone(),
             HashMap::new(),
@@ -127,6 +129,8 @@ async fn main() {
 
         let thread_log = log.clone();
         let handle = tokio::spawn(async move {
+            // wait for the first refresh, so it doesn't offset the first measurement
+            sleep(Duration::from_secs(resource_monitor_interval)).await;
             loop {
                 if let Err(e) = resource_monitor.take_measurement().await {
                     error!(thread_log, "Resource monitoring error: {}", e);
