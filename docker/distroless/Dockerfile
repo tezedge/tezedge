@@ -6,7 +6,7 @@ USER root
 RUN apt-get update && apt-get install -y libssl-dev
 
 # Checkout and compile tezedge source code
-ARG tezedge_git="https://github.com/tezedge/tezedge.git"
+ARG tezedge_git="https://github.com/mambisi/tezedge.git"
 ARG rust_toolchain="nightly-2021-08-04"
 ARG SOURCE_BRANCH
 RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y

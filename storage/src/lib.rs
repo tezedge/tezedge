@@ -805,7 +805,30 @@ pub mod tests_common {
                 TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
                     path.join("db"),
                 )?)
-            } else {
+            }
+            else if cfg!(feature = "maindb-backend-edgekv") {
+                TezedgeDatabaseBackendOptions::Notus(database::edgekv_backend::EdgeKVBackend::new(
+                    path.join("db"),
+                    vec![
+                        block_storage::BlockPrimaryIndex::name(),
+                        block_storage::BlockByLevelIndex::name(),
+                        block_storage::BlockByContextHashIndex::name(),
+                        BlockMetaStorage::name(),
+                        OperationsStorage::name(),
+                        OperationsMetaStorage::name(),
+                        SystemStorage::name(),
+                        Sequences::name(),
+                        MempoolStorage::name(),
+                        ChainMetaStorage::name(),
+                        PredecessorStorage::name(),
+                        BlockAdditionalData::name(),
+                        CycleErasStorage::name(),
+                        CycleMetaStorage::name(),
+                        ConstantsStorage::name(),
+                    ]
+                )?)
+            }
+            else {
                 let kv = Arc::new(open_kv(
                     path.join("db"),
                     vec![

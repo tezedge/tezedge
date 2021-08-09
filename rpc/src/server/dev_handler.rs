@@ -4,13 +4,17 @@
 use anyhow::format_err;
 use hyper::{Body, Request};
 use slog::warn;
-
+use serde::{Serialize,Deserialize};
 use crate::helpers::{parse_block_hash, parse_chain_id, RpcServiceError, MAIN_CHAIN_ID};
 use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use std::sync::Arc;
+use storage::database::tezedge_database::KVStore;
+use std::collections::HashMap;
+
+
 
 pub async fn dev_blocks(
     _: Request<Body>,
@@ -83,11 +87,24 @@ pub async fn dev_contract_actions(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
+
     let contract_id = required_param!(params, "contract_address")?;
     let from_id = query.get_u64("from_id");
     let limit = query.get_usize("limit").unwrap_or(50);
     result_to_json_response(
         dev_services::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()),
+        env.log(),
+    )
+}
+
+pub async fn dev_db_stats(
+    _: Request<Body>,
+    _params: Params,
+    _query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    result_to_json_response(
+        Ok(env.persistent_storage.main_db().db_stats()),
         env.log(),
     )
 }

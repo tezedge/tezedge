@@ -9,9 +9,7 @@ use crate::commit_log::{CommitLogError, CommitLogs};
 use crate::database::error::Error as DatabaseError;
 use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
-use crate::database::tezedge_database::{
-    TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
-};
+use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions, KVStoreKeyValueSchema};
 use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
@@ -19,6 +17,7 @@ use rocksdb::DB;
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
 use slog::Logger;
 use std::sync::Arc;
+use crate::database::edgekv_backend::EdgeKVBackend;
 
 pub mod codec;
 pub mod database;
@@ -79,6 +78,42 @@ pub trait MultiInstanceable {
         }
     }
 }
+/*
+crate::block_storage::BlockPrimaryIndex::descriptor(cache),
+                crate::block_storage::BlockByLevelIndex::descriptor(cache),
+                crate::block_storage::BlockByContextHashIndex::descriptor(cache),
+                crate::BlockMetaStorage::descriptor(cache),
+                crate::OperationsStorage::descriptor(cache),
+                crate::OperationsMetaStorage::descriptor(cache),
+                crate::SystemStorage::descriptor(cache),
+                crate::persistent::sequence::Sequences::descriptor(cache),
+                crate::MempoolStorage::descriptor(cache),
+                crate::ChainMetaStorage::descriptor(cache),
+                crate::PredecessorStorage::descriptor(cache),
+                crate::BlockAdditionalData::descriptor(cache),
+                crate::CycleMetaStorage::descriptor(cache),
+                crate::CycleErasStorage::descriptor(cache),
+                crate::ConstantsStorage::descriptor(cache),
+ */
+fn nutos_db_cols() -> Vec<&'static str> {
+    vec![
+        crate::block_storage::BlockPrimaryIndex::column_name(),
+        crate::block_storage::BlockByLevelIndex::column_name(),
+        crate::block_storage::BlockByContextHashIndex::column_name(),
+        crate::BlockMetaStorage::column_name(),
+        crate::OperationsStorage::column_name(),
+        crate::OperationsMetaStorage::column_name(),
+        crate::SystemStorage::column_name(),
+        crate::persistent::sequence::Sequences::column_name(),
+        crate::MempoolStorage::column_name(),
+        crate::ChainMetaStorage::column_name(),
+        crate::PredecessorStorage::column_name(),
+        crate::BlockAdditionalData::column_name(),
+        crate::CycleMetaStorage::column_name(),
+        crate::CycleErasStorage::column_name(),
+        crate::ConstantsStorage::column_name(),
+    ]
+}
 
 /// Open commit log at a given path.
 pub fn open_main_db<C: RocksDbColumnFactory>(
@@ -98,6 +133,9 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             } else {
                 return Err(DatabaseError::FailedToOpenDatabase);
             }
+        }
+        TezedgeDatabaseBackendConfiguration::EdgeKV => {
+            TezedgeDatabaseBackendOptions::Notus(EdgeKVBackend::new(config.db_path.as_path(), nutos_db_cols())?)
         }
     };
     Ok(TezedgeDatabase::new(backend, log))

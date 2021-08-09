@@ -1,4 +1,4 @@
-use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
+use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore, DBStats};
 use crate::database::error::Error;
 use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
@@ -10,6 +10,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use crate::database::edgekv_backend::EdgeKVBackend;
+use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
 
 use super::backend::BackendIterator;
 
@@ -77,12 +80,14 @@ pub type List<S> = Vec<(
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
     RocksDB(RocksDBBackend),
+    Notus(EdgeKVBackend),
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezedgeDatabaseBackendConfiguration {
     Sled,
     RocksDB,
+    EdgeKV,
 }
 
 impl TezedgeDatabaseBackendConfiguration {
@@ -98,6 +103,7 @@ impl TezedgeDatabaseBackendConfiguration {
         match self {
             Self::Sled => vec!["sled"],
             Self::RocksDB => vec!["rocksdb"],
+            Self::EdgeKV => vec!["edgekv"]
         }
     }
 }
@@ -128,9 +134,8 @@ pub trait TezdegeDatabaseBackendKV: TezedgeDatabaseBackendStore {}
 pub type TezedgeDatabaseBackend = dyn TezdegeDatabaseBackendKV + Send + Sync;
 
 pub trait TezedgeDatabaseWithIterator<S: KVStoreKeyValueSchema>:
-    KVStore<S> + KVStoreWithSchemaIterator<S>
-{
-}
+KVStore<S> + KVStoreWithSchemaIterator<S>
+{}
 
 impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabase {}
 
@@ -150,11 +155,19 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
                 log: log.clone(),
             },
+            TezedgeDatabaseBackendOptions::Notus(backend) => TezedgeDatabase {
+                backend: Arc::new(backend),
+                log: log.clone(),
+            },
         }
     }
 
     fn flush(&self) -> Result<usize, Error> {
         self.backend.flush()
+    }
+
+    pub fn db_stats(&self) -> HashMap<&'static str, DBStats> {
+        self.backend.column_stats()
     }
 
     pub fn flush_checked(&self) {
@@ -219,6 +232,16 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 
         self.backend.write_batch(S::column_name(), generic_batch)?;
         Ok(())
+    }
+}
+
+impl TezedgeDatabase {
+    pub fn size(&self) -> HashMap<&'static str, usize> {
+        self.backend.size()
+    }
+
+    fn sync(&self) -> Result<(), Error> {
+        self.backend.sync()
     }
 }
 
