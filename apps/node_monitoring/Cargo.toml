@@ -23,11 +23,11 @@ serde_json = "1.0"
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.6"
-sysinfo = { git = "https://github.com/adonagy/sysinfo.git", branch = "fix/thread-cpu-usage" }
+sysinfo = { git = "https://github.com/tezedge/sysinfo.git", tag = "tezedge-v0.19.2-1" }
 tokio = { version = "1.8", features = ["full"] }
 wait-timeout = "0.2"
 warp = "0.3"
 procfs = "0.9"
-netinfo = { git = "https://github.com/adonagy/netinfo.git", branch = "fix/brokend-dependecies" }
+netinfo = { git = "https://github.com/tezedge/netinfo.git", tag = "tezedge-v0.5.1-1" }
 
 [workspace]
