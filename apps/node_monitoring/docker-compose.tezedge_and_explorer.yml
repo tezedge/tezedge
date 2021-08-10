@@ -1,0 +1,54 @@
+version: "3"
+
+services:
+  tezedge-node:
+    image: tezedge/tezedge:v1.6.10
+    command: [
+        "--network", "${TEZOS_NETWORK}",
+        "--p2p-port=9732",
+        "--rpc-port=18732",
+        "--websocket-address=0.0.0.0:4927",
+        "--log", "terminal", "file",
+        "--log-file", "/tmp/tezedge/tezedge.log",
+        "--tezos-context-storage", "irmin",
+        "--peer-thresh-low", "60",
+        "--peer-thresh-high", "80",
+        "--ffi-pool-max-connections", "2",
+        "--ffi-trpap-pool-max-connections", "1",
+        "--ffi-twcap-pool-max-connections", "1"
+    ]
+    pid: host
+    network_mode: host
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:10001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"
+    environment:
+      - TEZOS_STORAGE=index-log-size=5_000_000
+
+  explorer:
+    image: tezedge/tezedge-explorer:v1.6.10
+    environment:
+      # need a better way to provide such information
+      - API=[{"id":"rust","type":"tezedge","name":"rust.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP}:4927"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]},{"id":"ocaml","type":"octez","name":"ocaml.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18733","p2p_port":9733,"features":[{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]}]
+    ports:
+      - "8080:80"
+
+  monitoring:
+    privileged: true
+    network_mode: host
+    image: tezedge/node-monitoring:v1.6.10
+    pid: "host"
+    command: [
+      "--tezedge-nodes", "tezedge:18732:/tmp/tezedge",
+      "--wait-for-nodes",
+      "--rpc-port", "38732",
+    ]
+    volumes:
+      - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"

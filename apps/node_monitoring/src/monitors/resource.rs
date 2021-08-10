@@ -541,35 +541,35 @@ impl ResourceMonitor {
                     }
                     node.set_node_status(NodeStatus::Offline);
                 }
-
-                if let Some(proxy_status) = node.proxy_status() {
-                    if !proxy_reachable {
-                        // if the proxy is not reachable and the last status was Online report trough slack and change the
-                        // status to offline
-                        if proxy_status == &NodeStatus::Online {
-                            println!("[{}] Proxy is down", node.tag());
-                            if let Some(slack) = slack {
-                                slack
-                                    .send_message(&format!("[{}] Proxy is down", node.tag()))
-                                    .await;
-                            }
-                            node.set_proxy_status(Some(NodeStatus::Offline));
-                        }
-                    } else {
-                        // if the proxy is reachable and the last status was Offline report trough slack and change the
-                        // status to online
-                        if proxy_status == &NodeStatus::Offline {
-                            if let Some(slack) = slack {
-                                slack
-                                    .send_message(&format!("[{}] Proxy is back online", node.tag()))
-                                    .await;
-                            }
-                            node.set_proxy_status(Some(NodeStatus::Online));
-                        }
-                    }
-                }
                 ResourceUtilization::default()
             };
+
+            if let Some(proxy_status) = node.proxy_status() {
+                if !proxy_reachable {
+                    // if the proxy is not reachable and the last status was Online report trough slack and change the
+                    // status to offline
+                    if proxy_status == &NodeStatus::Online {
+                        println!("[{}] Proxy is down", node.tag());
+                        if let Some(slack) = slack {
+                            slack
+                                .send_message(&format!("[{}] Proxy is down", node.tag()))
+                                .await;
+                        }
+                        node.set_proxy_status(Some(NodeStatus::Offline));
+                    }
+                } else {
+                    // if the proxy is reachable and the last status was Offline report trough slack and change the
+                    // status to online
+                    if proxy_status == &NodeStatus::Offline {
+                        if let Some(slack) = slack {
+                            slack
+                                .send_message(&format!("[{}] Proxy is back online", node.tag()))
+                                .await;
+                        }
+                        node.set_proxy_status(Some(NodeStatus::Online));
+                    }
+                }
+            }
 
             if node_reachable {
                 handle_alerts(
