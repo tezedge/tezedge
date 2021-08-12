@@ -1,12 +1,10 @@
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 
-use crate::Recorder;
-
 type IOResult<T> = Result<T, io::ErrorKind>;
 
 #[derive(Debug, Eq, PartialEq, Default, Clone)]
-struct RecordedStream {
+pub struct RecordedStream {
     pub reads: VecDeque<IOResult<Vec<u8>>>,
     pub writes: VecDeque<IOResult<Vec<u8>>>,
     pub flushes: VecDeque<IOResult<()>>,
@@ -83,7 +81,7 @@ impl Write for RecordedStream {
     }
 }
 
-struct StreamRecorder<S> {
+pub struct StreamRecorder<S> {
     stream: S,
     recorded: RecordedStream,
 }
@@ -94,6 +92,14 @@ impl<S> StreamRecorder<S> {
             stream,
             recorded: Default::default(),
         }
+    }
+
+    pub fn record(&mut self) -> &mut Self {
+        self
+    }
+
+    pub fn finish_recording(self) -> RecordedStream {
+        self.recorded
     }
 }
 
@@ -142,19 +148,6 @@ where
                 self.recorded.flushes.push_back(Err(err.kind()));
                 err
             })
-    }
-}
-
-impl<'a, S: 'a> Recorder<'a> for StreamRecorder<S> {
-    type Value = &'a mut StreamRecorder<S>;
-    type Recorded = RecordedStream;
-
-    fn record(&'a mut self) -> Self::Value {
-        self
-    }
-
-    fn finish(self) -> Self::Recorded {
-        self.recorded
     }
 }
 
@@ -218,7 +211,7 @@ mod tests {
             assert_eq!(recorder.stream.writes.len(), 0);
             assert_eq!(recorder.stream.flushes.len(), 0);
 
-            recorder.finish()
+            recorder.finish_recording()
         };
 
         assert_eq!(old_recorded, new_recorded);

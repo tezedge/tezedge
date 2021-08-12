@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crypto::hash::CryptoboxPublicKeyHash;
-use tla_sm::{Acceptor, GetRequests};
+use tla_sm::{Acceptor, DefaultRecorder, GetRequests};
 
 use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 use crate::proposals::{
@@ -18,6 +18,23 @@ use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
+
+macro_rules! accept_proposal {
+    ($state: expr, $proposal: expr, $record: expr) => {
+        let proposal = $proposal;
+
+        if $record {
+            let mut recorder = proposal.default_recorder();
+            // TODO: what if acceptor panics, we should have a mechanism
+            // to store that last proposal too that caused it.
+            $state.accept(recorder.record());
+            recorder.finish_recording();
+            // TODO: store recorded proposal.
+        } else {
+            $state.accept(proposal);
+        }
+    };
+}
 
 const NOTIFICATIONS_OPTIMAL_CAPACITY: usize = 16;
 
@@ -166,6 +183,7 @@ pub trait Manager {
 pub struct TezedgeProposerConfig {
     pub wait_for_events_timeout: Option<Duration>,
     pub events_limit: usize,
+    pub record: bool,
 }
 
 /// TezedgeProposer wraps around [TezedgeState] and it is what connects
@@ -215,6 +233,7 @@ where
     fn init(mut self) -> Self {
         // execute initial requests.
         Self::execute_requests(
+            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
@@ -230,6 +249,7 @@ where
 
     fn handle_event(
         event: Event<NetE>,
+        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -238,11 +258,12 @@ where
     ) {
         match event {
             Event::Tick(at) => {
-                state.accept(TickProposal { at, effects });
+                accept_proposal!(state, TickProposal { at, effects }, config.record);
             }
             Event::Network(event) => {
                 Self::handle_network_event(
                     &event,
+                    config,
                     effects,
                     requests,
                     notifications,
@@ -255,6 +276,7 @@ where
 
     fn handle_event_ref<'a>(
         event: EventRef<'a, NetE>,
+        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -263,16 +285,25 @@ where
     ) {
         match event {
             Event::Tick(at) => {
-                state.accept(TickProposal { at, effects });
+                accept_proposal!(state, TickProposal { at, effects }, config.record);
             }
             Event::Network(event) => {
-                Self::handle_network_event(event, effects, requests, notifications, state, manager);
+                Self::handle_network_event(
+                    event,
+                    config,
+                    effects,
+                    requests,
+                    notifications,
+                    state,
+                    manager,
+                );
             }
         }
     }
 
     fn handle_network_event(
         event: &NetE,
+        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -290,21 +321,25 @@ where
                 for _ in 0..100 {
                     match manager.accept_connection(&event) {
                         Some(peer) => {
-                            state.accept(NewPeerConnectProposal {
-                                effects,
-                                at: event.time(),
-                                peer: peer.address().clone(),
-                            });
-                            Self::handle_readiness_event(event, effects, state, peer);
+                            accept_proposal!(
+                                state,
+                                NewPeerConnectProposal {
+                                    effects,
+                                    at: event.time(),
+                                    peer: peer.address().clone(),
+                                },
+                                config.record
+                            );
+                            Self::handle_readiness_event(event, config, effects, state, peer);
                         }
                         None => return,
                     }
                 }
-                Self::execute_requests(effects, requests, notifications, state, manager);
+                Self::execute_requests(config, effects, requests, notifications, state, manager);
             }
         } else {
             match manager.get_peer_for_event_mut(&event) {
-                Some(peer) => Self::handle_readiness_event(event, effects, state, peer),
+                Some(peer) => Self::handle_readiness_event(event, config, effects, state, peer),
                 None => {
                     // Should be impossible! If we receive an event for
                     // the peer, that peer must exist in manager.
@@ -317,41 +352,55 @@ where
 
     fn handle_readiness_event(
         event: &NetE,
+        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         state: &mut TezedgeStateWrapper,
         peer: &mut Peer<S>,
     ) {
         if event.is_read_closed() || event.is_write_closed() {
-            state.accept(PeerDisconnectedProposal {
-                effects,
-                at: event.time(),
-                peer: peer.address().clone(),
-            });
+            accept_proposal!(
+                state,
+                PeerDisconnectedProposal {
+                    effects,
+                    at: event.time(),
+                    peer: peer.address().clone(),
+                },
+                config.record
+            );
             return;
         }
 
         if event.is_readable() {
-            state.accept(PeerReadableProposal {
-                effects,
-                at: event.time(),
-                peer: peer.address().clone(),
-                stream: &mut peer.stream,
-            });
+            accept_proposal!(
+                state,
+                PeerReadableProposal {
+                    effects,
+                    at: event.time(),
+                    peer: peer.address().clone(),
+                    stream: &mut peer.stream,
+                },
+                config.record
+            );
         }
 
         if event.is_writable() {
-            state.accept(PeerWritableProposal {
-                effects,
-                at: event.time(),
-                peer: peer.address().clone(),
-                stream: &mut peer.stream,
-            });
+            accept_proposal!(
+                state,
+                PeerWritableProposal {
+                    effects,
+                    at: event.time(),
+                    peer: peer.address().clone(),
+                    stream: &mut peer.stream,
+                },
+                config.record
+            );
         }
     }
 
     /// Grabs the requests from state machine, puts them in temporary
     /// container `requests`, then drains it and executes each request.
     fn execute_requests(
+        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -364,56 +413,84 @@ where
             match req {
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
                     manager.start_listening_to_server_events();
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::StartListeningForNewPeersSuccess,
-                    });
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: state.newest_time_seen(),
+                            message: PendingRequestMsg::StartListeningForNewPeersSuccess,
+                        },
+                        config.record
+                    );
                 }
                 TezedgeRequest::StopListeningForNewPeers { req_id } => {
                     manager.stop_listening_to_server_events();
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::StopListeningForNewPeersSuccess,
-                    });
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: state.newest_time_seen(),
+                            message: PendingRequestMsg::StopListeningForNewPeersSuccess,
+                        },
+                        config.record
+                    );
                 }
                 TezedgeRequest::ConnectPeer { req_id, peer } => {
                     match manager.get_peer_or_connect_mut(&peer) {
-                        Ok(_) => state.accept(PendingRequestProposal {
-                            effects,
-                            req_id,
-                            at: state.newest_time_seen(),
-                            message: PendingRequestMsg::ConnectPeerSuccess,
-                        }),
-                        Err(_) => state.accept(PendingRequestProposal {
-                            effects,
-                            req_id,
-                            at: state.newest_time_seen(),
-                            message: PendingRequestMsg::ConnectPeerError,
-                        }),
+                        Ok(_) => {
+                            accept_proposal!(
+                                state,
+                                PendingRequestProposal {
+                                    effects,
+                                    req_id,
+                                    at: state.newest_time_seen(),
+                                    message: PendingRequestMsg::ConnectPeerSuccess,
+                                },
+                                config.record
+                            );
+                        }
+                        Err(_) => {
+                            accept_proposal!(
+                                state,
+                                PendingRequestProposal {
+                                    effects,
+                                    req_id,
+                                    at: state.newest_time_seen(),
+                                    message: PendingRequestMsg::ConnectPeerError,
+                                },
+                                config.record
+                            );
+                        }
                     }
                 }
                 TezedgeRequest::DisconnectPeer { req_id, peer } => {
                     manager.disconnect_peer(&peer);
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::DisconnectPeerSuccess,
-                    });
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: state.newest_time_seen(),
+                            message: PendingRequestMsg::DisconnectPeerSuccess,
+                        },
+                        config.record
+                    );
                     notifications.push(Notification::PeerDisconnected { peer });
                 }
                 TezedgeRequest::BlacklistPeer { req_id, peer } => {
                     manager.disconnect_peer(&peer);
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::BlacklistPeerSuccess,
-                    });
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: state.newest_time_seen(),
+                            message: PendingRequestMsg::BlacklistPeerSuccess,
+                        },
+                        config.record
+                    );
                     notifications.push(Notification::PeerBlacklisted { peer });
                 }
                 TezedgeRequest::PeerMessageReceived {
@@ -421,12 +498,16 @@ where
                     peer,
                     message,
                 } => {
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::PeerMessageReceivedNotified,
-                    });
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: state.newest_time_seen(),
+                            message: PendingRequestMsg::PeerMessageReceivedNotified,
+                        },
+                        config.record
+                    );
                     notifications.push(Notification::MessageReceived { peer, message });
                 }
                 TezedgeRequest::NotifyHandshakeSuccessful {
@@ -442,12 +523,17 @@ where
                         metadata,
                         network_version,
                     });
-                    state.accept(PendingRequestProposal {
-                        effects,
-                        req_id,
-                        at: state.newest_time_seen(),
-                        message: PendingRequestMsg::HandshakeSuccessfulNotified,
-                    });
+                    let time = state.newest_time_seen();
+                    accept_proposal!(
+                        state,
+                        PendingRequestProposal {
+                            effects,
+                            req_id,
+                            at: time,
+                            message: PendingRequestMsg::HandshakeSuccessfulNotified,
+                        },
+                        config.record
+                    );
                 }
             }
         }
@@ -483,6 +569,7 @@ where
         for event in self.events.into_iter() {
             Self::handle_event_ref(
                 event,
+                &self.config,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
@@ -492,6 +579,7 @@ where
         }
 
         Self::execute_requests(
+            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
@@ -504,16 +592,12 @@ where
     where
         for<'a> &'a Es: IntoIterator<Item = Event<NetE>>,
     {
-        let time = Instant::now();
         self.wait_for_events();
-        eprintln!("waited for events for: {}ms", time.elapsed().as_millis());
 
-        let time = Instant::now();
-        let mut count = 0;
         for event in self.events.into_iter() {
-            count += 1;
             Self::handle_event(
                 event,
+                &self.config,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
@@ -521,44 +605,49 @@ where
                 &mut self.manager,
             );
         }
-        eprintln!(
-            "handled {} events in: {}ms",
-            count,
-            time.elapsed().as_millis()
-        );
 
-        let time = Instant::now();
         Self::execute_requests(
+            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
             &mut self.manager,
         );
-        eprintln!("executed requests in: {}ms", time.elapsed().as_millis());
     }
 
     pub fn extend_potential_peers<P>(&mut self, at: Instant, peers: P)
     where
         P: IntoIterator<Item = SocketAddr>,
     {
-        self.state.accept(ExtendPotentialPeersProposal {
-            effects: &mut self.effects,
-            at,
-            peers,
-        })
+        accept_proposal!(
+            self.state,
+            ExtendPotentialPeersProposal {
+                effects: &mut self.effects,
+                at,
+                peers,
+            },
+            self.config.record
+        );
     }
 
     pub fn disconnect_peer(&mut self, at: Instant, peer: PeerAddress) {
         let effects = &mut self.effects;
-        self.state
-            .accept(PeerDisconnectProposal { effects, at, peer })
+
+        accept_proposal!(
+            self.state,
+            PeerDisconnectProposal { effects, at, peer },
+            self.config.record
+        );
     }
 
     pub fn blacklist_peer(&mut self, at: Instant, peer: PeerAddress) {
         let effects = &mut self.effects;
-        self.state
-            .accept(PeerBlacklistProposal { effects, at, peer })
+        accept_proposal!(
+            self.state,
+            PeerBlacklistProposal { effects, at, peer },
+            self.config.record
+        );
     }
 
     // TODO: Everything bellow this line is temporary until everything
@@ -573,21 +662,29 @@ where
         message: PeerMessage,
     ) {
         if let Some(peer) = self.manager.get_peer(&addr) {
-            self.state.accept(SendPeerMessageProposal {
-                effects: &mut self.effects,
-                at,
-                peer: addr,
-                message,
-            });
+            accept_proposal!(
+                self.state,
+                SendPeerMessageProposal {
+                    effects: &mut self.effects,
+                    at,
+                    peer: addr,
+                    message,
+                },
+                self.config.record
+            );
             // issue writable proposal in case stream is writable,
             // otherwise we would have to wait till we receive
             // writable event from mio.
-            self.state.accept(PeerWritableProposal {
-                effects: &mut self.effects,
-                at,
-                peer: addr,
-                stream: &mut peer.stream,
-            });
+            accept_proposal!(
+                self.state,
+                PeerWritableProposal {
+                    effects: &mut self.effects,
+                    at,
+                    peer: addr,
+                    stream: &mut peer.stream,
+                },
+                self.config.record
+            );
         } else {
             eprintln!("queueing send message failed since peer not found!");
         }
@@ -606,19 +703,27 @@ where
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "peer not found!")),
         };
 
-        self.state.accept(SendPeerMessageProposal {
-            effects: &mut self.effects,
-            at,
-            peer: addr,
-            message,
-        });
+        accept_proposal!(
+            self.state,
+            SendPeerMessageProposal {
+                effects: &mut self.effects,
+                at,
+                peer: addr,
+                message,
+            },
+            self.config.record
+        );
         let mut send_buf = vec![];
-        self.state.accept(PeerWritableProposal {
-            effects: &mut self.effects,
-            at,
-            peer: addr,
-            stream: &mut ExtendableAsWritable::from(&mut send_buf),
-        });
+        accept_proposal!(
+            self.state,
+            PeerWritableProposal {
+                effects: &mut self.effects,
+                at,
+                peer: addr,
+                stream: &mut ExtendableAsWritable::from(&mut send_buf),
+            },
+            self.config.record
+        );
 
         let mut buf = &send_buf[..];
 

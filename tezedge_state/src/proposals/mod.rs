@@ -38,3 +38,20 @@ pub use peer_blacklist_proposal::*;
 
 mod pending_request_proposal;
 pub use pending_request_proposal::*;
+
+pub trait MaybeRecordedProposal {
+    type Proposal: Proposal;
+
+    fn as_proposal(self) -> Self::Proposal;
+}
+
+impl<'a, T> MaybeRecordedProposal for T
+where
+    T: Proposal,
+{
+    type Proposal = T;
+
+    fn as_proposal(self) -> Self::Proposal {
+        self
+    }
+}
