@@ -360,6 +360,7 @@ impl TezedgeStateManager {
         );
 
         info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &bootstrap_addresses));
+        let initial_potential_peers = dbg!(dns_lookup_peers(&bootstrap_addresses, &log));
 
         Self {
             proposer_handle,
@@ -370,7 +371,7 @@ impl TezedgeStateManager {
                 effects,
                 proposer_rx,
                 network_channel,
-                dbg!(dns_lookup_peers(&bootstrap_addresses, &log)),
+                initial_potential_peers,
             )),
         }
     }
