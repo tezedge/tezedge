@@ -1,13 +1,12 @@
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Debug};
-use tla_sm::Recorder;
 
 use crypto::nonce::Nonce;
 
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
 use crate::Effects;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Eq, PartialEq, Default, Clone)]
 pub struct RecordedEffects {
     nonces: VecDeque<Nonce>,
     chosen_peers_to_connect_to: VecDeque<Vec<PeerListenerAddress>>,
@@ -57,23 +56,31 @@ impl Effects for RecordedEffects {
     }
 }
 
-struct EffectsRecorder<'a, E> {
-    effects: &'a mut E,
+pub struct EffectsRecorder<'a, Efs> {
+    effects: &'a mut Efs,
     recorded: RecordedEffects,
 }
 
-impl<'a, E> EffectsRecorder<'a, E> {
-    pub fn new(effects: &'a mut E) -> Self {
+impl<'a, Efs> EffectsRecorder<'a, Efs> {
+    pub fn new(effects: &'a mut Efs) -> Self {
         Self {
             effects,
             recorded: RecordedEffects::new(),
         }
     }
+
+    pub fn record(&mut self) -> &mut Self {
+        self
+    }
+
+    pub fn finish_recording(self) -> RecordedEffects {
+        self.recorded
+    }
 }
 
-impl<'a, E> Debug for EffectsRecorder<'a, E>
+impl<'a, Efs> Debug for EffectsRecorder<'a, Efs>
 where
-    E: Debug,
+    Efs: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectsRecorder")
@@ -83,9 +90,9 @@ where
     }
 }
 
-impl<'a, E> Effects for EffectsRecorder<'a, E>
+impl<'a, Efs> Effects for EffectsRecorder<'a, Efs>
 where
-    E: Effects + Debug,
+    Efs: Effects + Debug,
 {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
         let nonce = self.effects.get_nonce(peer);
@@ -131,18 +138,5 @@ where
             .chosen_potential_peers_for_nack
             .push_back(addrs.clone());
         addrs
-    }
-}
-
-impl<'a: 'b, 'b, S> Recorder<'b> for EffectsRecorder<'a, S> {
-    type Value = &'b mut EffectsRecorder<'a, S>;
-    type Recorded = RecordedEffects;
-
-    fn record(&'b mut self) -> Self::Value {
-        self
-    }
-
-    fn finish(self) -> Self::Recorded {
-        self.recorded
     }
 }

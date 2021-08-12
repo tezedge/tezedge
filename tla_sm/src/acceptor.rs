@@ -1,5 +1,3 @@
-use crate::Proposal;
-
 /// Acceptor is what receives a proposal and handles it. Might mutate
 /// state based on proposal.
 ///
@@ -11,6 +9,6 @@ use crate::Proposal;
 /// Anything implementing an `Acceptor` must be determenistic, in a sense
 /// that if we replay same set of proposals countless times, we should
 /// get the exact same resulting state.
-pub trait Acceptor<P: Proposal> {
+pub trait Acceptor<P> {
     fn accept(&mut self, proposal: P);
 }
