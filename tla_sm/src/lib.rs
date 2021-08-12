@@ -15,4 +15,4 @@ pub use get_requests::*;
 mod recorder;
 pub use recorder::*;
 
-mod recorders;
+pub mod recorders;

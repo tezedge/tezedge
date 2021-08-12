@@ -1,6 +1,10 @@
 use std::time::Instant;
 
-use crate::Proposal;
+use crate::{EffectsRecorder, Proposal, RecordedEffects};
+use tla_sm::recorders::CloneRecorder;
+use tla_sm::DefaultRecorder;
+
+use super::MaybeRecordedProposal;
 
 /// `TickProposal` is a way for us to update logical clock for state machine.
 ///
@@ -16,5 +20,64 @@ pub struct TickProposal<'a, Efs> {
 impl<'a, Efs> Proposal for TickProposal<'a, Efs> {
     fn time(&self) -> Instant {
         self.at
+    }
+}
+
+impl<'a, Efs> TickProposal<'a, Efs> {
+    pub fn default_recorder(self) -> TickProposalRecorder<'a, Efs> {
+        TickProposalRecorder::new(self)
+    }
+}
+
+impl<'a, Efs> DefaultRecorder for TickProposal<'a, Efs> {
+    type Recorder = TickProposalRecorder<'a, Efs>;
+
+    fn default_recorder(self) -> Self::Recorder {
+        Self::Recorder::new(self)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct RecordedTickProposal {
+    pub effects: RecordedEffects,
+    pub at: Instant,
+}
+
+impl<'a> MaybeRecordedProposal for &'a mut RecordedTickProposal {
+    type Proposal = TickProposal<'a, RecordedEffects>;
+
+    fn as_proposal(self) -> Self::Proposal {
+        Self::Proposal {
+            effects: &mut self.effects,
+            at: self.at,
+        }
+    }
+}
+
+pub struct TickProposalRecorder<'a, Efs> {
+    effects: EffectsRecorder<'a, Efs>,
+    at: CloneRecorder<Instant>,
+}
+
+impl<'a, Efs> TickProposalRecorder<'a, Efs> {
+    pub fn new(proposal: TickProposal<'a, Efs>) -> Self {
+        Self {
+            effects: EffectsRecorder::new(proposal.effects),
+            at: proposal.at.default_recorder(),
+        }
+    }
+
+    pub fn record<'b>(&'b mut self) -> TickProposal<'b, EffectsRecorder<'a, Efs>> {
+        TickProposal {
+            effects: self.effects.record(),
+            at: self.at.record(),
+        }
+    }
+
+    pub fn finish_recording(self) -> RecordedTickProposal {
+        RecordedTickProposal {
+            effects: self.effects.finish_recording(),
+            at: self.at.finish_recording(),
+        }
     }
 }
