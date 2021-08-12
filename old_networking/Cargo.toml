@@ -1,0 +1,32 @@
+[package]
+name = "old_networking"
+version = "1.7.0"
+authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+bytes = "1"
+failure = "0.1"
+futures = "0.3"
+hex = "0.4"
+riker = "0.4"
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+tokio = { version = "1.8", features = ["time", "net", "io-util", "rt-multi-thread", "macros"] }
+lazy_static = "1.4"
+# local dependencies
+crypto = { path = "../crypto" }
+tezos_encoding = { path = "../tezos/encoding" }
+tezos_identity = { path = "../tezos/identity" }
+tezos_messages = { path = "../tezos/messages" }
+
+[dev-dependencies]
+tokio-test = { version = "0.4" }
+async-std = { version = "1.9", features = ["attributes"] }
+slog-term = "2.8"
+slog-async = "2.6"
+slog-envlogger = "2.2"
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[[bench]]
+name = "stream_benchmark"
+harness = false
