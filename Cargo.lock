@@ -2266,6 +2266,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "old_networking"
+version = "1.7.0"
+dependencies = [
+ "async-std",
+ "bytes 1.0.1",
+ "criterion",
+ "crypto",
+ "failure",
+ "futures",
+ "hex",
+ "lazy_static",
+ "riker",
+ "slog",
+ "slog-async",
+ "slog-envlogger",
+ "slog-term",
+ "tezos_encoding",
+ "tezos_identity",
+ "tezos_messages",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3193,6 +3217,7 @@ dependencies = [
  "networking",
  "nix 0.19.1",
  "nom 6.1.2",
+ "old_networking",
  "page_size",
  "r2d2",
  "rand 0.7.3",

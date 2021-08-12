@@ -49,3 +49,5 @@ tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
 ipc = { path = "../ipc" }
 tezos-sys = { path = "../tezos/sys" }
+
+old_networking = { path = "../old_networking" }
