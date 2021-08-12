@@ -111,7 +111,7 @@ impl GetRequests for TezedgeState {
             match &req.status {
                 Idle { .. } => {}
                 // retry if we are `at` the point to retry the request.
-                Retry { at } if self.newest_time_seen >= *at => {}
+                Retry { at } if self.time >= *at => {}
                 _ => continue,
             }
 

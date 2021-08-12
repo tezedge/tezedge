@@ -17,8 +17,8 @@ pub struct TezedgeStateWrapper {
 
 impl TezedgeStateWrapper {
     #[inline]
-    pub fn newest_time_seen(&self) -> Instant {
-        self.state.newest_time_seen()
+    pub fn time(&self) -> Instant {
+        self.state.time()
     }
 
     #[inline]
