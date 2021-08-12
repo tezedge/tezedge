@@ -133,7 +133,9 @@ impl fmt::Display for TimeoutInfo {
 #[derive(Debug, Clone)]
 pub struct TezedgeState {
     pub(crate) log: Logger,
-    pub(crate) newest_time_seen: Instant,
+    /// Newest time seen by the state machine (logical clock). Each
+    /// proposal updates this logical time.
+    pub(crate) time: Instant,
     pub(crate) last_periodic_react: Instant,
     pub(crate) config: TezedgeConfig,
     pub(crate) identity: Identity,
@@ -156,16 +158,16 @@ impl TezedgeState {
         &self.config
     }
 
-    pub fn newest_time_seen(&self) -> Instant {
-        self.newest_time_seen
+    pub fn time(&self) -> Instant {
+        self.time
     }
 
     pub(crate) fn check_and_update_time<P: Proposal>(
         &mut self,
         proposal: &P,
     ) -> Result<(), InvalidProposalError> {
-        if proposal.time() >= self.newest_time_seen {
-            self.newest_time_seen = proposal.time();
+        if proposal.time() >= self.time {
+            self.time = proposal.time();
             Ok(())
         } else {
             Err(InvalidProposalError::ProposalOutdated)
@@ -295,7 +297,7 @@ impl TezedgeState {
 
     pub fn stats(&self) -> TezedgeStats {
         TezedgeStats {
-            newest_time_seen: self.newest_time_seen,
+            time: self.time,
             last_periodic_react: self.last_periodic_react,
             potential_peers_len: self.potential_peers.len(),
             connected_peers_len: self.connected_peers.len(),
@@ -343,7 +345,7 @@ impl TezedgeState {
             blacklisted_peers: BlacklistedPeers::new(),
             p2p_state: P2pState::Pending,
             requests: slab::Slab::new(),
-            newest_time_seen: initial_time,
+            time: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
             main_chain_id,
         }
@@ -353,11 +355,9 @@ impl TezedgeState {
     fn init<Efs: Effects>(mut self, effects: &mut Efs) -> Self {
         self.requests.insert(PendingRequestState {
             request: PendingRequest::StartListeningForNewPeers,
-            status: RetriableRequestState::Idle {
-                at: self.newest_time_seen,
-            },
+            status: RetriableRequestState::Idle { at: self.time },
         });
-        self.adjust_p2p_state(self.newest_time_seen, effects);
+        self.adjust_p2p_state(self.time, effects);
 
         self
     }
@@ -597,7 +597,7 @@ impl TezedgeState {
 
 #[derive(Debug, Clone)]
 pub struct TezedgeStats {
-    pub newest_time_seen: Instant,
+    pub time: Instant,
     pub last_periodic_react: Instant,
     pub potential_peers_len: usize,
     pub connected_peers_len: usize,
