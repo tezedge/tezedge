@@ -43,7 +43,7 @@ fn default_cluster() -> OneRealNodeCluster {
         TezedgeProposerConfig {
             wait_for_events_timeout: Some(Duration::from_millis(250)),
             events_limit: 1024,
-            record: false
+            record: false,
         },
         default_state(initial_time),
     )

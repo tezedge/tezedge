@@ -414,14 +414,16 @@ where
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
                     let status = match manager.start_listening_to_server_events() {
                         Ok(_) => PendingRequestMsg::StartListeningForNewPeersSuccess,
-                        Err(err) => PendingRequestMsg::StartListeningForNewPeersError { error: err.kind() },
+                        Err(err) => {
+                            PendingRequestMsg::StartListeningForNewPeersError { error: err.kind() }
+                        }
                     };
                     accept_proposal!(
                         state,
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.newest_time_seen(),
+                            at: state.time(),
                             message: status,
                         },
                         config.record
@@ -434,7 +436,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.newest_time_seen(),
+                            at: state.time(),
                             message: PendingRequestMsg::StopListeningForNewPeersSuccess,
                         },
                         config.record
@@ -448,7 +450,7 @@ where
                                 PendingRequestProposal {
                                     effects,
                                     req_id,
-                                    at: state.newest_time_seen(),
+                                    at: state.time(),
                                     message: PendingRequestMsg::ConnectPeerSuccess,
                                 },
                                 config.record
@@ -460,7 +462,7 @@ where
                                 PendingRequestProposal {
                                     effects,
                                     req_id,
-                                    at: state.newest_time_seen(),
+                                    at: state.time(),
                                     message: PendingRequestMsg::ConnectPeerError,
                                 },
                                 config.record
@@ -475,7 +477,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.newest_time_seen(),
+                            at: state.time(),
                             message: PendingRequestMsg::DisconnectPeerSuccess,
                         },
                         config.record
@@ -489,7 +491,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.newest_time_seen(),
+                            at: state.time(),
                             message: PendingRequestMsg::BlacklistPeerSuccess,
                         },
                         config.record
@@ -506,7 +508,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.newest_time_seen(),
+                            at: state.time(),
                             message: PendingRequestMsg::PeerMessageReceivedNotified,
                         },
                         config.record
@@ -526,7 +528,7 @@ where
                         metadata,
                         network_version,
                     });
-                    let time = state.newest_time_seen();
+                    let time = state.time();
                     accept_proposal!(
                         state,
                         PendingRequestProposal {
