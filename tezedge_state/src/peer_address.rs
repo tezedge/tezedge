@@ -3,6 +3,9 @@ use std::hash::Hash;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 
+use tla_sm::recorders::CloneRecorder;
+use tla_sm::DefaultRecorder;
+
 pub type Port = u16;
 
 /// Any kind of SocketAddr.
@@ -71,6 +74,14 @@ impl Display for PeerAddress {
     }
 }
 
+impl DefaultRecorder for PeerAddress {
+    type Recorder = CloneRecorder<PeerAddress>;
+
+    fn default_recorder(self) -> Self::Recorder {
+        CloneRecorder::new(self)
+    }
+}
+
 // impl Hash for PeerAddress {
 //     /// Hash only by ip address, so we don't have more than 1 peer per IP.
 //     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -134,6 +145,14 @@ impl PeerListenerAddress {
 impl Display for PeerListenerAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl DefaultRecorder for PeerListenerAddress {
+    type Recorder = CloneRecorder<PeerListenerAddress>;
+
+    fn default_recorder(self) -> Self::Recorder {
+        CloneRecorder::new(self)
     }
 }
 
