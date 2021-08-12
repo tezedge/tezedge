@@ -412,14 +412,17 @@ where
         for req in requests.drain(..) {
             match req {
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
-                    manager.start_listening_to_server_events();
+                    let status = match manager.start_listening_to_server_events() {
+                        Ok(_) => PendingRequestMsg::StartListeningForNewPeersSuccess,
+                        Err(err) => PendingRequestMsg::StartListeningForNewPeersError { error: err.kind() },
+                    };
                     accept_proposal!(
                         state,
                         PendingRequestProposal {
                             effects,
                             req_id,
                             at: state.newest_time_seen(),
-                            message: PendingRequestMsg::StartListeningForNewPeersSuccess,
+                            message: status,
                         },
                         config.record
                     );
