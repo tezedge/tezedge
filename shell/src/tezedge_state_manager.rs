@@ -274,6 +274,7 @@ enum ProposerThreadHandle {
         StdRng,
         mpsc::Receiver<ProposerMsg>,
         NetworkChannelRef,
+        HashSet<SocketAddr>,
     ),
 }
 
@@ -359,11 +360,6 @@ impl TezedgeStateManager {
         );
 
         info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &bootstrap_addresses));
-        tezedge_state.accept(ExtendPotentialPeersProposal {
-            effects: &mut effects,
-            at: Instant::now(),
-            peers: dbg!(dns_lookup_peers(&bootstrap_addresses, &log)).into_iter(),
-        });
 
         Self {
             proposer_handle,
@@ -374,6 +370,7 @@ impl TezedgeStateManager {
                 effects,
                 proposer_rx,
                 network_channel,
+                dbg!(dns_lookup_peers(&bootstrap_addresses, &log)),
             )),
         }
     }
@@ -385,9 +382,10 @@ impl TezedgeStateManager {
             effects,
             proposer_rx,
             network_channel,
+            initial_potential_peers,
         )) = self.proposer_thread_handle.take()
         {
-            let proposer = TezedgeProposer::new(
+            let mut proposer = TezedgeProposer::new(
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
                     events_limit: 1024,
@@ -405,6 +403,7 @@ impl TezedgeStateManager {
             let proposer_thread_handle = std::thread::Builder::new()
                 .name("tezedge-proposer".to_owned())
                 .spawn(move || {
+                    proposer.extend_potential_peers(Instant::now(), initial_potential_peers);
                     run(proposer, proposer_rx, network_channel, &log);
                 })
                 .expect("failed to spawn proposer-thread");
