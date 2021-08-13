@@ -372,18 +372,37 @@ where
                                 },
                                 proposal_persister
                             );
-                            Self::handle_readiness_event(event, time, effects, state, peer, proposal_persister);
+                            Self::handle_readiness_event(
+                                event,
+                                time,
+                                effects,
+                                state,
+                                peer,
+                                proposal_persister,
+                            );
                         }
                         None => return,
                     }
                 }
-                Self::execute_requests(effects, requests, notifications, state, manager, proposal_persister);
+                Self::execute_requests(
+                    effects,
+                    requests,
+                    notifications,
+                    state,
+                    manager,
+                    proposal_persister,
+                );
             }
         } else {
             match manager.get_peer_for_event_mut(&event) {
-                Some(peer) => {
-                    Self::handle_readiness_event(event, time, effects, state, peer, proposal_persister)
-                }
+                Some(peer) => Self::handle_readiness_event(
+                    event,
+                    time,
+                    effects,
+                    state,
+                    peer,
+                    proposal_persister,
+                ),
                 None => {
                     // Should be impossible! If we receive an event for
                     // the peer, that peer must exist in manager.
@@ -636,7 +655,7 @@ where
             &mut self.notifications,
             &mut self.state,
             &mut self.manager,
-                &mut self.proposal_persister,
+            &mut self.proposal_persister,
         );
     }
 
@@ -686,7 +705,7 @@ where
                 time_passed: Self::update_time(&mut self.time, at),
                 peers,
             },
-           self.proposal_persister
+            self.proposal_persister
         );
     }
 
@@ -705,7 +724,7 @@ where
                 time_passed,
                 peer
             },
-           self.proposal_persister
+            self.proposal_persister
         );
     }
 
@@ -724,7 +743,7 @@ where
                 time_passed,
                 peer
             },
-           self.proposal_persister
+            self.proposal_persister
         );
     }
 
@@ -752,7 +771,7 @@ where
                     peer: addr,
                     message,
                 },
-           self.proposal_persister
+                self.proposal_persister
             );
             // issue writable proposal in case stream is writable,
             // otherwise we would have to wait till we receive
@@ -765,7 +784,7 @@ where
                     peer: addr,
                     stream: &mut peer.stream,
                 },
-           self.proposal_persister
+                self.proposal_persister
             );
         } else {
             eprintln!("queueing send message failed since peer not found!");
@@ -795,7 +814,7 @@ where
                 peer: addr,
                 message,
             },
-           self.proposal_persister
+            self.proposal_persister
         );
         let mut send_buf = vec![];
         accept_proposal!(
@@ -806,7 +825,7 @@ where
                 peer: addr,
                 stream: &mut ExtendableAsWritable::from(&mut send_buf),
             },
-           self.proposal_persister
+            self.proposal_persister
         );
 
         let mut buf = &send_buf[..];
