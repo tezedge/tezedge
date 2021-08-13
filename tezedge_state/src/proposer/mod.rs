@@ -17,20 +17,20 @@ use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
+pub mod proposal_persister;
+use proposal_persister::{ProposalPersister, ProposalPersisterHandle};
 
 macro_rules! accept_proposal {
-    ($state: expr, $proposal: expr, $record: expr) => {
+    ($state: expr, $proposal: expr, $proposal_persister: expr) => {
         let proposal = $proposal;
 
-        if $record {
-            let mut recorder = proposal.default_recorder();
-            // TODO: what if acceptor panics, we should have a mechanism
-            // to store that last proposal too that caused it.
-            $state.accept(recorder.record());
-            recorder.finish_recording();
-            // TODO: store recorded proposal.
-        } else {
-            $state.accept(proposal);
+        match $proposal_persister.as_mut() {
+            Some(persister) => {
+                let mut recorder = proposal.default_recorder();
+                $state.accept(recorder.record());
+                persister.persist(recorder.finish_recording());
+            }
+            None => $state.accept(proposal),
         }
     };
 }
@@ -146,7 +146,7 @@ impl<S: Debug> Debug for Peer<S> {
 
 /// Manager is an abstraction for [mio] layer.
 ///
-/// Right now it's simply responsible to manage p2p connections and
+/// Right now it's simply responsible to manage p2p connections.
 pub trait Manager {
     type Stream: Read + Write;
     type NetworkEvent: NetworkEvent;
@@ -194,6 +194,7 @@ pub struct TezedgeProposer<Es, Efs, M> {
     notifications: Vec<Notification>,
     effects: Efs,
     time: Instant,
+    proposal_persister: Option<ProposalPersisterHandle>,
     pub state: TezedgeStateWrapper,
     pub events: Es,
     pub manager: M,
@@ -219,6 +220,12 @@ where
         Es: Events,
     {
         events.set_limit(config.events_limit);
+        let proposal_persister = if config.record {
+            Some(ProposalPersister::start())
+        } else {
+            None
+        };
+
         Self {
             config,
             requests: vec![],
@@ -228,6 +235,7 @@ where
             events,
             manager,
             time: initial_time,
+            proposal_persister,
         }
         .init()
     }
@@ -235,12 +243,12 @@ where
     fn init(mut self) -> Self {
         // execute initial requests.
         Self::execute_requests(
-            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
             &mut self.manager,
+            &mut self.proposal_persister,
         );
         self
     }
@@ -264,13 +272,13 @@ where
 
     fn handle_event(
         event: Event<NetE>,
-        config: &TezedgeProposerConfig,
         time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
         state: &mut TezedgeStateWrapper,
         manager: &mut M,
+        proposal_persister: &mut Option<ProposalPersisterHandle>,
     ) {
         match event {
             Event::Tick(at) => {
@@ -280,19 +288,19 @@ where
                         time_passed: Self::update_time(time, at),
                         effects
                     },
-                    config.record
+                    proposal_persister
                 );
             }
             Event::Network(event) => {
                 Self::handle_network_event(
                     &event,
-                    config,
                     time,
                     effects,
                     requests,
                     notifications,
                     state,
                     manager,
+                    proposal_persister,
                 );
             }
         }
@@ -300,13 +308,13 @@ where
 
     fn handle_event_ref<'a>(
         event: EventRef<'a, NetE>,
-        config: &TezedgeProposerConfig,
         time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
         state: &mut TezedgeStateWrapper,
         manager: &mut M,
+        proposal_persister: &mut Option<ProposalPersisterHandle>,
     ) {
         match event {
             Event::Tick(at) => {
@@ -316,19 +324,19 @@ where
                         time_passed: Self::update_time(time, at),
                         effects
                     },
-                    config.record
+                    proposal_persister
                 );
             }
             Event::Network(event) => {
                 Self::handle_network_event(
                     event,
-                    config,
                     time,
                     effects,
                     requests,
                     notifications,
                     state,
                     manager,
+                    proposal_persister,
                 );
             }
         }
@@ -336,13 +344,13 @@ where
 
     fn handle_network_event(
         event: &NetE,
-        config: &TezedgeProposerConfig,
         time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
         state: &mut TezedgeStateWrapper,
         manager: &mut M,
+        proposal_persister: &mut Option<ProposalPersisterHandle>,
     ) {
         if event.is_server_event() {
             // we received event for the server (client opened tcp stream to us).
@@ -362,19 +370,19 @@ where
                                     time_passed: Self::update_time(time, event.time()),
                                     peer: peer.address().clone(),
                                 },
-                                config.record
+                                proposal_persister
                             );
-                            Self::handle_readiness_event(event, config, time, effects, state, peer);
+                            Self::handle_readiness_event(event, time, effects, state, peer, proposal_persister);
                         }
                         None => return,
                     }
                 }
-                Self::execute_requests(config, effects, requests, notifications, state, manager);
+                Self::execute_requests(effects, requests, notifications, state, manager, proposal_persister);
             }
         } else {
             match manager.get_peer_for_event_mut(&event) {
                 Some(peer) => {
-                    Self::handle_readiness_event(event, config, time, effects, state, peer)
+                    Self::handle_readiness_event(event, time, effects, state, peer, proposal_persister)
                 }
                 None => {
                     // Should be impossible! If we receive an event for
@@ -388,11 +396,11 @@ where
 
     fn handle_readiness_event(
         event: &NetE,
-        config: &TezedgeProposerConfig,
         time: &mut Instant,
         effects: &mut Efs,
         state: &mut TezedgeStateWrapper,
         peer: &mut Peer<S>,
+        proposal_persister: &mut Option<ProposalPersisterHandle>,
     ) {
         let time_passed = Self::update_time(time, event.time());
 
@@ -404,7 +412,7 @@ where
                     time_passed,
                     peer: peer.address().clone(),
                 },
-                config.record
+                proposal_persister
             );
             return;
         }
@@ -418,7 +426,7 @@ where
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
-                config.record
+                proposal_persister
             );
         }
 
@@ -431,7 +439,7 @@ where
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
-                config.record
+                proposal_persister
             );
         }
     }
@@ -439,12 +447,12 @@ where
     /// Grabs the requests from state machine, puts them in temporary
     /// container `requests`, then drains it and executes each request.
     fn execute_requests(
-        config: &TezedgeProposerConfig,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
         state: &mut TezedgeStateWrapper,
         manager: &mut M,
+        proposal_persister: &mut Option<ProposalPersisterHandle>,
     ) {
         state.get_requests(requests);
 
@@ -465,7 +473,7 @@ where
                             time_passed: Default::default(),
                             message: status,
                         },
-                        config.record
+                        proposal_persister
                     );
                 }
                 TezedgeRequest::StopListeningForNewPeers { req_id } => {
@@ -478,7 +486,7 @@ where
                             time_passed: Default::default(),
                             message: PendingRequestMsg::StopListeningForNewPeersSuccess,
                         },
-                        config.record
+                        proposal_persister
                     );
                 }
                 TezedgeRequest::ConnectPeer { req_id, peer } => {
@@ -492,7 +500,7 @@ where
                                     time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerSuccess,
                                 },
-                                config.record
+                                proposal_persister
                             );
                         }
                         Err(_) => {
@@ -504,7 +512,7 @@ where
                                     time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerError,
                                 },
-                                config.record
+                                proposal_persister
                             );
                         }
                     }
@@ -519,7 +527,7 @@ where
                             time_passed: Default::default(),
                             message: PendingRequestMsg::DisconnectPeerSuccess,
                         },
-                        config.record
+                        proposal_persister
                     );
                     notifications.push(Notification::PeerDisconnected { peer });
                 }
@@ -533,7 +541,7 @@ where
                             time_passed: Default::default(),
                             message: PendingRequestMsg::BlacklistPeerSuccess,
                         },
-                        config.record
+                        proposal_persister
                     );
                     notifications.push(Notification::PeerBlacklisted { peer });
                 }
@@ -550,7 +558,7 @@ where
                             time_passed: Default::default(),
                             message: PendingRequestMsg::PeerMessageReceivedNotified,
                         },
-                        config.record
+                        proposal_persister
                     );
                     notifications.push(Notification::MessageReceived { peer, message });
                 }
@@ -575,7 +583,7 @@ where
                             time_passed: Default::default(),
                             message: PendingRequestMsg::HandshakeSuccessfulNotified,
                         },
-                        config.record
+                        proposal_persister
                     );
                 }
             }
@@ -612,23 +620,23 @@ where
         for event in self.events.into_iter() {
             Self::handle_event_ref(
                 event,
-                &self.config,
                 &mut self.time,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
                 &mut self.state,
                 &mut self.manager,
+                &mut self.proposal_persister,
             );
         }
 
         Self::execute_requests(
-            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
             &mut self.manager,
+                &mut self.proposal_persister,
         );
     }
 
@@ -641,23 +649,23 @@ where
         for event in self.events.into_iter() {
             Self::handle_event(
                 event,
-                &self.config,
                 &mut self.time,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
                 &mut self.state,
                 &mut self.manager,
+                &mut self.proposal_persister,
             );
         }
 
         Self::execute_requests(
-            &self.config,
             &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
             &mut self.manager,
+            &mut self.proposal_persister,
         );
     }
 
@@ -678,7 +686,7 @@ where
                 time_passed: Self::update_time(&mut self.time, at),
                 peers,
             },
-            self.config.record
+           self.proposal_persister
         );
     }
 
@@ -697,7 +705,7 @@ where
                 time_passed,
                 peer
             },
-            self.config.record
+           self.proposal_persister
         );
     }
 
@@ -716,7 +724,7 @@ where
                 time_passed,
                 peer
             },
-            self.config.record
+           self.proposal_persister
         );
     }
 
@@ -744,7 +752,7 @@ where
                     peer: addr,
                     message,
                 },
-                self.config.record
+           self.proposal_persister
             );
             // issue writable proposal in case stream is writable,
             // otherwise we would have to wait till we receive
@@ -757,7 +765,7 @@ where
                     peer: addr,
                     stream: &mut peer.stream,
                 },
-                self.config.record
+           self.proposal_persister
             );
         } else {
             eprintln!("queueing send message failed since peer not found!");
@@ -772,6 +780,8 @@ where
         addr: PeerAddress,
         message: PeerMessage,
     ) -> io::Result<()> {
+        use crate::chunking::extendable_as_writable::ExtendableAsWritable;
+
         let peer = match self.manager.get_peer(&addr) {
             Some(peer) => peer,
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "peer not found!")),
@@ -785,7 +795,7 @@ where
                 peer: addr,
                 message,
             },
-            self.config.record
+           self.proposal_persister
         );
         let mut send_buf = vec![];
         accept_proposal!(
@@ -796,7 +806,7 @@ where
                 peer: addr,
                 stream: &mut ExtendableAsWritable::from(&mut send_buf),
             },
-            self.config.record
+           self.proposal_persister
         );
 
         let mut buf = &send_buf[..];
