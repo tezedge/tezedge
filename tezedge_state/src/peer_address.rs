@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 use std::hash::Hash;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
@@ -11,7 +12,7 @@ pub type Port = u16;
 /// Any kind of SocketAddr.
 ///
 /// Port can be listener port or some arbitrary port.
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 #[repr(transparent)]
 pub struct PeerAddress(SocketAddr);
 
@@ -132,7 +133,7 @@ impl From<&PeerAddress> for SocketAddr {
 /// Address using which we can connect to the peer.
 ///
 /// Port is guaranteed to be the port that the peer is listening on.
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 #[repr(transparent)]
 pub struct PeerListenerAddress(SocketAddr);
 

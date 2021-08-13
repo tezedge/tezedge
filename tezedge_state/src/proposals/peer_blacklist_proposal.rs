@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tla_sm::{recorders::CloneRecorder, DefaultRecorder, Proposal};
 
@@ -29,7 +30,7 @@ impl<'a, Efs> DefaultRecorder for PeerBlacklistProposal<'a, Efs> {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct RecordedPeerBlacklistProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,

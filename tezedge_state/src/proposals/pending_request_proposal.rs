@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tla_sm::{recorders::CloneRecorder, DefaultRecorder, Proposal};
 
@@ -5,9 +6,10 @@ use crate::{EffectsRecorder, RecordedEffects};
 
 use super::MaybeRecordedProposal;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum PendingRequestMsg {
     StartListeningForNewPeersError {
+        #[serde(with = "tla_sm::serde_io_errorkind")]
         error: std::io::ErrorKind,
     },
     StartListeningForNewPeersSuccess,
@@ -66,7 +68,7 @@ impl<'a, Efs> DefaultRecorder for PendingRequestProposal<'a, Efs> {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct RecordedPendingRequestProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,
