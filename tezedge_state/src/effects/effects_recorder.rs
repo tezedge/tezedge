@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Debug};
 
@@ -6,7 +7,7 @@ use crypto::nonce::Nonce;
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
 use crate::Effects;
 
-#[derive(Debug, Eq, PartialEq, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Default, Clone)]
 pub struct RecordedEffects {
     nonces: VecDeque<Nonce>,
     chosen_peers_to_connect_to: VecDeque<Vec<PeerListenerAddress>>,
