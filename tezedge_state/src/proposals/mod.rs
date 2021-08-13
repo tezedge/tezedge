@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 pub use tla_sm::Proposal;
 
 mod tick_proposal;
