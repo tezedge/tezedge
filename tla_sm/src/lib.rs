@@ -16,4 +16,6 @@ mod recorder;
 pub use recorder::*;
 
 pub mod recorders;
-pub mod serde_io_errorkind;
+
+pub mod io_error_kind;
+pub mod serde_io_error_kind;

@@ -9,7 +9,7 @@ use super::MaybeRecordedProposal;
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum PendingRequestMsg {
     StartListeningForNewPeersError {
-        #[serde(with = "tla_sm::serde_io_errorkind")]
+        #[serde(with = "tla_sm::serde_io_error_kind")]
         error: std::io::ErrorKind,
     },
     StartListeningForNewPeersSuccess,
