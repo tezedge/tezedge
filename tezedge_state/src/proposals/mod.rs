@@ -1,3 +1,4 @@
+use serde::{Serialize, Deserialize};
 pub use tla_sm::Proposal;
 
 mod tick_proposal;
@@ -53,5 +54,86 @@ where
 
     fn as_proposal(self) -> Self::Proposal {
         self
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum RecordedProposal {
+    ExtendPotentialPeersProposal(RecordedExtendPotentialPeersProposal),
+    NewPeerConnectProposal(RecordedNewPeerConnectProposal),
+    PeerBlacklistProposal(RecordedPeerBlacklistProposal),
+    PeerDisconnectProposal(RecordedPeerDisconnectProposal),
+    PeerDisconnectedProposal(RecordedPeerDisconnectedProposal),
+    PeerMessageProposal(RecordedPeerMessageProposal),
+    PeerReadableProposal(RecordedPeerReadableProposal),
+    PeerWritableProposal(RecordedPeerWritableProposal),
+    PendingRequestProposal(RecordedPendingRequestProposal),
+    SendPeerMessageProposal(RecordedSendPeerMessageProposal),
+    TickProposal(RecordedTickProposal),
+}
+
+impl From<RecordedExtendPotentialPeersProposal> for RecordedProposal {
+    fn from(proposal: RecordedExtendPotentialPeersProposal) -> Self {
+        Self::ExtendPotentialPeersProposal(proposal)
+    }
+}
+
+impl From<RecordedNewPeerConnectProposal> for RecordedProposal {
+    fn from(proposal: RecordedNewPeerConnectProposal) -> Self {
+        Self::NewPeerConnectProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerBlacklistProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerBlacklistProposal) -> Self {
+        Self::PeerBlacklistProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerDisconnectProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerDisconnectProposal) -> Self {
+        Self::PeerDisconnectProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerDisconnectedProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerDisconnectedProposal) -> Self {
+        Self::PeerDisconnectedProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerMessageProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerMessageProposal) -> Self {
+        Self::PeerMessageProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerReadableProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerReadableProposal) -> Self {
+        Self::PeerReadableProposal(proposal)
+    }
+}
+
+impl From<RecordedPeerWritableProposal> for RecordedProposal {
+    fn from(proposal: RecordedPeerWritableProposal) -> Self {
+        Self::PeerWritableProposal(proposal)
+    }
+}
+
+impl From<RecordedPendingRequestProposal> for RecordedProposal {
+    fn from(proposal: RecordedPendingRequestProposal) -> Self {
+        Self::PendingRequestProposal(proposal)
+    }
+}
+
+impl From<RecordedSendPeerMessageProposal> for RecordedProposal {
+    fn from(proposal: RecordedSendPeerMessageProposal) -> Self {
+        Self::SendPeerMessageProposal(proposal)
+    }
+}
+
+impl From<RecordedTickProposal> for RecordedProposal {
+    fn from(proposal: RecordedTickProposal) -> Self {
+        Self::TickProposal(proposal)
     }
 }

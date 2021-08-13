@@ -391,7 +391,10 @@ impl TezedgeStateManager {
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
                     events_limit: 1024,
-                    record: false,
+                    // TODO: add cli argument
+                    record: std::env::var("RECORD_PROPOSALS")
+                        .map(|x| x == "1")
+                        .unwrap_or(false),
                 },
                 effects,
                 tezedge_state,

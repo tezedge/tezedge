@@ -188,7 +188,7 @@ mod tests {
             &mut effects,
         );
 
-        let mut req_id = get_requests(&mut state)
+        let req_id = get_requests(&mut state)
             .into_iter()
             .filter_map(|x| match x {
                 TezedgeRequest::StartListeningForNewPeers { req_id } => Some(req_id),
