@@ -1,5 +1,5 @@
 use std::fmt::{self, Debug};
-use std::time::Instant;
+use std::time::Duration;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use tla_sm::recorders::CloneRecorder;
 use tla_sm::{DefaultRecorder, Proposal};
@@ -10,7 +10,7 @@ use super::MaybeRecordedProposal;
 
 pub struct SendPeerMessageProposal<'a, Efs> {
     pub effects: &'a mut Efs,
-    pub at: Instant,
+    pub time_passed: Duration,
     pub peer: PeerAddress,
     pub message: PeerMessage,
 }
@@ -18,15 +18,19 @@ pub struct SendPeerMessageProposal<'a, Efs> {
 impl<'a, Efs> Debug for SendPeerMessageProposal<'a, Efs> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PeerSendMessageProposal")
-            .field("at", &self.at)
+            .field("time_passed", &self.time_passed)
             .field("peer", &self.peer)
             .finish()
     }
 }
 
 impl<'a, Efs> Proposal for SendPeerMessageProposal<'a, Efs> {
-    fn time(&self) -> Instant {
-        self.at
+    fn time_passed(&self) -> Duration {
+        self.time_passed
+    }
+
+    fn nullify_time_passed(&mut self) {
+        self.time_passed = Duration::new(0, 0);
     }
 }
 
@@ -41,7 +45,7 @@ impl<'a, Efs> DefaultRecorder for SendPeerMessageProposal<'a, Efs> {
 #[derive(Debug, Clone)]
 pub struct RecordedSendPeerMessageProposal {
     pub effects: RecordedEffects,
-    pub at: Instant,
+    pub time_passed: Duration,
     pub peer: PeerAddress,
     pub message: PeerMessage,
 }
@@ -52,7 +56,7 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedSendPeerMessageProposal {
     fn as_proposal(self) -> Self::Proposal {
         Self::Proposal {
             effects: &mut self.effects,
-            at: self.at,
+            time_passed: self.time_passed,
             peer: self.peer,
             message: self.message.clone(),
         }
@@ -61,7 +65,7 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedSendPeerMessageProposal {
 
 pub struct SendPeerMessageProposalRecorder<'a, Efs> {
     effects: EffectsRecorder<'a, Efs>,
-    at: CloneRecorder<Instant>,
+    time_passed: CloneRecorder<Duration>,
     peer: CloneRecorder<PeerAddress>,
     message: CloneRecorder<PeerMessage>,
 }
@@ -70,7 +74,7 @@ impl<'a, Efs> SendPeerMessageProposalRecorder<'a, Efs> {
     pub fn new(proposal: SendPeerMessageProposal<'a, Efs>) -> Self {
         Self {
             effects: EffectsRecorder::new(proposal.effects),
-            at: proposal.at.default_recorder(),
+            time_passed: proposal.time_passed.default_recorder(),
             peer: proposal.peer.default_recorder(),
             message: CloneRecorder::new(proposal.message),
         }
@@ -79,7 +83,7 @@ impl<'a, Efs> SendPeerMessageProposalRecorder<'a, Efs> {
     pub fn record<'b>(&'b mut self) -> SendPeerMessageProposal<'b, EffectsRecorder<'a, Efs>> {
         SendPeerMessageProposal {
             effects: self.effects.record(),
-            at: self.at.record(),
+            time_passed: self.time_passed.record(),
             peer: self.peer.record(),
             message: self.message.record(),
         }
@@ -88,7 +92,7 @@ impl<'a, Efs> SendPeerMessageProposalRecorder<'a, Efs> {
     pub fn finish_recording(self) -> RecordedSendPeerMessageProposal {
         RecordedSendPeerMessageProposal {
             effects: self.effects.finish_recording(),
-            at: self.at.finish_recording(),
+            time_passed: self.time_passed.finish_recording(),
             peer: self.peer.finish_recording(),
             message: self.message.finish_recording(),
         }

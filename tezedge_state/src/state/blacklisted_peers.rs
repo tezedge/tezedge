@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, Instant};
+use std::net::IpAddr;
+use std::time::{Duration, SystemTime};
 
 use crypto::hash::CryptoboxPublicKeyHash;
 
@@ -8,13 +8,16 @@ use crate::{PeerAddress, Port};
 
 #[derive(Debug, Clone)]
 pub struct BlacklistedPeer {
-    pub since: Instant,
+    pub since: SystemTime,
     pub port: Option<Port>,
 }
 
 impl BlacklistedPeer {
-    pub fn is_expired(&self, at: Instant, expiary_duration: Duration) -> bool {
-        at.duration_since(self.since) >= expiary_duration
+    pub fn is_expired(&self, at: SystemTime, expiary_duration: Duration) -> bool {
+        at.duration_since(self.since)
+            .ok()
+            .map(|time_passed| time_passed >= expiary_duration)
+            .unwrap_or(false)
     }
 }
 
@@ -52,7 +55,7 @@ impl BlacklistedPeers {
     /// Whitelist and return expired blacklisted peers.
     pub(crate) fn take_expired_blacklisted_peers(
         &mut self,
-        at: Instant,
+        at: SystemTime,
         expiary_duration: Duration,
     ) -> Vec<(IpAddr, Option<Port>)> {
         let addrs = self

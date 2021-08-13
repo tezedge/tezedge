@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use crypto::hash::CryptoboxPublicKeyHash;
 use tla_sm::{Acceptor, DefaultRecorder, GetRequests};
 
-use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 use crate::proposals::{
     ExtendPotentialPeersProposal, NewPeerConnectProposal, PeerBlacklistProposal,
     PeerDisconnectProposal, PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal,
@@ -194,6 +193,7 @@ pub struct TezedgeProposer<Es, Efs, M> {
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
     effects: Efs,
+    time: Instant,
     pub state: TezedgeStateWrapper,
     pub events: Es,
     pub manager: M,
@@ -207,6 +207,7 @@ where
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
 {
     pub fn new<T>(
+        initial_time: Instant,
         config: TezedgeProposerConfig,
         effects: Efs,
         state: T,
@@ -226,6 +227,7 @@ where
             state: state.into(),
             events,
             manager,
+            time: initial_time,
         }
         .init()
     }
@@ -247,9 +249,23 @@ where
         self.state.assert_state();
     }
 
+    /// Calculate time passed and update current time.
+    #[inline]
+    fn update_time(time: &mut Instant, event_time: Instant) -> Duration {
+        if *time >= event_time {
+            // just to guard against panic.
+            // TODO: maybe log here?
+            return Duration::new(0, 0);
+        }
+        let time_passed = event_time.duration_since(*time);
+        *time = event_time;
+        time_passed
+    }
+
     fn handle_event(
         event: Event<NetE>,
         config: &TezedgeProposerConfig,
+        time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -258,12 +274,20 @@ where
     ) {
         match event {
             Event::Tick(at) => {
-                accept_proposal!(state, TickProposal { at, effects }, config.record);
+                accept_proposal!(
+                    state,
+                    TickProposal {
+                        time_passed: Self::update_time(time, at),
+                        effects
+                    },
+                    config.record
+                );
             }
             Event::Network(event) => {
                 Self::handle_network_event(
                     &event,
                     config,
+                    time,
                     effects,
                     requests,
                     notifications,
@@ -277,6 +301,7 @@ where
     fn handle_event_ref<'a>(
         event: EventRef<'a, NetE>,
         config: &TezedgeProposerConfig,
+        time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -285,12 +310,20 @@ where
     ) {
         match event {
             Event::Tick(at) => {
-                accept_proposal!(state, TickProposal { at, effects }, config.record);
+                accept_proposal!(
+                    state,
+                    TickProposal {
+                        time_passed: Self::update_time(time, at),
+                        effects
+                    },
+                    config.record
+                );
             }
             Event::Network(event) => {
                 Self::handle_network_event(
                     event,
                     config,
+                    time,
                     effects,
                     requests,
                     notifications,
@@ -304,6 +337,7 @@ where
     fn handle_network_event(
         event: &NetE,
         config: &TezedgeProposerConfig,
+        time: &mut Instant,
         effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -325,12 +359,12 @@ where
                                 state,
                                 NewPeerConnectProposal {
                                     effects,
-                                    at: event.time(),
+                                    time_passed: Self::update_time(time, event.time()),
                                     peer: peer.address().clone(),
                                 },
                                 config.record
                             );
-                            Self::handle_readiness_event(event, config, effects, state, peer);
+                            Self::handle_readiness_event(event, config, time, effects, state, peer);
                         }
                         None => return,
                     }
@@ -339,7 +373,9 @@ where
             }
         } else {
             match manager.get_peer_for_event_mut(&event) {
-                Some(peer) => Self::handle_readiness_event(event, config, effects, state, peer),
+                Some(peer) => {
+                    Self::handle_readiness_event(event, config, time, effects, state, peer)
+                }
                 None => {
                     // Should be impossible! If we receive an event for
                     // the peer, that peer must exist in manager.
@@ -353,16 +389,19 @@ where
     fn handle_readiness_event(
         event: &NetE,
         config: &TezedgeProposerConfig,
+        time: &mut Instant,
         effects: &mut Efs,
         state: &mut TezedgeStateWrapper,
         peer: &mut Peer<S>,
     ) {
+        let time_passed = Self::update_time(time, event.time());
+
         if event.is_read_closed() || event.is_write_closed() {
             accept_proposal!(
                 state,
                 PeerDisconnectedProposal {
                     effects,
-                    at: event.time(),
+                    time_passed,
                     peer: peer.address().clone(),
                 },
                 config.record
@@ -375,7 +414,7 @@ where
                 state,
                 PeerReadableProposal {
                     effects,
-                    at: event.time(),
+                    time_passed,
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -388,7 +427,7 @@ where
                 state,
                 PeerWritableProposal {
                     effects,
-                    at: event.time(),
+                    time_passed,
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -423,7 +462,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.time(),
+                            time_passed: Default::default(),
                             message: status,
                         },
                         config.record
@@ -436,7 +475,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.time(),
+                            time_passed: Default::default(),
                             message: PendingRequestMsg::StopListeningForNewPeersSuccess,
                         },
                         config.record
@@ -450,7 +489,7 @@ where
                                 PendingRequestProposal {
                                     effects,
                                     req_id,
-                                    at: state.time(),
+                                    time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerSuccess,
                                 },
                                 config.record
@@ -462,7 +501,7 @@ where
                                 PendingRequestProposal {
                                     effects,
                                     req_id,
-                                    at: state.time(),
+                                    time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerError,
                                 },
                                 config.record
@@ -477,7 +516,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.time(),
+                            time_passed: Default::default(),
                             message: PendingRequestMsg::DisconnectPeerSuccess,
                         },
                         config.record
@@ -491,7 +530,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.time(),
+                            time_passed: Default::default(),
                             message: PendingRequestMsg::BlacklistPeerSuccess,
                         },
                         config.record
@@ -508,7 +547,7 @@ where
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: state.time(),
+                            time_passed: Default::default(),
                             message: PendingRequestMsg::PeerMessageReceivedNotified,
                         },
                         config.record
@@ -528,13 +567,12 @@ where
                         metadata,
                         network_version,
                     });
-                    let time = state.time();
                     accept_proposal!(
                         state,
                         PendingRequestProposal {
                             effects,
                             req_id,
-                            at: time,
+                            time_passed: Default::default(),
                             message: PendingRequestMsg::HandshakeSuccessfulNotified,
                         },
                         config.record
@@ -575,6 +613,7 @@ where
             Self::handle_event_ref(
                 event,
                 &self.config,
+                &mut self.time,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
@@ -603,6 +642,7 @@ where
             Self::handle_event(
                 event,
                 &self.config,
+                &mut self.time,
                 &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
@@ -625,11 +665,17 @@ where
     where
         P: IntoIterator<Item = SocketAddr>,
     {
+        if at < self.time {
+            eprintln!(
+                "Rejecting request to extend potential peers. Reason: passed time in the past!"
+            );
+            return;
+        }
         accept_proposal!(
             self.state,
             ExtendPotentialPeersProposal {
                 effects: &mut self.effects,
-                at,
+                time_passed: Self::update_time(&mut self.time, at),
                 peers,
             },
             self.config.record
@@ -637,20 +683,39 @@ where
     }
 
     pub fn disconnect_peer(&mut self, at: Instant, peer: PeerAddress) {
+        if at < self.time {
+            eprintln!("Rejecting request to disconnect peer. Reason: passed time in the past!");
+            return;
+        }
         let effects = &mut self.effects;
+        let time_passed = Self::update_time(&mut self.time, at);
 
         accept_proposal!(
             self.state,
-            PeerDisconnectProposal { effects, at, peer },
+            PeerDisconnectProposal {
+                effects,
+                time_passed,
+                peer
+            },
             self.config.record
         );
     }
 
     pub fn blacklist_peer(&mut self, at: Instant, peer: PeerAddress) {
+        if at < self.time {
+            eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
+            return;
+        }
         let effects = &mut self.effects;
+        let time_passed = Self::update_time(&mut self.time, at);
+
         accept_proposal!(
             self.state,
-            PeerBlacklistProposal { effects, at, peer },
+            PeerBlacklistProposal {
+                effects,
+                time_passed,
+                peer
+            },
             self.config.record
         );
     }
@@ -666,12 +731,16 @@ where
         addr: PeerAddress,
         message: PeerMessage,
     ) {
+        if at < self.time {
+            eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
+            return;
+        }
         if let Some(peer) = self.manager.get_peer(&addr) {
             accept_proposal!(
                 self.state,
                 SendPeerMessageProposal {
                     effects: &mut self.effects,
-                    at,
+                    time_passed: Self::update_time(&mut self.time, at),
                     peer: addr,
                     message,
                 },
@@ -684,7 +753,7 @@ where
                 self.state,
                 PeerWritableProposal {
                     effects: &mut self.effects,
-                    at,
+                    time_passed: Self::update_time(&mut self.time, at),
                     peer: addr,
                     stream: &mut peer.stream,
                 },
@@ -712,7 +781,7 @@ where
             self.state,
             SendPeerMessageProposal {
                 effects: &mut self.effects,
-                at,
+                time_passed: Self::update_time(&mut self.time, at),
                 peer: addr,
                 message,
             },
@@ -723,7 +792,7 @@ where
             self.state,
             PeerWritableProposal {
                 effects: &mut self.effects,
-                at,
+                time_passed: Self::update_time(&mut self.time, at),
                 peer: addr,
                 stream: &mut ExtendableAsWritable::from(&mut send_buf),
             },

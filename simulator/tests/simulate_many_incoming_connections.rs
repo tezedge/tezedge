@@ -1,10 +1,10 @@
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use simulator::one_real_node_cluster::*;
 use tezedge_state::proposer::TezedgeProposerConfig;
 use tezedge_state::{sample_tezedge_state, DefaultEffects, TezedgeConfig, TezedgeState};
 
-fn default_state(initial_time: Instant) -> TezedgeState {
+fn default_state(initial_time: SystemTime) -> TezedgeState {
     sample_tezedge_state::build(
         initial_time,
         TezedgeConfig {
@@ -28,15 +28,14 @@ fn default_state(initial_time: Instant) -> TezedgeState {
 }
 
 fn default_cluster() -> OneRealNodeCluster {
-    let initial_time = Instant::now();
     OneRealNodeCluster::new(
-        initial_time,
+        Instant::now(),
         TezedgeProposerConfig {
             wait_for_events_timeout: Some(Duration::from_millis(250)),
             events_limit: 1024,
             record: false,
         },
-        default_state(initial_time),
+        default_state(SystemTime::now()),
     )
 }
 

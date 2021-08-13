@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 use tla_sm::{recorders::CloneRecorder, DefaultRecorder, Proposal};
 
 use crate::{EffectsRecorder, RecordedEffects};
@@ -43,14 +43,18 @@ impl DefaultRecorder for PendingRequestMsg {
 
 pub struct PendingRequestProposal<'a, Efs> {
     pub effects: &'a mut Efs,
-    pub at: Instant,
+    pub time_passed: Duration,
     pub req_id: usize,
     pub message: PendingRequestMsg,
 }
 
 impl<'a, Efs> Proposal for PendingRequestProposal<'a, Efs> {
-    fn time(&self) -> Instant {
-        self.at
+    fn time_passed(&self) -> Duration {
+        self.time_passed
+    }
+
+    fn nullify_time_passed(&mut self) {
+        self.time_passed = Duration::new(0, 0);
     }
 }
 
@@ -65,7 +69,7 @@ impl<'a, Efs> DefaultRecorder for PendingRequestProposal<'a, Efs> {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct RecordedPendingRequestProposal {
     pub effects: RecordedEffects,
-    pub at: Instant,
+    pub time_passed: Duration,
     pub req_id: usize,
     pub message: PendingRequestMsg,
 }
@@ -76,7 +80,7 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedPendingRequestProposal {
     fn as_proposal(self) -> Self::Proposal {
         Self::Proposal {
             effects: &mut self.effects,
-            at: self.at,
+            time_passed: self.time_passed,
             req_id: self.req_id,
             message: self.message.clone(),
         }
@@ -85,7 +89,7 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedPendingRequestProposal {
 
 pub struct PendingRequestProposalRecorder<'a, Efs> {
     effects: EffectsRecorder<'a, Efs>,
-    at: CloneRecorder<Instant>,
+    time_passed: CloneRecorder<Duration>,
     req_id: CloneRecorder<usize>,
     message: CloneRecorder<PendingRequestMsg>,
 }
@@ -94,7 +98,7 @@ impl<'a, Efs> PendingRequestProposalRecorder<'a, Efs> {
     pub fn new(proposal: PendingRequestProposal<'a, Efs>) -> Self {
         Self {
             effects: EffectsRecorder::new(proposal.effects),
-            at: proposal.at.default_recorder(),
+            time_passed: proposal.time_passed.default_recorder(),
             req_id: proposal.req_id.default_recorder(),
             message: proposal.message.default_recorder(),
         }
@@ -103,7 +107,7 @@ impl<'a, Efs> PendingRequestProposalRecorder<'a, Efs> {
     pub fn record<'b>(&'b mut self) -> PendingRequestProposal<'b, EffectsRecorder<'a, Efs>> {
         PendingRequestProposal {
             effects: self.effects.record(),
-            at: self.at.record(),
+            time_passed: self.time_passed.record(),
             req_id: self.req_id.record(),
             message: self.message.record(),
         }
@@ -112,7 +116,7 @@ impl<'a, Efs> PendingRequestProposalRecorder<'a, Efs> {
     pub fn finish_recording(self) -> RecordedPendingRequestProposal {
         RecordedPendingRequestProposal {
             effects: self.effects.finish_recording(),
-            at: self.at.finish_recording(),
+            time_passed: self.time_passed.finish_recording(),
             req_id: self.req_id.finish_recording(),
             message: self.message.finish_recording(),
         }

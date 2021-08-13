@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
-use std::time::Instant;
+use std::time::SystemTime;
 
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::generate_nonces;
@@ -86,7 +86,7 @@ pub struct HandshakeResult {
 #[derive(Clone)]
 pub enum HandshakeStep {
     /// Connection Initiated.
-    Initiated { at: Instant },
+    Initiated { at: SystemTime },
     /// Exchange Connection message.
     Connect {
         sent: RequestState,
@@ -266,7 +266,7 @@ impl PendingPeer {
     }
 
     /// Advance to the `Metadata` step if current step is finished.
-    fn advance_to_metadata(&mut self, at: Instant, node_identity: &Identity) -> bool {
+    fn advance_to_metadata(&mut self, at: SystemTime, node_identity: &Identity) -> bool {
         use HandshakeStep::*;
         use RequestState::*;
 
@@ -305,7 +305,7 @@ impl PendingPeer {
         }
     }
 
-    fn advance_to_ack(&mut self, at: Instant) -> bool {
+    fn advance_to_ack(&mut self, at: SystemTime) -> bool {
         use HandshakeStep::*;
         use RequestState::*;
 
@@ -378,7 +378,7 @@ impl PendingPeer {
     ///   sending this concrete message at a current stage(state).
     ///
     /// - `Err(error)`: if error ocurred when encoding the message.
-    pub fn enqueue_send_conn_msg(&mut self, at: Instant) -> Result<bool, WriteMessageError> {
+    pub fn enqueue_send_conn_msg(&mut self, at: SystemTime) -> Result<bool, WriteMessageError> {
         use HandshakeStep::*;
         use RequestState::*;
 
@@ -410,7 +410,7 @@ impl PendingPeer {
     /// - `Err(error)`: if error ocurred when encoding the message.
     pub fn enqueue_send_meta_msg(
         &mut self,
-        at: Instant,
+        at: SystemTime,
         meta_msg: MetadataMessage,
     ) -> Result<bool, WriteMessageError> {
         use HandshakeStep::*;
@@ -444,7 +444,7 @@ impl PendingPeer {
     /// - `Err(error)`: if error ocurred when encoding the message.
     pub fn enqueue_send_ack_msg<F>(
         &mut self,
-        at: Instant,
+        at: SystemTime,
         get_potential_peers: F,
     ) -> Result<bool, WriteMessageError>
     where
@@ -474,14 +474,13 @@ impl PendingPeer {
         }
     }
 
-    pub fn send_conn_msg_successful(&mut self, at: Instant, node_identity: &Identity) -> bool {
+    pub fn send_conn_msg_successful(&mut self, at: SystemTime, node_identity: &Identity) -> bool {
         use HandshakeStep::*;
         use RequestState::*;
 
         match &mut self.step {
             Connect {
                 sent: req_state @ Pending { .. },
-                sent_conn_msg,
                 ..
             } => {
                 *req_state = Success { at };
@@ -493,7 +492,7 @@ impl PendingPeer {
         }
     }
 
-    pub fn send_meta_msg_successful(&mut self, at: Instant) -> bool {
+    pub fn send_meta_msg_successful(&mut self, at: SystemTime) -> bool {
         use HandshakeStep::*;
         use RequestState::*;
 
@@ -511,7 +510,7 @@ impl PendingPeer {
         }
     }
 
-    pub fn send_ack_msg_successful(&mut self, at: Instant) -> bool {
+    pub fn send_ack_msg_successful(&mut self, at: SystemTime) -> bool {
         use HandshakeStep::*;
         use RequestState::*;
 
@@ -574,7 +573,7 @@ impl PendingPeer {
         node_identity: &Identity,
         shell_compatibility_version: &ShellCompatibilityVersion,
         effects: &mut Efs,
-        at: Instant,
+        at: SystemTime,
         mut message: M,
     ) -> Result<PublicKey, HandleReceivedMessageError>
     where
@@ -638,7 +637,7 @@ impl PendingPeer {
 
     pub fn handle_received_meta_message<M>(
         &mut self,
-        at: Instant,
+        at: SystemTime,
         mut message: M,
     ) -> Result<(), HandleReceivedMessageError>
     where
@@ -661,7 +660,7 @@ impl PendingPeer {
 
     pub fn handle_received_ack_message<M>(
         &mut self,
-        _at: Instant,
+        _at: SystemTime,
         mut message: M,
     ) -> Result<AckMessage, HandleReceivedMessageError>
     where

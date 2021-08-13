@@ -15,11 +15,9 @@ where
     /// pending messages to the provided stream.
     fn accept(&mut self, proposal: PeerWritableProposal<'a, Efs, S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
-        let time = proposal.at;
+        let time = self.time;
 
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             loop {
@@ -28,7 +26,7 @@ where
                     Err(WriteMessageError::Empty) | Err(WriteMessageError::Pending) => break,
                     Err(err) => {
                         slog::warn!(&self.log, "Write failed!"; "description" => "error while trying to write to connected peer stream.", "error" => format!("{:?}", err));
-                        self.blacklist_peer(proposal.at, proposal.peer);
+                        self.blacklist_peer(proposal.peer);
                         break;
                     }
                 };
@@ -41,34 +39,33 @@ where
                         Ok(msg_type) => {
                             match msg_type {
                                 HandshakeMessageType::Connection => {
-                                    peer.send_conn_msg_successful(proposal.at, &self.identity);
+                                    peer.send_conn_msg_successful(time, &self.identity);
                                 }
                                 HandshakeMessageType::Metadata => {
-                                    peer.send_meta_msg_successful(proposal.at);
+                                    peer.send_meta_msg_successful(time);
                                 }
                                 HandshakeMessageType::Ack => {
-                                    peer.send_ack_msg_successful(proposal.at);
+                                    peer.send_ack_msg_successful(time);
                                     if peer.is_handshake_finished() {
                                         let nack_motive = peer.nack_motive();
                                         let peer =
                                             self.pending_peers.remove(&proposal.peer).unwrap();
                                         if let Some(result) = peer.to_handshake_result() {
                                             self.set_peer_connected(
-                                                proposal.at,
                                                 proposal.effects,
                                                 proposal.peer,
                                                 result,
                                             );
-                                            self.adjust_p2p_state(time, proposal.effects);
+                                            self.adjust_p2p_state(proposal.effects);
                                             // try to write and read from peer
                                             // after successful handshake.
-                                            self.accept(PeerReadableProposal {
+                                            self.accept_internal(PeerReadableProposal {
                                                 effects: proposal.effects,
-                                                at: proposal.at,
+                                                time_passed: Default::default(),
                                                 peer: proposal.peer,
                                                 stream: proposal.stream,
                                             });
-                                            return self.accept(proposal);
+                                            return self.accept_internal(proposal);
                                         } else {
                                             slog::warn!(&self.log, "Blacklisting peer";
                                             "peer_address" => proposal.peer.to_string(),
@@ -77,25 +74,25 @@ where
                                                 None => "[Unknown]".to_string(),
                                             }));
                                             slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Sent Nack");
-                                            self.blacklist_peer(proposal.at, proposal.peer);
-                                            self.adjust_p2p_state(time, proposal.effects);
-                                            return self.periodic_react(time, proposal.effects);
+                                            self.blacklist_peer(proposal.peer);
+                                            self.adjust_p2p_state(proposal.effects);
+                                            return self.periodic_react(proposal.effects);
                                         }
                                     }
                                 }
                             }
                             // try reading from peer after succesfully sending a message.
-                            return self.accept(PeerReadableProposal::from(proposal));
+                            return self.accept_internal(PeerReadableProposal::from(proposal));
                         }
                         Err(WriteMessageError::Empty) => {
                             let p2p_state = self.p2p_state;
                             let potential_peers = &self.potential_peers;
 
                             let result = peer
-                                .enqueue_send_conn_msg(proposal.at)
+                                .enqueue_send_conn_msg(time)
                                 .and_then(|enqueued| {
                                     if !enqueued {
-                                        peer.enqueue_send_meta_msg(proposal.at, meta_msg.clone())
+                                        peer.enqueue_send_meta_msg(time, meta_msg.clone())
                                     } else {
                                         Ok(enqueued)
                                     }
@@ -112,7 +109,7 @@ where
                                             }
                                         }
 
-                                        peer.enqueue_send_ack_msg(proposal.at, || {
+                                        peer.enqueue_send_ack_msg(time, || {
                                             proposal
                                                 .effects
                                                 .choose_potential_peers_for_nack(potential_peers)
@@ -140,7 +137,7 @@ where
                         Err(WriteMessageError::Pending) => break,
                         Err(err) => {
                             slog::warn!(&self.log, "Write failed!"; "description" => "error while trying to write to connected peer stream.", "error" => format!("{:?}", err));
-                            self.blacklist_peer(proposal.at, proposal.peer);
+                            self.blacklist_peer(proposal.peer);
                             break;
                         }
                     };
@@ -148,11 +145,11 @@ where
             } else {
                 // we received event for a non existant peer. Can happen
                 // and its normal, unless mio is out of sync.
-                self.disconnect_peer(proposal.at, proposal.peer);
+                self.disconnect_peer(proposal.peer);
             }
         }
 
-        self.adjust_p2p_state(time, proposal.effects);
-        self.periodic_react(time, proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

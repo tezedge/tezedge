@@ -43,5 +43,3 @@ pub mod prelude {
     pub use super::swap::SwapMessage;
     pub use super::version::NetworkVersion;
 }
-
-use prelude::*;
