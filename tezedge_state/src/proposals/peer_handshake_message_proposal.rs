@@ -1,6 +1,7 @@
-use crate::PeerAddress;
 use std::time::Duration;
 use tla_sm::Proposal;
+
+use crate::PeerAddress;
 
 pub struct PeerHandshakeMessageProposal<'a, Efs, M> {
     pub effects: &'a mut Efs,

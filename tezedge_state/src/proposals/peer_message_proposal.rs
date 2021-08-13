@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
@@ -32,7 +33,7 @@ impl<'a, Efs> DefaultRecorder for PeerMessageProposal<'a, Efs> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RecordedPeerMessageProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,

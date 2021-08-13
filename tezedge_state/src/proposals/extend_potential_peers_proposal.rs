@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tla_sm::{
@@ -36,7 +37,7 @@ where
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct RecordedExtendPotentialPeersProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,
