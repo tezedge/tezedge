@@ -18,7 +18,7 @@ use tezos_api::ffi::{
     InitProtocolContextResult, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosRuntimeConfiguration,
 };
-use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
+use tezos_wrapper::runner::ExecutableProtocolRunner;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
@@ -51,7 +51,7 @@ fn test_multiple_protocol_runners_with_one_write_multiple_read_init_context(
     let mut handles = Vec::new();
     for i in 0..number_of_endpoints {
         // create endpoint
-        let (mut protocol, child, endpoint_name) = create_endpoint::<ExecutableProtocolRunner>(
+        let (mut protocol, child, endpoint_name) = create_endpoint(
             tokio_runtime.handle().clone(),
             log.clone(),
             log_level,
@@ -117,13 +117,13 @@ fn test_multiple_protocol_runners_with_one_write_multiple_read_init_context(
     Ok(())
 }
 
-fn create_endpoint<Runner: ProtocolRunner + 'static>(
+fn create_endpoint(
     tokio_runtime: tokio::runtime::Handle,
     log: Logger,
     log_level: Level,
     endpoint_name: String,
     context_db_path: PathBuf,
-) -> Result<(IpcCmdServer, Runner::Subprocess, String), failure::Error> {
+) -> Result<(IpcCmdServer, tokio::process::Child, String), failure::Error> {
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = test_data::TEZOS_ENV
         .get(&test_data::TEZOS_NETWORK)
@@ -144,7 +144,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
-    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
+    let protocol_runner_endpoint = ProtocolRunnerEndpoint::try_new(
         &endpoint_name,
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
@@ -205,14 +205,13 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let tokio_runtime = create_tokio_runtime();
 
     // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
-    let (mut write_context_commands, mut subprocess, ..) =
-        create_endpoint::<ExecutableProtocolRunner>(
-            tokio_runtime.handle().clone(),
-            log.clone(),
-            log_level,
-            "test_one_writeable_endpoint".to_string(),
-            context_db_path.clone(),
-        )?;
+    let (mut write_context_commands, mut subprocess, ..) = create_endpoint(
+        tokio_runtime.handle().clone(),
+        log.clone(),
+        log_level,
+        "test_one_writeable_endpoint".to_string(),
+        context_db_path.clone(),
+    )?;
 
     let mut write_api = write_context_commands.try_accept(Duration::from_secs(3))?;
     let genesis_context_hash = write_api
@@ -220,12 +219,13 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
     write_api.shutdown()?;
-    let _ = ExecutableProtocolRunner::wait_and_terminate_ref(
-        tokio_runtime.handle().clone(),
-        &mut subprocess,
-        Duration::from_secs(5),
-        &log,
-    );
+    tokio_runtime
+        .block_on(ExecutableProtocolRunner::wait_and_terminate_ref(
+            &mut subprocess,
+            Duration::from_secs(5),
+            &log,
+        ))
+        .ok();
 
     // cfg for pool
     let pool_cfg = TezosApiConnectionPoolConfiguration {

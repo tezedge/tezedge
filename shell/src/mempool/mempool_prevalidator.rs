@@ -104,7 +104,7 @@ impl MempoolPrevalidator {
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_readonly_api.pool.get() {
-                        Ok(mut protocol_controller) => match process_prevalidation(
+                        Ok(protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
                             &mempool_storage,

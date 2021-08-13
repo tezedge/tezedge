@@ -20,8 +20,6 @@ use crate::pool::{
     InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer,
     PoolError, ProtocolRunnerConnection, ProtocolRunnerManager, SlogErrorHandler,
 };
-use crate::runner::ExecutableProtocolRunner;
-
 mod pool;
 pub mod protocol;
 pub mod runner;
@@ -45,15 +43,12 @@ pub struct TezosApiConnectionPoolConfiguration {
     pub idle_timeout: Duration,
 }
 
-/// This pool is "hard-coded" for ExecutableProtocolRunner, but it is easily extended as [TezosApiConnectionPool<Runner: ProtocolRunner + 'static>] if needed
-pub type RunnerType = ExecutableProtocolRunner;
-
 /// Wrapper for r2d2 pool with managed protocol_runner "connections", protocol runners sub-processes are now managed and started by the pool.
 /// Automatically refreshes old protocol_runner sub-processes [idle_timeout][max_lifetime]
 ///
 /// One connection means one protocol_runner sub-process and one IPC
 pub struct TezosApiConnectionPool {
-    pub pool: Pool<ProtocolRunnerManager<RunnerType>>,
+    pub pool: Pool<ProtocolRunnerManager>,
     pub pool_name: String,
 }
 
@@ -117,10 +112,10 @@ impl TezosApiConnectionPool {
         endpoint_cfg: ProtocolEndpointConfiguration,
         tokio_runtime: tokio::runtime::Handle,
         log: Logger,
-        initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>,
+        initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection, PoolError>>,
     ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         // create manager
-        let manager = ProtocolRunnerManager::<RunnerType>::new(
+        let manager = ProtocolRunnerManager::new(
             pool_name.clone(),
             pool_cfg.connection_timeout,
             endpoint_cfg,

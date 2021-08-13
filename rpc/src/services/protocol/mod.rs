@@ -498,14 +498,24 @@ pub(crate) fn call_protocol_rpc_with_cache(
     let request =
         create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
-    // TODO: retry?
-    let response = env
-        .tezos_readonly_api()
-        .pool
-        .get()?
-        .api
-        .call_protocol_rpc(request)?;
+    let controller = env.tezos_readonly_api().pool.get()?;
+    let result = controller.api.call_protocol_rpc(request);
 
+    // The protocol runner is considerable to be in an broken state
+    // if we get a timeout in a second call after which we got a timeout
+    // already. In that case we shut that protocol runner down.
+    let broken_protocol_runner = match &result {
+        Ok(_) => false,
+        Err(error) => error.is_ipc_timeout_chain(),
+    };
+
+    if broken_protocol_runner {
+        controller.set_release_on_return_to_pool();
+    }
+
+    // TODO: retry on other errors?
+
+    let response = result?;
     let status_code = response.status_code();
     let body = response.body_json_string_or_empty();
 

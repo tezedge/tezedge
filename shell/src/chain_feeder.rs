@@ -561,7 +561,7 @@ impl BlockApplierThreadSpawner {
 
                 while block_applier_run.load(Ordering::Acquire) {
                     match tezos_writeable_api.pool.get() {
-                        Ok(mut protocol_controller) => match feed_chain_to_protocol(
+                        Ok(protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
                             &init_storage_data,
                             &block_applier_run,

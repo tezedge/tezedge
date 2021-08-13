@@ -1,18 +1,18 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cell::Cell;
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{error, fmt};
 
-use failure::_core::marker::PhantomData;
 use r2d2::{CustomizeConnection, HandleError, ManageConnection};
 use slog::{debug, error, info, o, warn, Logger};
 
 use ipc::IpcError;
 
-use crate::runner::{ProtocolRunner, ProtocolRunnerError};
+use crate::runner::{ExecutableProtocolRunner, ProtocolRunnerError};
 use crate::service::{ProtocolController, ProtocolRunnerEndpoint, ProtocolServiceError};
 use crate::ProtocolEndpointConfiguration;
 
@@ -44,29 +44,48 @@ impl fmt::Display for PoolError {
     }
 }
 
+/// Will terminate the subprocess in an asynchronous manner without blocking
+/// Returns immediately, doesn't mean that the process has already stopped.
+fn terminate_subprocess_without_blocking(mut subprocess: tokio::process::Child, log: Logger) {
+    tokio::task::spawn(async move {
+        if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
+            &mut subprocess,
+            ExecutableProtocolRunner::PROCESS_TERMINATE_WAIT_TIMEOUT,
+            &log,
+        )
+        .await
+        {
+            warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
+        }
+    });
+}
+
 /// Protocol runner sub-process wrapper which acts as connection
-pub struct ProtocolRunnerConnection<Runner: ProtocolRunner> {
+pub struct ProtocolRunnerConnection {
     pub api: ProtocolController,
-    subprocess: Runner::Subprocess,
-    tokio_runtime: tokio::runtime::Handle,
+    subprocess: Option<tokio::process::Child>,
     log: Logger,
     pub name: String,
 
     /// Indicates that we want to release this connection on return to pool (used for gracefull shutdown)
-    release_on_return_to_pool: bool,
+    release_on_return_to_pool: Cell<bool>,
 }
 
-impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
+impl ProtocolRunnerConnection {
     pub fn is_valid(&mut self) -> Result<(), PoolError> {
         // TODO: check if unix socket is connected?
         Ok(())
     }
 
     fn has_broken(&mut self) -> bool {
-        if self.release_on_return_to_pool {
+        if self.release_on_return_to_pool.get() {
             return true;
         }
-        let is_subprocess_running = Runner::is_running(&mut self.subprocess);
+        let is_subprocess_running = if let Some(subprocess) = &mut self.subprocess {
+            ExecutableProtocolRunner::is_running(subprocess)
+        } else {
+            false
+        };
         !is_subprocess_running
     }
 
@@ -77,31 +96,28 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
         };
 
         // try terminate sub-process (if running)
-        if let Err(e) = Runner::wait_and_terminate_ref(
-            self.tokio_runtime.clone(),
-            &mut self.subprocess,
-            Runner::PROCESS_TERMINATE_WAIT_TIMEOUT,
-            &self.log,
-        ) {
-            warn!(self.log, "Failed to terminate/kill protocol runner"; "reason" => e);
+        if let Some(subprocess) = std::mem::take(&mut self.subprocess) {
+            terminate_subprocess_without_blocking(subprocess, self.log.clone());
         }
     }
 
     /// Mark connection as "destroy" when return back to pool
-    pub fn set_release_on_return_to_pool(&mut self) {
-        self.release_on_return_to_pool = true;
+    pub fn set_release_on_return_to_pool(&self) {
+        self.release_on_return_to_pool.set(true);
     }
 
     /// Logs exit status of child process
     pub fn log_exit_status(&mut self) {
-        Runner::log_exit_status(&mut self.subprocess, &self.log);
+        if let Some(subprocess) = &mut self.subprocess {
+            ExecutableProtocolRunner::log_exit_status(subprocess, &self.log);
+        }
     }
 }
 
 /// Connection manager, which creates new connections:
 /// - runs new sub-process
 /// - starts IPC accept
-pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
+pub struct ProtocolRunnerManager {
     pool_name: String,
     pool_name_counter: AtomicUsize,
     pool_connection_timeout: Duration,
@@ -110,10 +126,9 @@ pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
 
     pub endpoint_cfg: ProtocolEndpointConfiguration,
     pub log: Logger,
-    _phantom: PhantomData<Runner>,
 }
 
-impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
+impl ProtocolRunnerManager {
     const MIN_ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
 
     pub fn new(
@@ -130,11 +145,10 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             endpoint_cfg,
             tokio_runtime,
             log,
-            _phantom: PhantomData,
         }
     }
 
-    pub fn create_connection(&self) -> Result<ProtocolRunnerConnection<Runner>, PoolError> {
+    pub fn create_connection(&self) -> Result<ProtocolRunnerConnection, PoolError> {
         let endpoint_name = format!(
             "{}_{:?}",
             &self.pool_name,
@@ -142,7 +156,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         );
 
         // crate protocol runner endpoint
-        let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
+        let protocol_endpoint = ProtocolRunnerEndpoint::try_new(
             &endpoint_name,
             self.endpoint_cfg.clone(),
             self.tokio_runtime.clone(),
@@ -154,7 +168,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         })?;
 
         // start sub-process
-        let (mut subprocess, mut protocol_commands) = match protocol_endpoint.start() {
+        let (subprocess, mut protocol_commands) = match protocol_endpoint.start() {
             Ok(subprocess) => {
                 let ProtocolRunnerEndpoint { commands, .. } = protocol_endpoint;
                 (subprocess, commands)
@@ -177,14 +191,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             Err(e) => {
                 error!(self.log, "Failed to accept IPC connection on sub-process (so terminate sub-process)"; "endpoint" => endpoint_name, "reason" => format!("{:?}", &e));
                 // try terminate sub-process (if running)
-                if let Err(e) = Runner::wait_and_terminate_ref(
-                    self.tokio_runtime.clone(),
-                    &mut subprocess,
-                    Runner::PROCESS_TERMINATE_WAIT_TIMEOUT,
-                    &self.log,
-                ) {
-                    warn!(self.log, "Failed to terminate/kill protocol runner (create connection)"; "reason" => e);
-                }
+                terminate_subprocess_without_blocking(subprocess, self.log.clone());
                 return Err(PoolError::IpcError {
                     reason: "fail to accept IPC for sub-process".to_string(),
                     error: e,
@@ -195,28 +202,27 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         debug!(self.log, "Connection for protocol runner was created successfully"; "endpoint" => endpoint_name.clone());
         Ok(ProtocolRunnerConnection {
             api,
-            subprocess,
-            tokio_runtime: self.tokio_runtime.clone(),
+            subprocess: Some(subprocess),
             log: self.log.new(o!("endpoint" => endpoint_name.clone())),
             name: endpoint_name,
-            release_on_return_to_pool: false,
+            release_on_return_to_pool: Cell::new(false),
         })
     }
 }
 
-impl<Runner: ProtocolRunner + 'static> ManageConnection for ProtocolRunnerManager<Runner> {
-    type Connection = ProtocolRunnerConnection<Runner>;
+impl ManageConnection for ProtocolRunnerManager {
+    type Connection = ProtocolRunnerConnection;
     type Error = PoolError;
 
-    fn connect(&self) -> Result<ProtocolRunnerConnection<Runner>, PoolError> {
+    fn connect(&self) -> Result<ProtocolRunnerConnection, PoolError> {
         self.create_connection()
     }
 
-    fn is_valid(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
+    fn is_valid(&self, conn: &mut ProtocolRunnerConnection) -> Result<(), PoolError> {
         conn.is_valid()
     }
 
-    fn has_broken(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> bool {
+    fn has_broken(&self, conn: &mut ProtocolRunnerConnection) -> bool {
         let has_broken = conn.has_broken();
 
         if has_broken {
@@ -231,11 +237,10 @@ impl<Runner: ProtocolRunner + 'static> ManageConnection for ProtocolRunnerManage
 #[derive(Debug)]
 pub struct InitReadonlyContextProtocolRunnerConnectionCustomizer;
 
-impl<Runner: ProtocolRunner + 'static>
-    CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError>
+impl CustomizeConnection<ProtocolRunnerConnection, PoolError>
     for InitReadonlyContextProtocolRunnerConnectionCustomizer
 {
-    fn on_acquire(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
+    fn on_acquire(&self, conn: &mut ProtocolRunnerConnection) -> Result<(), PoolError> {
         match conn.api.init_protocol_for_read() {
             Ok(_) => {
                 info!(conn.log, "Connection for protocol runner was successfully initialized with readonly context");
@@ -252,7 +257,7 @@ impl<Runner: ProtocolRunner + 'static>
         }
     }
 
-    fn on_release(&self, mut conn: ProtocolRunnerConnection<Runner>) {
+    fn on_release(&self, mut conn: ProtocolRunnerConnection) {
         debug!(conn.log, "Closing connection for protocol runner");
         conn.terminate_subprocess();
         info!(
@@ -266,11 +271,10 @@ impl<Runner: ProtocolRunner + 'static>
 #[derive(Debug)]
 pub struct NoopProtocolRunnerConnectionCustomizer;
 
-impl<Runner: ProtocolRunner + 'static>
-    CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError>
+impl CustomizeConnection<ProtocolRunnerConnection, PoolError>
     for NoopProtocolRunnerConnectionCustomizer
 {
-    fn on_acquire(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
+    fn on_acquire(&self, conn: &mut ProtocolRunnerConnection) -> Result<(), PoolError> {
         info!(
             conn.log,
             "Connection for protocol runner was successfully initialized"
@@ -278,7 +282,7 @@ impl<Runner: ProtocolRunner + 'static>
         Ok(())
     }
 
-    fn on_release(&self, mut conn: ProtocolRunnerConnection<Runner>) {
+    fn on_release(&self, mut conn: ProtocolRunnerConnection) {
         debug!(conn.log, "Closing connection for protocol runner");
         conn.terminate_subprocess();
         info!(
