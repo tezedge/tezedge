@@ -1,7 +1,7 @@
-use std::io::BufWriter;
-use std::sync::{mpsc, Mutex, Arc};
 use std::fs::File;
 use std::io::prelude::*;
+use std::io::BufWriter;
+use std::sync::{mpsc, Arc, Mutex};
 
 use crate::proposals::*;
 
@@ -22,10 +22,14 @@ impl Drop for ProposalPersisterHandle {
 
 impl ProposalPersisterHandle {
     pub fn persist<P>(&mut self, proposal: P)
-        where P: Into<RecordedProposal>,
+    where
+        P: Into<RecordedProposal>,
     {
         // TODO: better error handling.
-        self.sender.as_mut().unwrap().send(proposal.into())
+        self.sender
+            .as_mut()
+            .unwrap()
+            .send(proposal.into())
             .expect("recorded proposal persister disconnected!");
     }
 }
@@ -50,7 +54,8 @@ impl ProposalPersister {
 }
 
 fn run(state: ProposalPersister) {
-    let file = File::create("/tmp/tezedge/recorded_proposal.log").expect("couldn't open/create file for persisting proposals");
+    let file = File::create("/tmp/tezedge/recorded_proposal.log")
+        .expect("couldn't open/create file for persisting proposals");
     let mut buf_writer = BufWriter::new(file);
 
     loop {
