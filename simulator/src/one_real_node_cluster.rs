@@ -560,6 +560,7 @@ mod tests {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
                 record: false,
+                replay: false,
             },
             sample_tezedge_state::build(
                 SystemTime::now(),
@@ -603,6 +604,7 @@ mod tests {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
                 record: false,
+                replay: false,
             },
             sample_tezedge_state::build(
                 SystemTime::now(),

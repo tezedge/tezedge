@@ -11,6 +11,7 @@ use crate::proposals::{
     ExtendPotentialPeersProposal, NewPeerConnectProposal, PeerBlacklistProposal,
     PeerDisconnectProposal, PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal,
     PendingRequestMsg, PendingRequestProposal, SendPeerMessageProposal, TickProposal,
+    RecordedProposal,
 };
 use crate::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
@@ -18,7 +19,9 @@ use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
 pub mod proposal_persister;
+pub mod proposal_loader;
 use proposal_persister::{ProposalPersister, ProposalPersisterHandle};
+use proposal_loader::ProposalLoader;
 
 macro_rules! accept_proposal {
     ($state: expr, $proposal: expr, $proposal_persister: expr) => {
@@ -183,6 +186,7 @@ pub struct TezedgeProposerConfig {
     pub wait_for_events_timeout: Option<Duration>,
     pub events_limit: usize,
     pub record: bool,
+    pub replay: bool,
 }
 
 /// Tezedge proposer wihtout `events`.
@@ -194,6 +198,8 @@ struct TezedgeProposerInner<Efs, M> {
     effects: Efs,
     time: Instant,
     proposal_persister: Option<ProposalPersisterHandle>,
+    /// Proposal loader for replay.
+    proposal_loader: Option<ProposalLoader>,
     state: TezedgeStateWrapper,
     manager: M,
 }
@@ -223,23 +229,23 @@ where
         self.manager.wait_for_events(events, self.config.wait_for_events_timeout)
     }
 
-    fn handle_event(&mut self, event: Event<NetE>) {
-        match event {
-            Event::Tick(at) => {
-                accept_proposal!(
-                    self.state,
-                    TickProposal {
-                        time_passed: self.update_time(at),
-                        effects: &mut self.effects,
-                    },
-                    self.proposal_persister
-                );
-            }
-            Event::Network(event) => {
-                self.handle_network_event(&event);
-            }
-        }
-    }
+    // fn handle_event(&mut self, event: Event<NetE>) {
+    //     match event {
+    //         Event::Tick(at) => {
+    //             accept_proposal!(
+    //                 self.state,
+    //                 TickProposal {
+    //                     time_passed: self.update_time(at),
+    //                     effects: &mut self.effects,
+    //                 },
+    //                 self.proposal_persister
+    //             );
+    //         }
+    //         Event::Network(event) => {
+    //             self.handle_network_event(&event);
+    //         }
+    //     }
+    // }
 
     fn handle_event_ref<'a>(&mut self, event: EventRef<'a, NetE>) {
         match event {
@@ -353,6 +359,9 @@ where
         for req in self.requests.drain(..) {
             match req {
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
+                    if self.config.replay {
+                        continue;
+                    }
                     let status = match self.manager.start_listening_to_server_events() {
                         Ok(_) => PendingRequestMsg::StartListeningForNewPeersSuccess,
                         Err(err) => {
@@ -371,6 +380,9 @@ where
                     );
                 }
                 TezedgeRequest::StopListeningForNewPeers { req_id } => {
+                    if self.config.replay {
+                        continue;
+                    }
                     self.manager.stop_listening_to_server_events();
                     accept_proposal!(
                         self.state,
@@ -384,6 +396,9 @@ where
                     );
                 }
                 TezedgeRequest::ConnectPeer { req_id, peer } => {
+                    if self.config.replay {
+                        continue;
+                    }
                     match self.manager.get_peer_or_connect_mut(&peer) {
                         Ok(_) => {
                             accept_proposal!(
@@ -412,6 +427,10 @@ where
                     }
                 }
                 TezedgeRequest::DisconnectPeer { req_id, peer } => {
+                    self.notifications.push(Notification::PeerDisconnected { peer });
+                    if self.config.replay {
+                        continue;
+                    }
                     self.manager.disconnect_peer(&peer);
                     accept_proposal!(
                         self.state,
@@ -423,9 +442,12 @@ where
                         },
                         self.proposal_persister
                     );
-                    self.notifications.push(Notification::PeerDisconnected { peer });
                 }
                 TezedgeRequest::BlacklistPeer { req_id, peer } => {
+                    self.notifications.push(Notification::PeerBlacklisted { peer });
+                    if self.config.replay {
+                        continue;
+                    }
                     self.manager.disconnect_peer(&peer);
                     accept_proposal!(
                         self.state,
@@ -437,13 +459,16 @@ where
                         },
                         self.proposal_persister
                     );
-                    self.notifications.push(Notification::PeerBlacklisted { peer });
                 }
                 TezedgeRequest::PeerMessageReceived {
                     req_id,
                     peer,
                     message,
                 } => {
+                    self.notifications.push(Notification::MessageReceived { peer, message });
+                    if self.config.replay {
+                        continue;
+                    }
                     accept_proposal!(
                         self.state,
                         PendingRequestProposal {
@@ -454,7 +479,6 @@ where
                         },
                         self.proposal_persister
                     );
-                    self.notifications.push(Notification::MessageReceived { peer, message });
                 }
                 TezedgeRequest::NotifyHandshakeSuccessful {
                     req_id,
@@ -469,6 +493,9 @@ where
                         metadata,
                         network_version,
                     });
+                    if self.config.replay {
+                        continue;
+                    }
                     accept_proposal!(
                         self.state,
                         PendingRequestProposal {
@@ -488,6 +515,9 @@ where
     where
         P: IntoIterator<Item = SocketAddr>,
     {
+        if self.config.replay {
+            return;
+        }
         if at < self.time {
             eprintln!(
                 "Rejecting request to extend potential peers. Reason: passed time in the past!"
@@ -508,6 +538,9 @@ where
     }
 
     pub fn disconnect_peer(&mut self, at: Instant, peer: PeerAddress) {
+        if self.config.replay {
+            return;
+        }
         if at < self.time {
             eprintln!("Rejecting request to disconnect peer. Reason: passed time in the past!");
             return;
@@ -526,6 +559,9 @@ where
     }
 
     pub fn blacklist_peer(&mut self, at: Instant, peer: PeerAddress) {
+        if self.config.replay {
+            return;
+        }
         if at < self.time {
             eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
             return;
@@ -554,6 +590,9 @@ where
         addr: PeerAddress,
         message: PeerMessage,
     ) {
+        if self.config.replay {
+            return;
+        }
         if at < self.time {
             eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
             return;
@@ -685,6 +724,11 @@ where
         } else {
             None
         };
+        let proposal_loader = if config.replay {
+            Some(ProposalLoader::new())
+        } else {
+            None
+        };
 
         Self {
             inner: TezedgeProposerInner {
@@ -696,6 +740,7 @@ where
                 manager,
                 time: initial_time,
                 proposal_persister,
+                proposal_loader,
             },
             events,
         }
@@ -725,6 +770,36 @@ where
         self.inner.wait_for_events(&mut self.events)
     }
 
+    fn replay_proposals(&mut self) {
+        if let Some(loader) = self.inner.proposal_loader.as_mut() {
+            // replay 128 at a time.
+            for _ in 0..128 {
+                let mut proposal = match loader.next() {
+                    Some(result) => result.unwrap(),
+                    None => {
+                        self.inner.proposal_loader = None;
+                        eprintln!("Proposals replay finished!");
+                        break;
+                    }
+                };
+                use RecordedProposal::*;
+                match &mut proposal {
+                    ExtendPotentialPeersProposal(proposal) => self.inner.state.accept(proposal),
+                    NewPeerConnectProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerBlacklistProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerDisconnectProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerDisconnectedProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerMessageProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerReadableProposal(proposal) => self.inner.state.accept(proposal),
+                    PeerWritableProposal(proposal) => self.inner.state.accept(proposal),
+                    PendingRequestProposal(proposal) => self.inner.state.accept(proposal),
+                    SendPeerMessageProposal(proposal) => self.inner.state.accept(proposal),
+                    TickProposal(proposal) => self.inner.state.accept(proposal),
+                }
+            }
+        }
+    }
+
     /// Main driving function for [TezedgeProposer].
     ///
     /// It asks [Manager] to wait for events, handles them as they become
@@ -744,27 +819,31 @@ where
                 Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
             );
         }
-        self.wait_for_events();
+        if self.inner.config.replay {
+            self.replay_proposals();
+        } else {
+            self.wait_for_events();
 
-        for event in self.events.into_iter() {
-            self.inner.handle_event_ref(event);
+            for event in self.events.into_iter() {
+                self.inner.handle_event_ref(event);
+            }
         }
 
         self.inner.execute_requests();
     }
 
-    pub fn make_progress_owned(&mut self)
-    where
-        for<'a> &'a Es: IntoIterator<Item = Event<NetE>>,
-    {
-        self.wait_for_events();
+    // pub fn make_progress_owned(&mut self)
+    // where
+    //     for<'a> &'a Es: IntoIterator<Item = Event<NetE>>,
+    // {
+    //     self.wait_for_events();
 
-        for event in self.events.into_iter() {
-            self.inner.handle_event(event);
-        }
+    //     for event in self.events.into_iter() {
+    //         self.inner.handle_event(event);
+    //     }
 
-        self.inner.execute_requests();
-    }
+    //     self.inner.execute_requests();
+    // }
 
     #[inline]
     pub fn extend_potential_peers<P>(&mut self, at: Instant, peers: P)
