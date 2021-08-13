@@ -230,7 +230,7 @@ impl OneRealNodeCluster {
 
     /// Whether events queue is empty.
     pub fn is_done(&self) -> bool {
-        self.proposer.manager.events.is_empty()
+        self.proposer.manager().events.is_empty()
     }
 
     pub fn make_progress(&mut self) -> &mut Self {
@@ -253,11 +253,11 @@ impl OneRealNodeCluster {
     }
 
     pub fn init_new_fake_peer(&mut self) -> FakePeerId {
-        self.proposer.manager.init_new_fake_peer()
+        self.proposer.manager_mut().init_new_fake_peer()
     }
 
     pub fn get_peer(&mut self, peer_id: FakePeerId) -> &mut FakePeerStream {
-        &mut self.proposer.manager.get_mut(peer_id).stream
+        &mut self.proposer.manager_mut().get_mut(peer_id).stream
     }
 
     pub fn is_peer_connected(&mut self, peer_id: FakePeerId) -> bool {
@@ -266,17 +266,17 @@ impl OneRealNodeCluster {
 
     /// Connect to node if not already connected.
     pub fn connect_to_node(&mut self, from: FakePeerId) -> Result<&mut Self, ConnectToNodeError> {
-        if self.proposer.manager.listening == false {
+        if self.proposer.manager().listening == false {
             return Err(ConnectToNodeError::NodeNotListening);
         }
 
         self.proposer
-            .manager
+            .manager_mut()
             .get_mut(from)
             .stream
             .conn_state_mut()
             .to_outgoing();
-        self.proposer.manager.push_event(
+        self.proposer.manager_mut().push_event(
             FakeNetworkEvent {
                 time: self.time,
                 from,
@@ -293,7 +293,7 @@ impl OneRealNodeCluster {
     pub fn connect_from_node(&mut self, to: FakePeerId) -> &mut Self {
         self.extend_node_potential_peers(std::iter::once(to));
         self.proposer
-            .manager
+            .manager_mut()
             .get_mut(to)
             .stream
             .conn_state_mut()
@@ -304,7 +304,7 @@ impl OneRealNodeCluster {
 
     pub fn disconnect_peer(&mut self, peer_id: FakePeerId) -> &mut Self {
         self.proposer
-            .manager
+            .manager_mut()
             .events
             .push_back(Event::Network(FakeNetworkEvent {
                 time: self.time,
@@ -321,7 +321,7 @@ impl OneRealNodeCluster {
         event_type: FakeNetworkEventType,
     ) -> &mut Self {
         self.proposer
-            .manager
+            .manager_mut()
             .events
             .push_back(Event::Network(FakeNetworkEvent {
                 time: self.time,
@@ -338,7 +338,7 @@ impl OneRealNodeCluster {
         read_limit: Option<usize>,
     ) -> &mut Self {
         self.proposer
-            .manager
+            .manager_mut()
             .events
             .push_back(Event::Network(FakeNetworkEvent {
                 time: self.time,
@@ -355,7 +355,7 @@ impl OneRealNodeCluster {
         write_limit: Option<usize>,
     ) -> &mut Self {
         self.proposer
-            .manager
+            .manager_mut()
             .events
             .push_back(Event::Network(FakeNetworkEvent {
                 time: self.time,
@@ -538,7 +538,7 @@ impl OneRealNodeCluster {
 
     pub fn add_tick_for_current_time(&mut self) -> &mut Self {
         self.proposer
-            .manager
+            .manager_mut()
             .events
             .push_back(Event::Tick(self.time));
 
