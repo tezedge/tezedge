@@ -229,6 +229,7 @@ case $1 in
     ;;
 
   fuzz)
+    rm -f ./target/fuzz/deps/*.gcda
     warn_if_not_using_recommended_rust
     configure_env_variables --fuzz
     print_configuration
