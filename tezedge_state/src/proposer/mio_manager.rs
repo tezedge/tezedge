@@ -2,7 +2,7 @@ use mio::net::{TcpListener, TcpSocket, TcpStream};
 use slab::Slab;
 use std::collections::HashMap;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -62,9 +62,13 @@ impl<'a> IntoIterator for &'a MioEvents {
     type IntoIter = MioEventsIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
+        let tick_event_time = self
+            .tick_event_time
+            .filter(|_| self.mio_events.is_empty())
+            .clone();
         MioEventsIter {
             mio_events_iter: self.mio_events.iter(),
-            tick_event_time: self.tick_event_time.clone(),
+            tick_event_time,
         }
     }
 }

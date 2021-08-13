@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use dns_lookup::LookupError;
 use thiserror::Error;
@@ -355,7 +355,7 @@ impl TezedgeStateManager {
             (*local_node_info.identity()).clone(),
             (*local_node_info.version()).clone(),
             &mut effects,
-            Instant::now(),
+            SystemTime::now(),
             chain_id,
         );
 
@@ -387,6 +387,7 @@ impl TezedgeStateManager {
         )) = self.proposer_thread_handle.take()
         {
             let mut proposer = TezedgeProposer::new(
+                Instant::now(),
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
                     events_limit: 1024,

@@ -16,30 +16,27 @@ where
     /// Peer's stream might be ready for reading, try to read from passed stream.
     fn accept(&mut self, proposal: PeerReadableProposal<'a, Efs, S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
-        let time = proposal.at;
 
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             match peer.read_message_from(proposal.stream) {
                 Ok(message) => {
-                    self.periodic_react(time, proposal.effects);
-                    self.accept(PeerMessageProposal {
+                    self.periodic_react(proposal.effects);
+                    self.accept_internal(PeerMessageProposal {
                         effects: proposal.effects,
-                        at: proposal.at,
+                        time_passed: Default::default(),
                         peer: proposal.peer,
                         message,
                     });
-                    self.accept(proposal);
+                    self.accept_internal(proposal);
                     return;
                 }
                 Err(ReadMessageError::Pending) => {}
                 Err(ReadMessageError::QuotaReached) => {}
                 Err(err) => {
                     slog::warn!(&self.log, "Read failed!"; "description" => "error while trying to read from connected peer stream.", "error" => format!("{:?}", err));
-                    self.blacklist_peer(proposal.at, proposal.peer);
+                    self.blacklist_peer(proposal.peer);
                 }
             };
         } else {
@@ -54,27 +51,27 @@ where
                         io::ErrorKind::WouldBlock => {}
                         _ => {
                             slog::warn!(&self.log, "Read failed!"; "description" => "error while trying to read from peer stream during handshake.", "error" => format!("{:?}", err));
-                            self.blacklist_peer(proposal.at, proposal.peer);
+                            self.blacklist_peer(proposal.peer);
                         }
                     }
                 } else if let Some(message) = peer.read_buf.take_if_ready() {
-                    self.accept(PeerHandshakeMessageProposal {
+                    self.accept_internal(PeerHandshakeMessageProposal {
                         effects: proposal.effects,
-                        at: proposal.at,
+                        time_passed: Default::default(),
                         peer: proposal.peer,
                         message: PeerBinaryHandshakeMessage::new(message),
                     });
                     // try writing to peer after succesfully reading a message.
-                    return self.accept(PeerWritableProposal::from(proposal));
+                    return self.accept_internal(PeerWritableProposal::from(proposal));
                 }
             } else {
                 // we received event for a non existant peer. Can happen
                 // and its normal, unless mio is out of sync.
-                self.disconnect_peer(proposal.at, proposal.peer);
+                self.disconnect_peer(proposal.peer);
             }
         }
 
-        self.adjust_p2p_state(time, proposal.effects);
-        self.periodic_react(time, proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

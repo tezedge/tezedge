@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::SystemTime;
 
 use crypto::hash::CryptoboxPublicKeyHash;
 
@@ -12,18 +12,18 @@ use crate::PeerAddress;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum RequestState {
-    Idle { at: Instant },
-    Pending { at: Instant },
-    Success { at: Instant },
-    // Error { at: Instant },
+    Idle { at: SystemTime },
+    Pending { at: SystemTime },
+    Success { at: SystemTime },
+    // Error { at: SystemTime },
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum RetriableRequestState {
-    Idle { at: Instant },
-    Pending { at: Instant },
-    Success { at: Instant },
-    Retry { at: Instant },
+    Idle { at: SystemTime },
+    Pending { at: SystemTime },
+    Success { at: SystemTime },
+    Retry { at: SystemTime },
 }
 
 /// Requests for [tezedge_state::TezedgeProposer].
@@ -162,7 +162,7 @@ impl GetRequests for TezedgeState {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use std::time::{Duration, SystemTime};
     use tla_sm::{Acceptor, GetRequests};
 
     use super::*;
@@ -180,10 +180,13 @@ mod tests {
     #[test]
     fn test_start_listening_for_new_peers_request_retries() {
         let mut effects = sample_tezedge_state::default_effects();
-        let mut time = Instant::now();
+        let initial_time = SystemTime::now();
 
-        let mut state =
-            sample_tezedge_state::build(time, sample_tezedge_state::default_config(), &mut effects);
+        let mut state = sample_tezedge_state::build(
+            initial_time,
+            sample_tezedge_state::default_config(),
+            &mut effects,
+        );
 
         let mut req_id = get_requests(&mut state)
             .into_iter()
@@ -196,18 +199,16 @@ mod tests {
 
         state.accept(PendingRequestProposal {
             effects: &mut effects,
-            at: time,
+            time_passed: Duration::new(0, 0),
             req_id,
             message: PendingRequestMsg::StartListeningForNewPeersError {
                 error: std::io::ErrorKind::AddrInUse,
             },
         });
 
-        // update time to retry time.
-        time = match state.requests[req_id].status {
+        match state.requests[req_id].status {
             RetriableRequestState::Retry { at } => {
-                assert_eq!(time + state.config.periodic_react_interval, at);
-                at
+                assert_eq!(initial_time + state.config.periodic_react_interval, at);
             }
             _ => panic!(),
         };
@@ -224,7 +225,7 @@ mod tests {
 
         state.accept(TickProposal {
             effects: &mut effects,
-            at: time,
+            time_passed: state.config.periodic_react_interval,
         });
 
         assert!(get_requests(&mut state)
@@ -240,7 +241,7 @@ mod tests {
 
         state.accept(PendingRequestProposal {
             effects: &mut effects,
-            at: time,
+            time_passed: Duration::new(0, 0),
             req_id,
             message: PendingRequestMsg::StartListeningForNewPeersSuccess,
         });

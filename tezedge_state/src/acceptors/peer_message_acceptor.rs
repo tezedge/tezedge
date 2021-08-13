@@ -17,8 +17,6 @@ where
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerMessageProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
 
@@ -36,9 +34,9 @@ where
                     peer.enqueue_send_message(msg.into());
                 }
                 PeerMessage::Advertise(message) => {
-                    self.accept(ExtendPotentialPeersProposal {
+                    self.accept_internal(ExtendPotentialPeersProposal {
                         effects: proposal.effects,
-                        at: proposal.at,
+                        time_passed: Default::default(),
                         peers: message
                             .id()
                             .iter()
@@ -54,16 +52,16 @@ where
                             peer: proposal.peer,
                             message: Arc::new(proposal.message),
                         },
-                        status: RetriableRequestState::Idle { at: proposal.at },
+                        status: RetriableRequestState::Idle { at: self.time },
                     });
                 }
             }
         } else {
             slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received PeerMessage from not connected(handshake not done) or non-existant peer");
-            self.blacklist_peer(proposal.at, proposal.peer);
+            self.blacklist_peer(proposal.peer);
         }
 
-        self.adjust_p2p_state(proposal.at, proposal.effects);
-        self.periodic_react(proposal.at, proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

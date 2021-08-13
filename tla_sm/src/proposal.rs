@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 
 /// Proposal is the message directed towards state machine.
 ///
@@ -7,5 +7,11 @@ use std::time::Instant;
 /// Each proposal updates logical clock of the state machine, after
 /// it has been fed to `Acceptor`.
 pub trait Proposal {
-    fn time(&self) -> Instant;
+    /// Time passed from last/previous proposal.
+    fn time_passed(&self) -> Duration;
+
+    /// Nullify passed time.
+    ///
+    /// useful for internal proposals.
+    fn nullify_time_passed(&mut self);
 }
