@@ -190,7 +190,7 @@ impl ChainFeeder {
                 tezos_writeable_api,
                 log,
             )
-            .spawn_feeder_thread(format!("chain-feedr-ctx"))
+            .spawn_feeder_thread("chain-feedr-ctx".into())
             .map_err(|_| CreateError::Panicked)?;
 
         sys.actor_of_props::<ChainFeeder>(
@@ -621,16 +621,16 @@ fn feed_chain_to_protocol(
     // at first we initialize protocol runtime and ffi context
 
     initialize_protocol_context(
-        &apply_block_run,
+        apply_block_run,
         chain_current_head_manager,
         block_storage,
         block_meta_storage,
         chain_meta_storage,
         operations_meta_storage,
-        &protocol_controller,
-        &log,
-        &tezos_env,
-        &init_storage_data,
+        protocol_controller,
+        log,
+        tezos_env,
+        init_storage_data,
     )?;
 
     // now just check current head (at least genesis should be there)
@@ -702,7 +702,7 @@ fn feed_chain_to_protocol(
                             block_meta_storage,
                             protocol_controller,
                             init_storage_data,
-                            &log,
+                            log,
                         ) {
                             Ok(result) => {
                                 match result {
@@ -942,7 +942,7 @@ fn prepare_apply_request(
     };
 
     // get block_metadata
-    let block_meta = match block_meta_storage.get(&block_hash)? {
+    let block_meta = match block_meta_storage.get(block_hash)? {
         Some(meta) => meta,
         None => {
             return Err(FeedChainError::ProcessingError {
@@ -1077,10 +1077,10 @@ pub(crate) fn initialize_protocol_context(
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
                 block_meta_storage,
-                &init_storage_data,
-                &tezos_env,
+                init_storage_data,
+                tezos_env,
                 &genesis_context_hash,
-                &log,
+                log,
             )?;
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
@@ -1093,7 +1093,7 @@ pub(crate) fn initialize_protocol_context(
                 block_meta_storage,
                 chain_meta_storage,
                 operations_meta_storage,
-                &init_storage_data,
+                init_storage_data,
                 commit_data,
             )?;
             let store_result_elapsed = store_result_timer.elapsed();

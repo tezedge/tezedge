@@ -1083,7 +1083,7 @@ impl ProtocolController {
     ///
     /// Must be called after the writable context has been initialized.
     pub fn init_context_ipc_server(&self) -> Result<(), ProtocolServiceError> {
-        if let Some(_) = self.configuration.storage.get_ipc_socket_path() {
+        if self.configuration.storage.get_ipc_socket_path().is_some() {
             let mut io = self.io.borrow_mut();
             io.send(&ProtocolMessage::InitProtocolContextIpcServer(
                 self.configuration.storage.clone(),

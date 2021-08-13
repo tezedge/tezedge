@@ -495,8 +495,7 @@ pub(crate) fn call_protocol_rpc_with_cache(
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<(u16, String)>, RpcCallError> {
-    let request =
-        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env)?;
 
     let controller = env.tezos_readonly_api().pool.get()?;
     let result = controller.api.call_protocol_rpc(request);
@@ -555,7 +554,7 @@ pub(crate) fn call_protocol_rpc(
                 chain_id,
                 block_hash,
                 rpc_request,
-                &env,
+                env,
             ) {
                 Ok(response) => response,
                 Err(RpcCallError::ErrorResponse(failure)) => {
@@ -600,7 +599,7 @@ pub(crate) fn preapply_operations(
     env: &RpcServiceEnvironment,
 ) -> Result<serde_json::value::Value, RpcServiceError> {
     let request =
-        match create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env) {
+        match create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env) {
             Ok(response) => response,
             Err(RpcCallError::ErrorResponse(failure)) => {
                 return Err(RpcServiceError::UnexpectedError {
@@ -774,6 +773,7 @@ impl From<FromBytesError> for ContextParamsError {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<RpcServiceError> for ContextParamsError {
     fn into(self) -> RpcServiceError {
         match self {
@@ -826,7 +826,7 @@ pub(crate) fn get_context_protocol_params(
         let context_hash = block_header.header.context();
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("protocol"))?
+            context.get_key_from_history(context_hash, context_key_owned!("protocol"))?
         {
             protocol_hash = ProtocolHash::try_from(data)?;
         } else {
@@ -836,7 +836,7 @@ pub(crate) fn get_context_protocol_params(
         }
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("data/v1/constants"))?
+            context.get_key_from_history(context_hash, context_key_owned!("data/v1/constants"))?
         {
             constants = data;
         } else {
