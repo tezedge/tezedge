@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 use std::time::Duration;
 use tla_sm::recorders::{CloneRecorder, RecordedStream, StreamRecorder};
@@ -52,7 +53,7 @@ impl<'a, Efs, S> DefaultRecorder for PeerReadableProposal<'a, Efs, S> {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct RecordedPeerReadableProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,

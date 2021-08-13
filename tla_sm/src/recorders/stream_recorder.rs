@@ -1,13 +1,88 @@
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 
-type IOResult<T> = Result<T, io::ErrorKind>;
+pub type ReplayIOResult<T> = Result<T, ReplayIOError>;
 
-#[derive(Debug, Eq, PartialEq, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub enum ReplayIOError {
+    NotFound,
+    PermissionDenied,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    NotConnected,
+    AddrInUse,
+    AddrNotAvailable,
+    BrokenPipe,
+    AlreadyExists,
+    WouldBlock,
+    InvalidInput,
+    InvalidData,
+    TimedOut,
+    WriteZero,
+    Interrupted,
+    Other,
+    UnexpectedEof,
+}
+
+impl From<io::ErrorKind> for ReplayIOError {
+    fn from(err: io::ErrorKind) -> Self {
+        match err as u8 {
+            0 => Self::NotFound,
+            1 => Self::PermissionDenied,
+            2 => Self::ConnectionRefused,
+            3 => Self::ConnectionReset,
+            4 => Self::ConnectionAborted,
+            5 => Self::NotConnected,
+            6 => Self::AddrInUse,
+            7 => Self::AddrNotAvailable,
+            8 => Self::BrokenPipe,
+            9 => Self::AlreadyExists,
+            10 => Self::WouldBlock,
+            11 => Self::InvalidInput,
+            12 => Self::InvalidData,
+            13 => Self::TimedOut,
+            14 => Self::WriteZero,
+            15 => Self::Interrupted,
+            16 => Self::Other,
+            17 => Self::UnexpectedEof,
+            _ => unreachable!("invalid io::ErrorKind index, maybe list out of date?"),
+        }
+    }
+}
+
+impl From<ReplayIOError> for io::ErrorKind {
+    fn from(err: ReplayIOError) -> Self {
+        match err as u8 {
+            0 => io::ErrorKind::NotFound,
+            1 => io::ErrorKind::PermissionDenied,
+            2 => io::ErrorKind::ConnectionRefused,
+            3 => io::ErrorKind::ConnectionReset,
+            4 => io::ErrorKind::ConnectionAborted,
+            5 => io::ErrorKind::NotConnected,
+            6 => io::ErrorKind::AddrInUse,
+            7 => io::ErrorKind::AddrNotAvailable,
+            8 => io::ErrorKind::BrokenPipe,
+            9 => io::ErrorKind::AlreadyExists,
+            10 => io::ErrorKind::WouldBlock,
+            11 => io::ErrorKind::InvalidInput,
+            12 => io::ErrorKind::InvalidData,
+            13 => io::ErrorKind::TimedOut,
+            14 => io::ErrorKind::WriteZero,
+            15 => io::ErrorKind::Interrupted,
+            16 => io::ErrorKind::Other,
+            17 => io::ErrorKind::UnexpectedEof,
+            _ => unreachable!("invalid io::ErrorKind index, maybe list out of date?"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Default, Clone)]
 pub struct RecordedStream {
-    pub reads: VecDeque<IOResult<Vec<u8>>>,
-    pub writes: VecDeque<IOResult<Vec<u8>>>,
-    pub flushes: VecDeque<IOResult<()>>,
+    pub reads: VecDeque<ReplayIOResult<Vec<u8>>>,
+    pub writes: VecDeque<ReplayIOResult<Vec<u8>>>,
+    pub flushes: VecDeque<ReplayIOResult<()>>,
 }
 
 impl RecordedStream {
@@ -25,7 +100,7 @@ impl Read for RecordedStream {
 
         if self.reads[0].is_err() {
             return Err(io::Error::new(
-                self.reads.pop_front().unwrap().err().unwrap(),
+                self.reads.pop_front().unwrap().err().unwrap().into(),
                 "replay",
             ));
         }
@@ -53,7 +128,7 @@ impl Write for RecordedStream {
 
         if self.writes[0].is_err() {
             return Err(io::Error::new(
-                self.writes.pop_front().unwrap().err().unwrap(),
+                self.writes.pop_front().unwrap().err().unwrap().into(),
                 "replay",
             ));
         }
@@ -77,7 +152,7 @@ impl Write for RecordedStream {
         self.flushes
             .pop_front()
             .unwrap_or(Ok(()))
-            .map_err(|err_kind| io::Error::new(err_kind, "replay"))
+            .map_err(|err_kind| io::Error::new(err_kind.into(), "replay"))
     }
 }
 
@@ -115,7 +190,7 @@ where
                 len
             })
             .map_err(|err| {
-                self.recorded.reads.push_back(Err(err.kind()));
+                self.recorded.reads.push_back(Err(err.kind().into()));
                 err
             })
     }
@@ -133,7 +208,7 @@ where
                 len
             })
             .map_err(|err| {
-                self.recorded.writes.push_back(Err(err.kind()));
+                self.recorded.writes.push_back(Err(err.kind().into()));
                 err
             })
     }
@@ -142,10 +217,10 @@ where
         self.stream
             .flush()
             .map(|_| {
-                self.recorded.flushes.push_back(Ok(()));
+                self.recorded.flushes.push_back(Ok(()).into());
             })
             .map_err(|err| {
-                self.recorded.flushes.push_back(Err(err.kind()));
+                self.recorded.flushes.push_back(Err(err.kind().into()));
                 err
             })
     }
@@ -161,16 +236,16 @@ mod tests {
             reads: vec![
                 Ok(vec![1, 2, 3, 4]),
                 Ok(vec![5, 6, 7]),
-                Err(io::ErrorKind::WouldBlock),
+                Err(ReplayIOError::WouldBlock),
             ]
             .into(),
             writes: vec![
                 Ok(vec![1, 2, 3, 4]),
                 Ok(vec![5, 6, 7]),
-                Err(io::ErrorKind::WouldBlock),
+                Err(ReplayIOError::WouldBlock),
             ]
             .into(),
-            flushes: vec![Ok(()), Err(io::ErrorKind::WouldBlock)].into(),
+            flushes: vec![Ok(()), Err(ReplayIOError::WouldBlock)].into(),
         };
         let mut input = old_recorded.clone();
 
