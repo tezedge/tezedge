@@ -395,6 +395,9 @@ impl TezedgeStateManager {
                     record: std::env::var("RECORD_PROPOSALS")
                         .map(|x| x == "1")
                         .unwrap_or(false),
+                    replay: std::env::var("REPLAY_PROPOSALS")
+                        .map(|x| x == "1")
+                        .unwrap_or(false),
                 },
                 effects,
                 tezedge_state,

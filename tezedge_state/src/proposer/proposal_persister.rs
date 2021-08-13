@@ -1,22 +1,28 @@
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
 
 use crate::proposals::*;
 
-#[derive(Clone)]
 pub struct ProposalPersisterHandle {
     sender: Option<mpsc::SyncSender<RecordedProposal>>,
-    join_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for ProposalPersisterHandle {
     fn drop(&mut self) {
         drop(self.sender.take());
-        if let Some(jh) = self.join_handle.lock().unwrap().take() {
+        if let Some(jh) = self.join_handle.take() {
             jh.join().unwrap();
         }
+    }
+}
+
+impl Clone for ProposalPersisterHandle {
+    fn clone(&self) -> Self {
+        // TODO
+        unimplemented!("this is temporary, this type shouldn't be clonable")
     }
 }
 
@@ -48,7 +54,7 @@ impl ProposalPersister {
 
         ProposalPersisterHandle {
             sender: Some(tx),
-            join_handle: Arc::new(Mutex::new(Some(join_handle))),
+            join_handle: Some(join_handle),
         }
     }
 }
