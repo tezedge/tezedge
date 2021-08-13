@@ -17,9 +17,16 @@ pub struct StructEncoding<'a> {
 }
 
 #[derive(Debug)]
+pub enum FieldKind<'a> {
+    Encoded(Encoding<'a>),
+    Hash,
+    Skip,
+}
+
+#[derive(Debug)]
 pub struct FieldEncoding<'a> {
     pub name: &'a syn::Ident,
-    pub encoding: Option<Encoding<'a>>,
+    pub kind: FieldKind<'a>,
 }
 
 #[derive(Debug)]

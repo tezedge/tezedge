@@ -59,29 +59,28 @@ fn make_fields<'a>(
     fields.into_iter().map(make_field).collect()
 }
 
-fn skip_field(meta: &[syn::Meta]) -> bool {
-    meta.iter().any(|meta| {
-        if let syn::Meta::Path(path) = meta {
-            path == symbol::SKIP
-        } else {
-            false
-        }
+fn field_kind<'a, 'b>(meta: &'a [syn::Meta]) -> Option<FieldKind<'b>> {
+    meta.iter().find_map(|meta| match meta {
+        syn::Meta::Path(path) if path == symbol::SKIP => Some(FieldKind::Skip),
+        syn::Meta::Path(path) if path == symbol::HASH => Some(FieldKind::Hash),
+        _ => None,
     })
 }
 
 fn make_field(field: &syn::Field) -> Result<FieldEncoding> {
     let meta = &mut get_encoding_meta(&field.attrs)?;
-    let skip = skip_field(meta);
     let name = field.ident.as_ref().unwrap();
-    let encoding = if skip {
-        None
-    } else {
-        let encoding = make_type_encoding(&field.ty, meta)?;
-        let encoding = make_bounded_encoding(meta, encoding)?;
-        assert_empty_meta(meta)?;
-        Some(encoding)
+    let kind = field_kind(meta);
+    let kind = match kind {
+        Some(kind) => kind,
+        None => {
+            let encoding = make_type_encoding(&field.ty, meta)?;
+            let encoding = make_bounded_encoding(meta, encoding)?;
+            assert_empty_meta(&meta)?;
+            FieldKind::Encoded(encoding)
+        }
     };
-    Ok(FieldEncoding { name, encoding })
+    Ok(FieldEncoding { name, kind })
 }
 
 /// Creates encoding from the type `ty` and meta attributes.

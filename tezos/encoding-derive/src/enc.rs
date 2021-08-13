@@ -62,11 +62,15 @@ fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
 }
 
 fn generate_field_encoding(field: &FieldEncoding) -> Option<TokenStream> {
-    field.encoding.as_ref().map(|encoding| {
+    if let FieldKind::Encoded(encoding) = &field.kind {
         let name = field.name.to_string();
         let encoding = generate_encoding(&encoding);
-        quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding))
-    })
+        Some(
+            quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding)),
+        )
+    } else {
+        None
+    }
 }
 
 fn generate_enum_encoding(encoding: &EnumEncoding) -> TokenStream {

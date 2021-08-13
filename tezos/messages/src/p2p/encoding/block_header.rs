@@ -92,11 +92,51 @@ pub struct BlockHeader {
     #[get = "pub"]
     #[encoding(list, builtin = "Uint8")]
     protocol_data: Vec<u8>,
+
+    #[get = "pub"]
+    #[serde(skip)]
+    #[builder(default)]
+    #[encoding(hash)]
+    hash: EncodingHash,
+}
+
+/// Optional 256-bit digest of encoded data
+/// TODO https://viablesystems.atlassian.net/browse/TE-675
+#[derive(Clone, Debug)]
+pub struct EncodingHash(pub Option<Vec<u8>>);
+
+impl PartialEq for EncodingHash {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.0.as_ref(), other.0.as_ref()) {
+            (Some(v1), Some(v2)) => v1 == v2,
+            _ => true,
+        }
+    }
+}
+
+impl EncodingHash {
+    pub fn as_ref(&self) -> Option<&Vec<u8>> {
+        self.0.as_ref()
+    }
+}
+
+impl Default for EncodingHash {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl From<Vec<u8>> for EncodingHash {
+    fn from(hash: Vec<u8>) -> Self {
+        Self(Some(hash))
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::p2p::binary_message::BinaryRead;
+    use crypto::blake2b;
+
+    use crate::p2p::binary_message::{BinaryRead, BinaryWrite};
 
     use super::*;
 
@@ -104,5 +144,17 @@ mod test {
     fn test_decode_block_header_message_nom() {
         let data = hex::decode("00094F1F048D51777EF01C0106A09F747615CC72271A46EA75E097B48C7200CA2F1EAE6617000000005D7F495004C8626895CC82299089F495F7AD8864D1D3B0F364D497F1D175296B5F4A901EC80000001100000001000000000800000000012631B27A9F0E1DA2D2CA10202938298CFB1133D5F9A642F81E6697342263B6ECB621F10000000000032DB85C0E00961D14664ECBDF10CBE4DE7DD71096A4E1A177DB0890B13F0AB85999EB0D715E807BCA0438D3CEAA5C58560D60767F28A9E16326657FBE7FC8414FDE3C54A504").unwrap();
         let _message = BlockHeaderMessage::from_bytes(data).unwrap();
+    }
+
+    #[test]
+    fn test_decode_block_header_message_hash() {
+        let data = hex::decode("00094F1F048D51777EF01C0106A09F747615CC72271A46EA75E097B48C7200CA2F1EAE6617000000005D7F495004C8626895CC82299089F495F7AD8864D1D3B0F364D497F1D175296B5F4A901EC80000001100000001000000000800000000012631B27A9F0E1DA2D2CA10202938298CFB1133D5F9A642F81E6697342263B6ECB621F10000000000032DB85C0E00961D14664ECBDF10CBE4DE7DD71096A4E1A177DB0890B13F0AB85999EB0D715E807BCA0438D3CEAA5C58560D60767F28A9E16326657FBE7FC8414FDE3C54A504").unwrap();
+        let hash = blake2b::digest_256(&data).unwrap();
+        let message = BlockHeaderMessage::from_bytes(data).unwrap();
+        let decode_hash = message.block_header().hash().as_ref().unwrap();
+        assert_eq!(&hash, decode_hash);
+        let encoded = message.as_bytes().unwrap();
+        let encode_hash = blake2b::digest_256(&encoded).unwrap();
+        assert_eq!(hash, encode_hash);
     }
 }
