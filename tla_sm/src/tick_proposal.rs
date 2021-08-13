@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 
 use crate::Proposal;
 
@@ -10,11 +10,15 @@ use crate::Proposal;
 /// some time and want to update time.
 #[derive(Debug, Clone)]
 pub struct TickProposal {
-    pub at: Instant,
+    pub time_passed: Duration,
 }
 
 impl Proposal for TickProposal {
-    fn time(&self) -> Instant {
-        self.at
+    fn time_passed(&self) -> Duration {
+        self.time_passed
+    }
+
+    fn nullify_time_passed(&mut self) {
+        self.time_passed = Duration::new(0, 0);
     }
 }

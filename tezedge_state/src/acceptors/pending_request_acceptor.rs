@@ -16,8 +16,6 @@ where
     /// Handle status update for pending request.
     fn accept(&mut self, proposal: PendingRequestProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
 
@@ -33,7 +31,7 @@ where
                     PendingRequestMsg::StartListeningForNewPeersError { error } => {
                         slog::warn!(&self.log, "Failed to start listening for incoming connections"; "error" => format!("{:?}", error));
                         req.status = RetriableRequestState::Retry {
-                            at: proposal.at + self.config.periodic_react_interval,
+                            at: self.time + self.config.periodic_react_interval,
                         };
                         // self.requests.remove(proposal.req_id);
                     }
@@ -51,7 +49,7 @@ where
                 },
                 PendingRequest::ConnectPeer { peer, .. } => match proposal.message {
                     PendingRequestMsg::ConnectPeerPending => {
-                        req.status = RetriableRequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: self.time };
                     }
                     PendingRequestMsg::ConnectPeerSuccess => {
                         let peer_address = *peer;
@@ -67,7 +65,7 @@ where
                         if let Some(peer) = self.pending_peers.get_mut(&peer_address) {
                             peer.step = HandshakeStep::Connect {
                                 sent_conn_msg,
-                                sent: RequestState::Idle { at: proposal.at },
+                                sent: RequestState::Idle { at: self.time },
                                 received: None,
                             };
                         }
@@ -76,7 +74,7 @@ where
                     PendingRequestMsg::ConnectPeerError => {
                         let peer = *peer;
                         slog::warn!(&self.log, "Disconnecting peer!"; "reason" => "Initiating connection failed!");
-                        self.blacklist_peer(proposal.at, peer);
+                        self.blacklist_peer(peer);
                         self.requests.remove(proposal.req_id);
                     }
                     msg => {
@@ -85,7 +83,7 @@ where
                 },
                 PendingRequest::DisconnectPeer { .. } => match proposal.message {
                     PendingRequestMsg::DisconnectPeerPending => {
-                        req.status = RetriableRequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: self.time };
                     }
                     PendingRequestMsg::DisconnectPeerSuccess => {
                         self.requests.remove(proposal.req_id);
@@ -96,7 +94,7 @@ where
                 },
                 PendingRequest::BlacklistPeer { .. } => match proposal.message {
                     PendingRequestMsg::BlacklistPeerPending => {
-                        req.status = RetriableRequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: self.time };
                     }
                     PendingRequestMsg::BlacklistPeerSuccess => {
                         self.requests.remove(proposal.req_id);
@@ -126,7 +124,7 @@ where
             slog::warn!(&self.log, "Request update received for non-existant request"; "req_id" => proposal.req_id, "message" => format!("{:?}", proposal.message));
         }
 
-        self.adjust_p2p_state(proposal.at, proposal.effects);
-        self.periodic_react(proposal.at, proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

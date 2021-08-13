@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
@@ -198,6 +198,7 @@ impl OneRealNodeCluster {
         let wait_for_events_timeout = proposer_config.wait_for_events_timeout;
         let pow_target = state.config().pow_target;
         let mut proposer = TezedgeProposer::new(
+            initial_time,
             proposer_config,
             DefaultEffects::default(),
             state,
@@ -553,16 +554,15 @@ mod tests {
 
     #[test]
     fn test_can_handshake_incoming() {
-        let initial_time = Instant::now();
         let mut cluster = OneRealNodeCluster::new(
-            initial_time,
+            Instant::now(),
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
                 record: false,
             },
             sample_tezedge_state::build(
-                initial_time,
+                SystemTime::now(),
                 TezedgeConfig {
                     port: 9732,
                     disable_mempool: true,
@@ -597,16 +597,15 @@ mod tests {
 
     #[test]
     fn test_can_handshake_outgoing() {
-        let initial_time = Instant::now();
         let mut cluster = OneRealNodeCluster::new(
-            initial_time,
+            Instant::now(),
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
                 record: false,
             },
             sample_tezedge_state::build(
-                initial_time,
+                SystemTime::now(),
                 TezedgeConfig {
                     port: 9732,
                     disable_mempool: true,

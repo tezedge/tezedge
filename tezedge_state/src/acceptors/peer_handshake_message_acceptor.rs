@@ -16,8 +16,6 @@ where
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerHandshakeMessageProposal<'a, Efs, M>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
 
@@ -32,8 +30,8 @@ where
                 // we add new pending peer with `Initiated` state. So this
                 // can only happen if outside world is out of sync with TezedgeState.
                 slog::warn!(&self.log, "Received decrypted/decoded handshake message proposal from an unknown peer. Should be impossible!");
-                self.disconnect_peer(proposal.at, proposal.peer);
-                return self.periodic_react(proposal.at, proposal.effects);
+                self.disconnect_peer(proposal.peer);
+                return self.periodic_react(proposal.effects);
             }
         };
 
@@ -47,7 +45,7 @@ where
                     &self.identity,
                     &self.shell_compatibility_version,
                     proposal.effects,
-                    proposal.at,
+                    self.time,
                     proposal.message,
                 );
 
@@ -78,13 +76,12 @@ where
                 }
             }
             Metadata { received: None, .. } => {
-                pending_peer.handle_received_meta_message(proposal.at, proposal.message)
+                pending_peer.handle_received_meta_message(self.time, proposal.message)
             }
             Ack {
                 received: false, ..
             } => {
-                let result =
-                    pending_peer.handle_received_ack_message(proposal.at, proposal.message);
+                let result = pending_peer.handle_received_ack_message(self.time, proposal.message);
 
                 match result {
                     Ok(AckMessage::Ack) => {
@@ -98,13 +95,8 @@ where
                             // result will be None if decision was to
                             // nack peer (hence nack_motive is set).
                             if let Some(result) = result {
-                                self.set_peer_connected(
-                                    proposal.at,
-                                    proposal.effects,
-                                    proposal.peer,
-                                    result,
-                                );
-                                self.adjust_p2p_state(proposal.at, proposal.effects);
+                                self.set_peer_connected(proposal.effects, proposal.peer, result);
+                                self.adjust_p2p_state(proposal.effects);
                             } else {
                                 slog::warn!(&self.log, "Blacklisting peer";
                                 "peer_address" => proposal.peer.to_string(),
@@ -112,14 +104,14 @@ where
                                     Some(motive) => motive.to_string(),
                                     None => "[Unknown]".to_string(),
                                 }));
-                                self.blacklist_peer(proposal.at, proposal.peer);
+                                self.blacklist_peer(proposal.peer);
                             }
                         }
                         Ok(())
                     }
                     Ok(AckMessage::NackV0) => {
                         slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received NackV0");
-                        self.blacklist_peer(proposal.at, proposal.peer);
+                        self.blacklist_peer(proposal.peer);
                         Ok(())
                     }
                     Ok(AckMessage::Nack(info)) => {
@@ -136,7 +128,7 @@ where
                             _ => {}
                         }
                         slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received Nack", "motive" => info.motive().to_string());
-                        self.blacklist_peer(proposal.at, proposal.peer);
+                        self.blacklist_peer(proposal.peer);
                         Ok(())
                     }
                     Err(err) => Err(err),
@@ -145,7 +137,7 @@ where
             _ => {
                 slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Unexpected message!");
                 slog::debug!(&self.log, ""; "peer_state" => format!("{:?}", &pending_peer));
-                self.blacklist_peer(proposal.at, proposal.peer);
+                self.blacklist_peer(proposal.peer);
                 Ok(())
             }
         };
@@ -153,24 +145,24 @@ where
         match result {
             Err(HandleReceivedMessageError::ConnectingToMyself) => {
                 slog::warn!(&self.log, "Blacklisting myself"; "peer_address" => proposal.peer.to_string(), "reason" => "Connecting to myself(identities are the same)");
-                self.blacklist_peer(proposal.at, proposal.peer);
+                self.blacklist_peer(proposal.peer);
             }
             Err(HandleReceivedMessageError::BadPow) => {
                 slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Bad Proof of work");
-                self.blacklist_peer(proposal.at, proposal.peer);
+                self.blacklist_peer(proposal.peer);
             }
             Err(HandleReceivedMessageError::BadHandshakeMessage(error)) => {
                 slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Unexpected handshake message", "error" => format!("{:?}", error));
-                self.blacklist_peer(proposal.at, proposal.peer);
+                self.blacklist_peer(proposal.peer);
             }
             Err(HandleReceivedMessageError::UnexpectedState) => {
                 slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Unexpected state!");
-                self.blacklist_peer(proposal.at, proposal.peer);
+                self.blacklist_peer(proposal.peer);
             }
             Ok(()) => {}
         }
 
-        self.adjust_p2p_state(proposal.at, proposal.effects);
-        self.periodic_react(proposal.at, proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

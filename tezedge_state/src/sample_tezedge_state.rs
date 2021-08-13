@@ -4,7 +4,7 @@
 use slog::Drain;
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crate::*;
@@ -93,7 +93,7 @@ pub fn main_chain_id() -> ChainId {
 }
 
 pub fn build<'a, Efs>(
-    initial_time: Instant,
+    initial_time: SystemTime,
     config: TezedgeConfig,
     initial_effects: &'a mut Efs,
 ) -> TezedgeState

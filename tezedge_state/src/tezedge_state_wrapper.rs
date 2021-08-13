@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::time::Instant;
+use std::time::SystemTime;
 
 use tla_sm::{Acceptor, GetRequests};
 
@@ -17,7 +17,7 @@ pub struct TezedgeStateWrapper {
 
 impl TezedgeStateWrapper {
     #[inline]
-    pub fn time(&self) -> Instant {
+    pub fn time(&self) -> SystemTime {
         self.state.time()
     }
 

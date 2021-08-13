@@ -8,11 +8,9 @@ where
 {
     fn accept(&mut self, proposal: TickProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
-            #[cfg(test)]
-            assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
             return;
         }
 
-        self.periodic_react(proposal.at, proposal.effects);
+        self.periodic_react(proposal.effects);
     }
 }

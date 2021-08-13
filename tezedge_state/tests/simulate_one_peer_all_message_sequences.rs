@@ -5,7 +5,7 @@ use itertools::Itertools;
 use quickcheck::{Arbitrary, Gen};
 use std::io;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use crypto::nonce::Nonce;
 use tezedge_state::acceptors::*;
@@ -152,7 +152,6 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
 }
 
 fn try_sequence<Efs: Effects + Clone>(
-    initial_time: Instant,
     state_with_effects: &mut StateWithEffects<Efs>,
     sequence: &[Messages],
     incoming: bool,
@@ -161,20 +160,18 @@ fn try_sequence<Efs: Effects + Clone>(
     let effects = &mut state_with_effects.effects;
 
     let peer = PeerAddress::ipv4_from_index(1);
-    let mut time = initial_time;
 
     for msg in sequence {
-        time += Duration::from_millis(1);
         match msg {
             Messages::Handshake(msg) => state.accept(PeerHandshakeMessageProposal {
                 effects,
-                at: time,
+                time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
                 message: msg.clone(),
             }),
             Messages::Writable(writable) => state.accept(PeerWritableProposal {
                 effects,
-                at: time,
+                time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
                 stream: &mut writable.clone(),
             }),
@@ -182,7 +179,7 @@ fn try_sequence<Efs: Effects + Clone>(
     }
     state.accept(TickProposal {
         effects,
-        at: time + state.config().peer_timeout,
+        time_passed: state.config().peer_timeout,
     });
     state.assert_state();
 
@@ -212,7 +209,6 @@ fn sequence_to_str(seq: &[Messages]) -> String {
 }
 
 fn fork_state_and_init_incoming<Efs: Effects + Clone>(
-    initial_time: Instant,
     effects: &Efs,
     state: &TezedgeState,
     peer_addr: PeerAddress,
@@ -221,7 +217,7 @@ fn fork_state_and_init_incoming<Efs: Effects + Clone>(
     let mut state = state.clone();
     state.accept(NewPeerConnectProposal {
         effects: &mut effects,
-        at: initial_time,
+        time_passed: Duration::new(0, 0),
         peer: peer_addr,
     });
 
@@ -229,7 +225,6 @@ fn fork_state_and_init_incoming<Efs: Effects + Clone>(
 }
 
 fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
-    initial_time: Instant,
     effects: &Efs,
     state: &TezedgeState,
     peer_addr: PeerAddress,
@@ -239,7 +234,7 @@ fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
     let mut state = state.clone();
     state.accept(ExtendPotentialPeersProposal {
         effects: &mut effects,
-        at: initial_time,
+        time_passed: Duration::new(0, 0),
         peers: std::iter::once(peer_addr.into()),
     });
     let mut requests = vec![];
@@ -252,7 +247,7 @@ fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
                 req_found = true;
                 state.accept(PendingRequestProposal {
                     effects: &mut effects,
-                    at: initial_time,
+                    time_passed: Duration::new(0, 0),
                     req_id,
                     message: match success {
                         true => PendingRequestMsg::ConnectPeerSuccess,
@@ -281,7 +276,7 @@ fn simulate_one_peer_all_message_sequences() {
 
     let msgs = build_messages(&mut g, &identity);
 
-    let initial_time = Instant::now();
+    let initial_time = SystemTime::now();
     let mut effects = DefaultEffects::default();
     let tezedge_state = TezedgeState::new(
         slog::Logger::root(slog::Discard, slog::o!()),
@@ -308,12 +303,10 @@ fn simulate_one_peer_all_message_sequences() {
         sample_tezedge_state::main_chain_id(),
     );
 
-    let state_incoming =
-        fork_state_and_init_incoming(initial_time, &effects, &tezedge_state, address);
-    let state_outgoing =
-        fork_state_and_init_outgoing(initial_time, &effects, &tezedge_state, address, true);
+    let state_incoming = fork_state_and_init_incoming(&effects, &tezedge_state, address);
+    let state_outgoing = fork_state_and_init_outgoing(&effects, &tezedge_state, address, true);
     let state_outgoing_failed =
-        fork_state_and_init_outgoing(initial_time, &effects, &tezedge_state, address, false);
+        fork_state_and_init_outgoing(&effects, &tezedge_state, address, false);
 
     for seq_len in 1..=6 {
         println!("trying sequences with length: {}", seq_len);
@@ -321,17 +314,12 @@ fn simulate_one_peer_all_message_sequences() {
         for seq in msgs.clone().into_iter().permutations(seq_len) {
             count += 1;
 
-            if try_sequence(
-                initial_time,
-                &mut state_outgoing_failed.clone(),
-                &seq,
-                false,
-            ) {
+            if try_sequence(&mut state_outgoing_failed.clone(), &seq, false) {
                 panic!("sequence with failed outgoing connection succeeded (shouldn't have!). sequence: {:?}", seq);
             }
 
             let should_fail = should_sequence_fail(&seq, false);
-            let result = try_sequence(initial_time, &mut state_outgoing.clone(), &seq, false);
+            let result = try_sequence(&mut state_outgoing.clone(), &seq, false);
             assert_eq!(
                 result,
                 !should_fail,
@@ -345,7 +333,7 @@ fn simulate_one_peer_all_message_sequences() {
             }
 
             let should_fail = should_sequence_fail(&seq, true);
-            let result = try_sequence(initial_time, &mut state_incoming.clone(), &seq, true);
+            let result = try_sequence(&mut state_incoming.clone(), &seq, true);
             assert_eq!(
                 result,
                 !should_fail,
