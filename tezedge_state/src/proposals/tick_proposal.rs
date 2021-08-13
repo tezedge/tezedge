@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 
 use crate::{EffectsRecorder, Proposal, RecordedEffects};
 use tla_sm::recorders::CloneRecorder;
@@ -14,12 +14,16 @@ use super::MaybeRecordedProposal;
 /// some time and want to update time.
 pub struct TickProposal<'a, Efs> {
     pub effects: &'a mut Efs,
-    pub at: Instant,
+    pub time_passed: Duration,
 }
 
 impl<'a, Efs> Proposal for TickProposal<'a, Efs> {
-    fn time(&self) -> Instant {
-        self.at
+    fn time_passed(&self) -> Duration {
+        self.time_passed
+    }
+
+    fn nullify_time_passed(&mut self) {
+        self.time_passed = Duration::new(0, 0);
     }
 }
 
@@ -40,7 +44,7 @@ impl<'a, Efs> DefaultRecorder for TickProposal<'a, Efs> {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct RecordedTickProposal {
     pub effects: RecordedEffects,
-    pub at: Instant,
+    pub time_passed: Duration,
 }
 
 impl<'a> MaybeRecordedProposal for &'a mut RecordedTickProposal {
@@ -49,35 +53,35 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedTickProposal {
     fn as_proposal(self) -> Self::Proposal {
         Self::Proposal {
             effects: &mut self.effects,
-            at: self.at,
+            time_passed: self.time_passed,
         }
     }
 }
 
 pub struct TickProposalRecorder<'a, Efs> {
     effects: EffectsRecorder<'a, Efs>,
-    at: CloneRecorder<Instant>,
+    time_passed: CloneRecorder<Duration>,
 }
 
 impl<'a, Efs> TickProposalRecorder<'a, Efs> {
     pub fn new(proposal: TickProposal<'a, Efs>) -> Self {
         Self {
             effects: EffectsRecorder::new(proposal.effects),
-            at: proposal.at.default_recorder(),
+            time_passed: proposal.time_passed.default_recorder(),
         }
     }
 
     pub fn record<'b>(&'b mut self) -> TickProposal<'b, EffectsRecorder<'a, Efs>> {
         TickProposal {
             effects: self.effects.record(),
-            at: self.at.record(),
+            time_passed: self.time_passed.record(),
         }
     }
 
     pub fn finish_recording(self) -> RecordedTickProposal {
         RecordedTickProposal {
             effects: self.effects.finish_recording(),
-            at: self.at.finish_recording(),
+            time_passed: self.time_passed.finish_recording(),
         }
     }
 }

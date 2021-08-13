@@ -3,7 +3,7 @@ use getset::{CopyGetters, Getters};
 use slog::Logger;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use crate::chunking::{
     EncryptedMessageWriter, MessageReadBuffer, ReadMessageError, WriteMessageError,
@@ -40,7 +40,7 @@ pub struct ConnectedPeer {
     pub private_node: bool,
 
     // #[get_copy = "pub"]
-    pub connected_since: Instant,
+    pub connected_since: SystemTime,
 
     read_buf: MessageReadBuffer,
 
@@ -99,7 +99,7 @@ impl ConnectedPeer {
 #[derive(Debug, Clone)]
 pub struct ConnectedPeers {
     log: Logger,
-    last_quota_reset: Option<Instant>,
+    last_quota_reset: Option<SystemTime>,
     quota_reset_interval: Duration,
     peers: HashMap<PeerAddress, ConnectedPeer>,
 }
@@ -184,7 +184,7 @@ impl ConnectedPeers {
 
     pub(crate) fn set_peer_connected(
         &mut self,
-        at: Instant,
+        at: SystemTime,
         peer_address: PeerAddress,
         result: HandshakeResult,
     ) -> &mut ConnectedPeer {
@@ -211,9 +211,13 @@ impl ConnectedPeers {
             })
     }
 
-    pub(crate) fn periodic_react(&mut self, at: Instant) {
+    pub(crate) fn periodic_react(&mut self, at: SystemTime) {
         let last_quota_reset = *self.last_quota_reset.get_or_insert(at);
-        if at.duration_since(last_quota_reset) >= self.quota_reset_interval {
+        let quota_reset_interval_passed = at
+            .duration_since(last_quota_reset)
+            .map(|passed| passed >= self.quota_reset_interval)
+            .unwrap_or(false);
+        if quota_reset_interval_passed {
             for (_, peer) in self.peers.iter_mut() {
                 peer.quota.reset_all();
             }
