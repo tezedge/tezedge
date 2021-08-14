@@ -22,7 +22,7 @@ use tezos_new_context::IndexApi;
 use tezos_new_context::{ContextKeyOwned, ContextValue, StringTreeEntry};
 
 use crate::protocol::*;
-use crate::runner::{ProtocolRunner, ProtocolRunnerError};
+use crate::runner::{ExecutableProtocolRunner, ProtocolRunnerError};
 use crate::ProtocolEndpointConfiguration;
 
 lazy_static! {
@@ -432,6 +432,18 @@ pub enum ProtocolServiceError {
     ContextIpcServerError { message: String },
 }
 
+impl ProtocolServiceError {
+    /// Checks if this is an IPC error produced by sequence of timeouts
+    pub fn is_ipc_timeout_chain(&self) -> bool {
+        matches!(
+            self,
+            Self::IpcError {
+                reason: IpcError::DiscardMessageTimeout,
+            }
+        )
+    }
+}
+
 impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
     fn from(source: std::sync::PoisonError<T>) -> Self {
         Self::LockPoisonError {
@@ -514,7 +526,11 @@ impl IpcCmdServer {
             .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
 
         Ok(ProtocolController {
-            io: RefCell::new(IpcIO { rx, tx }),
+            io: RefCell::new(IpcIO {
+                rx,
+                tx,
+                communication_balance: 0,
+            }),
             configuration: self.1.clone(),
             shutting_down: false,
         })
@@ -524,6 +540,62 @@ impl IpcCmdServer {
 struct IpcIO {
     rx: IpcReceiver<NodeMessage>,
     tx: IpcSender<ProtocolMessage>,
+    /// To keep track of sent/received messages.
+    /// When sending a message this must be 0, otherwise there are outstanding recvs.
+    /// When a message is sent, the balance is increased by 1, and when a message is
+    /// received it is decreased by 1.
+    communication_balance: i32,
+}
+
+impl IpcIO {
+    pub fn send(&mut self, value: &ProtocolMessage) -> Result<(), ipc::IpcError> {
+        // Don't send anything until pending messages have been discarded
+        self.discard_pending_messages(
+            Some(ProtocolController::DISCARD_UNRECEIVED_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )?;
+        self.tx.send(value)?;
+        self.communication_balance += 1;
+        Ok(())
+    }
+
+    pub fn send_without_discard(&mut self, value: &ProtocolMessage) -> Result<(), ipc::IpcError> {
+        self.tx.send(value)?;
+        self.communication_balance += 1;
+        Ok(())
+    }
+
+    pub fn try_receive(
+        &mut self,
+        read_timeout: Option<Duration>,
+        reset_read_timeout: Option<Duration>,
+    ) -> Result<NodeMessage, ipc::IpcError> {
+        let result = self.rx.try_receive(read_timeout, reset_read_timeout)?;
+        self.communication_balance -= 1;
+        Ok(result)
+    }
+
+    /// Discard any pending message from cancelled requests
+    /// If `read_timeout` is reached, this will fail, and this runner should be shut down.
+    fn discard_pending_messages(
+        &mut self,
+        read_timeout: Option<Duration>,
+        reset_read_timeout: Option<Duration>,
+    ) -> Result<(), ipc::IpcError> {
+        while self.communication_balance > 1 {
+            // If there is another timeout, bailout, because we are probably stuck.
+            // Otherwise keep discarding
+            match self.rx.try_receive(read_timeout, reset_read_timeout) {
+                Err(IpcError::ReceiveMessageTimeout) => {
+                    return Err(IpcError::DiscardMessageTimeout)
+                }
+                Err(_) => (),
+                Ok(_) => (),
+            };
+            self.communication_balance -= 1;
+        }
+        Ok(())
+    }
 }
 
 /// Encapsulate IPC communication.
@@ -545,9 +617,11 @@ impl ProtocolController {
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
     const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
+    const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Duration::from_secs(600);
     const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
     const JSON_ENCODE_DATA_TIMEOUT: Duration = Duration::from_secs(30);
     const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Duration::from_secs(15);
+    const DISCARD_UNRECEIVED_TIMEOUT: Duration = Duration::from_secs(5);
 
     /// Apply block
     pub fn apply_block(
@@ -555,10 +629,10 @@ impl ProtocolController {
         request: ApplyBlockRequest,
     ) -> Result<ApplyBlockResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ApplyBlockCall(request))?;
+        io.send(&ProtocolMessage::ApplyBlockCall(request))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::APPLY_BLOCK_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -577,14 +651,13 @@ impl ProtocolController {
         protocol_data: RustBytes,
     ) -> Result<(), ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::AssertEncodingForProtocolDataCall(
-                protocol_hash,
-                protocol_data,
-            ))?;
+        io.send(&ProtocolMessage::AssertEncodingForProtocolDataCall(
+            protocol_hash,
+            protocol_data,
+        ))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -603,11 +676,10 @@ impl ProtocolController {
         request: BeginApplicationRequest,
     ) -> Result<BeginApplicationResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::BeginApplicationCall(request))?;
+        io.send(&ProtocolMessage::BeginApplicationCall(request))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::BEGIN_APPLICATION_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -626,11 +698,10 @@ impl ProtocolController {
         request: BeginConstructionRequest,
     ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::BeginConstructionCall(request))?;
+        io.send(&ProtocolMessage::BeginConstructionCall(request))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -649,11 +720,10 @@ impl ProtocolController {
         request: ValidateOperationRequest,
     ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::ValidateOperationCall(request))?;
+        io.send(&ProtocolMessage::ValidateOperationCall(request))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::VALIDATE_OPERATION_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -672,10 +742,10 @@ impl ProtocolController {
         request: ComputePathRequest,
     ) -> Result<ComputePathResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ComputePathCall(request))?;
+        io.send(&ProtocolMessage::ComputePathCall(request))?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::COMPUTE_PATH_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -697,17 +767,16 @@ impl ProtocolController {
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::JsonEncodeApplyBlockResultMetadata {
-                context_hash,
-                max_operations_ttl,
-                metadata_bytes,
-                protocol_hash,
-                next_protocol_hash,
-            })?;
+        io.send(&ProtocolMessage::JsonEncodeApplyBlockResultMetadata {
+            context_hash,
+            max_operations_ttl,
+            metadata_bytes,
+            protocol_hash,
+            next_protocol_hash,
+        })?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::JSON_ENCODE_DATA_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -735,17 +804,16 @@ impl ProtocolController {
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata {
-                chain_id,
-                operations,
-                operations_metadata_bytes,
-                protocol_hash,
-                next_protocol_hash,
-            })?;
+        io.send(&ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata {
+            chain_id,
+            operations,
+            operations_metadata_bytes,
+            protocol_hash,
+            next_protocol_hash,
+        })?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::JSON_ENCODE_DATA_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -769,11 +837,11 @@ impl ProtocolController {
         msg: ProtocolMessage,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&msg)?;
+        io.send(&msg)?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
-            Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
+        match io.try_receive(
+            Some(Self::CALL_PROTOCOL_HEAVY_RPC_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::RpcResponse(result) => result.map_err(|err| {
@@ -806,10 +874,10 @@ impl ProtocolController {
         msg: ProtocolMessage,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&msg)?;
+        io.send(&msg)?;
 
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -844,10 +912,9 @@ impl ProtocolController {
         settings: TezosRuntimeConfiguration,
     ) -> Result<(), ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx
-            .send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
+        io.send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
 
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -892,7 +959,7 @@ impl ProtocolController {
 
         // call init
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::InitProtocolContextCall(
+        io.send(&ProtocolMessage::InitProtocolContextCall(
             InitProtocolContextParams {
                 storage,
                 genesis: tezos_environment.genesis.clone(),
@@ -914,7 +981,7 @@ impl ProtocolController {
 
         // wait for response
         // this might take a while, so we will use unusually long timeout
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -955,9 +1022,15 @@ impl ProtocolController {
         self.shutting_down = true;
 
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ShutdownCall)?;
 
-        match io.rx.try_receive(
+        // For shutdown messages we don't care if there are pending reads
+        io.send_without_discard(&ProtocolMessage::ShutdownCall)?;
+        io.discard_pending_messages(
+            Some(ProtocolController::DISCARD_UNRECEIVED_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )?;
+
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -1010,13 +1083,13 @@ impl ProtocolController {
     ///
     /// Must be called after the writable context has been initialized.
     pub fn init_context_ipc_server(&self) -> Result<(), ProtocolServiceError> {
-        if let Some(_) = self.configuration.storage.get_ipc_socket_path() {
+        if self.configuration.storage.get_ipc_socket_path().is_some() {
             let mut io = self.io.borrow_mut();
-            io.tx.send(&ProtocolMessage::InitProtocolContextIpcServer(
+            io.send(&ProtocolMessage::InitProtocolContextIpcServer(
                 self.configuration.storage.clone(),
             ))?;
 
-            match io.rx.try_receive(
+            match io.try_receive(
                 Some(IpcCmdServer::IO_TIMEOUT),
                 Some(IpcCmdServer::IO_TIMEOUT),
             )? {
@@ -1052,7 +1125,7 @@ impl ProtocolController {
         })?;
 
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::GenesisResultDataCall(
+        io.send(&ProtocolMessage::GenesisResultDataCall(
             GenesisResultDataParams {
                 genesis_context_hash: genesis_context_hash.clone(),
                 chain_id: main_chain_id,
@@ -1066,7 +1139,7 @@ impl ProtocolController {
             },
         ))?;
 
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -1085,14 +1158,14 @@ impl ProtocolController {
         key: ContextKeyOwned,
     ) -> Result<Option<ContextValue>, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ContextGetKeyFromHistory(
+        io.send(&ProtocolMessage::ContextGetKeyFromHistory(
             ContextGetKeyFromHistoryRequest {
                 context_hash: context_hash.clone(),
                 key,
             },
         ))?;
 
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -1110,14 +1183,14 @@ impl ProtocolController {
         prefix: ContextKeyOwned,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ContextGetKeyValuesByPrefix(
+        io.send(&ProtocolMessage::ContextGetKeyValuesByPrefix(
             ContextGetKeyValuesByPrefixRequest {
                 context_hash: context_hash.clone(),
                 prefix,
             },
         ))?;
 
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -1137,7 +1210,7 @@ impl ProtocolController {
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ContextGetTreeByPrefix(
+        io.send(&ProtocolMessage::ContextGetTreeByPrefix(
             ContextGetTreeByPrefixRequest {
                 context_hash: context_hash.clone(),
                 prefix,
@@ -1145,7 +1218,7 @@ impl ProtocolController {
             },
         ))?;
 
-        match io.rx.try_receive(
+        match io.try_receive(
             Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
@@ -1169,24 +1242,24 @@ impl Drop for ProtocolController {
 }
 
 /// Endpoint consists of a protocol runner and IPC communication (command and event channels).
-pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
-    runner: Runner,
+pub struct ProtocolRunnerEndpoint {
+    runner: ExecutableProtocolRunner,
     log: Logger,
 
     pub commands: IpcCmdServer,
 }
 
-impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
+impl ProtocolRunnerEndpoint {
     pub fn try_new(
         endpoint_name: &str,
         configuration: ProtocolEndpointConfiguration,
         tokio_runtime: tokio::runtime::Handle,
         log: Logger,
-    ) -> Result<ProtocolRunnerEndpoint<Runner>, IpcError> {
+    ) -> Result<ProtocolRunnerEndpoint, IpcError> {
         let cmd_server = IpcCmdServer::try_new(configuration.clone())?;
 
         Ok(ProtocolRunnerEndpoint {
-            runner: Runner::new(
+            runner: ExecutableProtocolRunner::new(
                 configuration,
                 cmd_server.0.client().path(),
                 endpoint_name.to_string(),
@@ -1198,7 +1271,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     }
 
     /// Starts protocol runner sub-process just once and you can take care of it
-    pub fn start(&self) -> Result<Runner::Subprocess, ProtocolRunnerError> {
+    pub fn start(&self) -> Result<tokio::process::Child, ProtocolRunnerError> {
         debug!(self.log, "Starting protocol runner process");
         self.runner.spawn(self.log.clone())
     }

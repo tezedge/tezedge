@@ -55,6 +55,90 @@ pub struct ExecutableProtocolRunner {
 }
 
 impl ExecutableProtocolRunner {
+    pub const PROCESS_TERMINATE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
+
+    pub fn new(
+        configuration: ProtocolEndpointConfiguration,
+        sock_cmd_path: &Path,
+        endpoint_name: String,
+        tokio_runtime: tokio::runtime::Handle,
+    ) -> Self {
+        let ProtocolEndpointConfiguration {
+            executable_path,
+            log_level,
+            ..
+        } = configuration;
+        ExecutableProtocolRunner {
+            sock_cmd_path: sock_cmd_path.to_path_buf(),
+            executable_path,
+            endpoint_name,
+            tokio_runtime,
+            log_level,
+        }
+    }
+
+    pub fn spawn(&self, log: Logger) -> Result<tokio::process::Child, ProtocolRunnerError> {
+        let _guard = self.tokio_runtime.enter();
+        let mut process = Command::new(&self.executable_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .arg("--sock-cmd")
+            .arg(&self.sock_cmd_path)
+            .arg("--endpoint")
+            .arg(&self.endpoint_name)
+            .arg("--log-level")
+            .arg(&self.log_level.as_str().to_lowercase())
+            .spawn()
+            .map_err(|err| ProtocolRunnerError::SpawnError { reason: err })?;
+
+        self.log_subprocess_output(&mut process, log.clone());
+
+        Ok(process)
+    }
+
+    /// Give [`wait_timeout`] time to stop process, and after that if tries to terminate/kill it
+    pub async fn wait_and_terminate_ref(
+        process: &mut tokio::process::Child,
+        wait_timeout: Duration,
+        log: &Logger,
+    ) -> Result<(), ProtocolRunnerError> {
+        match tokio::time::timeout(wait_timeout, process.wait()).await {
+            Ok(Ok(exit_status)) => {
+                if exit_status.success() {
+                    info!(log, "Exited successfuly");
+                } else {
+                    warn!(log, "Exited with status code: {}", exit_status);
+                }
+                Ok(())
+            }
+            Ok(Err(err)) => Self::terminate_or_kill(process, format!("{:?}", err)).await,
+            Err(_) => Self::terminate_or_kill(process, "wait timeout exceeded".to_string()).await,
+        }
+    }
+
+    /// Checks if process is running
+    pub fn is_running(process: &mut tokio::process::Child) -> bool {
+        matches!(process.try_wait(), Ok(None))
+    }
+
+    /// Logs exit status
+    pub fn log_exit_status(process: &mut tokio::process::Child, log: &Logger) {
+        match process.try_wait() {
+            Ok(None) => (),
+            Ok(Some(status)) => {
+                if status.success() {
+                    info!(log, "protocol-runner was closed normally");
+                } else {
+                    warn!(log, "protocol-runner exited with status code: {}", status);
+                }
+            }
+            Err(err) => warn!(
+                log,
+                "failed to obtain protocol-runner exit status code: {:?}", err
+            ),
+        }
+    }
+
     /// Send SIGINT signal to the sub-process, which is cheking for this ctrl-c signal and shuts down gracefully if recieved
     async fn terminate_or_kill(
         process: &mut Child,
@@ -120,121 +204,4 @@ impl ExecutableProtocolRunner {
         handle_output!("OCaml-out", "STDOUT", process.stdout, log.clone());
         handle_output!("OCaml-err", "STDERR", process.stderr, log.clone());
     }
-}
-
-impl ProtocolRunner for ExecutableProtocolRunner {
-    type Subprocess = Child;
-    const PROCESS_TERMINATE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
-
-    fn new(
-        configuration: ProtocolEndpointConfiguration,
-        sock_cmd_path: &Path,
-        endpoint_name: String,
-        tokio_runtime: tokio::runtime::Handle,
-    ) -> Self {
-        let ProtocolEndpointConfiguration {
-            executable_path,
-            log_level,
-            ..
-        } = configuration;
-        ExecutableProtocolRunner {
-            sock_cmd_path: sock_cmd_path.to_path_buf(),
-            executable_path,
-            endpoint_name,
-            tokio_runtime,
-            log_level,
-        }
-    }
-
-    fn spawn(&self, log: Logger) -> Result<Self::Subprocess, ProtocolRunnerError> {
-        let _guard = self.tokio_runtime.enter();
-        let mut process = Command::new(&self.executable_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .arg("--sock-cmd")
-            .arg(&self.sock_cmd_path)
-            .arg("--endpoint")
-            .arg(&self.endpoint_name)
-            .arg("--log-level")
-            .arg(&self.log_level.as_str().to_lowercase())
-            .spawn()
-            .map_err(|err| ProtocolRunnerError::SpawnError { reason: err })?;
-
-        self.log_subprocess_output(&mut process, log.clone());
-
-        Ok(process)
-    }
-
-    fn wait_and_terminate_ref(
-        tokio_runtime: tokio::runtime::Handle,
-        process: &mut Self::Subprocess,
-        wait_timeout: Duration,
-        log: &Logger,
-    ) -> Result<(), ProtocolRunnerError> {
-        tokio_runtime.block_on(async move {
-            match tokio::time::timeout(wait_timeout, process.wait()).await {
-                Ok(Ok(exit_status)) => {
-                    if exit_status.success() {
-                        info!(log, "Exited successfuly");
-                    } else {
-                        warn!(log, "Exited with status code: {}", exit_status);
-                    }
-                    Ok(())
-                }
-                Ok(Err(err)) => Self::terminate_or_kill(process, format!("{:?}", err)).await,
-                Err(_) => {
-                    Self::terminate_or_kill(process, "wait timeout exceeded".to_string()).await
-                }
-            }
-        })
-    }
-
-    fn is_running(process: &mut Self::Subprocess) -> bool {
-        matches!(process.try_wait(), Ok(None))
-    }
-
-    fn log_exit_status(process: &mut Self::Subprocess, log: &Logger) {
-        match process.try_wait() {
-            Ok(None) => (),
-            Ok(Some(status)) => {
-                if status.success() {
-                    info!(log, "protocol-runner was closed normally");
-                } else {
-                    warn!(log, "protocol-runner exited with status code: {}", status);
-                }
-            }
-            Err(err) => warn!(
-                log,
-                "failed to obtain protocol-runner exit status code: {:?}", err
-            ),
-        }
-    }
-}
-
-pub trait ProtocolRunner: Clone + Send + Sync {
-    type Subprocess: Send;
-    const PROCESS_TERMINATE_WAIT_TIMEOUT: Duration;
-
-    fn new(
-        configuration: ProtocolEndpointConfiguration,
-        sock_cmd_path: &Path,
-        endpoint_name: String,
-        tokio_runtime: tokio::runtime::Handle,
-    ) -> Self;
-
-    fn spawn(&self, log: Logger) -> Result<Self::Subprocess, ProtocolRunnerError>;
-
-    /// Give [`wait_timeout`] time to stop process, and after that if tries to terminate/kill it
-    fn wait_and_terminate_ref(
-        tokio_runtime: tokio::runtime::Handle,
-        process: &mut Self::Subprocess,
-        wait_timeout: Duration,
-        log: &Logger,
-    ) -> Result<(), ProtocolRunnerError>;
-
-    /// Checks if process is running
-    fn is_running(process: &mut Self::Subprocess) -> bool;
-
-    /// Logs exit status
-    fn log_exit_status(process: &mut Self::Subprocess, log: &Logger);
 }

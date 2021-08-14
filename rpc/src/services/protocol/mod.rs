@@ -495,17 +495,26 @@ pub(crate) fn call_protocol_rpc_with_cache(
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<(u16, String)>, RpcCallError> {
-    let request =
-        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env)?;
 
-    // TODO: retry?
-    let response = env
-        .tezos_readonly_api()
-        .pool
-        .get()?
-        .api
-        .call_protocol_rpc(request)?;
+    let controller = env.tezos_readonly_api().pool.get()?;
+    let result = controller.api.call_protocol_rpc(request);
 
+    // The protocol runner is considerable to be in an broken state
+    // if we get a timeout in a second call after which we got a timeout
+    // already. In that case we shut that protocol runner down.
+    let broken_protocol_runner = match &result {
+        Ok(_) => false,
+        Err(error) => error.is_ipc_timeout_chain(),
+    };
+
+    if broken_protocol_runner {
+        controller.set_release_on_return_to_pool();
+    }
+
+    // TODO: retry on other errors?
+
+    let response = result?;
     let status_code = response.status_code();
     let body = response.body_json_string_or_empty();
 
@@ -545,7 +554,7 @@ pub(crate) fn call_protocol_rpc(
                 chain_id,
                 block_hash,
                 rpc_request,
-                &env,
+                env,
             ) {
                 Ok(response) => response,
                 Err(RpcCallError::ErrorResponse(failure)) => {
@@ -590,7 +599,7 @@ pub(crate) fn preapply_operations(
     env: &RpcServiceEnvironment,
 ) -> Result<serde_json::value::Value, RpcServiceError> {
     let request =
-        match create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env) {
+        match create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env) {
             Ok(response) => response,
             Err(RpcCallError::ErrorResponse(failure)) => {
                 return Err(RpcServiceError::UnexpectedError {
@@ -764,6 +773,7 @@ impl From<FromBytesError> for ContextParamsError {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<RpcServiceError> for ContextParamsError {
     fn into(self) -> RpcServiceError {
         match self {
@@ -816,7 +826,7 @@ pub(crate) fn get_context_protocol_params(
         let context_hash = block_header.header.context();
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("protocol"))?
+            context.get_key_from_history(context_hash, context_key_owned!("protocol"))?
         {
             protocol_hash = ProtocolHash::try_from(data)?;
         } else {
@@ -826,7 +836,7 @@ pub(crate) fn get_context_protocol_params(
         }
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("data/v1/constants"))?
+            context.get_key_from_history(context_hash, context_key_owned!("data/v1/constants"))?
         {
             constants = data;
         } else {

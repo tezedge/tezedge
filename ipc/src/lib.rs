@@ -38,7 +38,9 @@ pub enum IpcError {
     #[fail(display = "Accept connection timed out, timout: {:?}", timeout)]
     AcceptTimeout { timeout: Duration },
     #[fail(display = "Receive message timed out - handle WouldBlock scenario if needed")]
-    ReceiveMessageTimeouted,
+    ReceiveMessageTimeout,
+    #[fail(display = "Discard message timed out")]
+    DiscardMessageTimeout,
     #[fail(display = "Connection error: {}", reason)]
     ConnectionError { reason: io::Error },
     #[fail(display = "Serialization error: {}", reason)]
@@ -125,7 +127,7 @@ where
     R: for<'de> Deserialize<'de>,
 {
     /// Try to receive message with read_timeout,
-    /// In case of timeout, can be IpcError::ReceiveMessageTimeouted handled
+    /// In case of timeout, can be IpcError::ReceiveMessageTimeout handled
     ///
     /// `read_timeout` - set read timeout before receive
     /// `reset_read_timeout` - set read timeout after receive
@@ -147,7 +149,7 @@ where
         let mut msg_len_buf = [0; 8];
         self.0.read_exact(&mut msg_len_buf).map_err(|err| {
             if err.kind() == io::ErrorKind::WouldBlock {
-                IpcError::ReceiveMessageTimeouted
+                IpcError::ReceiveMessageTimeout
             } else {
                 IpcError::ReceiveMessageLengthError { reason: err }
             }
