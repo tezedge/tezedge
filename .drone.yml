@@ -6550,7 +6550,7 @@ steps:
       - name: tools
         path: /tools
     environment:
-      TROTTLING_QUOTA_DISABLE: false
+      THROTTLING_QUOTA_DISABLE: true
     commands:
       # let octez node to be up and running
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
@@ -6594,7 +6594,7 @@ steps:
       - name: tools
         path: /tools
     environment:
-      TROTTLING_QUOTA_DISABLE: false
+      THROTTLING_QUOTA_DISABLE: true
     commands:
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
       - rm -rf ./tezos-node-data ./light-node-data
