@@ -560,6 +560,10 @@ impl TezedgeState {
 
         let peers = effects.choose_peers_to_connect_to(&self.potential_peers, len);
 
+        if peers.len() == 0 {
+            return;
+        }
+
         for peer in peers {
             self.potential_peers.remove(&peer);
             self.pending_peers.insert(PendingPeer::new(
