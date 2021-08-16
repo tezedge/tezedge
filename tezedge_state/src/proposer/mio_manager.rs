@@ -1,6 +1,6 @@
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use slab::Slab;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -105,7 +105,7 @@ pub struct MioManager {
     waker: Arc<mio::Waker>,
     server: Option<TcpListener>,
 
-    address_to_token: HashMap<PeerAddress, usize>,
+    address_to_token: BTreeMap<PeerAddress, usize>,
     peers: Slab<NetPeer>,
 }
 
@@ -123,7 +123,7 @@ impl MioManager {
             poll,
             waker,
             server: None,
-            address_to_token: HashMap::new(),
+            address_to_token: BTreeMap::new(),
             peers: Slab::new(),
         }
     }

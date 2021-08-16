@@ -1,7 +1,7 @@
 use crypto::crypto_box::PublicKey;
 use getset::{CopyGetters, Getters};
 use slog::Logger;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
 use std::time::{Duration, SystemTime};
 
@@ -101,16 +101,17 @@ pub struct ConnectedPeers {
     log: Logger,
     last_quota_reset: Option<SystemTime>,
     quota_reset_interval: Duration,
-    peers: HashMap<PeerAddress, ConnectedPeer>,
+    peers: BTreeMap<PeerAddress, ConnectedPeer>,
 }
 
 impl ConnectedPeers {
     #[inline]
     pub fn new(log: Logger, capacity: Option<usize>, quota_reset_interval: Duration) -> Self {
         let peers = if let Some(capacity) = capacity {
-            HashMap::with_capacity(capacity)
+            // BTreeMap doesn't have `with_capcity` method.
+            BTreeMap::new()
         } else {
-            HashMap::new()
+            BTreeMap::new()
         };
         Self {
             log,
