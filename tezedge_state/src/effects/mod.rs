@@ -1,5 +1,5 @@
 use rand::{prelude::IteratorRandom, rngs::ThreadRng, Rng};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 
 use crypto::nonce::Nonce;
@@ -15,18 +15,18 @@ pub trait Effects: Debug {
 
     fn choose_peers_to_connect_to(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
         choice_len: usize,
     ) -> Vec<PeerListenerAddress>;
 
     fn choose_potential_peers_for_advertise(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress>;
 
     fn choose_potential_peers_for_nack(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress>;
 }
 
@@ -44,7 +44,7 @@ where
 
     fn choose_peers_to_connect_to(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
         choice_len: usize,
     ) -> Vec<PeerListenerAddress> {
         if choice_len == 0 {
@@ -63,7 +63,7 @@ where
 
     fn choose_potential_peers_for_advertise(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         let len = self.gen_range(1, 80.min(potential_peers.len()).max(2));
         if len >= potential_peers.len() {
@@ -75,7 +75,7 @@ where
 
     fn choose_potential_peers_for_nack(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         self.choose_potential_peers_for_advertise(potential_peers)
     }
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_choose_potential_peers_panics() {
         for n in 0..100 {
-            let mut p = HashSet::new();
+            let mut p = BTreeSet::new();
             for i in 0..n {
                 p.insert(PeerAddress::ipv4_from_index(i).as_listener_address());
             }

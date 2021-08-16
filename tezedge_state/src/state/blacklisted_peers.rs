@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 
@@ -23,13 +23,13 @@ impl BlacklistedPeer {
 
 #[derive(Debug, Clone)]
 pub struct BlacklistedPeers {
-    ips: HashMap<IpAddr, BlacklistedPeer>,
+    ips: BTreeMap<IpAddr, BlacklistedPeer>,
 }
 
 impl BlacklistedPeers {
     pub fn new() -> Self {
         Self {
-            ips: HashMap::new(),
+            ips: BTreeMap::new(),
         }
     }
 
