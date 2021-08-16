@@ -3,6 +3,7 @@
 
 use std::cell::Cell;
 use std::fmt::Formatter;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{error, fmt};
@@ -46,8 +47,20 @@ impl fmt::Display for PoolError {
 
 /// Will terminate the subprocess in an asynchronous manner without blocking
 /// Returns immediately, doesn't mean that the process has already stopped.
-fn terminate_subprocess_without_blocking(mut subprocess: tokio::process::Child, log: Logger) {
-    tokio::task::spawn(async move {
+fn terminate_subprocess_without_blocking(
+    tokio_runtime: &tokio::runtime::Handle,
+    subprocess: tokio::process::Child,
+    log: Logger,
+) {
+    let _enter = tokio_runtime.enter();
+    tokio::task::spawn(terminate_subprocess_task(subprocess, log));
+}
+
+fn terminate_subprocess_task(
+    mut subprocess: tokio::process::Child,
+    log: Logger,
+) -> impl Future<Output = ()> {
+    async move {
         if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
             &mut subprocess,
             ExecutableProtocolRunner::PROCESS_TERMINATE_WAIT_TIMEOUT,
@@ -57,7 +70,7 @@ fn terminate_subprocess_without_blocking(mut subprocess: tokio::process::Child, 
         {
             warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
         }
-    });
+    }
 }
 
 /// Protocol runner sub-process wrapper which acts as connection
@@ -66,6 +79,7 @@ pub struct ProtocolRunnerConnection {
     subprocess: Option<tokio::process::Child>,
     log: Logger,
     pub name: String,
+    tokio_runtime: tokio::runtime::Handle,
 
     /// Indicates that we want to release this connection on return to pool (used for gracefull shutdown)
     release_on_return_to_pool: Cell<bool>,
@@ -97,7 +111,11 @@ impl ProtocolRunnerConnection {
 
         // try terminate sub-process (if running)
         if let Some(subprocess) = std::mem::take(&mut self.subprocess) {
-            terminate_subprocess_without_blocking(subprocess, self.log.clone());
+            terminate_subprocess_without_blocking(
+                &self.tokio_runtime,
+                subprocess,
+                self.log.clone(),
+            );
         }
     }
 
@@ -191,7 +209,11 @@ impl ProtocolRunnerManager {
             Err(e) => {
                 error!(self.log, "Failed to accept IPC connection on sub-process (so terminate sub-process)"; "endpoint" => endpoint_name, "reason" => format!("{:?}", &e));
                 // try terminate sub-process (if running)
-                terminate_subprocess_without_blocking(subprocess, self.log.clone());
+                terminate_subprocess_without_blocking(
+                    &self.tokio_runtime,
+                    subprocess,
+                    self.log.clone(),
+                );
                 return Err(PoolError::IpcError {
                     reason: "fail to accept IPC for sub-process".to_string(),
                     error: e,
@@ -205,6 +227,7 @@ impl ProtocolRunnerManager {
             subprocess: Some(subprocess),
             log: self.log.new(o!("endpoint" => endpoint_name.clone())),
             name: endpoint_name,
+            tokio_runtime: self.tokio_runtime.clone(),
             release_on_return_to_pool: Cell::new(false),
         })
     }
