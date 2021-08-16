@@ -52,9 +52,9 @@ workspace:
   path: /drone/src
 
 environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
-  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  BUILD_ARTIFACTS_PATH: /ci-share/build-files/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /ci-share/build-files/build_${DRONE_BUILD_NUMBER}/test_files
+  SANDBOX_ARTIFACTS_PATH: /ci-share/build-files/build_${DRONE_BUILD_NUMBER}/sandbox_files
 
 steps:
 
@@ -63,12 +63,8 @@ steps:
   pull: if-not-exists
   user: root
   volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
+    - name: ci-share
+      path: /ci-share
   environment:
     RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
@@ -83,12 +79,13 @@ steps:
     - cargo build --release --workspace
     - cargo test --release --workspace --no-run
     # collect binary artefacts
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/identities
-    - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - mkdir -p $${TEST_ARTIFACTS_PATH}/tests
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/ffi
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/tezedge
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/identities
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/resources
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/tests
     - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
+    - mkdir -p $${TEST_ARTIFACTS_PATH}/resources
     # copy binaries
     - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
@@ -119,15 +116,15 @@ steps:
     - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config $${BUILD_ARTIFACTS_PATH}/build_files/tezedge/
     # copy test binaries
-    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test
-    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test
-    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test
-    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/p2p_test
+    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/rpc_integration_test
+    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/shell_chain_test
+    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/protocol_runner_test
+    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/p2p_test
     # copy test resources
-    - cp ./shell/tests/resources/apply_block_request_until_1326.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - cp ./shell/tests/resources/apply_block_request_until_1326.zip $${TEST_ARTIFACTS_PATH}/resources
+    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/resources
+    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/resources
+    - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/resources
     # collect modified python tests stuff
     - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/daemons
     - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/launchers
@@ -139,46 +136,41 @@ steps:
     - chown -R 1000:1000 $${TEST_ARTIFACTS_PATH}
     - chown -R 1000:1000 $${SANDBOX_ARTIFACTS_PATH}
 
-- name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-  commands:
-    # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
-    - chmod 600 /home/appuser/.ssh/id_rsa
-    - ls -la /home/appuser/.ssh
-    # copy build files to all other runner machines
-    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
-    - ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+# - name: synch-artifacts
+#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: tests
+#       path: /tests
+#     - name: ids
+#       path: /home/appuser/.ssh
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#   commands:
+#     # Modify permissions for ssh key
+#     - chown appuser /home/appuser/.ssh/id_rsa
+#     - chown appuser /home/appuser/.ssh
+#     - chmod 600 /home/appuser/.ssh/id_rsa
+#     - ls -la /home/appuser/.ssh
+#     # copy build files to all other runner machines
+#     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+#     - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+#     - ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
 
 volumes:
-  - name: build
+  - name: ci-share
     host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: tests
-    host:
-      path: /usr/local/etc/tezedge-ci/tests/
-  - name: ids
-    host:
-      path: /usr/local/etc/tezedge-ci/id
+      path: /mnt/ci-share
+
 
 trigger:
   branch:
@@ -199,7 +191,7 @@ workspace:
   path: /drone/src
 
 environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BUILD_ARTIFACTS_PATH: /ci-share/build-files/build_${DRONE_BUILD_NUMBER}
 
 steps:
 
@@ -207,12 +199,8 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
+    - name: ci-share
+      path: /ci-share
   environment:
     RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
@@ -224,49 +212,46 @@ steps:
     - git reset --hard origin/${DRONE_TARGET_BRANCH}
     - cargo clean && cargo build --release -p light-node -p sandbox -p protocol-runner
     # copy old binaries
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
-    - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files/old
-    - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files/old
-    - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/old
-    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/old/ffi
+    - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/old
+    - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/old
+    - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/old
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/old/ffi
     - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
-- name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-  commands:
-    # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
-    - chmod 600 /home/appuser/.ssh/id_rsa
-    - ls -la /home/appuser/.ssh
-    # copy build files to all other runner machines
-    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/old /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/old /home/appuser/.ssh
+# - name: synch-artifacts
+#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: tests
+#       path: /tests
+#     - name: ids
+#       path: /home/appuser/.ssh
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#   commands:
+#     # Modify permissions for ssh key
+#     - chown appuser /home/appuser/.ssh/id_rsa
+#     - chown appuser /home/appuser/.ssh
+#     - chmod 600 /home/appuser/.ssh/id_rsa
+#     - ls -la /home/appuser/.ssh
+#     # copy build files to all other runner machines
+#     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+#     - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/old /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/old /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
 
 volumes:
-  - name: build
+  - name: ci-share
     host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: ids
-    host:
-      path: /usr/local/etc/tezedge-ci/id
+      path: /mnt/ci-share
 
 trigger:
   branch:
@@ -287,7 +272,7 @@ workspace:
   path: /drone/src
 
 environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BUILD_ARTIFACTS_PATH: /ci-share/build-files/build_${DRONE_BUILD_NUMBER}
 
 steps:
 
@@ -295,54 +280,47 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
+    - name: ci-share
+      path: /ci-share
   commands:
     - cd apps/node_monitoring && cargo clean && cargo build --release
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
-    - cp ./target/release/node-monitoring $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/monitoring
+    - cp ./target/release/node-monitoring $${BUILD_ARTIFACTS_PATH}/monitoring
     - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
-- name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-  commands:
-    # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
-    - chmod 600 /home/appuser/.ssh/id_rsa
-    - ls -la /home/appuser/.ssh
-    # copy build files to all other runner machines
-    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/monitoring /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/monitoring /home/appuser/.ssh
+# - name: synch-artifacts
+#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: tests
+#       path: /tests
+#     - name: ids
+#       path: /home/appuser/.ssh
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#   commands:
+#     # Modify permissions for ssh key
+#     - chown appuser /home/appuser/.ssh/id_rsa
+#     - chown appuser /home/appuser/.ssh
+#     - chmod 600 /home/appuser/.ssh/id_rsa
+#     - ls -la /home/appuser/.ssh
+#     # copy build files to all other runner machines
+#     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+#     - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/monitoring /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/monitoring /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
 
 volumes:
-  - name: build
+  - name: ci-share
     host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: ids
-    host:
-      path: /usr/local/etc/tezedge-ci/id
+      path: /mnt/ci-share
 
 trigger:
   branch:
