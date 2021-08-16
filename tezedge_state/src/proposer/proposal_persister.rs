@@ -60,7 +60,7 @@ impl ProposalPersister {
 }
 
 fn run(state: ProposalPersister) {
-    let file = File::create("/tmp/tezedge/recorded_proposal.log")
+    let file = File::create("/tmp/tezedge/recorded_proposals.log")
         .expect("couldn't open/create file for persisting proposals");
     let mut buf_writer = BufWriter::new(file);
 
@@ -73,4 +73,5 @@ fn run(state: ProposalPersister) {
         serde_json::to_writer(&mut buf_writer, &proposal).unwrap();
     }
     buf_writer.flush().unwrap();
+    buf_writer.into_inner().unwrap().sync_all().unwrap();
 }

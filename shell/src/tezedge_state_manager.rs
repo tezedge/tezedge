@@ -355,7 +355,12 @@ impl TezedgeStateManager {
             (*local_node_info.identity()).clone(),
             (*local_node_info.version()).clone(),
             &mut effects,
-            SystemTime::now(),
+            // TODO: this is temporary until snapshot of initial state
+            // is available. Should be `SystemTime::now()` to set
+            // state machine's to actual clock. Not mandatory or critical,
+            // just useful to have. We have to do this for record/replay
+            // functionality, so that initial time for record/replay is same.
+            SystemTime::UNIX_EPOCH,
             chain_id,
         );
 
