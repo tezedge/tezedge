@@ -12,7 +12,7 @@ pub type Port = u16;
 /// Any kind of SocketAddr.
 ///
 /// Port can be listener port or some arbitrary port.
-#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 #[repr(transparent)]
 pub struct PeerAddress(SocketAddr);
 
@@ -133,7 +133,7 @@ impl From<&PeerAddress> for SocketAddr {
 /// Address using which we can connect to the peer.
 ///
 /// Port is guaranteed to be the port that the peer is listening on.
-#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 #[repr(transparent)]
 pub struct PeerListenerAddress(SocketAddr);
 
