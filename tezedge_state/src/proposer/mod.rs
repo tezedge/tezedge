@@ -10,18 +10,18 @@ use tla_sm::{Acceptor, DefaultRecorder, GetRequests};
 use crate::proposals::{
     ExtendPotentialPeersProposal, NewPeerConnectProposal, PeerBlacklistProposal,
     PeerDisconnectProposal, PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal,
-    PendingRequestMsg, PendingRequestProposal, SendPeerMessageProposal, TickProposal,
-    RecordedProposal,
+    PendingRequestMsg, PendingRequestProposal, RecordedProposal, SendPeerMessageProposal,
+    TickProposal,
 };
 use crate::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
-pub mod proposal_persister;
 pub mod proposal_loader;
-use proposal_persister::{ProposalPersister, ProposalPersisterHandle};
+pub mod proposal_persister;
 use proposal_loader::ProposalLoader;
+use proposal_persister::{ProposalPersister, ProposalPersisterHandle};
 
 macro_rules! accept_proposal {
     ($state: expr, $proposal: expr, $proposal_persister: expr) => {
@@ -226,7 +226,8 @@ where
 
     #[inline]
     fn wait_for_events(&mut self, events: &mut Es) {
-        self.manager.wait_for_events(events, self.config.wait_for_events_timeout)
+        self.manager
+            .wait_for_events(events, self.config.wait_for_events_timeout)
     }
 
     // fn handle_event(&mut self, event: Event<NetE>) {
@@ -427,7 +428,8 @@ where
                     }
                 }
                 TezedgeRequest::DisconnectPeer { req_id, peer } => {
-                    self.notifications.push(Notification::PeerDisconnected { peer });
+                    self.notifications
+                        .push(Notification::PeerDisconnected { peer });
                     if self.config.replay {
                         continue;
                     }
@@ -444,7 +446,8 @@ where
                     );
                 }
                 TezedgeRequest::BlacklistPeer { req_id, peer } => {
-                    self.notifications.push(Notification::PeerBlacklisted { peer });
+                    self.notifications
+                        .push(Notification::PeerBlacklisted { peer });
                     if self.config.replay {
                         continue;
                     }
@@ -465,7 +468,8 @@ where
                     peer,
                     message,
                 } => {
-                    self.notifications.push(Notification::MessageReceived { peer, message });
+                    self.notifications
+                        .push(Notification::MessageReceived { peer, message });
                     if self.config.replay {
                         continue;
                     }
@@ -719,7 +723,7 @@ where
         Es: Events,
     {
         events.set_limit(config.events_limit);
-        let proposal_persister = if config.record {
+        let proposal_persister = if config.record && !config.replay {
             Some(ProposalPersister::start())
         } else {
             None
@@ -755,6 +759,10 @@ where
         &mut self.inner.manager
     }
 
+    pub fn state(&self) -> &TezedgeStateWrapper {
+        &self.inner.state
+    }
+
     fn init(mut self) -> Self {
         // execute initial requests.
         self.inner.execute_requests();
@@ -772,31 +780,69 @@ where
 
     fn replay_proposals(&mut self) {
         if let Some(loader) = self.inner.proposal_loader.as_mut() {
-            // replay 128 at a time.
-            for _ in 0..128 {
-                let mut proposal = match loader.next() {
-                    Some(result) => result.unwrap(),
-                    None => {
-                        self.inner.proposal_loader = None;
-                        eprintln!("Proposals replay finished!");
-                        break;
-                    }
-                };
-                use RecordedProposal::*;
-                match &mut proposal {
-                    ExtendPotentialPeersProposal(proposal) => self.inner.state.accept(proposal),
-                    NewPeerConnectProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerBlacklistProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerDisconnectProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerDisconnectedProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerMessageProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerReadableProposal(proposal) => self.inner.state.accept(proposal),
-                    PeerWritableProposal(proposal) => self.inner.state.accept(proposal),
-                    PendingRequestProposal(proposal) => self.inner.state.accept(proposal),
-                    SendPeerMessageProposal(proposal) => self.inner.state.accept(proposal),
-                    TickProposal(proposal) => self.inner.state.accept(proposal),
+            let mut proposal = match loader.next() {
+                Some(result) => result.unwrap(),
+                None => {
+                    self.inner.proposal_loader = None;
+                    return;
                 }
-            }
+            };
+            use RecordedProposal::*;
+
+            let time_passed;
+            match &mut proposal {
+                ExtendPotentialPeersProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                NewPeerConnectProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerBlacklistProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerDisconnectProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerDisconnectedProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerMessageProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerReadableProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PeerWritableProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                PendingRequestProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                SendPeerMessageProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+                TickProposal(proposal) => {
+                    time_passed = proposal.time_passed;
+                    self.inner.state.accept(proposal);
+                }
+            };
+            std::thread::sleep(time_passed);
+        } else {
+            let mut file = std::fs::File::create("state_after_replay").unwrap();
+            write!(file, "{:?}", self.state()).unwrap();
+            file.flush().unwrap();
+            file.sync_all().unwrap();
+            panic!("proposal replay finished!");
         }
     }
 
