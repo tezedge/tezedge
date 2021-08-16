@@ -1,7 +1,7 @@
+use serde_json::de::IoRead;
+use serde_json::StreamDeserializer;
 use std::fs::File;
 use std::io::BufReader;
-use serde_json::StreamDeserializer;
-use serde_json::de::IoRead;
 
 use crate::proposals::*;
 
@@ -11,12 +11,11 @@ pub struct ProposalLoader {
 
 impl ProposalLoader {
     pub fn new() -> Self {
-        let file = File::open("/tmp/tezedge/recorded_proposal.log")
+        let file = File::open("/tmp/tezedge/recorded_proposals.log")
             .expect("couldn't open file for loading proposals");
         let reader = serde_json::Deserializer::from_reader(BufReader::new(file)).into_iter();
         Self { reader }
     }
-
 
     pub fn next(&mut self) -> Option<Result<RecordedProposal, serde_json::Error>> {
         self.reader.next()
