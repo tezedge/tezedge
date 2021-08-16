@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use std::fmt::{self, Debug};
 
 use crypto::nonce::Nonce;
@@ -30,7 +30,7 @@ impl Effects for RecordedEffects {
 
     fn choose_peers_to_connect_to(
         &mut self,
-        _: &HashSet<PeerListenerAddress>,
+        _: &BTreeSet<PeerListenerAddress>,
         _: usize,
     ) -> Vec<PeerListenerAddress> {
         self.chosen_peers_to_connect_to
@@ -40,7 +40,7 @@ impl Effects for RecordedEffects {
 
     fn choose_potential_peers_for_advertise(
         &mut self,
-        _: &HashSet<PeerListenerAddress>,
+        _: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         self.chosen_potential_peers_for_advertise
             .pop_front()
@@ -49,7 +49,7 @@ impl Effects for RecordedEffects {
 
     fn choose_potential_peers_for_nack(
         &mut self,
-        _: &HashSet<PeerListenerAddress>,
+        _: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         self.chosen_potential_peers_for_nack
             .pop_front()
@@ -103,7 +103,7 @@ where
 
     fn choose_peers_to_connect_to(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
         choice_len: usize,
     ) -> Vec<PeerListenerAddress> {
         let addrs = self
@@ -117,7 +117,7 @@ where
 
     fn choose_potential_peers_for_advertise(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         let addrs = self
             .effects
@@ -130,7 +130,7 @@ where
 
     fn choose_potential_peers_for_nack(
         &mut self,
-        potential_peers: &HashSet<PeerListenerAddress>,
+        potential_peers: &BTreeSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
         let addrs = self
             .effects

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 use crate::TezedgeState;
@@ -42,7 +42,7 @@ fn assert_no_overlapping_peers(state: &TezedgeState) {
         );
     }
 
-    let mut all_peers = HashMap::new();
+    let mut all_peers = BTreeMap::new();
 
     let container_type = PeerContainer::Potential;
     for peer in state.potential_peers.iter() {

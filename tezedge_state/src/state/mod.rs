@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use slog::Logger;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt::{self, Debug};
 use std::time::{Duration, SystemTime};
 
@@ -140,7 +140,7 @@ pub struct TezedgeState {
     pub(crate) config: TezedgeConfig,
     pub(crate) identity: Identity,
     pub(crate) shell_compatibility_version: ShellCompatibilityVersion,
-    pub(crate) potential_peers: HashSet<PeerListenerAddress>,
+    pub(crate) potential_peers: BTreeSet<PeerListenerAddress>,
     pub(crate) pending_peers: PendingPeers,
     pub(crate) connected_peers: ConnectedPeers,
     pub(crate) blacklisted_peers: BlacklistedPeers,
@@ -334,7 +334,7 @@ impl TezedgeState {
             config,
             identity,
             shell_compatibility_version,
-            potential_peers: HashSet::new(),
+            potential_peers: BTreeSet::new(),
             pending_peers: PendingPeers::with_capacity(max_pending_peers),
             connected_peers: ConnectedPeers::new(
                 log,
