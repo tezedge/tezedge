@@ -193,6 +193,7 @@ impl OneRealNodeCluster {
     pub fn new(
         initial_time: Instant,
         proposer_config: TezedgeProposerConfig,
+        effects: DefaultEffects,
         state: TezedgeState,
     ) -> OneRealNodeCluster {
         let wait_for_events_timeout = proposer_config.wait_for_events_timeout;
@@ -200,7 +201,7 @@ impl OneRealNodeCluster {
         let mut proposer = TezedgeProposer::new(
             initial_time,
             proposer_config,
-            DefaultEffects::default(),
+            effects,
             state,
             FakeEvents::new(),
             OneRealNodeManager::new(pow_target, wait_for_events_timeout),
@@ -554,6 +555,28 @@ mod tests {
 
     #[test]
     fn test_can_handshake_incoming() {
+        let mut effects = DefaultEffects::default();
+        let state = sample_tezedge_state::build(
+            SystemTime::now(),
+            TezedgeConfig {
+                port: 9732,
+                disable_mempool: true,
+                private_node: false,
+                disable_quotas: true,
+                disable_blacklist: true,
+                min_connected_peers: 1,
+                max_connected_peers: 100,
+                max_pending_peers: 100,
+                max_potential_peers: 1000,
+                periodic_react_interval: Duration::from_millis(250),
+                reset_quotas_interval: Duration::from_secs(5),
+                peer_blacklist_duration: Duration::from_secs(15 * 60),
+                peer_timeout: Duration::from_secs(8),
+                // use high number to speed up identity generation.
+                pow_target: 1.0,
+            },
+            &mut effects,
+        );
         let mut cluster = OneRealNodeCluster::new(
             Instant::now(),
             TezedgeProposerConfig {
@@ -562,27 +585,8 @@ mod tests {
                 record: false,
                 replay: false,
             },
-            sample_tezedge_state::build(
-                SystemTime::now(),
-                TezedgeConfig {
-                    port: 9732,
-                    disable_mempool: true,
-                    private_node: false,
-                    disable_quotas: true,
-                    disable_blacklist: true,
-                    min_connected_peers: 1,
-                    max_connected_peers: 100,
-                    max_pending_peers: 100,
-                    max_potential_peers: 1000,
-                    periodic_react_interval: Duration::from_millis(250),
-                    reset_quotas_interval: Duration::from_secs(5),
-                    peer_blacklist_duration: Duration::from_secs(15 * 60),
-                    peer_timeout: Duration::from_secs(8),
-                    // use high number to speed up identity generation.
-                    pow_target: 1.0,
-                },
-                &mut DefaultEffects::default(),
-            ),
+            effects,
+            state,
         );
 
         let peer_id = cluster.init_new_fake_peer();
@@ -598,6 +602,28 @@ mod tests {
 
     #[test]
     fn test_can_handshake_outgoing() {
+        let mut effects = DefaultEffects::default();
+        let state = sample_tezedge_state::build(
+            SystemTime::now(),
+            TezedgeConfig {
+                port: 9732,
+                disable_mempool: true,
+                private_node: false,
+                disable_quotas: true,
+                disable_blacklist: true,
+                min_connected_peers: 1,
+                max_connected_peers: 100,
+                max_pending_peers: 100,
+                max_potential_peers: 1000,
+                periodic_react_interval: Duration::from_millis(250),
+                reset_quotas_interval: Duration::from_secs(5),
+                peer_blacklist_duration: Duration::from_secs(15 * 60),
+                peer_timeout: Duration::from_secs(8),
+                // use high number to speed up identity generation.
+                pow_target: 1.0,
+            },
+            &mut effects,
+        );
         let mut cluster = OneRealNodeCluster::new(
             Instant::now(),
             TezedgeProposerConfig {
@@ -606,27 +632,8 @@ mod tests {
                 record: false,
                 replay: false,
             },
-            sample_tezedge_state::build(
-                SystemTime::now(),
-                TezedgeConfig {
-                    port: 9732,
-                    disable_mempool: true,
-                    private_node: false,
-                    disable_quotas: true,
-                    disable_blacklist: true,
-                    min_connected_peers: 1,
-                    max_connected_peers: 100,
-                    max_pending_peers: 100,
-                    max_potential_peers: 1000,
-                    periodic_react_interval: Duration::from_millis(250),
-                    reset_quotas_interval: Duration::from_secs(5),
-                    peer_blacklist_duration: Duration::from_secs(15 * 60),
-                    peer_timeout: Duration::from_secs(8),
-                    // use high number to speed up identity generation.
-                    pow_target: 1.0,
-                },
-                &mut DefaultEffects::default(),
-            ),
+            effects,
+            state,
         );
 
         let peer_id = cluster.init_new_fake_peer();

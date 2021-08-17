@@ -13,7 +13,7 @@ pub fn black_box<T>(dummy: T) -> T {
     }
 }
 
-fn default_state(initial_time: SystemTime) -> TezedgeState {
+fn default_state(initial_time: SystemTime, effects: &mut DefaultEffects) -> TezedgeState {
     sample_tezedge_state::build(
         initial_time,
         TezedgeConfig {
@@ -30,13 +30,16 @@ fn default_state(initial_time: SystemTime) -> TezedgeState {
             reset_quotas_interval: Duration::from_secs(5),
             peer_blacklist_duration: Duration::from_secs(15 * 60),
             peer_timeout: Duration::from_secs(8),
-            pow_target: 1.0,
+            pow_target: 0.0,
         },
-        &mut DefaultEffects::default(),
+        effects,
     )
 }
 
 fn default_cluster() -> OneRealNodeCluster {
+    let mut effects = DefaultEffects::default();
+    let state = default_state(SystemTime::now(), &mut effects);
+
     OneRealNodeCluster::new(
         Instant::now(),
         TezedgeProposerConfig {
@@ -45,7 +48,8 @@ fn default_cluster() -> OneRealNodeCluster {
             record: false,
             replay: false,
         },
-        default_state(SystemTime::now()),
+        effects,
+        state,
     )
 }
 
