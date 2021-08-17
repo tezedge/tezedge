@@ -83,7 +83,14 @@ impl TezedgeIndex {
     ) -> Result<Option<Entry>, DBError> {
         match self.find_entry_bytes(hash)? {
             None => Ok(None),
-            Some(entry_bytes) => Ok(Some(deserialize(entry_bytes.as_ref(), storage)?)),
+            Some(entry_bytes) => {
+                let repository = self.repository.read()?;
+                Ok(Some(deserialize(
+                    entry_bytes.as_ref(),
+                    storage,
+                    &*repository,
+                )?))
+            }
         }
     }
 
@@ -208,7 +215,7 @@ impl TezedgeIndex {
         let prefixed_tree = self.find_raw_tree(root_tree, prefix, storage)?;
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
-        let prefixed_tree = storage.get_tree(prefixed_tree)?.to_vec();
+        let prefixed_tree = storage.tree_to_vec_unsorted(prefixed_tree)?;
 
         for (key, child_node) in prefixed_tree.iter() {
             let entry = self.node_entry(*child_node, storage)?;
@@ -251,7 +258,7 @@ impl TezedgeIndex {
             Entry::Tree(tree) => {
                 let mut new_tree = StringTreeMap::new();
 
-                let tree = storage.get_tree(*tree)?.to_vec();
+                let tree = storage.tree_to_vec_unsorted(*tree)?;
 
                 for (key, child_node) in tree.iter() {
                     let key = storage.get_str(*key)?;
@@ -297,8 +304,8 @@ impl TezedgeIndex {
         };
 
         // first get node at key
-        let child_node_id = match storage.get_tree_node_id(root, first) {
-            Some(hash) => hash,
+        let child_node_id = match storage.tree_find_node(root, first) {
+            Some(node_id) => node_id,
             None => {
                 return Ok(Tree::empty());
             }
@@ -306,19 +313,22 @@ impl TezedgeIndex {
 
         // get entry (from working tree)
         let child_node = storage.get_node(child_node_id)?;
-        if let Some(entry) = child_node.get_entry() {
-            match entry {
-                Entry::Tree(tree) => {
-                    return self.find_raw_tree(tree, &key[1..], storage);
-                }
-                Entry::Blob(_) => return Ok(Tree::empty()),
-                Entry::Commit { .. } => {
-                    return Err(MerkleError::FoundUnexpectedStructure {
-                        sought: "Tree/Blob".to_string(),
-                        found: "commit".to_string(),
-                    })
-                }
+        match child_node.get_entry() {
+            Some(Entry::Tree(tree)) => {
+                return self.find_raw_tree(tree, &key[1..], storage);
             }
+            Some(Entry::Blob(_)) => return Ok(Tree::empty()),
+            Some(Entry::Commit { .. }) => {
+                return Err(MerkleError::FoundUnexpectedStructure {
+                    sought: "Tree/Blob".to_string(),
+                    found: "commit".to_string(),
+                })
+            }
+            // If `Node::get_entry` returns `None`, it means that the entry
+            // is not deserialized into the working tree.
+            // To get the entry, we must fetch it from the repository.
+            // See below.
+            None => {}
         }
 
         // get entry by hash (from DB)
@@ -368,7 +378,7 @@ impl TezedgeIndex {
         // get file node from tree
         let node_id =
             storage
-                .get_tree_node_id(node, *file)
+                .tree_find_node(node, *file)
                 .ok_or_else(|| MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
                 })?;
@@ -405,7 +415,7 @@ impl TezedgeIndex {
         let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
-        let prefixed_tree = storage.get_tree(prefixed_tree)?.to_vec();
+        let prefixed_tree = storage.tree_to_vec_unsorted(prefixed_tree)?;
 
         for (key, child_node) in prefixed_tree.iter() {
             let entry = self.node_entry(*child_node, storage)?;
@@ -440,7 +450,7 @@ impl TezedgeIndex {
                 Ok(())
             }
             Entry::Tree(tree) => {
-                let tree = storage.get_tree(*tree)?.to_vec();
+                let tree = storage.tree_to_vec_unsorted(*tree)?;
 
                 tree.iter()
                     .map(|(key, child_node)| {

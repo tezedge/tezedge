@@ -83,6 +83,11 @@ impl Node {
         HashId::new(id)
     }
 
+    /// Return the entry of this `Node`.
+    ///
+    /// It returns `None` when the entry has not been fetched from the repository.
+    /// In that case, `TezedgeIndex::get_entry` must be used with the `HashId` of this
+    /// `Node` to get the entry.
     pub fn get_entry(&self) -> Option<Entry> {
         let inner = self.inner.get();
 

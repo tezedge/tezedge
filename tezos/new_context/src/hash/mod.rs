@@ -17,8 +17,7 @@ use crate::{
     kv_store::HashId,
     persistent::DBError,
     working_tree::{
-        storage::{Blob, BlobStorageId, NodeId, Storage, StorageIdError},
-        string_interner::StringId,
+        storage::{Blob, BlobStorageId, Inode, Storage, StorageError},
         Commit, Entry, NodeKind, Tree,
     },
     ContextKeyValueStore,
@@ -40,8 +39,6 @@ pub enum HashingError {
     ConversionError { error: TryFromSliceError },
     #[fail(display = "Expected value instead of `None` for {}", _0)]
     ValueExpected(&'static str),
-    #[fail(display = "Got an unexpected empty inode")]
-    UnexpectedEmptyInode,
     #[fail(display = "Invalid hash value, reason: {}", _0)]
     InvalidHash(String),
     #[fail(display = "Missing Entry")]
@@ -61,7 +58,7 @@ pub enum HashingError {
     #[fail(display = "Blob not found")]
     BlobNotFound,
     #[fail(display = "StorageIdError: {:?}", error)]
-    StorageIdError { error: StorageIdError },
+    StorageIdError { error: StorageError },
 }
 
 impl From<DBError> for HashingError {
@@ -88,21 +85,10 @@ impl From<io::Error> for HashingError {
     }
 }
 
-impl From<StorageIdError> for HashingError {
-    fn from(error: StorageIdError) -> Self {
+impl From<StorageError> for HashingError {
+    fn from(error: StorageError) -> Self {
         Self::StorageIdError { error }
     }
-}
-
-/// Inode representation used for hashing directories with >256 entries.
-enum Inode {
-    Empty,
-    Value(Vec<(StringId, NodeId)>),
-    Tree {
-        depth: u32,
-        children: usize,
-        pointers: Vec<(u8, HashId)>,
-    },
 }
 
 fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
@@ -112,54 +98,8 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
     }
 }
 
-fn index(depth: u32, name: &str) -> u32 {
+pub(crate) fn index(depth: u32, name: &str) -> u32 {
     ocaml_hash_string(depth, name.as_bytes()) % 32
-}
-
-// IMPORTANT: entries must be sorted in lexicographic order of the name
-// Because we use `OrdMap`, this holds true when we iterate the items, but this is
-// something to keep in mind if the representation of `Tree` changes.
-fn partition_entries(
-    depth: u32,
-    entries: &[(StringId, NodeId)],
-    store: &mut ContextKeyValueStore,
-    storage: &Storage,
-) -> Result<Inode, HashingError> {
-    if entries.is_empty() {
-        Ok(Inode::Empty)
-    } else if entries.len() <= 32 {
-        Ok(Inode::Value(entries.to_vec()))
-    } else {
-        let children = entries.len();
-        let mut pointers = Vec::with_capacity(32);
-
-        // pointers = {p(i) | i <- [0..31], t(i) != Empty}
-        for i in 0..=31 {
-            let entries_at_depth_and_index_i: Vec<(StringId, NodeId)> = entries
-                .iter()
-                .filter(|(name, _)| {
-                    let name = match storage.get_str(*name) {
-                        Ok(name) => name,
-                        Err(_) => return false,
-                    };
-                    index(depth, name) == i
-                })
-                .cloned()
-                .collect();
-            let ti = partition_entries(depth + 1, &entries_at_depth_and_index_i, store, storage)?;
-
-            match ti {
-                Inode::Empty => (),
-                non_empty => pointers.push((i as u8, hash_long_inode(&non_empty, store, storage)?)),
-            }
-        }
-
-        Ok(Inode::Tree {
-            depth,
-            children,
-            pointers,
-        })
-    }
 }
 
 fn hash_long_inode(
@@ -170,8 +110,7 @@ fn hash_long_inode(
     let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN)?;
 
     match inode {
-        Inode::Empty => return Err(HashingError::UnexpectedEmptyInode),
-        Inode::Value(entries) => {
+        Inode::Directory(entries) => {
             // Inode value:
             //
             // |   1   |   1  |     n_1      |  ...  |      n_k      |
@@ -179,6 +118,8 @@ fn hash_long_inode(
             // | \000  |  \n  | prehash(e_1) |  ...  | prehash(e_k)  |
             //
             // where n_i = len(prehash(e_i))
+
+            let entries = storage.get_small_tree(*entries)?;
 
             hasher.update(&[0u8]); // type tag
             hasher.update(&[entries.len() as u8]);
@@ -201,12 +142,23 @@ fn hash_long_inode(
                     NodeKind::Leaf => hasher.update(&[1u8]),
                     NodeKind::NonLeaf => hasher.update(&[0u8]),
                 };
-                hasher.update(node.entry_hash(store, storage)?.as_ref());
+
+                let blob_inlined = node.get_entry().and_then(|entry| match entry {
+                    Entry::Blob(blob_id) if blob_id.is_inline() => storage.get_blob(blob_id).ok(),
+                    _ => None,
+                });
+
+                if let Some(blob) = blob_inlined {
+                    hasher.update(&hash_inlined_blob(blob)?);
+                } else {
+                    hasher.update(node.entry_hash(store, storage)?.as_ref());
+                }
             }
         }
-        Inode::Tree {
+        Inode::Pointers {
             depth,
-            children,
+            nchildren,
+            npointers,
             pointers,
         } => {
             // Inode tree:
@@ -217,21 +169,43 @@ fn hash_long_inode(
 
             hasher.update(&[1u8]); // type tag
             leb128::write::unsigned(&mut hasher, *depth as u64)?;
-            leb128::write::unsigned(&mut hasher, *children as u64)?;
-            hasher.update(&[pointers.len() as u8]);
+            leb128::write::unsigned(&mut hasher, *nchildren as u64)?;
+            hasher.update(&[*npointers as u8]);
 
             // Inode pointer:
+
             //
             // |    1    |   32   |
             // +---------+--------+
             // |  index  |  hash  |
 
-            for (index, hash) in pointers {
-                hasher.update(&[*index]);
-                let hash = store
-                    .get_hash(*hash)?
-                    .ok_or_else(|| HashingError::HashIdNotFound { hash_id: *hash })?;
-                hasher.update(hash.as_ref());
+            for (index, pointer) in pointers.iter().enumerate() {
+                // When the pointer is `None`, it means that there is no entries/nodes
+                // under that index.
+
+                // Skip pointers without entries.
+                if let Some(pointer) = pointer.as_ref() {
+                    let index: u8 = index as u8;
+
+                    hasher.update(&[index]);
+
+                    let hash_id = match pointer.hash_id() {
+                        Some(hash_id) => hash_id,
+                        None => {
+                            let inode_id = pointer.inode_id();
+                            let inode = storage.get_inode(inode_id)?;
+                            let hash_id = hash_long_inode(inode, store, storage)?;
+                            pointer.set_hash_id(Some(hash_id));
+                            hash_id
+                        }
+                    };
+
+                    let hash = store
+                        .get_hash(hash_id)?
+                        .ok_or(HashingError::HashIdNotFound { hash_id })?;
+
+                    hasher.update(hash.as_ref());
+                };
             }
         }
     }
@@ -261,7 +235,7 @@ fn hash_short_inode(
     // +--------+--------------+-----+--------------+
     // |   \k   | prehash(e_1) | ... | prehash(e_k) |
 
-    let tree = storage.get_tree(tree)?;
+    let tree = storage.get_small_tree(tree)?;
     hasher.update(&(tree.len() as u64).to_be_bytes());
 
     // Node entry:
@@ -306,11 +280,8 @@ pub(crate) fn hash_tree(
     store: &mut ContextKeyValueStore,
     storage: &Storage,
 ) -> Result<HashId, HashingError> {
-    // If there are >256 entries, we need to partition the tree and hash the resulting inode
-    let tree = storage.get_tree(tree_id)?;
-
-    if tree.len() > 256 {
-        let inode = partition_entries(0, &tree, store, storage)?;
+    if let Some(inode_id) = tree_id.get_inode_id() {
+        let inode = storage.get_inode(inode_id)?;
         hash_long_inode(&inode, store, storage)
     } else {
         hash_short_inode(tree_id, store, storage)
@@ -416,15 +387,20 @@ pub(crate) fn hash_entry(
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::{convert::TryInto, env, fs::File, io::Read, path::Path};
+    use std::convert::TryInto;
+    use std::{collections::HashSet, env, fs::File, io::Read, path::Path};
 
     use flate2::read::GzDecoder;
 
     use crypto::hash::{ContextHash, HashTrait};
+    use tezos_timing::SerializeStats;
 
     use crate::{
         kv_store::in_memory::InMemory,
-        working_tree::{Node, NodeKind, Tree},
+        working_tree::{
+            serializer::{deserialize, serialize_entry},
+            Node, NodeKind, Tree,
+        },
     };
 
     use super::*;
@@ -547,7 +523,7 @@ mod tests {
 
         let node = Node::new(NodeKind::Leaf, Entry::Blob(blob_id));
 
-        let dummy_tree = storage.insert(dummy_tree, "a", node).unwrap();
+        let dummy_tree = storage.tree_insert(dummy_tree, "a", node).unwrap();
 
         // hexademical representation of above tree:
         //
@@ -638,6 +614,9 @@ mod tests {
 
         let mut repo = InMemory::try_new().expect("failed to create context");
         let mut storage = Storage::new();
+        let mut output = Vec::new();
+        let mut older_entries = Vec::new();
+        let mut stats = SerializeStats::default();
 
         // NOTE: reading from a stream is very slow with serde, thats why
         // the whole file is being read here before parsing.
@@ -649,6 +628,9 @@ mod tests {
         for test_case in test_cases {
             let bindings_count = test_case.bindings.len();
             let mut tree = Tree::empty();
+            let mut batch = Vec::new();
+
+            let mut names = HashSet::new();
 
             for binding in test_case.bindings {
                 let node_kind = match binding.kind.as_str() {
@@ -663,13 +645,107 @@ mod tests {
 
                 let node = Node::new_commited(node_kind, Some(hash_id), None);
 
-                tree = storage.insert(tree, binding.name.as_str(), node).unwrap();
+                names.insert(binding.name.clone());
+
+                tree = storage
+                    .tree_insert(tree, binding.name.as_str(), node)
+                    .unwrap();
+
+                assert!(storage
+                    .tree_find_node(tree, binding.name.as_str())
+                    .is_some());
+            }
+
+            // The following block insert and remove lots of nodes to make sure
+            // that the implementation of `Storage::tree_insert` and `Storage::tree_remove`
+            // is correct with Inodes
+            {
+                let hash_id = HashId::new(11111).unwrap();
+
+                for index in 0..10000 {
+                    let key = format!("abc{}", index);
+                    tree = storage
+                        .tree_insert(
+                            tree,
+                            &key,
+                            Node::new_commited(NodeKind::Leaf, Some(hash_id), None),
+                        )
+                        .unwrap();
+                    let a = tree;
+
+                    // Insert the same element (same key) twice, this must not increment
+                    // `Inode::Pointers::nchildren`.
+                    tree = storage
+                        .tree_insert(
+                            tree,
+                            &key,
+                            Node::new_commited(NodeKind::Leaf, Some(hash_id), None),
+                        )
+                        .unwrap();
+                    let b = tree;
+
+                    assert_eq!(storage.tree_len(a).unwrap(), storage.tree_len(b).unwrap());
+                }
+
+                // Remove the elements we just inserted
+                for index in 0..10000 {
+                    let key = format!("abc{}", index);
+                    tree = storage.tree_remove(tree, &key).unwrap();
+                    let a = tree;
+
+                    // Remove the same key twice
+                    tree = storage.tree_remove(tree, &key).unwrap();
+                    let b = tree;
+
+                    // The 2nd remove should not modify the existing inode or create a new one
+                    assert_eq!(a, b);
+                }
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
-            let computed_hash = hash_tree(tree, &mut repo, &mut storage).unwrap();
-            let computed_hash = repo.get_hash(computed_hash).unwrap().unwrap();
+            let computed_hash_id = hash_tree(tree, &mut repo, &mut storage).unwrap();
+            let computed_hash = repo.get_hash(computed_hash_id).unwrap().unwrap();
             let computed_hash = ContextHash::try_from_bytes(computed_hash).unwrap();
+
+            // The following block makes sure that a serialized & deserialized inode
+            // produce the same hash
+            {
+                serialize_entry(
+                    &Entry::Tree(tree),
+                    computed_hash_id,
+                    &mut output,
+                    &storage,
+                    &mut stats,
+                    &mut batch,
+                    &mut older_entries,
+                )
+                .unwrap();
+                repo.write_batch(batch).unwrap();
+
+                let data = repo.get_value(computed_hash_id).unwrap().unwrap();
+                let entry = deserialize(data, &mut storage, &repo).unwrap();
+
+                match entry {
+                    Entry::Tree(new_tree) => {
+                        if let Some(inode_id) = new_tree.get_inode_id() {
+                            // Remove existing hash ids from all the inodes children,
+                            // to force recomputation of the hash.
+                            storage.inodes_drop_hash_ids(inode_id);
+                        }
+
+                        let new_computed_hash_id =
+                            hash_tree(new_tree, &mut repo, &mut storage).unwrap();
+                        let new_computed_hash =
+                            repo.get_hash(new_computed_hash_id).unwrap().unwrap();
+                        let new_computed_hash =
+                            ContextHash::try_from_bytes(new_computed_hash).unwrap();
+
+                        // Hash must be the same than before the serialization & deserialization
+                        assert_eq!(new_computed_hash, computed_hash);
+                    }
+                    _ => panic!(),
+                }
+            }
 
             assert_eq!(
                 expected_hash.to_base58_check(),
