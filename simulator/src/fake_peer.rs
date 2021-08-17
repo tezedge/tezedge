@@ -180,6 +180,7 @@ impl FakePeerStream {
 
     /// Send connection message to real node.
     pub fn send_conn_msg(&mut self, conn_msg: &ConnectionMessage) {
+        self.sent_conn_msg = Some(conn_msg.clone());
         self.send_bytes(
             BinaryChunk::from_content(&conn_msg.as_bytes().unwrap())
                 .unwrap()
@@ -194,7 +195,10 @@ impl FakePeerStream {
                 .read_from(&mut VecDequeReadable::from(&mut self.write_buf))
                 .unwrap();
         }
-        ConnectionMessage::from_bytes(reader.take_if_ready().unwrap().content()).unwrap()
+        let conn_msg =
+            ConnectionMessage::from_bytes(reader.take_if_ready().unwrap().content()).unwrap();
+        self.received_conn_msg = Some(conn_msg.clone());
+        conn_msg
     }
 
     pub fn send_meta_msg(&mut self, meta_msg: &MetadataMessage) {
@@ -303,7 +307,13 @@ impl Read for FakePeerStream {
         };
         // eprintln!("read {}. limit: {:?}", len, &self.read_limit);
 
-        VecDequeReadable::from(&mut self.read_buf).read(&mut buf[..len])
+        let len = VecDequeReadable::from(&mut self.read_buf).read(&mut buf[..len])?;
+
+        if self.read_buf.len() == 0 {
+            self.set_read_cond(IOCondition::Limit(0));
+        }
+
+        Ok(len)
     }
 }
 
@@ -323,6 +333,9 @@ impl Write for FakePeerStream {
         // eprintln!("write {}. limit: {:?}", len, &self.write_limit);
 
         self.write_buf.extend(&buf[..len]);
+
+        // TODO: somehow reset IOCondition::NoLimit to IOCondition::Limit(0),
+        // maybe after message has been read.
 
         Ok(len)
     }
