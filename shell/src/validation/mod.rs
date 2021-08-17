@@ -18,6 +18,7 @@ use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
     ValidateOperationResult,
 };
+use tezos_messages::base::fitness_comparator::*;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
@@ -25,7 +26,6 @@ use tezos_messages::{Head, TimestampOutOfRangeError};
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::validation::fitness_comparator::FitnessWrapper;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
 pub fn can_update_current_head(
@@ -47,12 +47,12 @@ pub fn can_update_current_head(
 
 /// Returns only true, if new_fitness is greater than head's fitness
 pub fn is_fitness_increases(head: &Head, new_fitness: &Fitness) -> bool {
-    new_fitness.gt(head.fitness())
+    fitness_increases(head.fitness(), new_fitness)
 }
 
 /// Returns only true, if new_fitness is greater than head's fitness
 pub fn is_fitness_increases_or_same(head: &Head, new_fitness: &Fitness) -> bool {
-    new_fitness.ge(head.fitness())
+    fitness_increases_or_same(head.fitness(), new_fitness)
 }
 
 /// Returns true only if we recieve the same head as is our current_head
@@ -344,75 +344,6 @@ pub fn check_multipass_validation(
     }
 
     None
-}
-
-/// Fitness comparison:
-///     - shortest lists are smaller
-///     - lexicographical order for lists of the same length.
-pub mod fitness_comparator {
-    use failure::_core::cmp::Ordering;
-
-    use tezos_messages::p2p::encoding::block_header::Fitness;
-
-    pub struct FitnessWrapper<'a> {
-        fitness: &'a Fitness,
-    }
-
-    impl<'a> FitnessWrapper<'a> {
-        pub fn new(fitness: &'a Fitness) -> Self {
-            FitnessWrapper { fitness }
-        }
-    }
-
-    impl<'a> PartialOrd for FitnessWrapper<'a> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl<'a> Ord for FitnessWrapper<'a> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            // length of fitness list must be equal
-            let result = self.fitness.len().cmp(&other.fitness.len());
-            if result != Ordering::Equal {
-                return result;
-            }
-
-            // if length is same, we need to compare by elements
-            let fitness_count = self.fitness.len();
-            for i in 0..fitness_count {
-                let self_fitness_part = &self.fitness[i];
-                let other_fitness_part = &other.fitness[i];
-
-                // length of fitness must be equal
-                let result = self_fitness_part.len().cmp(&other_fitness_part.len());
-                if result != Ordering::Equal {
-                    return result;
-                }
-
-                // now compare by-bytes from left
-                let part_length = self_fitness_part.len();
-                for j in 0..part_length {
-                    let b1 = self_fitness_part[j];
-                    let b2 = other_fitness_part[j];
-                    let byte_result = b1.cmp(&b2);
-                    if byte_result != Ordering::Equal {
-                        return byte_result;
-                    }
-                }
-            }
-
-            Ordering::Equal
-        }
-    }
-
-    impl<'a> Eq for FitnessWrapper<'a> {}
-
-    impl<'a> PartialEq for FitnessWrapper<'a> {
-        fn eq(&self, other: &Self) -> bool {
-            self.fitness == other.fitness
-        }
-    }
 }
 
 #[cfg(test)]
