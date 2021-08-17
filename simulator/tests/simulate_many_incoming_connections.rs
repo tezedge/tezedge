@@ -4,7 +4,7 @@ use simulator::one_real_node_cluster::*;
 use tezedge_state::proposer::TezedgeProposerConfig;
 use tezedge_state::{sample_tezedge_state, DefaultEffects, TezedgeConfig, TezedgeState};
 
-fn default_state(initial_time: SystemTime) -> TezedgeState {
+fn default_state(initial_time: SystemTime, effects: &mut DefaultEffects) -> TezedgeState {
     sample_tezedge_state::build(
         initial_time,
         TezedgeConfig {
@@ -23,11 +23,14 @@ fn default_state(initial_time: SystemTime) -> TezedgeState {
             peer_timeout: Duration::from_secs(8),
             pow_target: 0.0,
         },
-        &mut DefaultEffects::default(),
+        effects,
     )
 }
 
 fn default_cluster() -> OneRealNodeCluster {
+    let mut effects = DefaultEffects::default();
+    let state = default_state(SystemTime::now(), &mut effects);
+
     OneRealNodeCluster::new(
         Instant::now(),
         TezedgeProposerConfig {
@@ -36,7 +39,8 @@ fn default_cluster() -> OneRealNodeCluster {
             record: false,
             replay: false,
         },
-        default_state(SystemTime::now()),
+        effects,
+        state,
     )
 }
 
