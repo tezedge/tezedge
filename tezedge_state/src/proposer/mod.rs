@@ -181,6 +181,39 @@ pub trait Manager {
     fn disconnect_peer(&mut self, peer: &PeerAddress);
 }
 
+/// Internal clock of proposer.
+#[derive(Clone)]
+struct InternalClock {
+    time: Instant,
+    elapsed: Duration,
+}
+
+impl InternalClock {
+    fn new(initial_time: Instant) -> Self {
+        Self {
+            time: initial_time,
+            elapsed: Duration::new(0, 0),
+        }
+    }
+
+    fn update(&mut self, new_time: Instant) -> &mut Self {
+        if self.time >= new_time {
+            // just to guard against panic.
+            return self;
+        }
+        self.elapsed += new_time.duration_since(self.time);
+        self.time = new_time;
+        self
+    }
+
+    /// Result of every call of this method MUST be passed to state machine
+    /// `TezedgeState` through proposal, otherwise internal clock will mess up.
+    #[inline]
+    fn take_elapsed(&mut self) -> Duration {
+        std::mem::replace(&mut self.elapsed, Duration::new(0, 0))
+    }
+}
+
 #[derive(Clone)]
 pub struct TezedgeProposerConfig {
     pub wait_for_events_timeout: Option<Duration>,
@@ -196,7 +229,7 @@ struct TezedgeProposerInner<Efs, M> {
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
     effects: Efs,
-    time: Instant,
+    time: InternalClock,
     proposal_persister: Option<ProposalPersisterHandle>,
     /// Proposal loader for replay.
     proposal_loader: Option<ProposalLoader>,
@@ -211,19 +244,6 @@ where
     Efs: Effects + Debug,
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
 {
-    /// Calculate time passed and update current time.
-    #[inline]
-    fn update_time(&mut self, event_time: Instant) -> Duration {
-        if self.time >= event_time {
-            // just to guard against panic.
-            // TODO: maybe log here?
-            return Duration::new(0, 0);
-        }
-        let time_passed = event_time.duration_since(self.time);
-        self.time = event_time;
-        time_passed
-    }
-
     #[inline]
     fn wait_for_events(&mut self, events: &mut Es) {
         self.manager
@@ -254,7 +274,7 @@ where
                 accept_proposal!(
                     self.state,
                     TickProposal {
-                        time_passed: self.update_time(at),
+                        time_passed: self.time.update(at).take_elapsed(),
                         effects: &mut self.effects
                     },
                     self.proposal_persister
@@ -267,8 +287,8 @@ where
     }
 
     fn handle_network_event(&mut self, event: &NetE) {
+        self.time.update(event.time());
         if event.is_server_event() {
-            let time_passed = self.update_time(event.time());
             // we received event for the server (client opened tcp stream to us).
             loop {
                 // as an optimization, execute requests only after 100
@@ -283,7 +303,7 @@ where
                                 self.state,
                                 NewPeerConnectProposal {
                                     effects: &mut self.effects,
-                                    time_passed,
+                                    time_passed: self.time.take_elapsed(),
                                     peer: peer.address().clone(),
                                 },
                                 self.proposal_persister
@@ -301,7 +321,7 @@ where
     }
 
     fn handle_readiness_event(&mut self, event: &NetE) {
-        let time_passed = self.update_time(event.time());
+        self.time.update(event.time());
         let peer = match self.manager.get_peer_for_event_mut(&event) {
             Some(peer) => peer,
             None => {
@@ -317,7 +337,7 @@ where
                 self.state,
                 PeerDisconnectedProposal {
                     effects: &mut self.effects,
-                    time_passed,
+                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                 },
                 self.proposal_persister
@@ -330,7 +350,7 @@ where
                 self.state,
                 PeerReadableProposal {
                     effects: &mut self.effects,
-                    time_passed,
+                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -343,7 +363,7 @@ where
                 self.state,
                 PeerWritableProposal {
                     effects: &mut self.effects,
-                    time_passed,
+                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -522,19 +542,12 @@ where
         if self.config.replay {
             return;
         }
-        if at < self.time {
-            eprintln!(
-                "Rejecting request to extend potential peers. Reason: passed time in the past!"
-            );
-            return;
-        }
 
-        let time_passed = self.update_time(at);
         accept_proposal!(
             self.state,
             ExtendPotentialPeersProposal {
+                time_passed: self.time.update(at).take_elapsed(),
                 effects: &mut self.effects,
-                time_passed,
                 peers,
             },
             self.proposal_persister
@@ -545,17 +558,12 @@ where
         if self.config.replay {
             return;
         }
-        if at < self.time {
-            eprintln!("Rejecting request to disconnect peer. Reason: passed time in the past!");
-            return;
-        }
 
-        let time_passed = self.update_time(at);
         accept_proposal!(
             self.state,
             PeerDisconnectProposal {
+                time_passed: self.time.update(at).take_elapsed(),
                 effects: &mut self.effects,
-                time_passed,
                 peer
             },
             self.proposal_persister
@@ -566,17 +574,12 @@ where
         if self.config.replay {
             return;
         }
-        if at < self.time {
-            eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
-            return;
-        }
 
-        let time_passed = self.update_time(at);
         accept_proposal!(
             self.state,
             PeerBlacklistProposal {
+                time_passed: self.time.update(at).take_elapsed(),
                 effects: &mut self.effects,
-                time_passed,
                 peer
             },
             self.proposal_persister
@@ -597,30 +600,27 @@ where
         if self.config.replay {
             return;
         }
-        if at < self.time {
-            eprintln!("Rejecting request to blacklist peer. Reason: passed time in the past!");
-            return;
-        }
-        let time_passed = self.update_time(at);
+        self.time.update(at);
+
         if let Some(peer) = self.manager.get_peer(&addr) {
             accept_proposal!(
                 self.state,
                 SendPeerMessageProposal {
                     effects: &mut self.effects,
-                    time_passed,
+                    time_passed: self.time.take_elapsed(),
                     peer: addr,
                     message,
                 },
                 self.proposal_persister
             );
-            // issue writable proposal in case stream is writable,
+            // issue proposal just in case stream is writable,
             // otherwise we would have to wait till we receive
             // writable event from mio.
             accept_proposal!(
                 self.state,
                 PeerWritableProposal {
                     effects: &mut self.effects,
-                    time_passed,
+                    time_passed: Default::default(),
                     peer: addr,
                     stream: &mut peer.stream,
                 },
@@ -641,7 +641,6 @@ where
     ) -> io::Result<()> {
         use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 
-        let time_passed = self.update_time(at);
         let peer = match self.manager.get_peer(&addr) {
             Some(peer) => peer,
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "peer not found!")),
@@ -651,7 +650,7 @@ where
             self.state,
             SendPeerMessageProposal {
                 effects: &mut self.effects,
-                time_passed,
+                time_passed: self.time.update(at).take_elapsed(),
                 peer: addr,
                 message,
             },
@@ -662,7 +661,7 @@ where
             self.state,
             PeerWritableProposal {
                 effects: &mut self.effects,
-                time_passed,
+                time_passed: Default::default(),
                 peer: addr,
                 stream: &mut ExtendableAsWritable::from(&mut send_buf),
             },
@@ -742,7 +741,7 @@ where
                 effects,
                 state: state.into(),
                 manager,
-                time: initial_time,
+                time: InternalClock::new(initial_time),
                 proposal_persister,
                 proposal_loader,
             },
