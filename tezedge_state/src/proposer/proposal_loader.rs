@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use serde_json::de::IoRead;
 use serde_json::StreamDeserializer;
 use std::fs::File;

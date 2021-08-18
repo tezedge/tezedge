@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crypto::blake2b::Blake2bError;
 use crypto::crypto_box::{PrecomputedKey, PublicKey, SecretKey};
 use crypto::nonce::{generate_nonces, Nonce, NoncePair};

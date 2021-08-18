@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::time::Duration;
 
 /// Proposal is the message directed towards state machine.

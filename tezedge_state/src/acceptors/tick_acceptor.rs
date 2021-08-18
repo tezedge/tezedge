@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::proposals::TickProposal;
 use crate::{Effects, TezedgeState};
 use tla_sm::Acceptor;

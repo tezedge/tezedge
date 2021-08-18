@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod peer_address;
 pub use peer_address::{PeerAddress, Port};
 

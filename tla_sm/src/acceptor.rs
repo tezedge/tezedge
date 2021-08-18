@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 /// Acceptor is what receives a proposal and handles it. Might mutate
 /// state based on proposal.
 ///

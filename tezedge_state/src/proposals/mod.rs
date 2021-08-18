@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use serde::{Deserialize, Serialize};
 pub use tla_sm::Proposal;
 
