@@ -11,8 +11,8 @@ where
             return;
         }
 
-        slog::warn!(&self.log, "Peer Disconnected"; "peer_address" => proposal.peer.to_string());
-        self.disconnect_peer(proposal.peer);
+        slog::warn!(&self.log, "Blacklisting peer"; "reason" => "peer disconnected", "peer_address" => proposal.peer.to_string());
+        self.blacklist_peer(proposal.peer);
 
         self.periodic_react(proposal.effects);
     }
