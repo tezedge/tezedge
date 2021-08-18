@@ -97,6 +97,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         .await
         .expect("test failed");
 
+    // Check blocks endpoint
+    // TODO: cannot compare JSONs for this call in particular because head block hash
+    // is likely to be different for each node
+    // test_rpc_compare_json("chains/main/blocks")
+    //     .await
+    //     .expect("test failed");
+
     // Compare with double and trailing slashes
     test_rpc_compare_json("chains/main//blocks/genesis")
         .await
