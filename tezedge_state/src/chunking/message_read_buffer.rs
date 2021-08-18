@@ -48,7 +48,10 @@ impl MessageReadBuffer {
     ) -> Result<PeerMessageResponse, ReadMessageError> {
         loop {
             self.chunk_reader.read_from(reader)?;
-            // TODO: stop reading if message_len < message_buf.len() + chunk_expected_len
+            // TODO: As an optimization, stop reading
+            // if `message_len < message_buf.len() + chunk_expected_len`.
+            // Technically shouldn't happen, but if it does, then peer
+            // has issue with encoding/chunking.
 
             if let Some(chunk) = self.chunk_reader.take_ref_if_ready() {
                 let mut decrypted = crypto.decrypt(&chunk.content())?;

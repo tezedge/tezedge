@@ -43,6 +43,9 @@ pub use peer_blacklist_proposal::*;
 mod pending_request_proposal;
 pub use pending_request_proposal::*;
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum InvalidProposalError {}
+
 pub trait MaybeRecordedProposal {
     type Proposal: Proposal;
 

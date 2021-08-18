@@ -1,9 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
-// SPDX-License-Identifier: MIT
-
 use slog::Logger;
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug};
@@ -17,7 +14,8 @@ use tezos_messages::p2p::encoding::prelude::{
 pub use tla_sm::{Acceptor, GetRequests, Proposal};
 
 use crate::peer_address::PeerListenerAddress;
-use crate::{Effects, InvalidProposalError, PeerAddress, Port, ShellCompatibilityVersion};
+use crate::proposals::InvalidProposalError;
+use crate::{Effects, PeerAddress, Port, ShellCompatibilityVersion};
 
 // mod peer_token;
 // pub use peer_token::*;

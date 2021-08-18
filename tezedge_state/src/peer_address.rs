@@ -86,22 +86,6 @@ impl DefaultRecorder for PeerAddress {
     }
 }
 
-// impl Hash for PeerAddress {
-//     /// Hash only by ip address, so we don't have more than 1 peer per IP.
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.0.ip().hash(state)
-//     }
-// }
-
-// impl PartialEq for PeerAddress {
-//     /// Compare only by ip address, so we don't have more than 1 peer per IP.
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0.ip().eq(&other.ip())
-//     }
-// }
-
-// impl Eq for PeerAddress {}
-
 impl FromStr for PeerAddress {
     type Err = AddrParseError;
     fn from_str(s: &str) -> Result<Self, AddrParseError> {
