@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 //! This module contains varius recorder implementations.
 //!
 //! Each recorder has two methods:

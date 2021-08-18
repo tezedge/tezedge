@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 pub type RecordedIterator<T> = Vec<T>;
 
 pub struct IteratorRecorder<I, T> {

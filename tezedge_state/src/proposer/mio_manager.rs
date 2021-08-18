@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use slab::Slab;
 use std::collections::BTreeMap;

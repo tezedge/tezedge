@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::io_error_kind::IOErrorKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::io::ErrorKind;

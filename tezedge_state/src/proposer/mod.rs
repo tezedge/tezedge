@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;

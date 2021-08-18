@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use tezos_messages::p2p::encoding::ack::NackMotive;
 use tezos_messages::p2p::encoding::prelude::AckMessage;
 use tla_sm::Acceptor;
