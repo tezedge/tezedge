@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use tla_sm::Acceptor;
 
 use crate::proposals::SendPeerMessageProposal;

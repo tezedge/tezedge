@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 /// Recorder for values that can be simply cloned.
 pub struct CloneRecorder<T> {
     value: T,

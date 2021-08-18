@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use rand::{prelude::IteratorRandom, rngs::ThreadRng, Rng};
 use std::collections::BTreeSet;
 use std::fmt::Debug;

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use slog::Logger;
 use tezos_messages::p2p::encoding::peer::{PeerMessage, MESSAGE_TYPE_COUNT, MESSAGE_TYPE_TEXTS};
 

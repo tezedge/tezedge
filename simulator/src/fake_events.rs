@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use tezedge_state::proposer::Events;
 
 use crate::fake_event::{FakeEvent, FakeEventRef};

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crypto::crypto_box::PublicKey;
 use getset::{CopyGetters, Getters};
 use slog::Logger;
