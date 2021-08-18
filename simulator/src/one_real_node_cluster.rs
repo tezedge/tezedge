@@ -199,6 +199,7 @@ impl OneRealNodeCluster {
         let wait_for_events_timeout = proposer_config.wait_for_events_timeout;
         let pow_target = state.config().pow_target;
         let mut proposer = TezedgeProposer::new(
+            None,
             initial_time,
             proposer_config,
             effects,

@@ -12,9 +12,29 @@ pub type Port = u16;
 /// Any kind of SocketAddr.
 ///
 /// Port can be listener port or some arbitrary port.
-#[derive(Serialize, Deserialize, Debug, Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Hash, Clone, Copy)]
 #[repr(transparent)]
 pub struct PeerAddress(SocketAddr);
+
+impl PartialEq for PeerAddress {
+    fn eq(&self, other: &Self) -> bool {
+        self.ipv6_mapped().eq(&other.ipv6_mapped())
+    }
+}
+
+impl Eq for PeerAddress {}
+
+impl PartialOrd for PeerAddress {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.ipv6_mapped().partial_cmp(&other.ipv6_mapped())
+    }
+}
+
+impl Ord for PeerAddress {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ipv6_mapped().cmp(&other.ipv6_mapped())
+    }
+}
 
 impl PeerAddress {
     pub fn new(ip: IpAddr, port: Port) -> Self {
@@ -66,6 +86,14 @@ impl PeerAddress {
             }
             SocketAddr::V6(_) => unimplemented!(),
         }
+    }
+
+    pub fn ipv6_mapped(self) -> SocketAddr {
+        let ip = match self.ip() {
+            IpAddr::V4(ip) => IpAddr::V6(ip.to_ipv6_mapped()),
+            ip => ip,
+        };
+        SocketAddr::new(ip, self.port())
     }
 }
 

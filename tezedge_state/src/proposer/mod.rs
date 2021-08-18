@@ -1,8 +1,11 @@
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use slog::Logger;
 
 use crypto::hash::CryptoboxPublicKeyHash;
 use tla_sm::{Acceptor, DefaultRecorder, GetRequests};
@@ -225,6 +228,7 @@ pub struct TezedgeProposerConfig {
 /// Tezedge proposer wihtout `events`.
 #[derive(Clone)]
 struct TezedgeProposerInner<Efs, M> {
+    log: Option<Logger>,
     config: TezedgeProposerConfig,
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
@@ -710,6 +714,7 @@ where
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
 {
     pub fn new<T>(
+        log: Option<Logger>,
         initial_time: Instant,
         config: TezedgeProposerConfig,
         effects: Efs,
@@ -728,13 +733,14 @@ where
             None
         };
         let proposal_loader = if config.replay {
-            Some(ProposalLoader::new())
+            ProposalLoader::new()
         } else {
             None
         };
 
         Self {
             inner: TezedgeProposerInner {
+                log,
                 config,
                 requests: vec![],
                 notifications: Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
@@ -775,6 +781,269 @@ where
     #[inline]
     fn wait_for_events(&mut self) {
         self.inner.wait_for_events(&mut self.events)
+    }
+
+    fn replay_database<P>(&mut self, path: P)
+    where
+        P: AsRef<Path> + fmt::Debug,
+    {
+        use std::collections::{HashMap, HashSet};
+        use std::io::Cursor;
+        use tezedge_recorder::database::{
+            DatabaseNew,
+            rocks::Db,
+            rocks_utils::SyscallKind,
+        };
+        use crate::proposals as pr;
+        use self::TezedgeRequest::*;
+
+        #[derive(Default)]
+        struct MockStream {
+            incoming: Cursor<Vec<u8>>,
+            outgoing: Cursor<Vec<u8>>,
+        }
+
+        impl MockStream {
+            pub fn put(&mut self, slice: &[u8]) {
+                self.incoming.get_mut().extend_from_slice(slice);
+            }
+
+            pub fn take(&mut self, buf: &mut [u8]) -> usize {
+                self.outgoing.read(buf).unwrap()
+            }
+        }
+
+        impl Read for MockStream {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                self.incoming.read(buf)
+            }
+        }
+
+        impl Write for MockStream {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.outgoing.get_mut().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let requests = |state: &TezedgeStateWrapper| {
+            let mut req = vec![];
+            state.get_requests(&mut req);
+            req
+        };
+        let logger = self.inner.log.as_ref().unwrap();
+
+        let db = Db::open(&path, false, None, None)
+            .unwrap_or_else(|error| panic!("database {:?} is invalid: {:?}", path, error));
+        let items = db.syscall_metadata_iterator(0)
+            .expect("failed to read syscalls metadata from the db");
+        let mut last_time = None;
+        let mut was_closed = HashSet::new();
+        let mut peer_streams = HashMap::<SocketAddr, MockStream>::new();
+        let mut cnt = 2;
+        for item in items {
+            let item = item.expect("failed to retrieve an item from the db");
+            if last_time.is_none() {
+                last_time = Some(item.timestamp);
+
+                let mut req = requests(&self.inner.state).into_iter();
+                loop {
+                    match req.next() {
+                        Some(StartListeningForNewPeers { req_id }) => {
+                            self.inner.state.accept(pr::PendingRequestProposal {
+                                effects: &mut self.inner.effects,
+                                req_id,
+                                time_passed: item.timestamp - last_time.unwrap(),
+                                message: PendingRequestMsg::StartListeningForNewPeersSuccess,
+                            });
+                            break;
+                        },
+                        Some(_) => (),
+                        None => break,
+                    }
+                }
+
+                let bootstrap_peers = vec![
+                    "[::ffff:45.55.54.70]:9733",
+                    "[::ffff:34.95.63.80]:9732",
+                    "[::ffff:212.47.230.138]:9732",
+                    "[2001:bc8:47b0:907::1]:9732",
+                ];
+                self.inner.state.accept(pr::ExtendPotentialPeersProposal {
+                    effects: &mut self.inner.effects,
+                    time_passed: Duration::from_millis(1),
+                    peers: bootstrap_peers.into_iter().map(|s| s.parse().unwrap()),
+                });
+            }
+
+            //slog::info!(logger, "replaying: {:?}", item);
+            let time_passed = item.timestamp - last_time.unwrap();
+            last_time = Some(item.timestamp);
+            let addr = item.socket_address.unwrap();
+
+            let req = requests(&self.inner.state);
+            //slog::info!(logger, "requests: {:?}", req);
+            for req in &req {
+                if let &BlacklistPeer { req_id, peer } = req {
+                    if was_closed.contains(&peer.into()) {
+                        self.inner.state.accept(pr::PendingRequestProposal {
+                            effects: &mut self.inner.effects,
+                            req_id,
+                            time_passed: Duration::default(),
+                            message: PendingRequestMsg::BlacklistPeerSuccess,
+                        });
+                        slog::warn!(logger, "proposal {} BlacklistPeerSuccess {}", cnt, peer.ipv6_mapped());
+                        cnt += 1;
+                    }
+                }
+                if let &NotifyHandshakeSuccessful { req_id, .. } = req {
+                    self.inner.state.accept(pr::PendingRequestProposal {
+                        effects: &mut self.inner.effects,
+                        req_id,
+                        time_passed: Duration::default(),
+                        message: PendingRequestMsg::HandshakeSuccessfulNotified,
+                    });
+                    slog::warn!(logger, "proposal {} HandshakeSuccessfulNotified", cnt);
+                    cnt += 1;
+                }
+                if let &PeerMessageReceived { req_id, .. } = req {
+                    self.inner.state.accept(pr::PendingRequestProposal {
+                        effects: &mut self.inner.effects,
+                        req_id,
+                        time_passed: Duration::default(),
+                        message: PendingRequestMsg::PeerMessageReceivedNotified,
+                    });
+                    slog::warn!(logger, "proposal {} PeerMessageReceivedNotified", cnt);
+                    cnt += 1;
+                }
+            }
+            let mut req = req.into_iter();
+            let mut consumed = false;
+            let response = loop {
+                match req.next() {
+                    None => {
+                        // did not satisfy any request
+                        break None;
+                    },
+                    Some(req) => match (req, &item.inner) {
+                        (
+                            DisconnectPeer { req_id, peer },
+                            SyscallKind::Close,
+                        ) if addr == peer.ipv6_mapped() => {
+                            consumed = true;
+                            was_closed.insert(addr);
+                            break Some((req_id, PendingRequestMsg::DisconnectPeerSuccess));
+                        },
+                        (
+                            ConnectPeer { req_id, peer },
+                            SyscallKind::Connect(result),
+                        ) if addr == peer.ipv6_mapped() => {
+                            consumed = true;
+                            let message = match result {
+                                Ok(()) => PendingRequestMsg::ConnectPeerSuccess,
+                                Err(-115) => PendingRequestMsg::ConnectPeerSuccess,
+                                Err(_) => {
+                                    was_closed.insert(addr);
+                                    PendingRequestMsg::ConnectPeerError
+                                },
+                            };
+                            break Some((req_id, message));
+                        },
+                        _ => {
+                            // cannot satisfy this request, but maybe can satisfy
+                            // another further request, proceed
+                        },
+                    }
+                }
+            };
+            if let Some((req_id, message)) = response {
+                self.inner.state.accept(pr::PendingRequestProposal {
+                    effects: &mut self.inner.effects,
+                    req_id,
+                    time_passed,
+                    message: message.clone(),
+                });
+                slog::warn!(logger, "proposal {} {:?} {}", cnt, message, addr);
+                cnt += 1;
+            }
+
+            if !consumed {
+                match &item.inner {
+                    SyscallKind::Write(result) => {
+                        if result.is_err() {
+                            // hard to say what should we do here,
+                            // state machine should try to write, but it should receive an error
+                        }
+                        match result {
+                            Ok(recorded_data) => {
+                                let mut actual_data = recorded_data.clone();
+
+                                let stream = peer_streams.entry(addr).or_default();
+                                if stream.take(&mut actual_data) == 0 {
+                                    self.inner.state.accept(pr::PeerWritableProposal {
+                                        effects: &mut self.inner.effects,
+                                        time_passed,
+                                        peer: addr.into(),
+                                        stream,
+                                    });
+                                    stream.take(&mut actual_data);
+                                }
+                                slog::warn!(logger, "proposal {} write {}, {}", cnt, addr, hex::encode(&actual_data));
+                                cnt += 1;
+                                // we expect the data is equal to the data state machine is written
+                                let equal = recorded_data == &actual_data;
+
+                                assert!(equal);
+                            },
+                            Err(code) => {
+                                let _ = code;
+                                // TODO:
+                            },
+                        }
+                    },
+                    SyscallKind::Read(result) => {
+                        let stream = peer_streams.entry(addr).or_default();
+                        match result {
+                            Ok(data) => {
+                                stream.put(data);
+                                self.inner.state.accept(pr::PeerReadableProposal {
+                                    effects: &mut self.inner.effects,
+                                    time_passed,
+                                    peer: addr.into(),
+                                    stream,
+                                });
+                                slog::warn!(logger, "proposal {} read {}, {}", cnt, addr, hex::encode(data));
+                                cnt += 1;
+                            },
+                            Err(-11) => {
+                                // TODO:
+                            },
+                            Err(code) => {
+                                // hard to say what should we do here, mock stream
+                                let _ = code;
+                            },
+                        };
+                    },
+                    SyscallKind::Close => {
+                        self.inner.state.accept(pr::PeerDisconnectedProposal {
+                            effects: &mut self.inner.effects,
+                            time_passed,
+                            peer: addr.into(),
+                        });
+                        slog::warn!(logger, "proposal {} close {}", cnt, addr);
+                        cnt += 1;
+                    },
+                    _ => {
+                        // should not happens
+                        slog::error!(logger, "unused: {:?}", item);
+                    },
+                }
+            }
+        }
     }
 
     fn replay_proposals(&mut self) {
@@ -865,7 +1134,16 @@ where
             );
         }
         if self.inner.config.replay {
-            self.replay_proposals();
+            if let Ok(path) = std::env::var("REPLAY_DB") {
+                self.replay_database(path);
+                let mut file = std::fs::File::create("target/state_after_replay").unwrap();
+                write!(file, "{:?}", self.state()).unwrap();
+                file.flush().unwrap();
+                file.sync_all().unwrap();
+                std::process::exit(0);
+            } else {
+                self.replay_proposals();
+            }
         } else {
             self.wait_for_events();
 

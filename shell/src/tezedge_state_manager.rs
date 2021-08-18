@@ -393,6 +393,7 @@ impl TezedgeStateManager {
         )) = self.proposer_thread_handle.take()
         {
             let mut proposer = TezedgeProposer::new(
+                Some(self.log.clone()),
                 Instant::now(),
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
