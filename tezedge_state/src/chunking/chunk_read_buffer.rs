@@ -125,7 +125,6 @@ impl ChunkReadBuffer {
         if !self.is_finished() {
             return None;
         }
-        // TODO: use reference instead
         let mut buf = std::mem::take(&mut self.buf);
         buf.truncate(self.expected_len);
         self.clear();
