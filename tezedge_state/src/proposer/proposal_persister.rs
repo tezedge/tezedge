@@ -17,7 +17,7 @@ impl Drop for ProposalPersisterHandle {
     fn drop(&mut self) {
         drop(self.sender.take());
         if let Some(jh) = self.join_handle.take() {
-            jh.join().unwrap();
+            let _ = jh.join();
         }
     }
 }
@@ -53,7 +53,10 @@ impl ProposalPersister {
 
         let state = Self { channel: rx };
 
-        let join_handle = std::thread::spawn(move || run(state));
+        let join_handle = std::thread::Builder::new()
+            .name("proposal-persister".to_owned())
+            .spawn(move || run(state))
+            .expect("failed to spawn proposal-persister thread");
 
         ProposalPersisterHandle {
             sender: Some(tx),
