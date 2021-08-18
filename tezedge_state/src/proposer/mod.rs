@@ -253,24 +253,6 @@ where
             .wait_for_events(events, self.config.wait_for_events_timeout)
     }
 
-    // fn handle_event(&mut self, event: Event<NetE>) {
-    //     match event {
-    //         Event::Tick(at) => {
-    //             accept_proposal!(
-    //                 self.state,
-    //                 TickProposal {
-    //                     time_passed: self.update_time(at),
-    //                     effects: &mut self.effects,
-    //                 },
-    //                 self.proposal_persister
-    //             );
-    //         }
-    //         Event::Network(event) => {
-    //             self.handle_network_event(&event);
-    //         }
-    //     }
-    // }
-
     fn handle_event_ref<'a>(&mut self, event: EventRef<'a, NetE>) {
         match event {
             Event::Tick(at) => {
@@ -879,19 +861,6 @@ where
 
         self.inner.execute_requests();
     }
-
-    // pub fn make_progress_owned(&mut self)
-    // where
-    //     for<'a> &'a Es: IntoIterator<Item = Event<NetE>>,
-    // {
-    //     self.wait_for_events();
-
-    //     for event in self.events.into_iter() {
-    //         self.inner.handle_event(event);
-    //     }
-
-    //     self.inner.execute_requests();
-    // }
 
     #[inline]
     pub fn extend_potential_peers<P>(&mut self, at: Instant, peers: P)
