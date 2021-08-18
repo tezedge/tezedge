@@ -4,7 +4,6 @@
 use itertools::Itertools;
 use quickcheck::{Arbitrary, Gen};
 use std::io;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crypto::nonce::Nonce;
@@ -26,7 +25,7 @@ enum FakeWritable {
 }
 
 impl io::Read for FakeWritable {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
         Ok(0)
     }
 }
@@ -49,6 +48,7 @@ impl io::Write for FakeWritable {
 enum Messages {
     Handshake(PeerDecodedHanshakeMessage),
     Writable(FakeWritable),
+    Disconnected,
 }
 
 impl From<PeerDecodedHanshakeMessage> for Messages {
@@ -107,6 +107,7 @@ fn build_messages(g: &mut Gen, identity: &Identity) -> Vec<Messages> {
         PeerDecodedHanshakeMessage::new(to_binary_chunk(&ack_msg), ack_msg.into()).into(),
         PeerDecodedHanshakeMessage::new(to_binary_chunk(&nack_v0_msg), nack_v0_msg.into()).into(),
         PeerDecodedHanshakeMessage::new(to_binary_chunk(&nack_msg), nack_msg.into()).into(),
+        Messages::Disconnected,
     ]
 }
 
@@ -154,7 +155,7 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
 fn try_sequence<Efs: Effects + Clone>(
     state_with_effects: &mut StateWithEffects<Efs>,
     sequence: &[Messages],
-    incoming: bool,
+    _incoming: bool,
 ) -> bool {
     let state = &mut state_with_effects.state;
     let effects = &mut state_with_effects.effects;
@@ -174,6 +175,11 @@ fn try_sequence<Efs: Effects + Clone>(
                 time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
                 stream: &mut writable.clone(),
+            }),
+            Messages::Disconnected => state.accept(PeerDisconnectedProposal {
+                effects,
+                time_passed: Duration::from_millis(1),
+                peer: peer.clone(),
             }),
         };
     }
@@ -201,7 +207,8 @@ fn sequence_to_str(seq: &[Messages]) -> String {
                 PeerDecodedHanshakeMessageType::Ack(AckMessage::Nack(_)) => "receive_nack",
             }
             .to_owned(),
-            Messages::Writable(writable) => format!("{:?}", writable),
+            Messages::Writable(writable) => format!("Writable({:?})", writable),
+            Messages::Disconnected => "disconnected".to_owned(),
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -345,6 +352,24 @@ fn simulate_one_peer_all_message_sequences() {
                 println!("successful incoming sequence: {}", sequence_to_str(&seq));
                 successful_sequences.push(seq.clone());
             }
+
+            // try to test disconnection at the end
+            let mut seq = seq;
+            seq.push(Messages::Disconnected);
+
+            assert_eq!(
+                try_sequence(&mut state_outgoing.clone(), &seq, false),
+                false,
+                "unexpected result for (outgoing) sequence: {}. After disconnection in the end, it should have failed!",
+                sequence_to_str(&seq)
+            );
+
+            assert_eq!(
+                try_sequence(&mut state_incoming.clone(), &seq, true),
+                false,
+                "unexpected result for (incoming) sequence: {}. After disconnection in the end, it should have failed!",
+                sequence_to_str(&seq)
+            );
         }
         println!("tried permutations: {}", count);
     }
