@@ -342,63 +342,75 @@ impl TezedgeIndex {
     /// Return an empty directory if no directory under this path exists or if a blob
     /// (= value) is encountered along the way.
     ///
-    pub fn find_raw_tree(
+    /// Use `Self::find_node` to get the `NodeId` at that path.
+    pub fn find_or_create_directory(
         &self,
-        root: Tree,
-        key: &[&str],
+        root: DirectoryId,
+        path: &ContextKey,
         storage: &mut Storage,
-    ) -> Result<Tree, MerkleError> {
-        let first = match key.first() {
-            Some(first) => *first,
-            None => {
-                // terminate recursion if end of path was reached
-                return Ok(root);
-            }
-        };
-
-        // first get node at key
-        let child_node_id = match storage.tree_find_node(root, first) {
-            Some(node_id) => node_id,
-            None => {
-                return Ok(Tree::empty());
-            }
-        };
-
-        // get entry (from working tree)
-        let child_node = storage.get_node(child_node_id)?;
-        match child_node.get_entry() {
-            Some(Entry::Tree(tree)) => {
-                return self.find_raw_tree(tree, &key[1..], storage);
-            }
-            Some(Entry::Blob(_)) => return Ok(Tree::empty()),
-            Some(Entry::Commit { .. }) => {
-                return Err(MerkleError::FoundUnexpectedStructure {
-                    sought: "Tree/Blob".to_string(),
-                    found: "commit".to_string(),
-                })
-            }
-            // If `Node::get_entry` returns `None`, it means that the entry
-            // is not deserialized into the working tree.
-            // To get the entry, we must fetch it from the repository.
-            // See below.
-            None => {}
+    ) -> Result<DirectoryId, MerkleError> {
+        if path.is_empty() {
+            return Ok(root);
         }
 
-        // get entry by hash (from DB)
-        let hash = child_node.get_hash_id()?;
-        let entry = self.get_entry(hash, storage)?;
+        let node_id = match self.find_node(root, path, storage)? {
+            Some(node_id) => node_id,
+            None => return Ok(DirectoryId::empty()),
+        };
 
-        let child_node = storage.get_node(child_node_id)?;
-        child_node.set_entry(&entry)?;
-
-        match entry {
-            Entry::Tree(tree) => self.find_raw_tree(tree, &key[1..], storage),
-            Entry::Blob(_) => Ok(Tree::empty()),
-            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "Tree/Blob".to_string(),
-                found: "commit".to_string(),
+        match self.node_object(node_id, storage)? {
+            Object::Directory(dir_id) => Ok(dir_id),
+            Object::Blob(_) => Ok(DirectoryId::empty()),
+            Object::Commit(_) => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "Directory/Blob".to_string(),
+                found: "Commit".to_string(),
             }),
         }
+    }
+
+    /// Traverses `root` and returns the node at `path`.
+    ///
+    /// Fetches objects from the repository if necessary.
+    /// Returns `None` if the path doesn't exist or if a blob is encountered.
+    pub fn find_node(
+        &self,
+        mut root: DirectoryId,
+        path: &ContextKey,
+        storage: &mut Storage,
+    ) -> Result<Option<NodeId>, MerkleError> {
+        if path.is_empty() {
+            return Err(MerkleError::KeyEmpty);
+        }
+
+        let last_key_index = path.len() - 1;
+
+        for (index, key) in path.iter().enumerate() {
+            let child_node_id = match storage.dir_find_node(root, key) {
+                Some(node_id) => node_id,
+                None => return Ok(None), // Path doesn't exist
+            };
+
+            if index == last_key_index {
+                // We reached the last key in the path, return the `NodeId`.
+                return Ok(Some(child_node_id));
+            }
+
+            match self.node_object(child_node_id, storage)? {
+                Object::Directory(dir_id) => {
+                    // Go to next key
+                    root = dir_id;
+                }
+                Object::Blob(_) => return Ok(None),
+                Object::Commit(_) => {
+                    return Err(MerkleError::FoundUnexpectedStructure {
+                        sought: "Directory/Blob".to_string(),
+                        found: "Commit".to_string(),
+                    })
+                }
+            };
+        }
+
+        unreachable!()
     }
 
     /// Get value from historical context identified by commit hash.
@@ -412,33 +424,36 @@ impl TezedgeIndex {
         let commit = self.get_commit(commit_hash, &mut storage)?;
         let dir_id = self.get_directory(commit.root_hash, &mut storage)?;
 
-        let blob_id = self.get_from_tree(tree, key, &mut storage)?;
+        let blob_id = self.try_find_blob(dir_id, key, &mut storage)?;
         let blob = storage.get_blob(blob_id)?;
 
         Ok(blob.to_vec())
     }
 
-    fn get_from_tree(
+    /// Traverses `root` and returns the value (= blob) at `path`.
+    ///
+    /// Fetches objects from repository if necessary.
+    /// Returns an error if the path doesn't exist or is not a blob.
+    ///
+    /// Use `Self::find_node` to get the `NodeId` at that path.
+    pub fn try_find_blob(
         &self,
-        root: Tree,
+        root: DirectoryId,
         key: &ContextKey,
         storage: &mut Storage,
-    ) -> Result<BlobStorageId, MerkleError> {
-        let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
-
-        let node = self.find_raw_tree(root, &path, storage)?;
-
-        // get file node from tree
-        let node_id =
-            storage
-                .tree_find_node(node, *file)
-                .ok_or_else(|| MerkleError::ValueNotFound {
+    ) -> Result<BlobId, MerkleError> {
+        let node_id = match self.find_node(root, key, storage)? {
+            Some(node_id) => node_id,
+            None => {
+                return Err(MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
-                })?;
+                })
+            }
+        };
 
         // get blob
-        match self.node_entry(node_id, storage)? {
-            Entry::Blob(blob) => Ok(blob),
+        match self.node_object(node_id, storage)? {
+            Object::Blob(blob) => Ok(blob),
             _ => Err(MerkleError::ValueIsNotABlob {
                 key: self.key_to_string(key),
             }),

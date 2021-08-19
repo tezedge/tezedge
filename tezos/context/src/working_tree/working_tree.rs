@@ -465,38 +465,36 @@ impl WorkingTree {
         }
     }
 
+    /// Traverses this working tree and returns the tree at `key`.
+    ///
+    /// Fetches entries from repository if necessary.
     pub fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
-        let (file, path) = if let Some((file, path)) = key.split_last() {
-            (file, path)
-        } else {
+        if key.is_empty() {
             // If the key is empty, we are checking self, which exists
             return Ok(Some(self.clone()));
+        }
+
+        let mut storage = self.index.storage.borrow_mut();
+        let root = self.get_working_tree_root();
+
+        let node_id = match self.index.find_node(root, key, &mut storage) {
+            Ok(Some(node_id)) => node_id,
+            _ => return Ok(None),
         };
 
-        let root = self.get_working_tree_root_ref();
-        let mut storage = self.index.storage.borrow_mut();
-
-        if let Ok(tree_id) = self.find_raw_tree(root, path, &mut storage) {
-            if let Some(node_id) = storage.tree_find_node(tree_id, *file) {
-                match self.index.node_entry(node_id, &mut storage) {
-                    Err(MerkleError::EntryNotFound { .. }) => Ok(None),
-                    Err(err) => Err(err)?,
-                    Ok(Entry::Tree(tree)) => {
-                        Ok(Some(Self::new_with_tree(self.index.clone(), tree)))
-                    }
-                    Ok(Entry::Blob(blob)) => {
-                        Ok(Some(Self::new_with_value(self.index.clone(), blob)))
-                    }
-                    Ok(Entry::Commit(_)) => Err(MerkleError::FoundUnexpectedStructure {
-                        sought: "tree".to_string(),
-                        found: "commit".to_string(),
-                    }),
-                }
-            } else {
-                Ok(None)
+        match self.index.node_object(node_id, &mut storage) {
+            Err(MerkleError::ObjectNotFound { .. }) => Ok(None),
+            Err(err) => Err(err),
+            Ok(Object::Directory(dir_id)) => {
+                Ok(Some(Self::new_with_directory(self.index.clone(), dir_id)))
             }
-        } else {
-            Ok(None)
+            Ok(Object::Blob(blob_id)) => {
+                Ok(Some(Self::new_with_value(self.index.clone(), blob_id)))
+            }
+            Ok(Object::Commit(_)) => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "directory".to_string(),
+                found: "commit".to_string(),
+            }),
         }
     }
 
@@ -649,12 +647,16 @@ impl WorkingTree {
         }
     }
 
-    /// Get value from current working tree
+    /// Get value at 'key' from this working tree.
+    ///
+    /// If object at `key` is missing or is a directory, this returns `None`.
+    /// Fetches data from repository if necessary.
     pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
-        let root = self.get_working_tree_root_ref();
-        match self.get_from_tree(root, key) {
+        let root = self.get_working_tree_root();
+        let mut storage = self.index.storage.borrow_mut();
+
+        match self.index.try_find_blob(root, key, &mut storage) {
             Ok(blob_id) => {
-                let storage = self.index.storage.borrow();
                 let blob = storage.get_blob(blob_id)?;
                 Ok(Some(blob.to_vec()))
             }
@@ -680,61 +682,23 @@ impl WorkingTree {
         self.node_exists(root, key)
     }
 
-    fn value_exists(&self, tree: Tree, key: &ContextKey) -> Result<bool, MerkleError> {
-        let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
+    /// Checks if a value (blob) at `key` exists in `dir_id`.
+    ///
+    /// Returns false if object at `key` is not a blob.
+    fn value_exists(&self, dir_id: DirectoryId, key: &ContextKey) -> Result<bool, MerkleError> {
+        if key.is_empty() {
+            return Err(MerkleError::KeyEmpty);
+        }
+
         let mut storage = self.index.storage.borrow_mut();
 
-        // find tree by path
-        match self.find_raw_tree(tree, &path, &mut storage) {
-            Err(_) => Ok(false),
-            Ok(tree_id) => {
-                if let Some(node_id) = storage.tree_find_node(tree_id, *file) {
-                    let node = storage.get_node(node_id)?;
-                    Ok(node.node_kind() == NodeKind::Leaf)
-                } else {
-                    Ok(false)
-                }
-            }
-        }
-    }
-
-    fn node_exists(&self, tree: Tree, key: &ContextKey) -> bool {
-        let (file, path) = if let Some((file, path)) = key.split_last() {
-            (file, path)
-        } else {
-            // If the key is empty, we are checking self, which exists
-            return true;
+        let node_id = match self.index.find_node(dir_id, key, &mut storage) {
+            Ok(Some(node_id)) => node_id,
+            _ => return Ok(false),
         };
-        let mut storage = self.index.storage.borrow_mut();
 
-        if let Ok(tree_id) = self.find_raw_tree(tree, path, &mut storage) {
-            storage.tree_find_node(tree_id, *file).is_some()
-        } else {
-            false
-        }
-    }
-
-    fn get_from_tree(&self, root: Tree, key: &ContextKey) -> Result<BlobStorageId, MerkleError> {
-        let mut storage = self.index.storage.borrow_mut();
-
-        let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
-        let node = self.find_raw_tree(root, &path, &mut storage)?;
-
-        // get file node from tree
-        let node_id =
-            storage
-                .tree_find_node(node, *file)
-                .ok_or_else(|| MerkleError::ValueNotFound {
-                    key: self.key_to_string(key),
-                })?;
-
-        // get blob
-        match self.index.node_entry(node_id, &mut storage)? {
-            Entry::Blob(blob) => Ok(blob),
-            _ => Err(MerkleError::ValueIsNotABlob {
-                key: self.key_to_string(key),
-            }),
-        }
+        let node = storage.get_node(node_id)?;
+        Ok(node.node_kind() == NodeKind::Leaf)
     }
 
     /// Checks if a value (blob) or directory at `key` exists in `dir_id`.
