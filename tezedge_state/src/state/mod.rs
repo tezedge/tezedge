@@ -13,7 +13,7 @@ use tezos_messages::p2p::encoding::prelude::{
 };
 pub use tla_sm::{Acceptor, GetRequests, Proposal};
 
-use crate::peer_address::PeerListenerAddress;
+use crate::peer_address::{DebugVecItemsAsStr, PeerListenerAddress};
 use crate::proposals::InvalidProposalError;
 use crate::{Effects, PeerAddress, Port, ShellCompatibilityVersion};
 
@@ -561,13 +561,13 @@ impl TezedgeState {
         if len == 0 {
             return;
         }
+        let peers = effects.choose_peers_to_connect_to(&self.potential_peers, len);
+
         slog::info!(&self.log, "Initiating handshakes";
                      "connected_peers" => self.connected_peers.len(),
                      "pending_peers" => self.pending_peers.len(),
                      "potential_peers" => self.potential_peers.len(),
-                     "initiated_handshakes" => len);
-
-        let peers = effects.choose_peers_to_connect_to(&self.potential_peers, len);
+                     "initiated_handshakes" => format!("{:#?}", DebugVecItemsAsStr(&peers)));
 
         if peers.len() == 0 {
             return;

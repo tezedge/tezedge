@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Debug};
 use std::hash::Hash;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
@@ -74,7 +74,7 @@ impl PeerAddress {
 
 impl Display for PeerAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        Display::fmt(&self.0, f)
     }
 }
 
@@ -132,7 +132,7 @@ impl PeerListenerAddress {
 
 impl Display for PeerListenerAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        Display::fmt(&self.0, f)
     }
 }
 
@@ -184,6 +184,16 @@ impl From<PeerListenerAddress> for PeerAddress {
 impl From<&PeerListenerAddress> for PeerAddress {
     fn from(addr: &PeerListenerAddress) -> Self {
         addr.0.into()
+    }
+}
+
+pub struct DebugVecItemsAsStr<'a, T>(pub &'a [T]);
+
+impl<'a, T: ToString> Debug for DebugVecItemsAsStr<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set()
+            .entries(self.0.iter().map(|x| x.to_string()))
+            .finish()
     }
 }
 
