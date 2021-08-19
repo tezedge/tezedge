@@ -103,6 +103,7 @@ pub type EventRef<'a, NetE> = Event<&'a NetE>;
 
 pub trait NetworkEvent {
     fn is_server_event(&self) -> bool;
+    fn is_waker_event(&self) -> bool;
 
     fn is_readable(&self) -> bool;
     fn is_writable(&self) -> bool;
@@ -303,9 +304,9 @@ where
                 }
                 self.execute_requests();
             }
-        } else {
+        } else if !event.is_waker_event() {
             self.handle_readiness_event(event);
-        };
+        }
     }
 
     fn handle_readiness_event(&mut self, event: &NetE) {

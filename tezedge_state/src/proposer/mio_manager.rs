@@ -25,6 +25,11 @@ impl NetworkEvent for MioEvent {
     }
 
     #[inline(always)]
+    fn is_waker_event(&self) -> bool {
+        self.token() == MIO_WAKE_TOKEN
+    }
+
+    #[inline(always)]
     fn is_readable(&self) -> bool {
         self.is_readable()
     }
