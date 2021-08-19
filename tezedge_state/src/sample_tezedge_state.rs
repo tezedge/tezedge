@@ -45,6 +45,10 @@ pub fn identity_1() -> Identity {
     )
 }
 
+pub fn discarded_logger() -> slog::Logger {
+    slog::Logger::root(slog::Discard, slog::o!())
+}
+
 pub fn logger(level: slog::Level) -> slog::Logger {
     let drain = Arc::new(
         slog_async::Async::new(

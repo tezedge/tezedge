@@ -36,6 +36,7 @@ fn default_cluster() -> OneRealNodeCluster {
 
     OneRealNodeCluster::new(
         Instant::now(),
+        sample_tezedge_state::discarded_logger(),
         TezedgeProposerConfig {
             wait_for_events_timeout: Some(Duration::from_millis(250)),
             events_limit: 1024,
