@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 
 use failure::{bail, format_err, Fail};
 use getset::Getters;
-use tezos_new_context::context_key_owned;
+use tezos_context::context_key_owned;
 
 use crypto::hash::ContextHash;
 use crypto::{

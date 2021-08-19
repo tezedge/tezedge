@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     mem::size_of,
-    ops::Range,
+    ops::{Range, RangeInclusive},
 };
 
 use modular_bitfield::prelude::*;
@@ -22,10 +22,10 @@ use super::{
     Node,
 };
 
-/// Threshold when a tree must be an `Inode`
-const TREE_INODE_THRESHOLD: usize = 256;
+/// Threshold when a 'small' directory must become an `Inode` (and reverse)
+const DIRECTORY_INODE_THRESHOLD: usize = 256;
 
-/// Threshold when a `Inode::Tree` must be converted to a another `Inode::Pointers`
+/// Threshold when a `Inode::Directory` must be converted to a another `Inode::Pointers`
 const INODE_POINTER_THRESHOLD: usize = 32;
 
 // Bitsmaks used on ids/indexes
@@ -36,9 +36,16 @@ const FULL_31_BITS: usize = 0x7FFFFFFF;
 const FULL_28_BITS: usize = 0xFFFFFFF;
 const FULL_4_BITS: usize = 0xF;
 
+/// Length of a blob we consider inlined.
+///
+/// Do not consider blobs of length zero as inlined, this never
+/// happens when the node is running and fix a serialization issue
+/// during testing/fuzzing
+const BLOB_INLINED_RANGE: RangeInclusive<usize> = 1..=7;
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TreeStorageId {
-    /// Note: Must fit in NodeInner.entry_id (61 bits)
+pub struct DirectoryId {
+    /// Note: Must fit in NodeInner.object_id (61 bits)
     ///
     /// | 3 bits |  1 bit   | 60 bits |
     /// |--------|----------|---------|
@@ -55,41 +62,41 @@ pub struct TreeStorageId {
     /// | an InodeId |
     ///
     /// Note that the `InodeId` here can only be the root of an `Inode`.
-    /// A `TreeStorageId` never contains an `InodeId` other than a root.
+    /// A `DirectoryId` never contains an `InodeId` other than a root.
     /// The working tree doesn't have knowledge of inodes, it's an implementation
     /// detail of the `Storage`
     bits: u64,
 }
 
-impl Default for TreeStorageId {
+impl Default for DirectoryId {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl TreeStorageId {
-    fn try_new_tree(start: usize, end: usize) -> Result<Self, StorageError> {
+impl DirectoryId {
+    fn try_new_dir(start: usize, end: usize) -> Result<Self, StorageError> {
         let length = end
             .checked_sub(start)
-            .ok_or(StorageError::TreeInvalidStartEnd)?;
+            .ok_or(StorageError::DirInvalidStartEnd)?;
 
         if start & !FULL_32_BITS != 0 {
             // Must fit in 32 bits
-            return Err(StorageError::TreeStartTooBig);
+            return Err(StorageError::DirStartTooBig);
         }
 
         if length & !FULL_28_BITS != 0 {
             // Must fit in 28 bits
-            return Err(StorageError::TreeLengthTooBig);
+            return Err(StorageError::DirLengthTooBig);
         }
 
-        let tree_id = Self {
+        let dir_id = Self {
             bits: (start as u64) << 28 | length as u64,
         };
 
-        debug_assert_eq!(tree_id.get(), (start as usize, end));
+        debug_assert_eq!(dir_id.get(), (start as usize, end));
 
-        Ok(tree_id)
+        Ok(dir_id)
     }
 
     fn try_new_inode(index: usize) -> Result<Self, StorageError> {
@@ -124,10 +131,10 @@ impl TreeStorageId {
         (start, start + length)
     }
 
-    /// Return the length of the small tree.
+    /// Return the length of the small directory.
     ///
-    /// Use `Storage::tree_len` to get the length of all trees (including inodes)
-    fn small_tree_len(self) -> usize {
+    /// Use `Storage::dir_len` to get the length of all directories (including inodes)
+    fn small_dir_len(self) -> usize {
         debug_assert!(!self.is_inode());
 
         (self.bits as usize) & FULL_28_BITS
@@ -141,7 +148,7 @@ impl TreeStorageId {
 
     pub fn empty() -> Self {
         // Never fails
-        Self::try_new_tree(0, 0).unwrap()
+        Self::try_new_dir(0, 0).unwrap()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -149,25 +156,25 @@ impl TreeStorageId {
             return false;
         }
 
-        self.small_tree_len() == 0
+        self.small_dir_len() == 0
     }
 }
 
-impl From<TreeStorageId> for u64 {
-    fn from(tree_id: TreeStorageId) -> Self {
-        tree_id.bits
+impl From<DirectoryId> for u64 {
+    fn from(dir_id: DirectoryId) -> Self {
+        dir_id.bits
     }
 }
 
-impl From<u64> for TreeStorageId {
-    fn from(entry_id: u64) -> Self {
-        Self { bits: entry_id }
+impl From<u64> for DirectoryId {
+    fn from(object_id: u64) -> Self {
+        Self { bits: object_id }
     }
 }
 
-impl From<InodeId> for TreeStorageId {
+impl From<InodeId> for DirectoryId {
     fn from(inode_id: InodeId) -> Self {
-        // Never fails, `InodeId` is 31 bits, `TreeStorageId` expects 60 bits max
+        // Never fails, `InodeId` is 31 bits, `DirectoryId` expects 60 bits max
         Self::try_new_inode(inode_id.0 as usize).unwrap()
     }
 }
@@ -177,17 +184,17 @@ pub enum StorageError {
     BlobSliceTooBig,
     BlobStartTooBig,
     BlobLengthTooBig,
-    TreeInvalidStartEnd,
-    TreeStartTooBig,
-    TreeLengthTooBig,
+    DirInvalidStartEnd,
+    DirStartTooBig,
+    DirLengthTooBig,
     InodeIndexTooBig,
     NodeIdError,
     StringNotFound,
-    TreeNotFound,
+    DirNotFound,
     BlobNotFound,
     NodeNotFound,
     InodeNotFound,
-    ExpectingTreeGotInode,
+    ExpectedDirGotInode,
     IterationError,
     RootOfInodeNotAPointer,
 }
@@ -199,8 +206,8 @@ impl From<NodeIdError> for StorageError {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct BlobStorageId {
-    /// Note: Must fit in NodeInner.entry_id (61 bits)
+pub struct BlobId {
+    /// Note: Must fit in NodeInner.object_id (61 bits)
     ///
     /// | 3 bits  | 1 bit     | 60 bits |
     /// |---------|-----------|---------|
@@ -218,15 +225,15 @@ pub struct BlobStorageId {
     bits: u64,
 }
 
-impl From<BlobStorageId> for u64 {
-    fn from(blob_id: BlobStorageId) -> Self {
+impl From<BlobId> for u64 {
+    fn from(blob_id: BlobId) -> Self {
         blob_id.bits
     }
 }
 
-impl From<u64> for BlobStorageId {
-    fn from(entry: u64) -> Self {
-        Self { bits: entry }
+impl From<u64> for BlobId {
+    fn from(object: u64) -> Self {
+        Self { bits: object }
     }
 }
 
@@ -236,7 +243,7 @@ enum BlobRef {
     Ref { start: usize, end: usize },
 }
 
-impl BlobStorageId {
+impl BlobId {
     fn try_new_inline(value: &[u8]) -> Result<Self, StorageError> {
         let len = value.len();
 
@@ -403,12 +410,12 @@ impl PointerToInode {
 
 assert_eq_size!([u8; 9], Option<PointerToInode>);
 
-/// Inode representation used for hashing directories with > TREE_INODE_THRESHOLD entries.
+/// Inode representation used for hashing directories with > DIRECTORY_INODE_THRESHOLD entries.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum Inode {
     /// Directory is a list of (StringId, NodeId)
-    Directory(TreeStorageId),
+    Directory(DirectoryId),
     Pointers {
         depth: u32,
         nchildren: u32,
@@ -422,12 +429,12 @@ pub enum Inode {
 
 assert_eq_size!([u8; 304], Inode);
 
-/// A range inside `Storage::temp_tree`
-type TempTreeRange = Range<usize>;
+/// A range inside `Storage::temp_dir`
+type TempDirRange = Range<usize>;
 
 /// `Storage` contains all the data from the working tree.
 ///
-/// This is where all trees/blobs/strings are allocated.
+/// This is where all directories/blobs/strings are allocated.
 /// The working tree only has access to ids which refer to data inside `Storage`.
 ///
 /// Because `Storage` is for the working tree only, it is cleared before
@@ -435,20 +442,20 @@ type TempTreeRange = Range<usize>;
 pub struct Storage {
     /// An efficient map `NodeId -> Node`
     nodes: Entries<NodeId, Node>,
-    /// Concatenation of all trees in the working tree.
-    /// The working tree has `TreeStorageId` which refers to a subslice of this
-    /// vector `trees`
-    trees: Vec<(StringId, NodeId)>,
-    /// Temporary tree, this is used to avoid allocations when we
-    /// manipulate `trees`
-    /// For example, `Storage::insert` will create a new tree in `temp_tree`, once
-    /// done it will copy that tree from `temp_tree` into the end of `trees`
-    temp_tree: Vec<(StringId, NodeId)>,
+    /// Concatenation of all directories in the working tree.
+    /// The working tree has `DirectoryId` which refers to a subslice of this
+    /// vector `directories`
+    directories: Vec<(StringId, NodeId)>,
+    /// Temporary directory, this is used to avoid allocations when we
+    /// manipulate `directories`
+    /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
+    /// done it will copy that directory from `temp_dir` into the end of `directories`
+    temp_dir: Vec<(StringId, NodeId)>,
     /// Concatenation of all blobs in the working tree.
-    /// The working tree has `BlobStorageId` which refers to a subslice of this
+    /// The working tree has `BlobId` which refers to a subslice of this
     /// vector `blobs`.
     /// Note that blobs < 8 bytes are not included in this vector `blobs`, such
-    /// blob is directly inlined in the `BlobStorageId`
+    /// blob is directly inlined in the `BlobId`
     blobs: Vec<u8>,
     /// Concatenation of all strings in the working tree.
     /// The working tree has `StringId` which refers to a data inside `StringInterner`.
@@ -456,8 +463,8 @@ pub struct Storage {
     /// Concatenation of all inodes.
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
-    /// The working tree doesn't manipulate `InodeId` but `TreeStorageId` only.
-    /// A `TreeStorageId` might contains an `INodeId` but it's only the root
+    /// The working tree doesn't manipulate `InodeId` but `DirectoryId` only.
+    /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: Vec<Inode>,
 }
@@ -499,8 +506,8 @@ type IsNewKey = bool;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            trees: Vec::with_capacity(1024),
-            temp_tree: Vec::with_capacity(128),
+            directories: Vec::with_capacity(1024),
+            temp_dir: Vec::with_capacity(128),
             blobs: Vec::with_capacity(2048),
             strings: Default::default(),
             nodes: Entries::with_capacity(2048),
@@ -510,14 +517,14 @@ impl Storage {
 
     pub fn memory_usage(&self) -> StorageMemoryUsage {
         let nodes_cap = self.nodes.capacity();
-        let trees_cap = self.trees.capacity();
+        let directories_cap = self.directories.capacity();
         let blobs_cap = self.blobs.capacity();
-        let temp_tree_cap = self.temp_tree.capacity();
+        let temp_dir_cap = self.temp_dir.capacity();
         let inodes_cap = self.inodes.capacity();
         let strings = self.strings.memory_usage();
         let total_bytes = (nodes_cap * size_of::<Node>())
-            .saturating_add(trees_cap * size_of::<(StringId, NodeId)>())
-            .saturating_add(temp_tree_cap * size_of::<(StringId, NodeId)>())
+            .saturating_add(directories_cap * size_of::<(StringId, NodeId)>())
+            .saturating_add(temp_dir_cap * size_of::<(StringId, NodeId)>())
             .saturating_add(blobs_cap)
             .saturating_add(inodes_cap * size_of::<Inode>())
             .saturating_add(strings.total_bytes);
@@ -525,9 +532,9 @@ impl Storage {
         StorageMemoryUsage {
             nodes_len: self.nodes.len(),
             nodes_cap,
-            trees_len: self.trees.len(),
-            trees_cap,
-            temp_tree_cap,
+            directories_len: self.directories.len(),
+            directories_cap,
+            temp_dir_cap,
             blobs_len: self.blobs.len(),
             blobs_cap,
             inodes_len: self.inodes.len(),
@@ -547,22 +554,19 @@ impl Storage {
             .ok_or(StorageError::StringNotFound)
     }
 
-    pub fn add_blob_by_ref(&mut self, blob: &[u8]) -> Result<BlobStorageId, StorageError> {
-        // Do not consider blobs of length zero as inlined, this never
-        // happens when the node is running and fix a serialization issue
-        // during testing/fuzzing
-        if (1..8).contains(&blob.len()) {
-            BlobStorageId::try_new_inline(blob)
+    pub fn add_blob_by_ref(&mut self, blob: &[u8]) -> Result<BlobId, StorageError> {
+        if BLOB_INLINED_RANGE.contains(&blob.len()) {
+            BlobId::try_new_inline(blob)
         } else {
             let start = self.blobs.len();
             self.blobs.extend_from_slice(blob);
             let end = self.blobs.len();
 
-            BlobStorageId::try_new(start, end)
+            BlobId::try_new(start, end)
         }
     }
 
-    pub fn get_blob(&self, blob_id: BlobStorageId) -> Result<Blob, StorageError> {
+    pub fn get_blob(&self, blob_id: BlobId) -> Result<Blob, StorageError> {
         match blob_id.get() {
             BlobRef::Inline { length, value } => Ok(Blob::Inline { length, value }),
             BlobRef::Ref { start, end } => {
@@ -583,30 +587,32 @@ impl Storage {
         self.nodes.push(node).map_err(|_| NodeIdError)
     }
 
-    /// Return the small tree `tree_id`.
+    /// Return the small directory `dir_id`.
     ///
-    /// This returns an error when the underlying tree is an Inode.
-    /// To iterate/access all trees (including inodes), `Self::tree_iterate_unsorted`
-    /// and `Self::tree_to_vec_unsorted` must be used.
-    pub fn get_small_tree(
+    /// This returns an error when the underlying directory is an Inode.
+    /// To iterate/access all directories (including inodes), `Self::dir_iterate_unsorted`
+    /// and `Self::dir_to_vec_unsorted` must be used.
+    pub fn get_small_dir(
         &self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
     ) -> Result<&[(StringId, NodeId)], StorageError> {
-        if tree_id.is_inode() {
-            return Err(StorageError::ExpectingTreeGotInode);
+        if dir_id.is_inode() {
+            return Err(StorageError::ExpectedDirGotInode);
         }
 
-        let (start, end) = tree_id.get();
-        self.trees.get(start..end).ok_or(StorageError::TreeNotFound)
+        let (start, end) = dir_id.get();
+        self.directories
+            .get(start..end)
+            .ok_or(StorageError::DirNotFound)
     }
 
-    /// [test only] Return the tree with owned values
+    /// [test only] Return the directory with owned values
     #[cfg(test)]
-    pub fn get_owned_tree(&self, tree_id: TreeStorageId) -> Option<Vec<(String, Node)>> {
-        let tree = self.tree_to_vec_sorted(tree_id).unwrap();
+    pub fn get_owned_dir(&self, dir_id: DirectoryId) -> Option<Vec<(String, Node)>> {
+        let dir = self.dir_to_vec_sorted(dir_id).unwrap();
 
         Some(
-            tree.iter()
+            dir.iter()
                 .flat_map(|t| {
                     let key = self.strings.get(t.0)?;
                     let node = self.nodes.get(t.1).ok()??;
@@ -616,14 +622,26 @@ impl Storage {
         )
     }
 
-    fn binary_search_in_tree(
+    /// Search `key` in the directory and return the result of `slice::binary_search_by`.
+    ///
+    /// `dir` must be sorted.
+    ///
+    /// This returns two `Result<_, _>`:
+    /// - The first result (`Result<_, StorageError>`) is an error when something failed
+    ///   while reading a string (StorageError::StringNotFound).
+    /// - The second result (`Result<usize, usize>`) is from `slice::binary_search_by`.
+    ///   If the key was found in the directory, the result is `Ok(Ok(N))`.
+    ///   If the key doesn't exist in the directory, the result is `Ok(Err(N))`.
+    ///
+    ///   see https://doc.rust-lang.org/std/primitive.slice.html#method.binary_search_by
+    fn binary_search_in_dir(
         &self,
-        tree: &[(StringId, NodeId)],
+        dir: &[(StringId, NodeId)],
         key: &str,
     ) -> Result<Result<usize, usize>, StorageError> {
         let mut error = None;
 
-        let result = tree.binary_search_by(|value| match self.get_str(value.0) {
+        let result = dir.binary_search_by(|value| match self.get_str(value.0) {
             Ok(value) => value.cmp(key),
             Err(e) => {
                 // Take the error and stop the search
@@ -639,11 +657,11 @@ impl Storage {
         Ok(result)
     }
 
-    fn tree_find_node_recursive(&self, inode_id: InodeId, key: &str) -> Option<NodeId> {
+    fn dir_find_node_recursive(&self, inode_id: InodeId, key: &str) -> Option<NodeId> {
         let inode = self.get_inode(inode_id).ok()?;
 
         match inode {
-            Inode::Directory(tree_id) => self.tree_find_node(*tree_id, key),
+            Inode::Directory(dir_id) => self.dir_find_node(*dir_id, key),
             Inode::Pointers {
                 depth, pointers, ..
             } => {
@@ -652,44 +670,46 @@ impl Storage {
                 let pointer = pointers.get(index_at_depth)?.as_ref()?;
 
                 let inode_id = pointer.inode_id();
-                self.tree_find_node_recursive(inode_id, key)
+                self.dir_find_node_recursive(inode_id, key)
             }
         }
     }
 
-    pub fn tree_find_node(&self, tree_id: TreeStorageId, key: &str) -> Option<NodeId> {
-        if let Some(inode_id) = tree_id.get_inode_id() {
-            self.tree_find_node_recursive(inode_id, key)
+    /// Find `key` in the directory.
+    pub fn dir_find_node(&self, dir_id: DirectoryId, key: &str) -> Option<NodeId> {
+        if let Some(inode_id) = dir_id.get_inode_id() {
+            self.dir_find_node_recursive(inode_id, key)
         } else {
-            let tree = self.get_small_tree(tree_id).ok()?;
-            let index = self.binary_search_in_tree(tree, key).ok()?.ok()?;
+            let dir = self.get_small_dir(dir_id).ok()?;
+            let index = self.binary_search_in_dir(dir, key).ok()?.ok()?;
 
-            Some(tree[index].1)
+            Some(dir[index].1)
         }
     }
 
-    pub fn append_to_trees(
+    /// Move `new_dir` into `Self::directories` and return the `DirectoryId`.
+    pub fn append_to_directories(
         &mut self,
-        new_tree: &mut Vec<(StringId, NodeId)>,
-    ) -> Result<TreeStorageId, StorageError> {
-        let start = self.trees.len();
-        self.trees.append(new_tree);
-        let end = self.trees.len();
+        new_dir: &mut Vec<(StringId, NodeId)>,
+    ) -> Result<DirectoryId, StorageError> {
+        let start = self.directories.len();
+        self.directories.append(new_dir);
+        let end = self.directories.len();
 
-        TreeStorageId::try_new_tree(start, end)
+        DirectoryId::try_new_dir(start, end)
     }
 
-    /// Use `self.temp_tree` to avoid allocations
-    pub fn with_new_tree<F, R>(&mut self, fun: F) -> R
+    /// Use `self.temp_dir` to avoid allocations
+    pub fn with_new_dir<F, R>(&mut self, fun: F) -> R
     where
         F: FnOnce(&mut Self, &mut Vec<(StringId, NodeId)>) -> R,
     {
-        let mut new_tree = std::mem::take(&mut self.temp_tree);
-        new_tree.clear();
+        let mut new_dir = std::mem::take(&mut self.temp_dir);
+        new_dir.clear();
 
-        let result = fun(self, &mut new_tree);
+        let result = fun(self, &mut new_dir);
 
-        self.temp_tree = new_tree;
+        self.temp_dir = new_dir;
         result
     }
 
@@ -705,68 +725,68 @@ impl Storage {
         Ok(InodeId(current as u32))
     }
 
-    /// Copy tree from `Self::temp_tree` into `Self::trees` in a sorted order.
+    /// Copy directory from `Self::temp_dir` into `Self::directories` in a sorted order.
     ///
-    /// `tree_range` is the range of the tree in `Self::temp_tree`
-    fn copy_sorted(&mut self, tree_range: TempTreeRange) -> Result<TreeStorageId, StorageError> {
-        let start = self.trees.len();
+    /// `dir_range` is the range of the directory in `Self::temp_dir`
+    fn copy_sorted(&mut self, dir_range: TempDirRange) -> Result<DirectoryId, StorageError> {
+        let start = self.directories.len();
 
-        for (key_id, node_id) in &self.temp_tree[tree_range] {
+        for (key_id, node_id) in &self.temp_dir[dir_range] {
             let key_str = self.get_str(*key_id)?;
-            let tree = &self.trees[start..];
+            let dir = &self.directories[start..];
 
-            match self.binary_search_in_tree(tree, key_str)? {
+            match self.binary_search_in_dir(dir, key_str)? {
                 Ok(found) => {
-                    self.trees[start + found].1 = *node_id;
+                    self.directories[start + found].1 = *node_id;
                 }
                 Err(index) => {
-                    self.trees.insert(start + index, (*key_id, *node_id));
+                    self.directories.insert(start + index, (*key_id, *node_id));
                 }
             }
         }
 
-        let end = self.trees.len();
-        TreeStorageId::try_new_tree(start, end)
+        let end = self.directories.len();
+        DirectoryId::try_new_dir(start, end)
     }
 
-    fn with_temp_tree_range<Fun>(&mut self, mut fun: Fun) -> Result<TempTreeRange, StorageError>
+    fn with_temp_dir_range<Fun>(&mut self, mut fun: Fun) -> Result<TempDirRange, StorageError>
     where
         Fun: FnMut(&mut Self) -> Result<(), StorageError>,
     {
-        let start = self.temp_tree.len();
+        let start = self.temp_dir.len();
         fun(self)?;
-        let end = self.temp_tree.len();
+        let end = self.temp_dir.len();
 
-        Ok(TempTreeRange { start, end })
+        Ok(TempDirRange { start, end })
     }
 
     fn create_inode(
         &mut self,
         depth: u32,
-        tree_range: TempTreeRange,
+        dir_range: TempDirRange,
     ) -> Result<InodeId, StorageError> {
-        let tree_range_len = tree_range.end - tree_range.start;
+        let dir_range_len = dir_range.end - dir_range.start;
 
-        if tree_range_len <= INODE_POINTER_THRESHOLD {
-            // The tree in `tree_range` is not guaranted to be sorted.
-            // We use `Self::copy_sorted` to copy that tree into `Storage::trees` in
+        if dir_range_len <= INODE_POINTER_THRESHOLD {
+            // The directory in `dir_range` is not guaranted to be sorted.
+            // We use `Self::copy_sorted` to copy that directory into `Storage::directories` in
             // a sorted order.
 
-            let new_tree_id = self.copy_sorted(tree_range)?;
+            let new_dir_id = self.copy_sorted(dir_range)?;
 
-            self.add_inode(Inode::Directory(new_tree_id))
+            self.add_inode(Inode::Directory(new_dir_id))
         } else {
-            let nchildren = tree_range_len as u32;
+            let nchildren = dir_range_len as u32;
             let mut pointers: [Option<PointerToInode>; 32] = Default::default();
             let mut npointers = 0;
 
             for index in 0..32u8 {
-                let range = self.with_temp_tree_range(|this| {
-                    for i in tree_range.clone() {
-                        let (key_id, node_id) = this.temp_tree[i];
+                let range = self.with_temp_dir_range(|this| {
+                    for i in dir_range.clone() {
+                        let (key_id, node_id) = this.temp_dir[i];
                         let key = this.get_str(key_id)?;
                         if index_of_key(depth, key) as u8 == index {
-                            this.temp_tree.push((key_id, node_id));
+                            this.temp_dir.push((key_id, node_id));
                         }
                     }
                     Ok(())
@@ -791,33 +811,31 @@ impl Storage {
         }
     }
 
-    fn insert_tree_single_node(
+    /// Insert `(key_id, node)` into `Self::temp_dir`.
+    fn insert_dir_single_node(
         &mut self,
         key_id: StringId,
         node: Node,
-    ) -> Result<TempTreeRange, StorageError> {
+    ) -> Result<TempDirRange, StorageError> {
         let node_id = self.nodes.push(node)?;
 
-        self.with_temp_tree_range(|this| {
-            this.temp_tree.push((key_id, node_id));
+        self.with_temp_dir_range(|this| {
+            this.temp_dir.push((key_id, node_id));
             Ok(())
         })
     }
 
-    /// Copy tree `tree_id` from `Self::trees` into `Self::temp_Tree`
+    /// Copy directory `dir_id` from `Self::directories` into `Self::temp_dir`
     ///
-    /// Note: The callers of this function expect the tree to be copied
-    ///       at the end of `Self::temp_tree`. This is something to keep in mind
+    /// Note: The callers of this function expect the directory to be copied
+    ///       at the end of `Self::temp_dir`. This is something to keep in mind
     ///       if the implementation of this function change
-    fn copy_tree_in_temp_tree(
-        &mut self,
-        tree_id: TreeStorageId,
-    ) -> Result<TempTreeRange, StorageError> {
-        let (tree_start, tree_end) = tree_id.get();
+    fn copy_dir_in_temp_dir(&mut self, dir_id: DirectoryId) -> Result<TempDirRange, StorageError> {
+        let (dir_start, dir_end) = dir_id.get();
 
-        self.with_temp_tree_range(|this| {
-            this.temp_tree
-                .extend_from_slice(&this.trees[tree_start..tree_end]);
+        self.with_temp_dir_range(|this| {
+            this.temp_dir
+                .extend_from_slice(&this.directories[dir_start..dir_end]);
             Ok(())
         })
     }
@@ -833,29 +851,29 @@ impl Storage {
         let inode = self.get_inode(inode_id)?;
 
         match inode {
-            Inode::Directory(tree_id) => {
-                let tree_id = *tree_id;
+            Inode::Directory(dir_id) => {
+                let dir_id = *dir_id;
                 let node_id = self.add_node(node)?;
 
-                // Copy the existing tree into `Self::temp_tree` to create an inode
-                let range = self.with_temp_tree_range(|this| {
-                    let range = this.copy_tree_in_temp_tree(tree_id)?;
+                // Copy the existing directory into `Self::temp_dir` to create an inode
+                let range = self.with_temp_dir_range(|this| {
+                    let range = this.copy_dir_in_temp_dir(dir_id)?;
 
                     // We're using `Vec::insert` below and we don't want to invalidate
-                    // any existing `TempTreeRange`
-                    debug_assert_eq!(range.end, this.temp_tree.len());
+                    // any existing `TempDirRange`
+                    debug_assert_eq!(range.end, this.temp_dir.len());
 
                     let start = range.start;
-                    match this.binary_search_in_tree(&this.temp_tree[range], key)? {
-                        Ok(found) => this.temp_tree[start + found] = (key_id, node_id),
-                        Err(index) => this.temp_tree.insert(start + index, (key_id, node_id)),
+                    match this.binary_search_in_dir(&this.temp_dir[range], key)? {
+                        Ok(found) => this.temp_dir[start + found] = (key_id, node_id),
+                        Err(index) => this.temp_dir.insert(start + index, (key_id, node_id)),
                     }
 
                     Ok(())
                 })?;
 
                 let new_inode_id = self.create_inode(depth, range)?;
-                let is_new_key = self.inode_len(new_inode_id)? != tree_id.small_tree_len();
+                let is_new_key = self.inode_len(new_inode_id)? != dir_id.small_dir_len();
 
                 Ok((new_inode_id, is_new_key))
             }
@@ -877,8 +895,8 @@ impl Storage {
                 } else {
                     npointers += 1;
 
-                    let new_tree_id = self.insert_tree_single_node(key_id, node)?;
-                    let inode_id = self.create_inode(depth, new_tree_id)?;
+                    let new_dir_id = self.insert_dir_single_node(key_id, node)?;
+                    let inode_id = self.create_inode(depth, new_dir_id)?;
                     (inode_id, true)
                 };
 
@@ -929,9 +947,9 @@ impl Storage {
                     self.iter_inodes_recursive_unsorted(inode, fun)?;
                 }
             }
-            Inode::Directory(tree_id) => {
-                let tree = self.get_small_tree(*tree_id)?;
-                for elem in tree {
+            Inode::Directory(dir_id) => {
+                let dir = self.get_small_dir(*dir_id)?;
+                for elem in dir {
                     fun(elem)?;
                 }
             }
@@ -940,25 +958,25 @@ impl Storage {
         Ok(())
     }
 
-    /// Iterate on `tree_id`.
+    /// Iterate on `dir_id`.
     ///
-    /// The elements won't be sorted when the underlying tree is an `Inode`.
-    /// `Self::tree_to_vec_sorted` can be used to get the tree sorted.
-    pub fn tree_iterate_unsorted<Fun>(
+    /// The elements won't be sorted when the underlying directory is an `Inode`.
+    /// `Self::dir_to_vec_sorted` can be used to get the directory sorted.
+    pub fn dir_iterate_unsorted<Fun>(
         &self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
         mut fun: Fun,
     ) -> Result<(), MerkleError>
     where
         Fun: FnMut(&(StringId, NodeId)) -> Result<(), MerkleError>,
     {
-        if let Some(inode_id) = tree_id.get_inode_id() {
+        if let Some(inode_id) = dir_id.get_inode_id() {
             let inode = self.get_inode(inode_id)?;
 
             self.iter_inodes_recursive_unsorted(inode, &mut fun)?;
         } else {
-            let tree = self.get_small_tree(tree_id)?;
-            for elem in tree {
+            let dir = self.get_small_dir(dir_id)?;
+            for elem in dir {
                 fun(elem)?;
             }
         }
@@ -972,30 +990,30 @@ impl Storage {
                 nchildren: children,
                 ..
             } => Ok(*children as usize),
-            Inode::Directory(tree_id) => Ok(tree_id.small_tree_len()),
+            Inode::Directory(dir_id) => Ok(dir_id.small_dir_len()),
         }
     }
 
-    /// Return the number of nodes in `tree_id`.
-    pub fn tree_len(&self, tree_id: TreeStorageId) -> Result<usize, StorageError> {
-        if let Some(inode_id) = tree_id.get_inode_id() {
+    /// Return the number of nodes in `dir_id`.
+    pub fn dir_len(&self, dir_id: DirectoryId) -> Result<usize, StorageError> {
+        if let Some(inode_id) = dir_id.get_inode_id() {
             self.inode_len(inode_id)
         } else {
-            Ok(tree_id.small_tree_len())
+            Ok(dir_id.small_dir_len())
         }
     }
 
     /// Make a vector of `(StringId, NodeId)`
     ///
-    /// The vector won't be sorted when the underlying tree is an Inode.
-    /// `Self::tree_to_vec_sorted` can be used to get the vector sorted.
-    pub fn tree_to_vec_unsorted(
+    /// The vector won't be sorted when the underlying directory is an Inode.
+    /// `Self::dir_to_vec_sorted` can be used to get the vector sorted.
+    pub fn dir_to_vec_unsorted(
         &self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
     ) -> Result<Vec<(StringId, NodeId)>, MerkleError> {
-        let mut vec = Vec::with_capacity(self.tree_len(tree_id)?);
+        let mut vec = Vec::with_capacity(self.dir_len(dir_id)?);
 
-        self.tree_iterate_unsorted(tree_id, |&(key_id, node_id)| {
+        self.dir_iterate_unsorted(dir_id, |&(key_id, node_id)| {
             vec.push((key_id, node_id));
             Ok(())
         })?;
@@ -1005,19 +1023,19 @@ impl Storage {
 
     /// Make a vector of `(StringId, NodeId)` sorted by the key
     ///
-    /// This is an expensive method when the underlying tree is an Inode,
-    /// `Self::tree_to_vec_unsorted` should be used when the ordering is
+    /// This is an expensive method when the underlying directory is an Inode,
+    /// `Self::dir_to_vec_unsorted` should be used when the ordering is
     /// not important
-    pub fn tree_to_vec_sorted(
+    pub fn dir_to_vec_sorted(
         &self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
     ) -> Result<Vec<(StringId, NodeId)>, MerkleError> {
-        if tree_id.get_inode_id().is_some() {
-            let mut tree = self.tree_to_vec_unsorted(tree_id)?;
+        if dir_id.get_inode_id().is_some() {
+            let mut dir = self.dir_to_vec_unsorted(dir_id)?;
 
             let mut error = None;
 
-            tree.sort_unstable_by(|a, b| {
+            dir.sort_unstable_by(|a, b| {
                 let a = match self.get_str(a.0) {
                     Ok(a) => a,
                     Err(e) => {
@@ -1041,10 +1059,10 @@ impl Storage {
                 return Err(e.into());
             };
 
-            Ok(tree)
+            Ok(dir)
         } else {
-            let tree = self.get_small_tree(tree_id)?;
-            Ok(tree.to_vec())
+            let dir = self.get_small_dir(dir_id)?;
+            Ok(dir.to_vec())
         }
     }
 
@@ -1054,60 +1072,64 @@ impl Storage {
             .ok_or(StorageError::InodeNotFound)
     }
 
-    pub fn tree_insert(
+    /// Inserts the key into the directory.
+    ///
+    /// Returns the newly created directory `DirectoryId`.
+    /// If the key already exists in this directory, this replace the node.
+    pub fn dir_insert(
         &mut self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
         key_str: &str,
         node: Node,
-    ) -> Result<TreeStorageId, StorageError> {
+    ) -> Result<DirectoryId, StorageError> {
         let key_id = self.get_string_id(key_str);
 
         // Are we inserting in an Inode ?
-        if let Some(inode_id) = tree_id.get_inode_id() {
+        if let Some(inode_id) = dir_id.get_inode_id() {
             let (inode_id, _) = self.insert_inode(0, inode_id, key_str, key_id, node)?;
-            self.temp_tree.clear();
+            self.temp_dir.clear();
             return Ok(inode_id.into());
         }
 
         let node_id = self.nodes.push(node)?;
 
-        let tree_id = self.with_new_tree(|this, new_tree| {
-            let tree = this.get_small_tree(tree_id)?;
+        let dir_id = self.with_new_dir(|this, new_dir| {
+            let dir = this.get_small_dir(dir_id)?;
 
-            let index = this.binary_search_in_tree(tree, key_str)?;
+            let index = this.binary_search_in_dir(dir, key_str)?;
 
             match index {
                 Ok(found) => {
-                    new_tree.extend_from_slice(tree);
-                    new_tree[found].1 = node_id;
+                    new_dir.extend_from_slice(dir);
+                    new_dir[found].1 = node_id;
                 }
                 Err(index) => {
-                    new_tree.extend_from_slice(&tree[..index]);
-                    new_tree.push((key_id, node_id));
-                    new_tree.extend_from_slice(&tree[index..]);
+                    new_dir.extend_from_slice(&dir[..index]);
+                    new_dir.push((key_id, node_id));
+                    new_dir.extend_from_slice(&dir[index..]);
                 }
             }
 
-            this.append_to_trees(new_tree)
+            this.append_to_directories(new_dir)
         })?;
 
-        // We only check at the end of this function if the new tree length
-        // is > TREE_INODE_THRESHOLD because inserting an element in a tree of length
-        // TREE_INODE_THRESHOLD doesn't necessary mean that the resulting tree will
+        // We only check at the end of this function if the new directory length
+        // is > DIRECTORY_INODE_THRESHOLD because inserting an element in a directory of length
+        // DIRECTORY_INODE_THRESHOLD doesn't necessary mean that the resulting directory will
         // be bigger (if the key already exist).
-        let tree_len = tree_id.small_tree_len();
+        let dir_len = dir_id.small_dir_len();
 
-        if tree_len <= TREE_INODE_THRESHOLD {
-            Ok(tree_id)
+        if dir_len <= DIRECTORY_INODE_THRESHOLD {
+            Ok(dir_id)
         } else {
-            // Copy the new tree in `Self::temp_tree`.
-            let range = self.copy_tree_in_temp_tree(tree_id)?;
-            // Remove the newly created tree from `Self::trees` to save memory.
+            // Copy the new directory in `Self::temp_dir`.
+            let range = self.copy_dir_in_temp_dir(dir_id)?;
+            // Remove the newly created directory from `Self::directories` to save memory.
             // It won't be used anymore as we're creating an inode.
-            self.trees.truncate(self.trees.len() - tree_len);
+            self.directories.truncate(self.directories.len() - dir_len);
 
             let inode_id = self.create_inode(0, range)?;
-            self.temp_tree.clear();
+            self.temp_dir.clear();
 
             Ok(inode_id.into())
         }
@@ -1121,20 +1143,20 @@ impl Storage {
         let inode = self.get_inode(inode_id)?;
 
         match inode {
-            Inode::Directory(tree_id) => {
-                let tree_id = *tree_id;
-                let new_tree_id = self.tree_remove(tree_id, key)?;
+            Inode::Directory(dir_id) => {
+                let dir_id = *dir_id;
+                let new_dir_id = self.dir_remove(dir_id, key)?;
 
-                if new_tree_id.is_empty() {
-                    // The tree is now empty, return None to indicate that it
+                if new_dir_id.is_empty() {
+                    // The directory is now empty, return None to indicate that it
                     // should be removed from the Inode::Pointers
                     Ok(None)
-                } else if new_tree_id == tree_id {
-                    // The key was not found in the tree, so it's the same tree.
+                } else if new_dir_id == dir_id {
+                    // The key was not found in the directory, so it's the same directory.
                     // Do not create a new inode.
                     Ok(Some(inode_id))
                 } else {
-                    self.add_inode(Inode::Directory(new_tree_id)).map(Some)
+                    self.add_inode(Inode::Directory(new_dir_id)).map(Some)
                 }
             }
             Inode::Pointers {
@@ -1153,15 +1175,25 @@ impl Storage {
                     // INODE_POINTER_THRESHOLD items, so it should be converted to a
                     // `Inode::Directory`.
 
-                    let tree_id = self.inodes_to_tree_sorted(inode_id)?;
-                    let new_tree_id = self.tree_remove(tree_id, key)?;
+                    let current_end = self.directories.len();
 
-                    if tree_id == new_tree_id {
+                    let dir_id = self.inodes_to_dir_sorted(inode_id)?;
+                    let new_dir_id = self.dir_remove(dir_id, key)?;
+
+                    if dir_id == new_dir_id {
                         // The key was not found.
+
+                        // Make sure the new directory was created at the end of Self::directories,
+                        // otherwise the `Vec::truncate` below is incorrect.
+                        debug_assert_eq!(dir_id.get().1, self.directories.len());
+
+                        // Remove the directory that was just created with
+                        // Self::inodes_to_dir_sorted above, it won't be used and save space.
+                        self.directories.truncate(current_end);
                         return Ok(Some(inode_id));
                     }
 
-                    self.add_inode(Inode::Directory(new_tree_id))?
+                    self.add_inode(Inode::Directory(new_dir_id))?
                 } else {
                     let index_at_depth = index_of_key(depth, key) as usize;
 
@@ -1173,21 +1205,21 @@ impl Storage {
                     let ptr_inode_id = pointer.inode_id();
                     let mut pointers = pointers.clone();
 
-                    let new_ptr_inode_id = self.remove_in_inode_recursive(ptr_inode_id, key)?;
-
-                    if let Some(new_ptr_inode_id) = new_ptr_inode_id {
-                        if new_ptr_inode_id == ptr_inode_id {
+                    match self.remove_in_inode_recursive(ptr_inode_id, key)? {
+                        Some(new_ptr_inode_id) if new_ptr_inode_id == ptr_inode_id => {
                             // The key was not found, don't create a new inode
                             return Ok(Some(inode_id));
                         }
-
-                        pointers[index_at_depth] =
-                            Some(PointerToInode::new(None, new_ptr_inode_id));
-                    } else {
-                        // The key was removed and it result in an empty directory.
-                        // Remove the pointer: make it `None`.
-                        pointers[index_at_depth] = None;
-                        npointers -= 1;
+                        Some(new_ptr_inode_id) => {
+                            pointers[index_at_depth] =
+                                Some(PointerToInode::new(None, new_ptr_inode_id));
+                        }
+                        None => {
+                            // The key was removed and it result in an empty directory.
+                            // Remove the pointer: make it `None`.
+                            pointers[index_at_depth] = None;
+                            npointers -= 1;
+                        }
                     }
 
                     self.add_inode(Inode::Pointers {
@@ -1203,17 +1235,19 @@ impl Storage {
         }
     }
 
-    /// Convert the Inode into a small tree
+    /// Convert the Inode into a small directory
     ///
     /// This traverses all elements (all children) of this `inode_id` and
-    /// copy them into `Self::trees` in a sorted order.
-    fn inodes_to_tree_sorted(&mut self, inode_id: InodeId) -> Result<TreeStorageId, StorageError> {
-        // Iterator on the inodes children and copy all nodes into `Self::temp_tree`
-        self.with_new_tree::<_, Result<_, StorageError>>(|this, temp_tree| {
+    /// copy them into `Self::directories` in a sorted order.
+    fn inodes_to_dir_sorted(&mut self, inode_id: InodeId) -> Result<DirectoryId, StorageError> {
+        let start = self.temp_dir.len();
+
+        // Iterator on the inodes children and copy all nodes into `Self::temp_dir`
+        self.with_new_dir::<_, Result<_, StorageError>>(|this, temp_dir| {
             let inode = this.get_inode(inode_id)?;
 
             this.iter_inodes_recursive_unsorted(inode, &mut |value| {
-                temp_tree.push(*value);
+                temp_dir.push(*value);
                 Ok(())
             })
             .map_err(|_| StorageError::IterationError)?;
@@ -1221,10 +1255,10 @@ impl Storage {
             Ok(())
         })?;
 
-        // Copy nodes from `Self::temp_tree` into `Self::trees` sorted
-        self.copy_sorted(TempTreeRange {
-            start: 0,
-            end: self.temp_tree.len(),
+        // Copy nodes from `Self::temp_dir` into `Self::directories` sorted
+        self.copy_sorted(TempDirRange {
+            start,
+            end: self.temp_dir.len(),
         })
     }
 
@@ -1232,48 +1266,51 @@ impl Storage {
         &mut self,
         inode_id: InodeId,
         key: &str,
-    ) -> Result<TreeStorageId, StorageError> {
+    ) -> Result<DirectoryId, StorageError> {
         let inode_id = self.remove_in_inode_recursive(inode_id, key)?;
         let inode_id = inode_id.ok_or(StorageError::RootOfInodeNotAPointer)?;
 
-        if self.inode_len(inode_id)? > TREE_INODE_THRESHOLD {
+        if self.inode_len(inode_id)? > DIRECTORY_INODE_THRESHOLD {
             Ok(inode_id.into())
         } else {
-            // There is now TREE_INODE_THRESHOLD or less items:
-            // Convert the inode into a 'small' tree
-            self.inodes_to_tree_sorted(inode_id)
+            // There is now DIRECTORY_INODE_THRESHOLD or less items:
+            // Convert the inode into a 'small' directory
+            self.inodes_to_dir_sorted(inode_id)
         }
     }
 
-    pub fn tree_remove(
+    /// Remove `key` from the directory and return the new `DirectoryId`.
+    ///
+    /// If the key doesn't exist, it returns the same `DirectoryId`.
+    pub fn dir_remove(
         &mut self,
-        tree_id: TreeStorageId,
+        dir_id: DirectoryId,
         key: &str,
-    ) -> Result<TreeStorageId, StorageError> {
-        if let Some(inode_id) = tree_id.get_inode_id() {
+    ) -> Result<DirectoryId, StorageError> {
+        if let Some(inode_id) = dir_id.get_inode_id() {
             return self.remove_in_inode(inode_id, key);
         };
 
-        self.with_new_tree(|this, new_tree| {
-            let tree = this.get_small_tree(tree_id)?;
+        self.with_new_dir(|this, new_dir| {
+            let dir = this.get_small_dir(dir_id)?;
 
-            if tree.is_empty() {
-                return Ok(tree_id);
+            if dir.is_empty() {
+                return Ok(dir_id);
             }
 
-            let index = match this.binary_search_in_tree(tree, key)? {
+            let index = match this.binary_search_in_dir(dir, key)? {
                 Ok(index) => index,
-                Err(_) => return Ok(tree_id),
+                Err(_) => return Ok(dir_id), // The key was not found
             };
 
             if index > 0 {
-                new_tree.extend_from_slice(&tree[..index]);
+                new_dir.extend_from_slice(&dir[..index]);
             }
-            if index + 1 != tree.len() {
-                new_tree.extend_from_slice(&tree[index + 1..]);
+            if index + 1 != dir.len() {
+                new_dir.extend_from_slice(&dir[index + 1..]);
             }
 
-            this.append_to_trees(new_tree)
+            this.append_to_directories(new_dir)
         })
     }
 
@@ -1292,10 +1329,10 @@ impl Storage {
             self.nodes.clear();
         }
 
-        if self.trees.capacity() > 16384 {
-            self.trees = Vec::with_capacity(16384);
+        if self.directories.capacity() > 16384 {
+            self.directories = Vec::with_capacity(16384);
         } else {
-            self.trees.clear();
+            self.directories.clear();
         }
 
         if self.inodes.capacity() > 256 {
@@ -1308,7 +1345,7 @@ impl Storage {
 
 #[cfg(test)]
 mod tests {
-    use crate::working_tree::{Entry, NodeKind::Leaf};
+    use crate::working_tree::{NodeKind::Leaf, Object};
 
     use super::*;
 
@@ -1317,21 +1354,21 @@ mod tests {
         let mut storage = Storage::new();
 
         let blob_id = storage.add_blob_by_ref(&[1]).unwrap();
-        let entry = Entry::Blob(blob_id);
+        let object = Object::Blob(blob_id);
 
         let blob2_id = storage.add_blob_by_ref(&[2]).unwrap();
-        let entry2 = Entry::Blob(blob2_id);
+        let object2 = Object::Blob(blob2_id);
 
-        let node1 = Node::new(Leaf, entry.clone());
-        let node2 = Node::new(Leaf, entry2.clone());
+        let node1 = Node::new(Leaf, object.clone());
+        let node2 = Node::new(Leaf, object2.clone());
 
-        let tree_id = TreeStorageId::empty();
-        let tree_id = storage.tree_insert(tree_id, "a", node1.clone()).unwrap();
-        let tree_id = storage.tree_insert(tree_id, "b", node2.clone()).unwrap();
-        let tree_id = storage.tree_insert(tree_id, "0", node1.clone()).unwrap();
+        let dir_id = DirectoryId::empty();
+        let dir_id = storage.dir_insert(dir_id, "a", node1.clone()).unwrap();
+        let dir_id = storage.dir_insert(dir_id, "b", node2.clone()).unwrap();
+        let dir_id = storage.dir_insert(dir_id, "0", node1.clone()).unwrap();
 
         assert_eq!(
-            storage.get_owned_tree(tree_id).unwrap(),
+            storage.get_owned_dir(dir_id).unwrap(),
             &[
                 ("0".to_string(), node1.clone()),
                 ("a".to_string(), node1.clone()),

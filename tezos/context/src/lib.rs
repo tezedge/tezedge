@@ -33,7 +33,7 @@ use persistent::{DBError, KeyValueStoreBackend};
 use serde::Deserialize;
 use serde::Serialize;
 
-pub use hash::EntryHash;
+pub use hash::ObjectHash;
 pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
@@ -60,13 +60,13 @@ pub type ContextValue = Vec<u8>;
 pub type TreeId = i32;
 
 /// Tree in String form needed for JSON RPCs
-pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
+pub type StringDirectoryMap = BTreeMap<String, StringTreeObject>;
 
 /// Tree in String form needed for JSON RPCs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum StringTreeEntry {
-    Tree(StringTreeMap),
+pub enum StringTreeObject {
+    Directory(StringDirectoryMap),
     Blob(String),
     Null,
 }
@@ -101,7 +101,7 @@ where
         key: &ContextKey,
     ) -> Result<TreeWalker, ContextError>;
 
-    fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
+    fn get_merkle_root(&self) -> Result<ObjectHash, ContextError>;
 }
 
 /// Index API used by the Shell
@@ -132,7 +132,7 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
         context_hash: &ContextHash,
         prefix: &ContextKey,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, ContextError>;
+    ) -> Result<StringTreeObject, ContextError>;
 }
 
 /// Context API used by the Shell
@@ -162,11 +162,11 @@ where
 pub enum ContextError {
     #[fail(
         display = "Unknown context_hash: {:?} - {:?}",
-        context_hash, entry_hash
+        context_hash, object_hash
     )]
-    UnknownContextHashAndEntryError {
+    UnknownContextHashAndObjectError {
         context_hash: String,
-        entry_hash: String,
+        object_hash: String,
     },
     #[fail(display = "Unknown context_hash: {:?}", context_hash)]
     UnknownContextHashError { context_hash: String },

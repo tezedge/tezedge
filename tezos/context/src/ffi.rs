@@ -23,8 +23,9 @@ use crate::{
     initializer::initialize_tezedge_index,
     timings,
     working_tree::{
+        storage::DirectoryId,
         working_tree::{FoldDepth, TreeWalker, WorkingTree},
-        NodeKind, Tree,
+        NodeKind,
     },
     ContextKeyValueStore, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
@@ -515,7 +516,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let empty_tree = WorkingTree::new_with_tree(context.index, Tree::empty());
+        let empty_tree = WorkingTree::new_with_directory(context.index, DirectoryId::empty());
 
         empty_tree.to_ocaml(rt)
     }
@@ -803,12 +804,12 @@ ocaml_export! {
 
     fn tezedge_timing_context_action(
         rt,
-        action_name: OCamlRef<String>,
+        query_name: OCamlRef<String>,
         key: OCamlRef<OCamlList<String>>,
         irmin_time: f64,
         tezedge_time: f64,
     ) {
-        timings::context_action(rt, action_name, key, irmin_time, tezedge_time);
+        timings::context_query(rt, query_name, key, irmin_time, tezedge_time);
         OCaml::unit()
     }
 

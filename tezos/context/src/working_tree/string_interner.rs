@@ -7,6 +7,9 @@ use crate::Map;
 
 pub(crate) const STRING_INTERN_THRESHOLD: usize = 30;
 
+const FULL_31_BITS: usize = 0x7FFFFFFF;
+const FULL_5_BITS: usize = 0x1F;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringId {
     /// | 1 bit  |  31 bits |
@@ -35,12 +38,12 @@ impl StringId {
     }
 
     fn get_big_index(self) -> usize {
-        (self.bits & 0x7FFFFFFF) as usize
+        self.bits as usize & FULL_31_BITS
     }
 
     fn get_start_end(self) -> (usize, usize) {
-        let start = (self.bits >> 5) as usize;
-        let length = (self.bits & 0x1F) as usize;
+        let start = (self.bits >> FULL_5_BITS.count_ones()) as usize;
+        let length = self.bits as usize & FULL_5_BITS;
 
         (start, start + length)
     }

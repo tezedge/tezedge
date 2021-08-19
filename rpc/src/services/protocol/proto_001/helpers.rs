@@ -13,9 +13,9 @@ use crypto::{
     crypto_box::PublicKeyError,
 };
 use storage::{num_from_slice, BlockHeaderWithHash};
+use tezos_context::context_key_owned;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryRead;
-use tezos_new_context::context_key_owned;
 
 use crate::merge_slices;
 use crate::services::protocol::ContextProtocolParam;

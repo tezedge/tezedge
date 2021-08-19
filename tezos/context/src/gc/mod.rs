@@ -56,8 +56,8 @@ pub enum GarbageCollectionError {
     GarbageCollectorError { error: String },
     #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
     LockError { reason: String },
-    #[fail(display = "Entry not found in store: path={:?} hash={:?}", path, hash)]
-    EntryNotFound { hash: String, path: String },
+    #[fail(display = "Object not found in store: path={:?} hash={:?}", path, hash)]
+    ObjectNotFound { hash: String, path: String },
     #[fail(display = "Failed to convert hash into string: {}", error)]
     HashToStringError { error: FromBytesError },
     #[fail(display = "Failed to encode hash: {}", error)]

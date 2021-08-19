@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
-use tezos_timing::{Action, ActionKind, BlockMemoryUsage, TimingMessage, TIMING_CHANNEL};
+use tezos_timing::{BlockMemoryUsage, Query, QueryKind, TimingMessage, TIMING_CHANNEL};
 
 pub fn send_statistics(stats: BlockMemoryUsage) {
     if let Err(e) = TIMING_CHANNEL.send(TimingMessage::BlockMemoryUsage { stats }) {
@@ -80,22 +80,22 @@ pub fn commit(
     }
 }
 
-pub fn context_action(
+pub fn context_query(
     rt: &OCamlRuntime,
-    action_name: OCamlRef<String>,
+    query_name: OCamlRef<String>,
     key: OCamlRef<OCamlList<String>>,
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    let action_name = rt.get(action_name);
-    let action_name = match action_name.as_bytes() {
-        b"mem" => ActionKind::Mem,
-        b"mem_tree" => ActionKind::MemTree,
-        b"find" => ActionKind::Find,
-        b"find_tree" => ActionKind::FindTree,
-        b"add" => ActionKind::Add,
-        b"add_tree" => ActionKind::AddTree,
-        b"remove" => ActionKind::Remove,
+    let query_name = rt.get(query_name);
+    let query_name = match query_name.as_bytes() {
+        b"mem" => QueryKind::Mem,
+        b"mem_tree" => QueryKind::MemTree,
+        b"find" => QueryKind::Find,
+        b"find_tree" => QueryKind::FindTree,
+        b"add" => QueryKind::Add,
+        b"add_tree" => QueryKind::AddTree,
+        b"remove" => QueryKind::Remove,
         _ => return,
     };
     let irmin_time = get_time(irmin_time);
@@ -103,15 +103,15 @@ pub fn context_action(
 
     let key: Vec<String> = key.to_rust(rt);
 
-    let action = Action {
-        action_name,
+    let query = Query {
+        query_name,
         key,
         irmin_time,
         tezedge_time,
     };
 
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Action(action)) {
-        eprintln!("Timing context_action hook error = {:?}", e);
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Query(query)) {
+        eprintln!("Timing context_query hook error = {:?}", e);
     }
 }
 

@@ -19,7 +19,7 @@ use crate::{
         worker::{Command, Cycles, GCThread, PRESERVE_CYCLE_COUNT},
         GarbageCollectionError, GarbageCollector,
     },
-    hash::EntryHash,
+    hash::ObjectHash,
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
     Map,
 };
@@ -27,11 +27,11 @@ use crate::{
 use tezos_spsc::Consumer;
 
 use super::{entries::Entries, HashIdError};
-use super::{HashId, VacantEntryHash};
+use super::{HashId, VacantObjectHash};
 
 #[derive(Debug)]
 pub struct HashValueStore {
-    hashes: Entries<HashId, EntryHash>,
+    hashes: Entries<HashId, ObjectHash>,
     values: Entries<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
@@ -59,7 +59,7 @@ impl HashValueStore {
         let total_bytes = values_bytes
             .saturating_add(values_capacity * size_of::<Option<Arc<[u8]>>>())
             .saturating_add(values_capacity * 16) // Each `Arc` has 16 extra bytes for the counters
-            .saturating_add(hashes_capacity * size_of::<EntryHash>());
+            .saturating_add(hashes_capacity * size_of::<ObjectHash>());
 
         RepositoryMemoryUsage {
             values_bytes,
@@ -81,7 +81,7 @@ impl HashValueStore {
         }
     }
 
-    pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, HashIdError> {
+    pub(crate) fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
             if let Some(old_value) = self.values.set(free_id, None)? {
                 self.values_bytes = self.values_bytes.saturating_sub(old_value.len());
@@ -92,7 +92,7 @@ impl HashValueStore {
         };
         self.new_ids.push(hash_id);
 
-        Ok(VacantEntryHash {
+        Ok(VacantObjectHash {
             entry: Some(entry),
             hash_id,
         })
@@ -114,7 +114,7 @@ impl HashValueStore {
         Ok(())
     }
 
-    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, HashIdError> {
+    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&ObjectHash>, HashIdError> {
         self.hashes.get(hash_id)
     }
 
@@ -189,15 +189,15 @@ impl KeyValueStoreBackend for InMemory {
         Ok(self.get_context_hash_impl(context_hash))
     }
 
-    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError> {
-        Ok(self.get_hash(hash_id)?.map(|h| Cow::Borrowed(h)))
+    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
+        Ok(self.get_hash(hash_id)?.map(Cow::Borrowed))
     }
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
-        Ok(self.get_value(hash_id)?.map(|v| Cow::Borrowed(v)))
+        Ok(self.get_value(hash_id)?.map(Cow::Borrowed))
     }
 
-    fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
+    fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError> {
         self.get_vacant_entry_hash()
     }
 
@@ -259,11 +259,11 @@ impl InMemory {
         })
     }
 
-    pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
-        self.hashes.get_vacant_entry_hash().map_err(Into::into)
+    pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantObjectHash, DBError> {
+        self.hashes.get_vacant_object_hash().map_err(Into::into)
     }
 
-    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, DBError> {
+    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&ObjectHash>, DBError> {
         self.hashes.get_hash(hash_id).map_err(Into::into)
     }
 
@@ -324,7 +324,7 @@ impl InMemory {
         let commit_hash = self
             .hashes
             .get_hash(commit_hash_id)?
-            .ok_or(DBError::MissingEntry {
+            .ok_or(DBError::MissingObject {
                 hash_id: commit_hash_id,
             })?;
 
@@ -341,7 +341,7 @@ impl InMemory {
     }
 
     #[cfg(test)]
-    pub(crate) fn put_entry_hash(&mut self, entry_hash: EntryHash) -> HashId {
+    pub(crate) fn put_object_hash(&mut self, entry_hash: ObjectHash) -> HashId {
         let vacant = self.get_vacant_entry_hash().unwrap();
         vacant.write_with(|entry| *entry = entry_hash)
     }

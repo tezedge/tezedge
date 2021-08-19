@@ -1831,9 +1831,9 @@ dependencies = [
  "storage",
  "strum",
  "tezos_api",
+ "tezos_context",
  "tezos_identity",
  "tezos_messages",
- "tezos_new_context",
  "tezos_wrapper",
  "tokio",
 ]
@@ -2819,8 +2819,8 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_api",
+ "tezos_context",
  "tezos_messages",
- "tezos_new_context",
  "tezos_timing",
  "tezos_wrapper",
  "tokio",
@@ -3157,10 +3157,10 @@ dependencies = [
  "storage",
  "tezos-sys",
  "tezos_api",
+ "tezos_context",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
- "tezos_new_context",
  "tezos_wrapper",
  "tokio",
  "zip",
@@ -3543,6 +3543,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos_context"
+version = "1.7.0"
+dependencies = [
+ "blake2",
+ "crossbeam-channel",
+ "crypto",
+ "failure",
+ "flate2",
+ "hex",
+ "ipc",
+ "lazy_static",
+ "leb128",
+ "modular-bitfield",
+ "ocaml-interop",
+ "ocaml-sys",
+ "serde 1.0.123",
+ "serde_json",
+ "slog",
+ "static_assertions",
+ "storage",
+ "strum",
+ "strum_macros",
+ "tezos-sys",
+ "tezos_api",
+ "tezos_messages",
+ "tezos_spsc",
+ "tezos_timing",
+]
+
+[[package]]
 name = "tezos_encoding"
 version = "1.7.0"
 dependencies = [
@@ -3599,8 +3629,8 @@ dependencies = [
  "serial_test",
  "tezos-sys",
  "tezos_api",
+ "tezos_context",
  "tezos_messages",
- "tezos_new_context",
 ]
 
 [[package]]
@@ -3609,8 +3639,8 @@ version = "1.7.0"
 dependencies = [
  "ocaml-interop",
  "tempfile",
+ "tezos_context",
  "tezos_interop",
- "tezos_new_context",
 ]
 
 [[package]]
@@ -3638,36 +3668,6 @@ dependencies = [
  "tezos_encoding",
  "tezos_encoding_derive",
  "tezos_identity",
-]
-
-[[package]]
-name = "tezos_new_context"
-version = "1.7.0"
-dependencies = [
- "blake2",
- "crossbeam-channel",
- "crypto",
- "failure",
- "flate2",
- "hex",
- "ipc",
- "lazy_static",
- "leb128",
- "modular-bitfield",
- "ocaml-interop",
- "ocaml-sys",
- "serde 1.0.123",
- "serde_json",
- "slog",
- "static_assertions",
- "storage",
- "strum",
- "strum_macros",
- "tezos-sys",
- "tezos_api",
- "tezos_messages",
- "tezos_spsc",
- "tezos_timing",
 ]
 
 [[package]]
@@ -3705,8 +3705,8 @@ dependencies = [
  "slog",
  "strum_macros",
  "tezos_api",
+ "tezos_context",
  "tezos_messages",
- "tezos_new_context",
  "tokio",
 ]
 
