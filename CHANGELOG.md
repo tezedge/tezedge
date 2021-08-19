@@ -30,6 +30,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.7.0] - 2021-08-19
+
+### Added
+
+- Bootstrap time test to Drone CI
+- Implemented inodes representation in the TezEdge context storage
+
+### Changed
+
+- Upgrade rust nightly to 2021-08-04
+- Drone CI test pipelines optimization and improvements
+- Drone CI test pipelines optimization and improvements
+
+### Fixed
+
+- Be more robust on the handling of IPC errors
+- Calculate block header hash on decoding optimization
+- TezEdge context fixes, optimizations and improvements
+- Fixed chrono dependency panics
+- Reworked <block_id> parsing for rpc and better error handling (future blocks, ...)
+
+### Removed
+
+- Remove no-longer used COPY context function
+
 ## [1.6.10] - 2021-07-30
 
 ### Changed
@@ -491,7 +516,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.10...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/tezedge/tezedge/releases/v1.7.0
 [1.6.10]: https://github.com/tezedge/tezedge/releases/v1.6.10
 [1.6.9]: https://github.com/tezedge/tezedge/releases/v1.6.9
 [1.6.8]: https://github.com/tezedge/tezedge/releases/v1.6.8
