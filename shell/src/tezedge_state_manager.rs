@@ -31,6 +31,10 @@ use tezedge_state::proposals::ExtendPotentialPeersProposal;
 use tezedge_state::{Effects, TezedgeConfig, TezedgeState};
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
+use tezedge_state::proposer::proposal_loader::FileProposalLoader;
+use tezedge_state::proposer::proposal_persister::{
+    FileProposalPersister, FileProposalPersisterHandle,
+};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
 
 #[derive(Debug, Clone)]
@@ -56,6 +60,9 @@ pub struct P2p {
 
     /// Effects seed
     pub effects_seed: Option<u64>,
+
+    pub persist_proposals: Option<String>,
+    pub replay_proposals: Option<String>,
 }
 
 impl P2p {
@@ -123,7 +130,13 @@ impl ProposerHandle {
 }
 
 fn run<Efs: Effects>(
-    mut proposer: TezedgeProposer<MioEvents, Efs, MioManager>,
+    mut proposer: TezedgeProposer<
+        MioEvents,
+        Efs,
+        MioManager,
+        FileProposalPersisterHandle,
+        FileProposalLoader,
+    >,
     rx: mpsc::Receiver<ProposerMsg>,
     network_channel: NetworkChannelRef,
     _log: &Logger,
@@ -270,6 +283,7 @@ fn resolve_dns_name_to_peer_address(
 enum ProposerThreadHandle {
     Running(std::thread::JoinHandle<()>),
     NotRunning(
+        P2p,
         TezedgeState,
         MioManager,
         StdRng,
@@ -372,6 +386,7 @@ impl TezedgeStateManager {
             proposer_handle,
             log,
             proposer_thread_handle: Some(ProposerThreadHandle::NotRunning(
+                p2p_config,
                 tezedge_state,
                 mio_manager,
                 effects,
@@ -384,6 +399,7 @@ impl TezedgeStateManager {
 
     pub fn start(&mut self) {
         if let Some(ProposerThreadHandle::NotRunning(
+            config,
             tezedge_state,
             mio_manager,
             effects,
@@ -400,18 +416,17 @@ impl TezedgeStateManager {
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
                     events_limit: 1024,
-                    // TODO: add cli argument
-                    record: std::env::var("RECORD_PROPOSALS")
-                        .map(|x| x == "1")
-                        .unwrap_or(false),
-                    replay: std::env::var("REPLAY_PROPOSALS")
-                        .map(|x| x == "1")
-                        .unwrap_or(false),
                 },
                 effects,
                 tezedge_state,
                 MioEvents::new(),
                 mio_manager,
+                config
+                    .persist_proposals
+                    .map(|file| FileProposalPersister::start(log.clone(), &file)),
+                config
+                    .replay_proposals
+                    .map(|file| FileProposalLoader::new(&file)),
             );
 
             // start to listen for incoming p2p connections and state machine processing
