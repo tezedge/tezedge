@@ -31,7 +31,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_timing = { path = "../tezos/timing" }
 tezos_wrapper = { path = "../tezos/wrapper" }
-tezos_new_context = { path = "../tezos/new_context" }
+tezos_context = { path = "../tezos/context" }
 
 [dev-dependencies]
 assert-json-diff = { git = "https://github.com/tezedge/assert-json-diff.git", tag = "v2.0.1-public-diff-module" }

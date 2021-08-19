@@ -45,8 +45,8 @@ pub enum DBError {
     MemoryStatisticsOverflow,
     #[fail(display = "IPC Context access error: {:?}", reason)]
     IpcAccessError { reason: ContextServiceError },
-    #[fail(display = "Missing entry: {:?}", hash_id)]
-    MissingEntry { hash_id: HashId },
+    #[fail(display = "Missing object: {:?}", hash_id)]
+    MissingObject { hash_id: HashId },
     #[fail(display = "Conversion from/to HashId failed")]
     HashIdFailed,
     #[fail(display = "Deserialization error: {:?}", error)]

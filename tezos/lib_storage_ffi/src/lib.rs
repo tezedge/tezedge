@@ -414,7 +414,7 @@ fn test_context_calls() {
 
     // Initialize the persistent OCaml runtime and initialize callbacks
     ocaml_interop::OCamlRuntime::init_persistent();
-    tezos_new_context::ffi::initialize_callbacks();
+    tezos_context::ffi::initialize_callbacks();
 
     // OCaml runtime handle for FFI calls
     let cr = unsafe { ocaml_interop::OCamlRuntime::recover_handle() };

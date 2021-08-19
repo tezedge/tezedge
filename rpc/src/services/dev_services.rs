@@ -15,7 +15,7 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-//use tezos_new_context::actions::context_action_storage::{
+//use tezos_context::actions::context_action_storage::{
 //    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
 //    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 //};

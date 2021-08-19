@@ -6,7 +6,7 @@ use std::mem;
 
 use serde::Serialize;
 
-use crate::hash::EntryHash;
+use crate::hash::ObjectHash;
 use crate::ContextValue;
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -18,8 +18,8 @@ pub struct StorageBackendStats {
 
 impl StorageBackendStats {
     /// increases `reused_keys_bytes` based on `key`
-    pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+    pub fn update_reused_keys(&mut self, list: &HashSet<ObjectHash>) {
+        self.reused_keys_bytes = list.capacity() * mem::size_of::<ObjectHash>();
     }
 
     pub fn total_as_bytes(&self) -> usize {
@@ -97,10 +97,10 @@ impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
     }
 }
 
-impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
-    fn from((_, value): (&EntryHash, &ContextValue)) -> Self {
+impl From<(&ObjectHash, &ContextValue)> for StorageBackendStats {
+    fn from((_, value): (&ObjectHash, &ContextValue)) -> Self {
         StorageBackendStats {
-            key_bytes: mem::size_of::<EntryHash>(),
+            key_bytes: mem::size_of::<ObjectHash>(),
             value_bytes: size_of_vec(&value),
             reused_keys_bytes: 0,
         }

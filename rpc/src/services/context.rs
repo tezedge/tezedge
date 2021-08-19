@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crypto::hash::BlockHash;
 use tezos_timing::{
-    hash_to_string, ActionData, ActionStats, ActionStatsWithRange, RangeStats, FILENAME_DB,
+    hash_to_string, QueryData, QueryStats, QueryStatsWithRange, RangeStats, FILENAME_DB,
 };
 
 use crate::helpers::RpcServiceError;
@@ -17,14 +17,14 @@ use crate::helpers::RpcServiceError;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockStats {
-    actions_count: usize,
+    queries_count: usize,
     date: Option<DateTime<Utc>>,
     duration_millis: Option<u64>,
     tezedge_checkout_context_time: Option<f64>,
     tezedge_commit_context_time: Option<f64>,
     irmin_checkout_context_time: Option<f64>,
     irmin_commit_context_time: Option<f64>,
-    operations_context: Vec<ActionStats>,
+    operations_context: Vec<QueryStats>,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -32,7 +32,7 @@ pub(crate) struct BlockStats {
 pub(crate) struct ContextStats {
     commit_context: RangeStats,
     checkout_context: RangeStats,
-    operations_context: Vec<ActionStatsWithRange>,
+    operations_context: Vec<QueryStatsWithRange>,
 }
 
 pub(crate) fn make_block_stats(
@@ -84,7 +84,7 @@ fn make_context_stats_impl(
     let mut stmt = sql.prepare(
         "
     SELECT
-      action_name,
+      query_name,
       root,
       one_to_ten_us_count,
       one_to_ten_us_mean_time,
@@ -123,9 +123,9 @@ fn make_context_stats_impl(
       one_hundred_s_max_time,
       one_hundred_s_total_time,
       total_time,
-      actions_count
+      queries_count
     FROM
-      global_action_stats
+      global_query_stats
     WHERE
       context_name = :context_name
        ",
@@ -135,12 +135,12 @@ fn make_context_stats_impl(
         ":context_name": context_name
     })?;
 
-    let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
+    let mut map: HashMap<String, QueryStatsWithRange> = HashMap::default();
     let mut commit_stats = RangeStats::default();
     let mut checkout_stats = RangeStats::default();
 
     while let Some(row) = rows.next()? {
-        let action_name = match row.get_ref(0)?.as_str() {
+        let query_name = match row.get_ref(0)?.as_str() {
             Ok(name) if !name.is_empty() => name,
             _ => continue,
         };
@@ -150,20 +150,20 @@ fn make_context_stats_impl(
             _ => continue,
         };
 
-        let mut action_stats = match action_name {
+        let mut query_stats = match query_name {
             "commit" => &mut commit_stats,
             "checkout" => &mut checkout_stats,
             _ => {
                 let entry = match map.get_mut(root) {
                     Some(entry) => entry,
                     None => {
-                        let mut stats = ActionStatsWithRange::default();
+                        let mut stats = QueryStatsWithRange::default();
                         stats.root = root.to_string();
                         map.insert(root.to_string(), stats);
                         map.get_mut(root).unwrap()
                     }
                 };
-                match action_name {
+                match query_name {
                     "mem" => &mut entry.mem,
                     "mem_tree" => &mut entry.mem_tree,
                     "find" => &mut entry.find,
@@ -176,44 +176,44 @@ fn make_context_stats_impl(
             }
         };
 
-        action_stats.one_to_ten_us.count = row.get(2)?;
-        action_stats.one_to_ten_us.mean_time = row.get(3)?;
-        action_stats.one_to_ten_us.max_time = row.get(4)?;
-        action_stats.one_to_ten_us.total_time = row.get(5)?;
-        action_stats.ten_to_one_hundred_us.count = row.get(6)?;
-        action_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
-        action_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
-        action_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
-        action_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
-        action_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
-        action_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
-        action_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
-        action_stats.one_to_ten_ms.count = row.get(14)?;
-        action_stats.one_to_ten_ms.mean_time = row.get(15)?;
-        action_stats.one_to_ten_ms.max_time = row.get(16)?;
-        action_stats.one_to_ten_ms.total_time = row.get(17)?;
-        action_stats.ten_to_one_hundred_ms.count = row.get(18)?;
-        action_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
-        action_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
-        action_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
-        action_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
-        action_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
-        action_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
-        action_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
-        action_stats.one_to_ten_s.count = row.get(26)?;
-        action_stats.one_to_ten_s.mean_time = row.get(27)?;
-        action_stats.one_to_ten_s.max_time = row.get(28)?;
-        action_stats.one_to_ten_s.total_time = row.get(29)?;
-        action_stats.ten_to_one_hundred_s.count = row.get(30)?;
-        action_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
-        action_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
-        action_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
-        action_stats.one_hundred_s.count = row.get(34)?;
-        action_stats.one_hundred_s.mean_time = row.get(35)?;
-        action_stats.one_hundred_s.max_time = row.get(36)?;
-        action_stats.one_hundred_s.total_time = row.get(37)?;
-        action_stats.total_time = row.get(38)?;
-        action_stats.actions_count = row.get(39)?;
+        query_stats.one_to_ten_us.count = row.get(2)?;
+        query_stats.one_to_ten_us.mean_time = row.get(3)?;
+        query_stats.one_to_ten_us.max_time = row.get(4)?;
+        query_stats.one_to_ten_us.total_time = row.get(5)?;
+        query_stats.ten_to_one_hundred_us.count = row.get(6)?;
+        query_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
+        query_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
+        query_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
+        query_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
+        query_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
+        query_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
+        query_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
+        query_stats.one_to_ten_ms.count = row.get(14)?;
+        query_stats.one_to_ten_ms.mean_time = row.get(15)?;
+        query_stats.one_to_ten_ms.max_time = row.get(16)?;
+        query_stats.one_to_ten_ms.total_time = row.get(17)?;
+        query_stats.ten_to_one_hundred_ms.count = row.get(18)?;
+        query_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
+        query_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
+        query_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
+        query_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
+        query_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
+        query_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
+        query_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
+        query_stats.one_to_ten_s.count = row.get(26)?;
+        query_stats.one_to_ten_s.mean_time = row.get(27)?;
+        query_stats.one_to_ten_s.max_time = row.get(28)?;
+        query_stats.one_to_ten_s.total_time = row.get(29)?;
+        query_stats.ten_to_one_hundred_s.count = row.get(30)?;
+        query_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
+        query_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
+        query_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
+        query_stats.one_hundred_s.count = row.get(34)?;
+        query_stats.one_hundred_s.mean_time = row.get(35)?;
+        query_stats.one_hundred_s.max_time = row.get(36)?;
+        query_stats.one_hundred_s.total_time = row.get(37)?;
+        query_stats.total_time = row.get(38)?;
+        query_stats.queries_count = row.get(39)?;
     }
 
     let mut operations_context: Vec<_> = map
@@ -241,7 +241,7 @@ fn make_block_stats_impl(
 
     let (
         block_id,
-        actions_count,
+        queries_count,
         tezedge_checkout_time,
         tezedge_commit_time,
         irmin_checkout_time,
@@ -254,7 +254,7 @@ fn make_block_stats_impl(
             "
     SELECT
       id,
-      actions_count,
+      queries_count,
       checkout_time_tezedge,
       commit_time_tezedge,
       checkout_time_irmin,
@@ -315,7 +315,7 @@ fn make_block_stats_impl(
           tezedge_mem_tree_time,
           irmin_mem_tree_time
         FROM
-          block_action_stats
+          block_query_stats
         WHERE
           block_id = ?;
         ",
@@ -326,7 +326,7 @@ fn make_block_stats_impl(
         None => return Ok(None),
     };
 
-    let mut map: HashMap<String, ActionStats> = HashMap::default();
+    let mut map: HashMap<String, QueryStats> = HashMap::default();
 
     while let Some(row) = rows.next()? {
         let root: String = match row.get(0) {
@@ -334,8 +334,8 @@ fn make_block_stats_impl(
             _ => continue,
         };
 
-        let action_stats = ActionStats {
-            data: ActionData {
+        let query_stats = QueryStats {
+            data: QueryData {
                 root: root.clone(),
                 tezedge_count: row.get(1)?,
                 irmin_count: row.get(20)?,
@@ -362,7 +362,7 @@ fn make_block_stats_impl(
             irmin_mem_tree: row.get(22)?,
         };
 
-        map.insert(root, action_stats);
+        map.insert(root, query_stats);
     }
 
     let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
@@ -376,7 +376,7 @@ fn make_block_stats_impl(
     };
 
     Ok(Some(BlockStats {
-        actions_count,
+        queries_count,
         tezedge_checkout_context_time: tezedge_checkout_time,
         tezedge_commit_context_time: tezedge_commit_time,
         irmin_checkout_context_time: irmin_checkout_time,
@@ -417,7 +417,7 @@ mod tests {
         sql.execute(
             "
             INSERT INTO blocks
-               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge, checkout_time_irmin, commit_time_irmin, duration_millis)
+               (id, hash, queries_count, checkout_time_tezedge, commit_time_tezedge, checkout_time_irmin, commit_time_irmin, duration_millis)
             VALUES
                (1, ?1, 4, 10.0, 11.0, 12.0, 13.0, 101);",
             [block_hash_str],
@@ -426,7 +426,7 @@ mod tests {
 
         sql.execute(
             "
-        INSERT INTO block_action_stats
+        INSERT INTO block_query_stats
           (root, block_id, tezedge_count, tezedge_mean_time, tezedge_max_time, tezedge_total_time,
            tezedge_mem_time, tezedge_find_time, tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
            irmin_mean_time, irmin_max_time, irmin_total_time,
@@ -442,26 +442,26 @@ mod tests {
 
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap().unwrap();
 
-        assert_eq!(block_stats.actions_count, 4);
+        assert_eq!(block_stats.queries_count, 4);
         assert_float_eq!(block_stats.tezedge_checkout_context_time.unwrap(), 10.0);
         assert_float_eq!(block_stats.tezedge_commit_context_time.unwrap(), 11.0);
         assert_eq!(block_stats.operations_context.len(), 2);
 
-        let action = block_stats
+        let query = block_stats
             .operations_context
             .iter()
             .find(|a| a.data.root == "a")
             .unwrap();
-        assert_eq!(action.data.root, "a");
-        assert_float_eq!(action.data.tezedge_mean_time, 100.5);
-        assert_float_eq!(action.tezedge_add, 1.4);
-        assert_float_eq!(action.tezedge_find_tree, 1.3);
+        assert_eq!(query.data.root, "a");
+        assert_float_eq!(query.data.tezedge_mean_time, 100.5);
+        assert_float_eq!(query.tezedge_add, 1.4);
+        assert_float_eq!(query.tezedge_find_tree, 1.3);
 
         sql.execute(
             "
-        INSERT INTO global_action_stats
-          (context_name, action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time,
-           one_to_ten_us_max_time, one_to_ten_us_total_time, actions_count, total_time)
+        INSERT INTO global_query_stats
+          (context_name, query_name, root, one_to_ten_us_count, one_to_ten_us_mean_time,
+           one_to_ten_us_max_time, one_to_ten_us_total_time, queries_count, total_time)
         VALUES
           ('tezedge', 'mem', 'a', 2, 1.3, 1.4, 1.5, 1, 2.0),
           ('tezedge', 'mem', 'b', 3, 10.3, 10.4, 10.5, 1, 2.0),
@@ -477,28 +477,28 @@ mod tests {
 
         assert_eq!(context_stats.operations_context.len(), 2);
         assert_float_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
-        assert_eq!(context_stats.commit_context.actions_count, 1);
+        assert_eq!(context_stats.commit_context.queries_count, 1);
         assert_float_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
-        let action = context_stats
+        let query = context_stats
             .operations_context
             .iter()
             .find(|a| a.root == "a")
             .unwrap();
-        assert_float_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
-        assert_eq!(action.mem.one_to_ten_us.count, 2);
-        assert_float_eq!(action.total_time, 2.0);
-        assert_float_eq!(action.mem.total_time, 2.0);
+        assert_float_eq!(query.mem.one_to_ten_us.mean_time, 1.3);
+        assert_eq!(query.mem.one_to_ten_us.count, 2);
+        assert_float_eq!(query.total_time, 2.0);
+        assert_float_eq!(query.mem.total_time, 2.0);
 
-        let action = context_stats
+        let query = context_stats
             .operations_context
             .iter()
             .find(|a| a.root == "b")
             .unwrap();
-        assert_float_eq!(action.mem.one_to_ten_us.mean_time, 10.3);
-        assert_eq!(action.mem.one_to_ten_us.count, 3);
-        assert_float_eq!(action.add.one_to_ten_us.mean_time, 20.3);
-        assert_eq!(action.add.one_to_ten_us.count, 4);
+        assert_float_eq!(query.mem.one_to_ten_us.mean_time, 10.3);
+        assert_eq!(query.mem.one_to_ten_us.count, 3);
+        assert_float_eq!(query.add.one_to_ten_us.mean_time, 20.3);
+        assert_eq!(query.add.one_to_ten_us.count, 4);
 
         let block_hash = BlockHash::try_from_bytes(&[32; 32]).unwrap();
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();

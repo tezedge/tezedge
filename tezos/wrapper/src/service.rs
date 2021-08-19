@@ -17,9 +17,9 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
+use tezos_context::IndexApi;
+use tezos_context::{ContextKeyOwned, ContextValue, StringTreeObject};
 use tezos_messages::p2p::encoding::operation::Operation;
-use tezos_new_context::IndexApi;
-use tezos_new_context::{ContextKeyOwned, ContextValue, StringTreeEntry};
 
 use crate::protocol::*;
 use crate::runner::{ExecutableProtocolRunner, ProtocolRunnerError};
@@ -135,7 +135,7 @@ enum NodeMessage {
     JsonEncodeApplyBlockOperationsMetadata(Result<String, FfiJsonEncoderError>),
     ContextGetKeyFromHistoryResult(Result<Option<ContextValue>, String>),
     ContextGetKeyValuesByPrefixResult(Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, String>),
-    ContextGetTreeByPrefixResult(Result<StringTreeEntry, String>),
+    ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
 
     ShutdownResult,
 }
@@ -216,7 +216,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 match storage_cfg.get_ipc_socket_path() {
                     None => tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?,
                     Some(socket_path) => {
-                        match tezos_new_context::kv_store::readonly_ipc::IpcContextListener::try_new(
+                        match tezos_context::kv_store::readonly_ipc::IpcContextListener::try_new(
                             socket_path.clone(),
                         ) {
                             Ok(mut listener) => {
@@ -285,26 +285,26 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
                 context_hash,
                 key,
-            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
-                IpcError::OtherError {
+            }) => {
+                match tezos_context::ffi::get_context_index().map_err(|e| IpcError::OtherError {
                     reason: format!("{:?}", e),
+                })? {
+                    None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                        "Context index unavailable".to_owned(),
+                    )))?,
+                    Some(index) => {
+                        let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
+                        let result = index
+                            .get_key_from_history(&context_hash, &key_borrowed)
+                            .map_err(|err| format!("{:?}", err));
+                        tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(result))?;
+                    }
                 }
-            })? {
-                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
-                    "Context index unavailable".to_owned(),
-                )))?,
-                Some(index) => {
-                    let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
-                    let result = index
-                        .get_key_from_history(&context_hash, &key_borrowed)
-                        .map_err(|err| format!("{:?}", err));
-                    tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(result))?;
-                }
-            },
+            }
             ProtocolMessage::ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest {
                 context_hash,
                 prefix,
-            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+            }) => match tezos_context::ffi::get_context_index().map_err(|e| {
                 IpcError::OtherError {
                     reason: format!("{:?}", e),
                 }
@@ -324,7 +324,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 context_hash,
                 prefix,
                 depth,
-            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+            }) => match tezos_context::ffi::get_context_index().map_err(|e| {
                 IpcError::OtherError {
                     reason: format!("{:?}", e),
                 }
@@ -1208,7 +1208,7 @@ impl ProtocolController {
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, ProtocolServiceError> {
+    ) -> Result<StringTreeObject, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.send(&ProtocolMessage::ContextGetTreeByPrefix(
             ContextGetTreeByPrefixRequest {

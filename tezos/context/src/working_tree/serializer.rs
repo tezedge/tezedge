@@ -13,7 +13,7 @@ use tezos_timing::SerializeStats;
 use crate::{
     kv_store::HashId,
     working_tree::{
-        storage::{Inode, PointerToInode, TreeStorageId},
+        storage::{DirectoryId, Inode, PointerToInode},
         Commit, NodeKind,
     },
     ContextKeyValueStore,
@@ -22,10 +22,10 @@ use crate::{
 use super::{
     storage::{Blob, InodeId, NodeId, NodeIdError, Storage, StorageError},
     string_interner::StringId,
-    Entry, Node,
+    Node, Object,
 };
 
-const ID_TREE: u8 = 0;
+const ID_DIRECTORY: u8 = 0;
 const ID_BLOB: u8 = 1;
 const ID_COMMIT: u8 = 2;
 const ID_INODE_POINTERS: u8 = 3;
@@ -39,7 +39,7 @@ const FULL_23_BITS: u32 = 0x7FFFFF;
 #[derive(Debug)]
 pub enum SerializationError {
     IOError,
-    TreeNotFound,
+    DirNotFound,
     NodeNotFound,
     BlobNotFound,
     TryFromIntError,
@@ -67,7 +67,7 @@ impl From<StorageError> for SerializationError {
 }
 
 fn get_inline_blob<'a>(storage: &'a Storage, node: &Node) -> Option<Blob<'a>> {
-    if let Some(Entry::Blob(blob_id)) = node.get_entry() {
+    if let Some(Object::Blob(blob_id)) = node.get_object() {
         if blob_id.is_inline() {
             return storage.get_blob(blob_id).ok();
         }
@@ -87,7 +87,7 @@ pub struct KeyNodeDescriptor {
 assert_eq_size!(KeyNodeDescriptor, u8);
 
 fn serialize_directory(
-    tree: &[(StringId, NodeId)],
+    dir: &[(StringId, NodeId)],
     output: &mut Vec<u8>,
     storage: &Storage,
     stats: &mut SerializeStats,
@@ -98,7 +98,7 @@ fn serialize_directory(
     let mut nblobs_inlined: usize = 0;
     let mut blobs_length: usize = 0;
 
-    for (key_id, node_id) in tree {
+    for (key_id, node_id) in dir {
         let key = storage.get_str(*key_id)?;
 
         let node = storage.get_node(*node_id)?;
@@ -148,7 +148,7 @@ fn serialize_directory(
         }
     }
 
-    stats.add_tree(
+    stats.add_directory(
         hash_ids_length,
         keys_length,
         highest_hash_id,
@@ -159,9 +159,9 @@ fn serialize_directory(
     Ok(())
 }
 
-pub fn serialize_entry(
-    entry: &Entry,
-    entry_hash_id: HashId,
+pub fn serialize_object(
+    object: &Object,
+    object_hash_id: HashId,
     output: &mut Vec<u8>,
     storage: &Storage,
     stats: &mut SerializeStats,
@@ -170,28 +170,28 @@ pub fn serialize_entry(
 ) -> Result<(), SerializationError> {
     output.clear();
 
-    match entry {
-        Entry::Tree(tree_id) => {
-            if let Some(inode_id) = tree_id.get_inode_id() {
+    match object {
+        Object::Directory(dir_id) => {
+            if let Some(inode_id) = dir_id.get_inode_id() {
                 serialize_inode(
                     inode_id,
                     output,
-                    entry_hash_id,
+                    object_hash_id,
                     storage,
                     stats,
                     batch,
                     referenced_older_entries,
                 )?;
             } else {
-                output.write_all(&[ID_TREE])?;
-                let tree = storage.get_small_tree(*tree_id)?;
+                output.write_all(&[ID_DIRECTORY])?;
+                let dir = storage.get_small_dir(*dir_id)?;
 
-                serialize_directory(tree, output, storage, stats)?;
+                serialize_directory(dir, output, storage, stats)?;
 
-                batch.push((entry_hash_id, Arc::from(output.as_slice())));
+                batch.push((object_hash_id, Arc::from(output.as_slice())));
             }
         }
-        Entry::Blob(blob_id) => {
+        Object::Blob(blob_id) => {
             debug_assert!(!blob_id.is_inline());
 
             let blob = storage.get_blob(*blob_id)?;
@@ -200,9 +200,9 @@ pub fn serialize_entry(
 
             stats.add_blob(blob.len());
 
-            batch.push((entry_hash_id, Arc::from(output.as_slice())));
+            batch.push((object_hash_id, Arc::from(output.as_slice())));
         }
-        Entry::Commit(commit) => {
+        Object::Commit(commit) => {
             output.write_all(&[ID_COMMIT])?;
 
             let parent_hash_id = commit.parent_commit_hash.map(|h| h.as_u32()).unwrap_or(0);
@@ -212,14 +212,16 @@ pub fn serialize_entry(
             serialize_hash_id(root_hash_id, output)?;
 
             output.write_all(&commit.time.to_ne_bytes())?;
+
             let author_length: u32 = commit.author.len().try_into()?;
             output.write_all(&author_length.to_ne_bytes())?;
             output.write_all(commit.author.as_bytes())?;
-            let message_length: u32 = commit.message.len().try_into()?;
-            output.write_all(&message_length.to_ne_bytes())?;
+
+            // The message length is inferred.
+            // It's until the end of the slice
             output.write_all(commit.message.as_bytes())?;
 
-            batch.push((entry_hash_id, Arc::from(output.as_slice())));
+            batch.push((object_hash_id, Arc::from(output.as_slice())));
         }
     }
 
@@ -250,6 +252,96 @@ fn serialize_hash_id(hash_id: u32, output: &mut Vec<u8>) -> Result<usize, Serial
     }
 }
 
+/// Describes which pointers are set and at what index.
+///
+/// `Inode::Pointers` is an array of 32 pointers.
+/// Each pointer is either set (`Some`) or not set (`None`).
+///
+/// Example:
+/// Let's say that there are 2 pointers sets in the array, at the index
+/// 1 and 7.
+/// This would be represented in this bitfield as:
+/// `0b01000001_00000000_00000000`
+///
+#[derive(Copy, Clone, Default, Debug)]
+struct PointersDescriptor {
+    bitfield: u32,
+}
+
+impl PointersDescriptor {
+    /// Set bit at index in the bitfield
+    fn set(&mut self, index: usize) {
+        self.bitfield |= 1 << index;
+    }
+
+    /// Get bit at index in the bitfield
+    fn get(&self, index: usize) -> bool {
+        self.bitfield & 1 << index != 0
+    }
+
+    fn to_bytes(&self) -> [u8; 4] {
+        self.bitfield.to_ne_bytes()
+    }
+
+    /// Iterates on all the bit sets in the bitfield.
+    ///
+    /// The iterator returns the index of the bit.
+    fn iter(&self) -> PointersDescriptorIterator {
+        PointersDescriptorIterator {
+            bitfield: *self,
+            current: 0,
+        }
+    }
+
+    fn from_bytes(bytes: [u8; 4]) -> Self {
+        Self {
+            bitfield: u32::from_ne_bytes(bytes),
+        }
+    }
+
+    /// Count number of bit set in the bitfield.
+    fn count(&self) -> u8 {
+        self.bitfield.count_ones() as u8
+    }
+}
+
+impl From<&[Option<PointerToInode>; 32]> for PointersDescriptor {
+    fn from(pointers: &[Option<PointerToInode>; 32]) -> Self {
+        let mut bitfield = Self::default();
+
+        for (index, pointer) in pointers.iter().enumerate() {
+            if pointer.is_some() {
+                bitfield.set(index);
+            }
+        }
+
+        bitfield
+    }
+}
+
+/// Iterates on all the bit sets in the bitfield.
+///
+/// The iterator returns the index of the bit.
+struct PointersDescriptorIterator {
+    bitfield: PointersDescriptor,
+    current: usize,
+}
+
+impl Iterator for PointersDescriptorIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for index in self.current..32 {
+            if self.bitfield.get(index) {
+                self.current = index + 1;
+                return Some(index);
+            }
+        }
+
+        None
+    }
+}
+
 fn serialize_inode(
     inode_id: InodeId,
     output: &mut Vec<u8>,
@@ -268,28 +360,24 @@ fn serialize_inode(
         Inode::Pointers {
             depth,
             nchildren,
-            npointers,
+            npointers: _,
             pointers,
         } => {
             output.write_all(&[ID_INODE_POINTERS])?;
             output.write_all(&depth.to_ne_bytes())?;
             output.write_all(&nchildren.to_ne_bytes())?;
-            output.write_all(&npointers.to_ne_bytes())?;
 
-            // TODO - TE-663:
-            // Make a bitfield of 32 bits indicating how many hashes there are
-            // and at what index, instead of wasting 1 byte (the index below) for
-            // each hash
-            for (index, pointer) in pointers.iter().enumerate() {
-                if let Some(pointer) = pointer {
-                    let index: u8 = index as u8;
+            let bitfield = PointersDescriptor::from(pointers);
+            output.write_all(&bitfield.to_bytes())?;
 
-                    let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
-                    let hash_id = hash_id.as_u32();
+            // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
+            debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
-                    output.write_all(&index.to_ne_bytes())?;
-                    serialize_hash_id(hash_id, output)?;
-                };
+            for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
+                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = hash_id.as_u32();
+
+                serialize_hash_id(hash_id, output)?;
             }
 
             batch.push((hash_id, Arc::from(output.as_slice())));
@@ -320,13 +408,13 @@ fn serialize_inode(
                 )?;
             }
         }
-        Inode::Directory(tree_id) => {
+        Inode::Directory(dir_id) => {
             // We don't check if it's a new inode because the parent
             // caller (recursively) confirmed it's a new one.
 
             output.write_all(&[ID_INODE_DIRECTORY])?;
-            let tree = storage.get_small_tree(*tree_id)?;
-            serialize_directory(tree, output, storage, stats)?;
+            let dir = storage.get_small_dir(*dir_id)?;
+            serialize_directory(dir, output, storage, stats)?;
 
             batch.push((hash_id, Arc::from(output.as_slice())));
         }
@@ -409,14 +497,14 @@ fn deserialize_hash_id(data: &[u8]) -> Result<(Option<HashId>, usize), Deseriali
 fn deserialize_directory(
     data: &[u8],
     storage: &mut Storage,
-) -> Result<TreeStorageId, DeserializationError> {
+) -> Result<DirectoryId, DeserializationError> {
     use DeserializationError as Error;
     use DeserializationError::*;
 
     let mut pos = 1;
     let data_length = data.len();
 
-    let tree_id = storage.with_new_tree::<_, Result<_, Error>>(|storage, new_tree| {
+    let dir_id = storage.with_new_dir::<_, Result<_, Error>>(|storage, new_dir| {
         while pos < data_length {
             let descriptor = data.get(pos..pos + 1).ok_or(UnexpectedEOF)?;
             let descriptor = KeyNodeDescriptor::from_bytes([descriptor[0]; 1]);
@@ -459,7 +547,7 @@ fn deserialize_directory(
 
                 pos += blob_inline_length;
 
-                Node::new_commited(kind, None, Some(Entry::Blob(blob_id)))
+                Node::new_commited(kind, None, Some(Object::Blob(blob_id)))
             } else {
                 let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
                 let (hash_id, nbytes) = deserialize_hash_id(bytes)?;
@@ -471,35 +559,35 @@ fn deserialize_directory(
 
             let node_id = storage.add_node(node)?;
 
-            new_tree.push((key_id, node_id));
+            new_dir.push((key_id, node_id));
         }
 
-        Ok(storage.append_to_trees(new_tree))
+        Ok(storage.append_to_directories(new_dir))
     })??;
 
-    Ok(tree_id)
+    Ok(dir_id)
 }
 
 /// Extract values from `data` to store them in `storage`.
-/// Return an `Entry`, which can be ids (refering to data inside `storage`) or a `Commit`
+/// Return an `Object`, which can be ids (refering to data inside `storage`) or a `Commit`
 pub fn deserialize(
     data: &[u8],
     storage: &mut Storage,
     store: &ContextKeyValueStore,
-) -> Result<Entry, DeserializationError> {
+) -> Result<Object, DeserializationError> {
     use DeserializationError::*;
 
     let mut pos = 1;
 
     match data.get(0).copied().ok_or(UnexpectedEOF)? {
-        ID_TREE => {
-            let tree_id = deserialize_directory(data, storage)?;
-            Ok(Entry::Tree(tree_id))
+        ID_DIRECTORY => {
+            let dir_id = deserialize_directory(data, storage)?;
+            Ok(Object::Directory(dir_id))
         }
         ID_BLOB => {
             let blob = data.get(pos..).ok_or(UnexpectedEOF)?;
             let blob_id = storage.add_blob_by_ref(blob)?;
-            Ok(Entry::Blob(blob_id))
+            Ok(Object::Blob(blob_id))
         }
         ID_COMMIT => {
             let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
@@ -525,16 +613,11 @@ pub fn deserialize(
 
             pos = pos + 12 + author_length;
 
-            let message_length = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
-            let message_length = u32::from_ne_bytes(message_length.try_into()?) as usize;
-
-            let message = data
-                .get(pos + 4..pos + 4 + message_length)
-                .ok_or(UnexpectedEOF)?;
+            let message = data.get(pos..).ok_or(UnexpectedEOF)?;
             let message = message.to_vec();
 
-            Ok(Entry::Commit(Box::new(Commit {
-                parent_commit_hash: parent_commit_hash,
+            Ok(Object::Commit(Box::new(Commit {
+                parent_commit_hash,
                 root_hash: root_hash.ok_or(MissingRootHash)?,
                 time,
                 author: String::from_utf8(author)?,
@@ -542,16 +625,16 @@ pub fn deserialize(
             })))
         }
         ID_INODE_POINTERS => {
-            let inode = deserialize_inode_tree(&data[1..], storage, store)?;
+            let inode = deserialize_inode_pointers(&data[1..], storage, store)?;
             let inode_id = storage.add_inode(inode)?;
 
-            Ok(Entry::Tree(inode_id.into()))
+            Ok(Object::Directory(inode_id.into()))
         }
         _ => Err(UnknownID),
     }
 }
 
-fn deserialize_inode_tree(
+fn deserialize_inode_pointers(
     data: &[u8],
     storage: &mut Storage,
     store: &ContextKeyValueStore,
@@ -566,20 +649,19 @@ fn deserialize_inode_tree(
     let nchildren = data.get(pos + 4..pos + 8).ok_or(UnexpectedEOF)?;
     let nchildren = u32::from_ne_bytes(nchildren.try_into()?);
 
-    let npointers = data.get(pos + 8..pos + 8 + 1).ok_or(UnexpectedEOF)?;
-    let npointers = u8::from_ne_bytes(npointers.try_into()?);
+    pos += 8;
 
-    pos += 9;
+    let descriptor = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
+    let descriptor = PointersDescriptor::from_bytes(descriptor.try_into()?);
 
-    let data_length = data.len();
+    let npointers = descriptor.count();
+    let indexes_iter = descriptor.iter();
+
+    pos += 4;
+
     let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-    while pos < data_length {
-        let index = data.get(pos..pos + 1).ok_or(UnexpectedEOF)?;
-        let index = u8::from_ne_bytes(index.try_into()?);
-
-        pos += 1;
-
+    for index in indexes_iter {
         let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
         let (hash_id, nbytes) = deserialize_hash_id(bytes)?;
 
@@ -616,13 +698,13 @@ pub fn deserialize_inode(
 
     match data.get(0).copied().ok_or(UnexpectedEOF)? {
         ID_INODE_POINTERS => {
-            let inode = deserialize_inode_tree(&data[1..], storage, store)?;
+            let inode = deserialize_inode_pointers(&data[1..], storage, store)?;
             storage.add_inode(inode).map_err(Into::into)
         }
         ID_INODE_DIRECTORY => {
-            let tree_id = deserialize_directory(data, storage)?;
+            let dir_id = deserialize_directory(data, storage)?;
             storage
-                .add_inode(Inode::Directory(tree_id))
+                .add_inode(Inode::Directory(dir_id))
                 .map_err(Into::into)
         }
         _ => Err(UnknownID),
@@ -639,6 +721,11 @@ pub struct HashIdIterator<'a> {
     pos: usize,
 }
 
+/// Number of bytes to reach the hashes when serializing a `Inode::Pointers`.
+///
+/// This skip `ID_INODE_POINTERS`, `depth`, `nchildren` and `PointersDescriptor`.
+const INODE_POINTERS_NBYTES_TO_HASHES: usize = 13;
+
 impl<'a> Iterator for HashIdIterator<'a> {
     type Item = HashId;
 
@@ -650,27 +737,31 @@ impl<'a> Iterator for HashIdIterator<'a> {
 
             if pos == 0 {
                 if id == ID_BLOB {
-                    // No HashId in Entry::Blob
+                    // No HashId in Object::Blob
                     return None;
                 } else if id == ID_COMMIT {
                     // Deserialize the parent hash to know it's size
                     let (_, nbytes) = deserialize_hash_id(self.data.get(1..)?).ok()?;
 
-                    // Entry::Commit.root_hash
+                    // Object::Commit.root_hash
                     let (root_hash, _) = deserialize_hash_id(self.data.get(1 + nbytes..)?).ok()?;
                     self.pos = self.data.len();
 
                     return root_hash;
                 } else if id == ID_INODE_POINTERS {
-                    pos += 10;
+                    // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
+                    // the hashes
+                    pos += INODE_POINTERS_NBYTES_TO_HASHES;
                 } else {
+                    // ID_DIRECTORY or ID_INODE_DIRECTORY
+                    debug_assert!([ID_DIRECTORY, ID_INODE_DIRECTORY].contains(&id));
+
+                    // Skip the tag (ID_DIRECTORY or ID_INODE_DIRECTORY)
                     pos += 1;
                 }
             }
 
             if id == ID_INODE_POINTERS {
-                pos += 1;
-
                 let bytes = self.data.get(pos..)?;
                 let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
 
@@ -678,6 +769,8 @@ impl<'a> Iterator for HashIdIterator<'a> {
 
                 return hash_id;
             } else {
+                // ID_DIRECTORY or ID_INODE_DIRECTORY
+
                 let descriptor = self.data.get(pos..pos + 1)?;
                 let descriptor = KeyNodeDescriptor::from_bytes([descriptor[0]; 1]);
 
@@ -697,7 +790,7 @@ impl<'a> Iterator for HashIdIterator<'a> {
                 let blob_inline_length = descriptor.blob_inline_length() as usize;
 
                 if blob_inline_length > 0 {
-                    // No HashId when the blob is inlined, go to next entry
+                    // No HashId when the blob is inlined, go to next object
                     self.pos = pos + blob_inline_length;
                     continue;
                 }
@@ -720,7 +813,7 @@ mod tests {
     use tezos_timing::SerializeStats;
 
     use crate::{
-        hash::hash_entry, kv_store::in_memory::InMemory, working_tree::storage::TreeStorageId,
+        hash::hash_object, kv_store::in_memory::InMemory, working_tree::storage::DirectoryId,
     };
 
     use super::*;
@@ -734,34 +827,34 @@ mod tests {
         let mut older_entries = Vec::new();
         let fake_hash_id = HashId::try_from(1).unwrap();
 
-        // Test Entry::Tree
+        // Test Object::Directory
 
-        let tree_id = TreeStorageId::empty();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = DirectoryId::empty();
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "a",
                 Node::new_commited(NodeKind::Leaf, HashId::new(1), None),
             )
             .unwrap();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "bab",
                 Node::new_commited(NodeKind::Leaf, HashId::new(2), None),
             )
             .unwrap();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 Node::new_commited(NodeKind::Leaf, HashId::new(3), None),
             )
             .unwrap();
 
         let mut data = Vec::with_capacity(1024);
-        serialize_entry(
-            &Entry::Tree(tree_id),
+        serialize_object(
+            &Object::Directory(dir_id),
             fake_hash_id,
             &mut data,
             &storage,
@@ -771,12 +864,12 @@ mod tests {
         )
         .unwrap();
 
-        let entry = deserialize(&data, &mut storage, &repo).unwrap();
+        let object = deserialize(&data, &mut storage, &repo).unwrap();
 
-        if let Entry::Tree(entry) = entry {
+        if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_tree(tree_id).unwrap(),
-                storage.get_owned_tree(entry).unwrap()
+                storage.get_owned_dir(dir_id).unwrap(),
+                storage.get_owned_dir(object).unwrap()
             )
         } else {
             panic!();
@@ -785,14 +878,14 @@ mod tests {
         let iter = iter_hash_ids(&data);
         assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[3, 1, 2]);
 
-        // Test Entry::Blob
+        // Test Object::Blob
 
         // Not inlined value
         let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
         let mut data = Vec::with_capacity(1024);
-        serialize_entry(
-            &Entry::Blob(blob_id),
+        serialize_object(
+            &Object::Blob(blob_id),
             fake_hash_id,
             &mut data,
             &storage,
@@ -801,9 +894,9 @@ mod tests {
             &mut older_entries,
         )
         .unwrap();
-        let entry = deserialize(&data, &mut storage, &repo).unwrap();
-        if let Entry::Blob(entry) = entry {
-            let blob = storage.get_blob(entry).unwrap();
+        let object = deserialize(&data, &mut storage, &repo).unwrap();
+        if let Object::Blob(object) = object {
+            let blob = storage.get_blob(object).unwrap();
             assert_eq!(blob.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
         } else {
             panic!();
@@ -811,7 +904,7 @@ mod tests {
         let iter = iter_hash_ids(&data);
         assert_eq!(iter.count(), 0);
 
-        // Test Entry::Commit
+        // Test Object::Commit
 
         let mut data = Vec::with_capacity(1024);
 
@@ -823,8 +916,8 @@ mod tests {
             message: "abc".to_string(),
         };
 
-        serialize_entry(
-            &Entry::Commit(Box::new(commit.clone())),
+        serialize_object(
+            &Object::Commit(Box::new(commit.clone())),
             fake_hash_id,
             &mut data,
             &storage,
@@ -833,9 +926,9 @@ mod tests {
             &mut older_entries,
         )
         .unwrap();
-        let entry = deserialize(&data, &mut storage, &repo).unwrap();
-        if let Entry::Commit(entry) = entry {
-            assert_eq!(*entry, commit);
+        let object = deserialize(&data, &mut storage, &repo).unwrap();
+        if let Object::Commit(object) = object {
+            assert_eq!(*object, commit);
         } else {
             panic!();
         }
@@ -843,12 +936,12 @@ mod tests {
         let iter = iter_hash_ids(&data);
         assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[12345]);
 
-        // Test Inode::Tree
+        // Test Inode::Directory
 
         let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
         for index in 0..pointers.len() {
-            let inode_value = Inode::Directory(TreeStorageId::empty());
+            let inode_value = Inode::Directory(DirectoryId::empty());
             let inode_value_id = storage.add_inode(inode_value).unwrap();
 
             let hash_id = HashId::new((index + 1) as u32).unwrap();
@@ -893,7 +986,7 @@ mod tests {
         {
             assert_eq!(*depth, 100);
             assert_eq!(*nchildren, 200);
-            assert_eq!(*npointers, 250);
+            assert_eq!(*npointers, 32);
 
             for (index, pointer) in pointers.iter().enumerate() {
                 let pointer = pointer.as_ref().unwrap();
@@ -902,7 +995,7 @@ mod tests {
 
                 let inode = storage.get_inode(pointer.inode_id()).unwrap();
                 match inode {
-                    Inode::Directory(tree_id) => assert!(tree_id.is_empty()),
+                    Inode::Directory(dir_id) => assert!(dir_id.is_empty()),
                     _ => panic!(),
                 }
             }
@@ -918,30 +1011,30 @@ mod tests {
 
         // Test Inode::Value
 
-        let tree_id = TreeStorageId::empty();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = DirectoryId::empty();
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "a",
                 Node::new_commited(NodeKind::Leaf, HashId::new(1), None),
             )
             .unwrap();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "bab",
                 Node::new_commited(NodeKind::Leaf, HashId::new(2), None),
             )
             .unwrap();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 Node::new_commited(NodeKind::Leaf, HashId::new(3), None),
             )
             .unwrap();
 
-        let inode = Inode::Directory(tree_id);
+        let inode = Inode::Directory(dir_id);
         let inode_id = storage.add_inode(inode).unwrap();
 
         batch.clear();
@@ -959,10 +1052,10 @@ mod tests {
         let new_inode_id = deserialize_inode(&batch[0].1, &mut storage, &repo).unwrap();
         let new_inode = storage.get_inode(new_inode_id).unwrap();
 
-        if let Inode::Directory(new_tree_id) = new_inode {
+        if let Inode::Directory(new_dir_id) = new_inode {
             assert_eq!(
-                storage.get_owned_tree(tree_id).unwrap(),
-                storage.get_owned_tree(*new_tree_id).unwrap()
+                storage.get_owned_dir(dir_id).unwrap(),
+                storage.get_owned_dir(*new_dir_id).unwrap()
             )
         }
 
@@ -981,15 +1074,15 @@ mod tests {
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         let blob_id = storage.add_blob_by_ref(&[]).unwrap();
-        let blob = Entry::Blob(blob_id);
-        let blob_hash_id = hash_entry(&blob, &mut repo, &storage).unwrap();
+        let blob = Object::Blob(blob_id);
+        let blob_hash_id = hash_object(&blob, &mut repo, &storage).unwrap();
 
         assert!(blob_hash_id.is_some());
 
-        let tree_id = TreeStorageId::empty();
-        let tree_id = storage
-            .tree_insert(
-                tree_id,
+        let dir_id = DirectoryId::empty();
+        let dir_id = storage
+            .dir_insert(
+                dir_id,
                 "a",
                 Node::new_commited(NodeKind::Leaf, blob_hash_id, None),
             )
@@ -997,8 +1090,8 @@ mod tests {
 
         let mut data = Vec::with_capacity(1024);
 
-        serialize_entry(
-            &Entry::Tree(tree_id),
+        serialize_object(
+            &Object::Directory(dir_id),
             fake_hash_id,
             &mut data,
             &storage,
@@ -1008,12 +1101,12 @@ mod tests {
         )
         .unwrap();
 
-        let entry = deserialize(&data, &mut storage, &repo).unwrap();
+        let object = deserialize(&data, &mut storage, &repo).unwrap();
 
-        if let Entry::Tree(entry) = entry {
+        if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_tree(tree_id).unwrap(),
-                storage.get_owned_tree(entry).unwrap()
+                storage.get_owned_dir(dir_id).unwrap(),
+                storage.get_owned_dir(object).unwrap()
             )
         } else {
             panic!();

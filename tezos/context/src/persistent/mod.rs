@@ -14,8 +14,8 @@ pub use database::DBError;
 use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
-    kv_store::{HashId, VacantEntryHash},
-    EntryHash,
+    kv_store::{HashId, VacantObjectHash},
+    ObjectHash,
 };
 
 pub mod codec;
@@ -59,16 +59,16 @@ pub trait KeyValueStoreBackend {
     /// Read hash associated with given HashId, if exists.
     ///
     /// # Arguments
-    /// * `hash_id` - HashId of the EntryHash
-    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError>;
+    /// * `hash_id` - HashId of the ObjectHash
+    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError>;
     /// Read value associated with given HashId, if exists.
     ///
     /// # Arguments
     /// * `hash_id` - HashId of the value
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError>;
-    /// Find an entry to insert a new EntryHash
-    /// Return the entry
-    fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError>;
+    /// Find an object to insert a new ObjectHash
+    /// Return the object
+    fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError>;
     /// Manually clear the entries, this should be a no-operation if the implementation
     /// has its own garbage collection
     fn clear_entries(&mut self) -> Result<(), DBError>;

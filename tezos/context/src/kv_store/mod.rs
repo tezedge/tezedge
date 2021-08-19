@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::EntryHash;
+use crate::ObjectHash;
 
 pub mod entries;
 pub mod in_memory;
@@ -79,15 +79,15 @@ impl HashId {
     }
 }
 
-pub struct VacantEntryHash<'a> {
-    entry: Option<&'a mut EntryHash>,
+pub struct VacantObjectHash<'a> {
+    entry: Option<&'a mut ObjectHash>,
     hash_id: HashId,
 }
 
-impl<'a> VacantEntryHash<'a> {
+impl<'a> VacantObjectHash<'a> {
     pub(crate) fn write_with<F>(self, fun: F) -> HashId
     where
-        F: FnOnce(&mut EntryHash),
+        F: FnOnce(&mut ObjectHash),
     {
         if let Some(entry) = self.entry {
             fun(entry)

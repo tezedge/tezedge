@@ -9,8 +9,8 @@ use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
 };
+use tezos_context::{context_key_owned, StringTreeObject};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_new_context::{context_key_owned, StringTreeEntry};
 
 use crate::helpers::{
     BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata, BlockOperation,
@@ -224,7 +224,7 @@ pub(crate) fn live_blocks(
 
 #[cached(
     name = "CONTEXT_RAW_BYTES_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<usize>), Arc<StringTreeEntry>>",
+    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<usize>), Arc<StringTreeObject>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone(), prefix.clone(), depth.clone())}",
     result = true
@@ -235,7 +235,7 @@ pub(crate) fn get_context_raw_bytes(
     prefix: Option<String>,
     depth: Option<usize>,
     env: &RpcServiceEnvironment,
-) -> Result<Arc<StringTreeEntry>, RpcServiceError> {
+) -> Result<Arc<StringTreeObject>, RpcServiceError> {
     // we assume that root is at "/data"
     let mut key_prefix = context_key_owned!("data");
 
