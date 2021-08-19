@@ -34,6 +34,10 @@ impl NetworkEvent for FakeNetworkEvent {
         matches!(&self.event_type, FakeNetworkEventType::IncomingConnection)
     }
 
+    fn is_waker_event(&self) -> bool {
+        false
+    }
+
     fn is_readable(&self) -> bool {
         use FakeNetworkEventType::*;
         matches!(&self.event_type, BytesReadable(_) | BytesReadableError(_))
