@@ -391,8 +391,11 @@ impl TezedgeStateManager {
             initial_potential_peers,
         )) = self.proposer_thread_handle.take()
         {
+            let log = self.log.clone();
+
             let mut proposer = TezedgeProposer::new(
                 Instant::now(),
+                log.clone(),
                 TezedgeProposerConfig {
                     wait_for_events_timeout: Some(Duration::from_millis(250)),
                     events_limit: 1024,
@@ -409,8 +412,6 @@ impl TezedgeStateManager {
                 MioEvents::new(),
                 mio_manager,
             );
-
-            let log = self.log.clone();
 
             // start to listen for incoming p2p connections and state machine processing
             let proposer_thread_handle = std::thread::Builder::new()

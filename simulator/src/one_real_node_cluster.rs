@@ -1,10 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use slog::Logger;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
@@ -114,7 +115,7 @@ impl Manager for OneRealNodeManager {
 
         // simulate tick events.
         if let Some(&last_event_time) = self.last_event_time.as_ref() {
-            if let Some(&wait_for_events_timeout) = self.wait_for_events_timeout.as_ref() {
+            if let Some(&wait_for_events_timeout) = timeout.as_ref() {
                 let time = last_event_time + wait_for_events_timeout;
 
                 if time < first_event_time {
@@ -195,6 +196,7 @@ pub struct OneRealNodeCluster {
 impl OneRealNodeCluster {
     pub fn new(
         initial_time: Instant,
+        log: Logger,
         proposer_config: TezedgeProposerConfig,
         effects: DefaultEffects,
         state: TezedgeState,
@@ -203,6 +205,7 @@ impl OneRealNodeCluster {
         let pow_target = state.config().pow_target;
         let mut proposer = TezedgeProposer::new(
             initial_time,
+            log,
             proposer_config,
             effects,
             state,
@@ -532,14 +535,6 @@ impl OneRealNodeCluster {
         self
     }
 
-    pub fn send_message_to_node(&mut self, from: FakePeerId, message: PeerMessage) {
-        unimplemented!()
-    }
-
-    pub fn read_message_from_node(&mut self, message_for: FakePeerId) -> PeerMessage {
-        unimplemented!()
-    }
-
     pub fn add_tick_for_current_time(&mut self) -> &mut Self {
         self.proposer
             .manager_mut()
@@ -552,7 +547,11 @@ impl OneRealNodeCluster {
 
 #[cfg(test)]
 mod tests {
-    use tezedge_state::{sample_tezedge_state, TezedgeConfig};
+    use std::time::SystemTime;
+    use tezedge_state::{
+        sample_tezedge_state::{self, discarded_logger},
+        TezedgeConfig,
+    };
 
     use super::*;
 
@@ -582,6 +581,7 @@ mod tests {
         );
         let mut cluster = OneRealNodeCluster::new(
             Instant::now(),
+            discarded_logger(),
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
@@ -629,6 +629,7 @@ mod tests {
         );
         let mut cluster = OneRealNodeCluster::new(
             Instant::now(),
+            discarded_logger(),
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
