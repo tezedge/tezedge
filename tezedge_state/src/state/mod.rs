@@ -17,9 +17,6 @@ use crate::peer_address::PeerListenerAddress;
 use crate::proposals::InvalidProposalError;
 use crate::{Effects, PeerAddress, Port, ShellCompatibilityVersion};
 
-// mod peer_token;
-// pub use peer_token::*;
-
 mod assert_state;
 
 mod requests;
