@@ -252,6 +252,96 @@ fn serialize_hash_id(hash_id: u32, output: &mut Vec<u8>) -> Result<usize, Serial
     }
 }
 
+/// Describes which pointers are set and at what index.
+///
+/// `Inode::Pointers` is an array of 32 pointers.
+/// Each pointer is either set (`Some`) or not set (`None`).
+///
+/// Example:
+/// Let's say that there are 2 pointers sets in the array, at the index
+/// 1 and 7.
+/// This would be represented in this bitfield as:
+/// `0b01000001_00000000_00000000`
+///
+#[derive(Copy, Clone, Default, Debug)]
+struct PointersDescriptor {
+    bitfield: u32,
+}
+
+impl PointersDescriptor {
+    /// Set bit at index in the bitfield
+    fn set(&mut self, index: usize) {
+        self.bitfield |= 1 << index;
+    }
+
+    /// Get bit at index in the bitfield
+    fn get(&self, index: usize) -> bool {
+        self.bitfield & 1 << index != 0
+    }
+
+    fn to_bytes(&self) -> [u8; 4] {
+        self.bitfield.to_ne_bytes()
+    }
+
+    /// Iterates on all the bit sets in the bitfield.
+    ///
+    /// The iterator returns the index of the bit.
+    fn iter(&self) -> PointersDescriptorIterator {
+        PointersDescriptorIterator {
+            bitfield: *self,
+            current: 0,
+        }
+    }
+
+    fn from_bytes(bytes: [u8; 4]) -> Self {
+        Self {
+            bitfield: u32::from_ne_bytes(bytes),
+        }
+    }
+
+    /// Count number of bit set in the bitfield.
+    fn count(&self) -> u8 {
+        self.bitfield.count_ones() as u8
+    }
+}
+
+impl From<&[Option<PointerToInode>; 32]> for PointersDescriptor {
+    fn from(pointers: &[Option<PointerToInode>; 32]) -> Self {
+        let mut bitfield = Self::default();
+
+        for (index, pointer) in pointers.iter().enumerate() {
+            if pointer.is_some() {
+                bitfield.set(index);
+            }
+        }
+
+        bitfield
+    }
+}
+
+/// Iterates on all the bit sets in the bitfield.
+///
+/// The iterator returns the index of the bit.
+struct PointersDescriptorIterator {
+    bitfield: PointersDescriptor,
+    current: usize,
+}
+
+impl Iterator for PointersDescriptorIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for index in self.current..32 {
+            if self.bitfield.get(index) {
+                self.current = index + 1;
+                return Some(index);
+            }
+        }
+
+        None
+    }
+}
+
 fn serialize_inode(
     inode_id: InodeId,
     output: &mut Vec<u8>,
@@ -270,28 +360,24 @@ fn serialize_inode(
         Inode::Pointers {
             depth,
             nchildren,
-            npointers,
+            npointers: _,
             pointers,
         } => {
             output.write_all(&[ID_INODE_POINTERS])?;
             output.write_all(&depth.to_ne_bytes())?;
             output.write_all(&nchildren.to_ne_bytes())?;
-            output.write_all(&npointers.to_ne_bytes())?;
 
-            // TODO - TE-663:
-            // Make a bitfield of 32 bits indicating how many hashes there are
-            // and at what index, instead of wasting 1 byte (the index below) for
-            // each hash
-            for (index, pointer) in pointers.iter().enumerate() {
-                if let Some(pointer) = pointer {
-                    let index: u8 = index as u8;
+            let bitfield = PointersDescriptor::from(pointers);
+            output.write_all(&bitfield.to_bytes())?;
 
-                    let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
-                    let hash_id = hash_id.as_u32();
+            // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
+            debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
-                    output.write_all(&index.to_ne_bytes())?;
-                    serialize_hash_id(hash_id, output)?;
-                };
+            for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
+                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = hash_id.as_u32();
+
+                serialize_hash_id(hash_id, output)?;
             }
 
             batch.push((hash_id, Arc::from(output.as_slice())));
@@ -563,20 +649,19 @@ fn deserialize_inode_pointers(
     let nchildren = data.get(pos + 4..pos + 8).ok_or(UnexpectedEOF)?;
     let nchildren = u32::from_ne_bytes(nchildren.try_into()?);
 
-    let npointers = data.get(pos + 8..pos + 8 + 1).ok_or(UnexpectedEOF)?;
-    let npointers = u8::from_ne_bytes(npointers.try_into()?);
+    pos += 8;
 
-    pos += 9;
+    let descriptor = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
+    let descriptor = PointersDescriptor::from_bytes(descriptor.try_into()?);
 
-    let data_length = data.len();
+    let npointers = descriptor.count();
+    let indexes_iter = descriptor.iter();
+
+    pos += 4;
+
     let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-    while pos < data_length {
-        let index = data.get(pos..pos + 1).ok_or(UnexpectedEOF)?;
-        let index = u8::from_ne_bytes(index.try_into()?);
-
-        pos += 1;
-
+    for index in indexes_iter {
         let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
         let (hash_id, nbytes) = deserialize_hash_id(bytes)?;
 
@@ -664,7 +749,9 @@ impl<'a> Iterator for HashIdIterator<'a> {
 
                     return root_hash;
                 } else if id == ID_INODE_POINTERS {
-                    pos += 10;
+                    // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
+                    // the hashes
+                    pos += INODE_POINTERS_NBYTES_TO_HASHES;
                 } else {
                     // ID_DIRECTORY or ID_INODE_DIRECTORY
                     debug_assert!([ID_DIRECTORY, ID_INODE_DIRECTORY].contains(&id));
