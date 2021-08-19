@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use slog::Logger;
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
@@ -228,6 +229,7 @@ pub struct TezedgeProposerConfig {
 /// Tezedge proposer wihtout `events`.
 #[derive(Clone)]
 struct TezedgeProposerInner<Efs, M> {
+    log: Logger,
     config: TezedgeProposerConfig,
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
@@ -311,8 +313,10 @@ where
             Some(peer) => peer,
             None => {
                 // Should be impossible! If we receive an event for
-                // the peer, that peer must exist in manager.
-                // TODO: write error log.
+                // the peer, that peer must exist in manager. If this
+                // happens, mio is misbehaving.
+                // Not really an issue even if this happens though.
+                slog::warn!(&self.log, "Peer not found for NetworkEvent");
                 return;
             }
         };
@@ -612,7 +616,7 @@ where
                 self.proposal_persister
             );
         } else {
-            eprintln!("queueing send message failed since peer not found!");
+            slog::warn!(&self.log, "Enqueueing message to be sent failed"; "peer" => addr.to_string(), "message_type" => message.get_type_str());
         }
     }
 
@@ -696,6 +700,7 @@ where
 {
     pub fn new<T>(
         initial_time: Instant,
+        log: Logger,
         config: TezedgeProposerConfig,
         effects: Efs,
         state: T,
@@ -708,7 +713,7 @@ where
     {
         events.set_limit(config.events_limit);
         let proposal_persister = if config.record && !config.replay {
-            Some(ProposalPersister::start())
+            Some(ProposalPersister::start(log.clone()))
         } else {
             None
         };
@@ -720,6 +725,7 @@ where
 
         Self {
             inner: TezedgeProposerInner {
+                log,
                 config,
                 requests: vec![],
                 notifications: Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
@@ -820,6 +826,9 @@ where
                     self.inner.state.accept(proposal);
                 }
             };
+            // TODO: We have to do this sleep because of non-deterministic
+            // parts that are outside of state machine, like riker.
+            // Once those parts are moved in, this should be removed.
             std::thread::sleep(time_passed);
         } else {
             let mut file = std::fs::File::create("state_after_replay").unwrap();
