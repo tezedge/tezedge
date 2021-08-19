@@ -3,24 +3,27 @@
 
 use std::fs::File;
 use std::io::BufWriter;
+use std::path::Path;
 use std::sync::{mpsc, Arc};
 
 use slog::Logger;
 
 use crate::proposals::*;
 
+use super::ProposalPersister;
+
 /// Try to serialize as json or return it's debug information.
 fn stringify_recorded_proposal(proposal: &RecordedProposal) -> String {
     serde_json::to_string(&proposal).unwrap_or_else(|_| format!("{:?}", proposal))
 }
 
-pub struct ProposalPersisterHandle {
+pub struct FileProposalPersisterHandle {
     log: Logger,
     sender: Option<mpsc::SyncSender<Arc<RecordedProposal>>>,
     join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
-impl Drop for ProposalPersisterHandle {
+impl Drop for FileProposalPersisterHandle {
     fn drop(&mut self) {
         drop(self.sender.take());
         if let Some(jh) = self.join_handle.take() {
@@ -29,15 +32,8 @@ impl Drop for ProposalPersisterHandle {
     }
 }
 
-impl Clone for ProposalPersisterHandle {
-    fn clone(&self) -> Self {
-        // TODO
-        unimplemented!("this is temporary, this type shouldn't be clonable")
-    }
-}
-
-impl ProposalPersisterHandle {
-    pub fn persist<P>(&mut self, proposal: P)
+impl ProposalPersister for FileProposalPersisterHandle {
+    fn persist_proposal<P>(&mut self, proposal: P)
     where
         P: Into<RecordedProposal>,
     {
@@ -54,20 +50,23 @@ impl ProposalPersisterHandle {
     }
 }
 
-pub struct ProposalPersister {
+pub struct FileProposalPersister {
     log: Logger,
     file: File,
     channel: mpsc::Receiver<Arc<RecordedProposal>>,
 }
 
-impl ProposalPersister {
+impl FileProposalPersister {
     /// # Panics
     /// Must be called only on startup of the node since it panics.
-    pub fn start(log: Logger) -> ProposalPersisterHandle {
+    pub fn start<P>(log: Logger, file_name: P) -> FileProposalPersisterHandle
+    where
+        P: AsRef<Path>,
+    {
         let (tx, rx) = mpsc::sync_channel(1024);
 
-        let file = File::create("/tmp/tezedge/recorded_proposals.log")
-            .expect("couldn't open/create file for persisting proposals");
+        let file =
+            File::create(file_name).expect("couldn't open/create file for persisting proposals");
 
         let state = Self {
             file,
@@ -80,7 +79,7 @@ impl ProposalPersister {
             .spawn(move || run(state))
             .expect("failed to spawn proposal-persister thread");
 
-        ProposalPersisterHandle {
+        FileProposalPersisterHandle {
             log,
             sender: Some(tx),
             join_handle: Some(join_handle),
@@ -88,7 +87,7 @@ impl ProposalPersister {
     }
 }
 
-fn run(state: ProposalPersister) {
+fn run(state: FileProposalPersister) {
     let log = state.log;
     let mut buf_writer = BufWriter::new(state.file);
 
