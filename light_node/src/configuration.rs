@@ -27,8 +27,8 @@ use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
 };
-use tezos_new_context::initializer::ContextKvStoreConfiguration;
-use tezos_new_context::kv_store::SupportedContextKeyValueStore;
+use tezos_context::initializer::ContextKvStoreConfiguration;
+use tezos_context::kv_store::SupportedContextKeyValueStore;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ impl Storage {
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEM;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context::kv_store::INMEM;
 
     const DEFAULT_MAINDB: &'static str = "rocksdb";
 }

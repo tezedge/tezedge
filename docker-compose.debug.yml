@@ -18,7 +18,7 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.6.10
+    image: tezedge/tezedge:v1.7.0
     pid: host
     network_mode: host
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}", "--context-stats-db-path", "context-stats-db"]

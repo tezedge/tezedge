@@ -6,7 +6,7 @@
 set -e
 
 warn_if_not_using_recommended_rust() {
-  RUSTC_TOOLCHAIN_VERSION="2020-12-31"
+  RUSTC_TOOLCHAIN_VERSION="2021-08-04"
 
   EXPECTED_RUSTC_VERSION=$(date -d "$RUSTC_TOOLCHAIN_VERSION -1 day" +"%Y-%m-%d")
   RUSTC_VERSION=$(rustc --version)
@@ -29,10 +29,12 @@ help() {
   echo -e " \e[32mdocker\e[0m     Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
   echo    "              # $0 docker -t 4 -T 12"
   echo    "              # $0 docker --help"
+  echo -e " \e[32mfuzz\e[0m       Start tezedge node in fuzz mode. You can specify additional arguments here."
+  echo    "            Fuzz mode means that the node binary is compiled with most debug options but enabling optimizations."
 }
 
 configure_env_variables() {
-  options=$(getopt --longoptions debug,release,addrsanitizer --options "" --name $0 -- "$@")
+  options=$(getopt --longoptions debug,release,fuzz,addrsanitizer --options "" --name $0 -- "$@")
   eval set -- "$options"
   while true ; do
     case $1 in
@@ -44,6 +46,12 @@ configure_env_variables() {
       --release)
         export PROFILE="release"
         export CARGO_PROFILE_ARG="--release"
+        shift
+        ;;
+      --fuzz)
+        export RUSTFLAGS="-Zprofile -C force-frame-pointers --cfg dyncov"
+        export PROFILE="fuzz"
+        export CARGO_PROFILE_ARG="-Z unstable-options --profile=fuzz"
         shift
         ;;
       --addrsanitizer)
@@ -215,6 +223,14 @@ case $1 in
   release)
     warn_if_not_using_recommended_rust
     configure_env_variables --release
+    print_configuration
+    build_all
+    run_node "$@"
+    ;;
+
+  fuzz)
+    warn_if_not_using_recommended_rust
+    configure_env_variables --fuzz
     print_configuration
     build_all
     run_node "$@"

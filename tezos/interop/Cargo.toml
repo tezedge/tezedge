@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop"
-version = "1.6.10"
+version = "1.7.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -15,7 +15,7 @@ serde_json = "1.0"
 tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
 tezos_messages = { path = "../messages" }
-tezos_new_context = { path = "../new_context" }
+tezos_context = { path = "../context" }
 crypto = { path = "../../crypto" }
 
 [dev-dependencies]

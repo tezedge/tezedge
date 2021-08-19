@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::pin::Pin;
 
 use failure::format_err;
@@ -15,7 +16,7 @@ use tokio::time::{Duration, Instant};
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
-use tezos_messages::ts_to_rfc3339;
+use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
@@ -37,14 +38,16 @@ struct BlockHeaderMonitorInfo {
     pub protocol_data: String,
 }
 
-impl From<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
-    fn from(block: &BlockHeaderWithHash) -> Self {
-        BlockHeaderMonitorInfo {
+impl TryFrom<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
+    type Error = TimestampOutOfRangeError;
+
+    fn try_from(block: &BlockHeaderWithHash) -> Result<Self, Self::Error> {
+        Ok(BlockHeaderMonitorInfo {
             hash: block.hash.to_base58_check(),
             level: block.header.level(),
             proto: block.header.proto(),
             predecessor: block.header.predecessor().to_base58_check(),
-            timestamp: ts_to_rfc3339(block.header.timestamp()),
+            timestamp: ts_to_rfc3339(block.header.timestamp())?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
             fitness: block
@@ -55,7 +58,7 @@ impl From<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
                 .collect(),
             context: block.header.context().to_base58_check(),
             protocol_data: hex::encode(block.header.protocol_data()),
-        }
+        })
     }
 }
 
@@ -269,7 +272,8 @@ impl HeadMonitorStream {
         }
 
         // serialize the struct to a json string to yield by the stream
-        let mut head_string = serde_json::to_string(&BlockHeaderMonitorInfo::from(current_head))?;
+        let mut head_string =
+            serde_json::to_string(&BlockHeaderMonitorInfo::try_from(current_head)?)?;
 
         // push a newline character to the stream
         head_string.push('\n');

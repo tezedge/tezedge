@@ -139,48 +139,97 @@ fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream 
 
 fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
-    let field1 = encoding.fields.iter().map(|field| field.name);
+    let (fields, hash) = encoding.fields.iter().partition::<Vec<_>, _>(|f| {
+        if let FieldKind::Hash = f.kind {
+            false
+        } else {
+            true
+        }
+    });
+    let field1 = fields.iter().map(|field| field.name);
     let field2 = field1.clone();
-    let field_name = encoding
-        .fields
+    let field_name = fields
         .iter()
         .map(|field| format!("{}::{}", name, field.name.to_string()));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
-    quote_spanned! {
-        encoding.name.span()=>
-        nom::combinator::map(
-            nom::sequence::tuple((
-               #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
-            )),
-            |(#(#field1),*)| #name { #(#field2),* }
-        )
+    if let Some(hash_field) = hash.first() {
+        let field3 = field1.clone();
+        let hash_name = hash_field.name;
+        quote_spanned! {
+            hash_field.name.span()=>
+                nom::combinator::map(
+                    tezos_encoding::nom::hashed(
+                        nom::sequence::tuple((
+                            #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
+                        ))
+                    ),
+                    |((#(#field2),*), #hash_name)| {
+                        #name { #(#field3),*, #hash_name: #hash_name.into() }
+                    })
+        }
+    } else {
+        quote_spanned! {
+            encoding.name.span()=>
+                nom::combinator::map(
+                    nom::sequence::tuple((
+                        #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
+                    )),
+                    |(#(#field1),*)| #name { #(#field2),* }
+                )
+        }
     }
 }
 
 fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
-    let field1 = encoding.fields.iter().map(|field| field.name);
+    let (fields, hash) = encoding.fields.iter().partition::<Vec<_>, _>(|f| {
+        if let FieldKind::Hash = f.kind {
+            false
+        } else {
+            true
+        }
+    });
+    let field1 = fields.iter().map(|field| field.name);
     let field2 = field1.clone();
-    let field_name = encoding
-        .fields
+    let field_name = fields
         .iter()
         .map(|field| format!("{}::{}", name, field.name.to_string()));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
-    quote_spanned! {
-        encoding.name.span()=>
-            (|input| {
-                #(let (input, #field1) = tezos_encoding::nom::field(#field_name, #field_nom_read)(input)?;)*
-                Ok((input, #name { #(#field2),* }))
-            })
+    if let Some(hash_field) = hash.first() {
+        let field3 = field1.clone();
+        let field4 = field1.clone();
+        let hash_name = hash_field.name;
+        quote_spanned! {
+            hash_field.name.span()=>
+                nom::combinator::map(
+                    tezos_encoding::nom::hashed(
+                        (|input| {
+                            #(let (input, #field1) = tezos_encoding::nom::field(#field_name, #field_nom_read)(input)?;)*
+                            Ok((input, (#(#field2),* )))
+                        })
+                    ),
+                    |((#(#field3),*), #hash_name)| {
+                        #name { #(#field4),*, #hash_name: #hash_name.into() }
+                    }
+                )
+        }
+    } else {
+        quote_spanned! {
+            encoding.name.span()=>
+                (|input| {
+                    #(let (input, #field1) = tezos_encoding::nom::field(#field_name, #field_nom_read)(input)?;)*
+                    Ok((input, #name { #(#field2),* }))
+                })
+        }
     }
 }
 
 fn generate_struct_field_nom_read(field: &FieldEncoding) -> TokenStream {
-    field
-        .encoding
-        .as_ref()
-        .map(|encoding| generate_nom_read(encoding))
-        .unwrap_or_else(|| quote!(|input| Ok((input, Default::default()))))
+    match field.kind {
+        FieldKind::Encoded(ref encoding) => generate_nom_read(&encoding),
+        FieldKind::Skip => quote!(|input| Ok((input, Default::default()))),
+        FieldKind::Hash => unreachable!(),
+    }
 }
 
 fn generate_enum_nom_read(encoding: &EnumEncoding) -> TokenStream {

@@ -1,6 +1,6 @@
 [package]
 name = "light-node"
-version = "1.6.10"
+version = "1.7.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 default-run = "light-node"
@@ -24,7 +24,7 @@ logging = { path = "../logging" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_new_context = { path = "../tezos/new_context" }
+tezos_context = { path = "../tezos/context" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
@@ -32,3 +32,4 @@ shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
 ipc = { path = "../ipc" }
+signal-hook = "0.3.9"

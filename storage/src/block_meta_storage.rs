@@ -34,10 +34,12 @@ pub trait BlockMetaStorageReader: Sync + Send {
     fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 
     /// Returns n-th predecessor for block_hash
+    ///
+    /// /// requested_distance - cannot be negative, because we cannot go to top throught successors, because in case of reorg, we dont know which way to choose
     fn find_block_at_distance(
         &self,
         block_hash: BlockHash,
-        distance: i32,
+        distance: u32,
     ) -> Result<Option<BlockHash>, StorageError>;
 
     /// Return ancestors of requested [block_hash] according to max_ttl (something like limit) sorted by [BlockHash] bytes
@@ -224,29 +226,30 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         }
     }
 
-    // NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
+    /// NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
+    ///
+    /// Returns n-th predecessor for block_hash
+    ///
+    /// /// requested_distance - cannot be negative, because we cannot go to top throught successors, because in case of reorg, we dont know which way to choose
     fn find_block_at_distance(
         &self,
         block_hash: BlockHash,
-        requested_distance: i32,
+        requested_distance: u32,
     ) -> Result<Option<BlockHash>, StorageError> {
         if requested_distance == 0 {
             return Ok(Some(block_hash));
         }
-        if requested_distance < 0 {
-            unimplemented!("TODO: TE-238 - Not yet implemented block header parsing for '+' - means we need to go forwards throught successors, this could be tricky and should be related to current head branch - reorg");
-        }
 
         let mut distance = requested_distance;
         let mut block_hash = block_hash;
-        const BASE: i32 = 2;
+        const BASE: u32 = 2;
         loop {
             if distance == 1 {
                 // distance is 1, return the direct prdecessor
                 let key = PredecessorKey::new(block_hash, 0);
                 return self.predecessors_index.get(&key);
             } else {
-                let (mut power, mut rest) = closest_power_two_and_rest(distance)?;
+                let (mut power, mut rest) = closest_power_two_and_rest(distance);
 
                 if power >= Self::STORED_PREDECESSORS_SIZE {
                     power = Self::STORED_PREDECESSORS_SIZE - 1;
@@ -316,23 +319,19 @@ impl BlockMetaStorageReader for BlockMetaStorage {
 
 /// Function to find the closest power of 2 value to the distance. Returns the closest power
 /// and the rest (distance = 2^closest_power + rest)
-fn closest_power_two_and_rest(distance: i32) -> Result<(u32, i32), StorageError> {
-    if distance < 0 {
-        return Err(StorageError::PredecessorLookupError);
-    }
-
-    let base: i32 = 2;
+fn closest_power_two_and_rest(distance: u32) -> (u32, u32) {
+    let base: u32 = 2;
 
     let mut closest_power: u32 = 0;
-    let mut rest: i32 = 0;
-    let mut distance: i32 = distance;
+    let mut rest: u32 = 0;
+    let mut distance: u32 = distance;
 
     while distance > 1 {
         rest += base.pow(closest_power) * (distance % 2);
         distance /= 2;
         closest_power += 1;
     }
-    Ok((closest_power, rest))
+    (closest_power, rest)
 }
 
 const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
@@ -546,7 +545,8 @@ impl KeyValueSchema for BlockMetaStorage {
 impl RocksDbKeyValueSchema for BlockMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
-        cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
+        cf_opts
+            .set_merge_operator_associative("block_meta_storage_merge_operator", merge_meta_value);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
@@ -1059,7 +1059,7 @@ mod tests {
         // from the last block, go to distance BLOCK_COUNT - 2 -> should be level 1
         let res = storage.find_block_at_distance(
             block_hashes[BLOCK_COUNT - 2].clone(),
-            BLOCK_COUNT as i32 - 2,
+            BLOCK_COUNT as u32 - 2,
         )?;
         assert!(res.is_some());
         assert_eq!(block_hashes[0], res.unwrap());
@@ -1067,7 +1067,7 @@ mod tests {
         // from the last block, go to distance BLOCK_COUNT - BLOCK_COUNT / 2 -> should be hash on
         let res = storage.find_block_at_distance(
             block_hashes[BLOCK_COUNT - 2].clone(),
-            BLOCK_COUNT as i32 / 2,
+            BLOCK_COUNT as u32 / 2,
         )?;
         assert!(res.is_some());
         assert_eq!(block_hashes[BLOCK_COUNT / 2 - 2], res.unwrap());
@@ -1082,7 +1082,7 @@ mod tests {
         assert!(res.is_some());
         assert_eq!(block_hashes[8], res.unwrap());
         for i in 1..BLOCK_COUNT - 2 {
-            let res = storage.find_block_at_distance(last_block_hash.clone(), i as i32)?;
+            let res = storage.find_block_at_distance(last_block_hash.clone(), i as u32)?;
             assert_eq!(block_hashes[BLOCK_COUNT - i - 2], res.unwrap())
         }
 
@@ -1104,11 +1104,18 @@ mod tests {
                 println!("Checked {} blocks from {}", idx, BLOCK_COUNT);
             }
             for i in 1..idx {
-                let res = storage.find_block_at_distance(hash.clone(), i as i32)?;
+                let res = storage.find_block_at_distance(hash.clone(), i as u32)?;
                 assert_eq!(block_hashes[idx - i], res.unwrap())
             }
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_closest_power_two_and_rest() {
+        for i in 0..1_000_000 {
+            closest_power_two_and_rest(i);
+        }
     }
 }

@@ -109,12 +109,14 @@ async fn main() {
         panic!("Cannot set min_refresh_interval for netinfo, reason: {}", e)
     }
 
-    if let Err(e) = netinfo.start() {
-        panic!("Cannot start netinfo, reson: {}", e)
-    }
-
     if !storages.is_empty() {
         let alerts = Alerts::new(tezedge_alert_thresholds, ocaml_alert_thresholds);
+
+        if let Err(e) = netinfo.start() {
+            panic!("Cannot start netinfo, reason: {}", e)
+        }
+
+        netinfo.clear().expect("Cannot clear netinfo");
 
         let mut resource_monitor = ResourceMonitor::new(
             storages.clone(),
@@ -122,12 +124,13 @@ async fn main() {
             alerts,
             log.clone(),
             slack_server.clone(),
-            resource_monitor_interval,
             netinfo,
         );
 
         let thread_log = log.clone();
         let handle = tokio::spawn(async move {
+            // wait for the first refresh, so it doesn't offset the first measurement
+            sleep(Duration::from_secs(resource_monitor_interval)).await;
             loop {
                 if let Err(e) = resource_monitor.take_measurement().await {
                     error!(thread_log, "Resource monitoring error: {}", e);

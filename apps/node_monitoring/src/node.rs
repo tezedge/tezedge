@@ -22,6 +22,8 @@ use crate::monitors::resource::{
     ValidatorIOStats, ValidatorMemoryStats,
 };
 
+const MILLIS_TO_SECONDS_CONVERSION_CONSTANT: u64 = 1000;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NodeType {
     Ocaml,
@@ -314,13 +316,13 @@ impl Node {
     pub fn get_io_data(
         &self,
         system: &mut System,
-        monitoring_interval: u64,
+        delta: u64,
     ) -> Result<DiskReadWrite, ResourceMonitorError> {
         if let Some(pid) = self.pid {
             if let Some(process) = system.process(pid) {
                 Ok(DiskReadWrite::new(
-                    process.disk_usage().read_bytes / monitoring_interval,
-                    process.disk_usage().written_bytes / monitoring_interval,
+                    to_bytes_per_sec(process.disk_usage().read_bytes / delta),
+                    to_bytes_per_sec(process.disk_usage().written_bytes / delta),
                 ))
             } else {
                 Err(ResourceMonitorError::IoInfoError {
@@ -338,7 +340,7 @@ impl Node {
         &self,
         system: &mut System,
         children_name: &str,
-        monitoring_interval: u64,
+        delta: u64,
     ) -> Result<ValidatorIOStats, ResourceMonitorError> {
         if let Some(pid) = self.pid {
             // collect all processes from the system
@@ -353,8 +355,8 @@ impl Node {
                     (
                         format!("{}-{}", child_process.name(), child_pid),
                         DiskReadWrite::new(
-                            child_process.disk_usage().read_bytes / monitoring_interval,
-                            child_process.disk_usage().written_bytes / monitoring_interval,
+                            to_bytes_per_sec(child_process.disk_usage().read_bytes / delta),
+                            to_bytes_per_sec(child_process.disk_usage().written_bytes / delta),
                         ),
                     )
                 })
@@ -380,15 +382,62 @@ impl Node {
     pub fn get_network_data(
         &self,
         statistics: &NetStatistics,
-        monitoring_interval: u64,
+        delta: u64,
     ) -> Result<NetworkStats, ResourceMonitorError> {
         if let Some(pid) = self.pid {
             Ok(NetworkStats::new(
-                statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Outgoing), None)
-                    / monitoring_interval,
-                statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Incoming), None)
-                    / monitoring_interval,
+                to_bytes_per_sec(
+                    statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Outgoing), None)
+                        / delta,
+                ),
+                to_bytes_per_sec(
+                    statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Incoming), None)
+                        / delta,
+                ),
             ))
+        } else {
+            Err(ResourceMonitorError::NetworkInfoError {
+                reason: format!("Node was not registered with PID {:?}", self.pid),
+            })
+        }
+    }
+
+    pub fn get_network_data_children(
+        &self,
+        statistics: &NetStatistics,
+        system: &mut System,
+        children_name: &str,
+        delta: u64,
+    ) -> Result<NetworkStats, ResourceMonitorError> {
+        if let Some(pid) = self.pid {
+            let system_processes = system.processes();
+
+            let (sent, received) = system_processes
+                .iter()
+                .filter(|(_, process)| {
+                    process.parent() == Some(pid) && process.name().eq(children_name)
+                })
+                .map(|(child_pid, _)| {
+                    (
+                        to_bytes_per_sec(
+                            statistics.get_bytes_by_attr(
+                                Some(*child_pid as u64),
+                                Some(InoutType::Outgoing),
+                                None,
+                            ) / delta,
+                        ),
+                        to_bytes_per_sec(
+                            statistics.get_bytes_by_attr(
+                                Some(*child_pid as u64),
+                                Some(InoutType::Incoming),
+                                None,
+                            ) / delta,
+                        ),
+                    )
+                })
+                .fold1(|acc, x| (acc.0 + x.0, acc.1 + x.1))
+                .unwrap_or_default();
+            Ok(NetworkStats::new(sent, received))
         } else {
             Err(ResourceMonitorError::NetworkInfoError {
                 reason: format!("Node was not registered with PID {:?}", self.pid),
@@ -432,4 +481,8 @@ fn read_task_name_file(pid: i32, task_pid: i32) -> String {
         // if for some reason we cannot access the thread name file, just use the task PID
         task_pid.to_string()
     }
+}
+
+fn to_bytes_per_sec(bytes_per_millis: u64) -> u64 {
+    bytes_per_millis * MILLIS_TO_SECONDS_CONVERSION_CONSTANT
 }

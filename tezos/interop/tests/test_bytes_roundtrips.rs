@@ -79,10 +79,8 @@ fn test_chain_id_roundtrip(iteration: i32) -> Result<(), failure::Error> {
 
     assert!(
         result.is_ok(),
-        format!(
-            "test_chain_id_roundtrip roundtrip iteration: {} failed!",
-            iteration
-        )
+        "test_chain_id_roundtrip roundtrip iteration: {} failed!",
+        iteration
     );
 
     Ok(())
@@ -106,10 +104,8 @@ fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
 
     assert!(
         result.is_ok(),
-        format!(
-            "test_block_header_roundtrip roundtrip iteration: {} failed!",
-            iteration
-        )
+        "test_block_header_roundtrip roundtrip iteration: {} failed!",
+        iteration
     );
 
     Ok(())
@@ -174,10 +170,8 @@ fn test_block_header_with_hash_roundtrip(iteration: i32) -> Result<(), failure::
 
     assert!(
         result.is_ok(),
-        format!(
-            "test_block_header_with_hash_roundtrip roundtrip iteration: {} failed!",
-            iteration
-        )
+        "test_block_header_with_hash_roundtrip roundtrip iteration: {} failed!",
+        iteration
     );
 
     Ok(())
@@ -199,10 +193,8 @@ fn test_operation_roundtrip(iteration: i32) -> Result<(), failure::Error> {
 
     assert!(
         result.is_ok(),
-        format!(
-            "test_operation_roundtrip roundtrip iteration: {} failed!",
-            iteration
-        )
+        "test_operation_roundtrip roundtrip iteration: {} failed!",
+        iteration
     );
 
     Ok(())
@@ -249,10 +241,8 @@ fn test_operations_list_list_roundtrip(
 
     assert!(
         result.is_ok(),
-        format!(
-            "test_operations_list_list_roundtrip roundtrip iteration: {} failed!",
-            iteration
-        )
+        "test_operations_list_list_roundtrip roundtrip iteration: {} failed!",
+        iteration
     );
 
     Ok(())

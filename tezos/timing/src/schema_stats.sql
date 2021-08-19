@@ -5,7 +5,7 @@ PRAGMA synchronous = OFF;
 CREATE TABLE IF NOT EXISTS blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   hash TEXT UNIQUE,
-  actions_count INTEGER,
+  queries_count INTEGER,
   checkout_time_irmin REAL,
   checkout_time_tezedge REAL,
   commit_time_irmin REAL,
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS keys (
   key TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE IF NOT EXISTS actions (
+CREATE TABLE IF NOT EXISTS queries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT,
   key_root TEXT,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS actions (
   FOREIGN KEY(context_id) REFERENCES contexts(id) DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE TABLE IF NOT EXISTS block_action_stats (
+CREATE TABLE IF NOT EXISTS block_query_stats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
 
   root TEXT NOT NULL,
@@ -114,14 +114,14 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
   FOREIGN KEY(block_id) REFERENCES blocks(id) DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE TABLE IF NOT EXISTS global_action_stats (
+CREATE TABLE IF NOT EXISTS global_query_stats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
 
   root TEXT NOT NULL,
-  action_name TEXT NOT NULL,
+  query_name TEXT NOT NULL,
   context_name TEXT NOT NULL,
   total_time REAL DEFAULT 0.0,
-  actions_count INTEGER DEFAULT 0,
+  queries_count INTEGER DEFAULT 0,
 
   one_to_ten_us_count INTEGER DEFAULT 0,
   one_to_ten_us_mean_time REAL DEFAULT 0.0,
@@ -168,5 +168,5 @@ CREATE TABLE IF NOT EXISTS global_action_stats (
   one_hundred_s_max_time REAL DEFAULT 0.0,
   one_hundred_s_total_time REAL DEFAULT 0.0,
 
-  UNIQUE(root, action_name, context_name)
+  UNIQUE(root, query_name, context_name)
 );

@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// A single producer, single consumer FIFO queue.
+///
+/// This is intended to be used by no more than 2 threads.
 use std::{fmt::Debug, mem::MaybeUninit};
 
 use crate::sync::{Acquire, Arc, AtomicUsize, Relaxed, Release, UnsafeCell};
@@ -42,7 +45,7 @@ pub enum PopError {
     Closed,
 }
 
-pub struct Queue<T> {
+struct Queue<T> {
     /// pop modify the head
     head: AtomicUsize,
     /// push modify the tail
@@ -52,6 +55,7 @@ pub struct Queue<T> {
     mask_bit: usize,
 }
 
+/// Consumer of the queue.
 pub struct Consumer<T> {
     queue: Arc<Queue<T>>,
 }
@@ -63,43 +67,60 @@ impl<T> Debug for Consumer<T> {
 }
 
 impl<T> Consumer<T> {
+    /// Pops an item from the queue.
+    ///
+    /// `&mut self` to ensure exclusivity.
     pub fn pop(&mut self) -> Result<T, PopError> {
         self.queue.pop()
     }
 
+    /// Returns the number of items in the queue.
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
+    /// Checks if the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 }
 
+/// Producer of the queue.
 pub struct Producer<T> {
     queue: Arc<Queue<T>>,
 }
 
 impl<T> Producer<T> {
+    /// Push an item into the queue.
+    ///
+    /// `&mut self` to ensure exclusivity.
     pub fn push(&mut self, value: T) -> Result<(), PushError<T>> {
         self.queue.push(value)
     }
 
+    /// Returns the number of items in the queue.
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
+    /// Checks if the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 
+    /// Returns the number of items that can be pushed.
     pub fn available(&self) -> usize {
         self.queue.available()
     }
 }
 
 impl<T: Copy> Producer<T> {
-    pub fn push_slice(&self, slice: &[T]) -> Result<(), PushError<()>> {
+    /// Push a slice of item into the queue.
+    ///
+    /// This is faster than multiple `Self::push` as it manipulates atomics once:
+    /// it reduces contention.
+    /// `&mut self` to ensure exclusivity.
+    pub fn push_slice(&mut self, slice: &[T]) -> Result<(), PushError<()>> {
         self.queue.push_slice(slice)
     }
 }
@@ -129,6 +150,9 @@ impl<T> Drop for Queue<T> {
     }
 }
 
+/// Creates a bounded queue.
+///
+/// Returns the producer and consumer.
 pub fn bounded<T>(capacity: usize) -> (Producer<T>, Consumer<T>) {
     Queue::new(capacity)
 }
@@ -282,8 +306,10 @@ impl<T: Copy> Queue<T> {
 
             if index + slice_length > buffer_length {
                 let length = buffer_length - index;
+                // Copy 1 part of the `slice` until the end of the buffer.
                 buffer[index..].copy_from_slice(&slice[..length]);
 
+                // Copy the 2nd part of the slice at the beginning of the buffer.
                 buffer[..slice_length - length].copy_from_slice(&slice[length..]);
             } else {
                 buffer[index..index + slice_length].copy_from_slice(slice);

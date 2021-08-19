@@ -310,7 +310,6 @@ impl Alerts {
         node_tag: &str,
         thresholds: &AlertThresholds,
         last_checked_head_level: Option<u64>,
-        // current_head_level: u64,
         current_time: i64,
         slack: Option<&SlackServer>,
         log: &Logger,
@@ -738,7 +737,7 @@ mod tests {
             },
         );
 
-        let thresholds = alerts.tezedge_thresholds().clone();
+        let thresholds = *alerts.tezedge_thresholds();
 
         // discard the logs
         let log = Logger::root(slog::Discard, slog::o!());
@@ -832,7 +831,7 @@ mod tests {
             },
         );
 
-        let thresholds = alerts.tezedge_thresholds().clone();
+        let thresholds = *alerts.tezedge_thresholds();
 
         // discard the logs
         let log = Logger::root(slog::Discard, slog::o!());
@@ -952,7 +951,7 @@ mod tests {
             Some(126),
             initial_time + 306,
             &log,
-            node_info.clone(),
+            node_info,
         );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Incresed(expected2));

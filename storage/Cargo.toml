@@ -1,6 +1,6 @@
 [package]
 name = "storage"
-version = "1.6.10"
+version = "1.7.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -13,7 +13,7 @@ getset = "0.1"
 hex = "0.4"
 itertools = "0.10"
 num_cpus = "1.13"
-rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
+rocksdb = {version = "0.17", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 sled = "0.34.6"

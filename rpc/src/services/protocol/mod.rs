@@ -13,20 +13,21 @@
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
-use failure::{bail, format_err, Error, Fail};
+use failure::{format_err, Error, Fail};
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
 };
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
+use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
-use tezos_new_context::context_key_owned;
 
-use crate::helpers::get_context_hash;
+use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
+use crate::services::base_services::{get_context_hash, get_raw_block_header_with_hash};
 use tezos_wrapper::TezedgeContextClientError;
 
 mod proto_001;
@@ -312,6 +313,8 @@ pub(crate) fn check_and_get_endorsing_rights(
 
 #[derive(Debug, Fail)]
 pub enum VotesError {
+    #[fail(display = "Rpc service error, reason: {}", reason)]
+    RpcServiceError { reason: RpcServiceError },
     #[fail(display = "Votes error, reason: {}", reason)]
     ServiceError { reason: Error },
     #[fail(display = "Unsupported protocol {}", protocol)]
@@ -366,7 +369,14 @@ impl From<FromBytesError> for VotesError {
     }
 }
 
+impl From<RpcServiceError> for VotesError {
+    fn from(reason: RpcServiceError) -> Self {
+        VotesError::RpcServiceError { reason }
+    }
+}
+
 pub(crate) fn get_votes_listings(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Option<serde_json::Value>, VotesError> {
@@ -377,7 +387,7 @@ pub(crate) fn get_votes_listings(
     //         protocol: "only-supported-with-tezedge-context".to_string(),
     //     });
     // }
-    let context_hash = get_context_hash(block_hash, env)?;
+    let context_hash = get_context_hash(chain_id, block_hash, env)?;
 
     // get protocol version
     let protocol_hash = if let Some(protocol_hash) = env
@@ -455,6 +465,7 @@ pub(crate) fn get_context_constants_just_for_rpc(
 // error responses from ok responses.
 pub enum RpcCallError {
     Failure(failure::Error),
+    NoDataFound(String),
     ErrorResponse(Arc<(u16, String)>),
 }
 
@@ -484,17 +495,26 @@ pub(crate) fn call_protocol_rpc_with_cache(
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<(u16, String)>, RpcCallError> {
-    let request =
-        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env)?;
 
-    // TODO: retry?
-    let response = env
-        .tezos_readonly_api()
-        .pool
-        .get()?
-        .api
-        .call_protocol_rpc(request)?;
+    let controller = env.tezos_readonly_api().pool.get()?;
+    let result = controller.api.call_protocol_rpc(request);
 
+    // The protocol runner is considerable to be in an broken state
+    // if we get a timeout in a second call after which we got a timeout
+    // already. In that case we shut that protocol runner down.
+    let broken_protocol_runner = match &result {
+        Ok(_) => false,
+        Err(error) => error.is_ipc_timeout_chain(),
+    };
+
+    if broken_protocol_runner {
+        controller.set_release_on_return_to_pool();
+    }
+
+    // TODO: retry on other errors?
+
+    let response = result?;
     let status_code = response.status_code();
     let body = response.body_json_string_or_empty();
 
@@ -512,7 +532,7 @@ pub(crate) fn call_protocol_rpc(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<Arc<(u16, String)>, failure::Error> {
+) -> Result<Arc<(u16, String)>, RpcServiceError> {
     match rpc_request.meth {
         RpcMethod::GET => {
             //uses cache if the request is GET request
@@ -520,12 +540,37 @@ pub(crate) fn call_protocol_rpc(
             {
                 Ok(response) => Ok(response),
                 Err(RpcCallError::ErrorResponse(response)) => Ok(response),
-                Err(RpcCallError::Failure(failure)) => Err(failure),
+                Err(RpcCallError::Failure(failure)) => Err(RpcServiceError::UnexpectedError {
+                    reason: format!("{}", failure),
+                }),
+                Err(RpcCallError::NoDataFound(msg)) => {
+                    Err(RpcServiceError::NoDataFoundError { reason: msg })
+                }
             }
         }
         _ => {
-            let request =
-                create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+            let request = match create_protocol_rpc_request(
+                chain_param,
+                chain_id,
+                block_hash,
+                rpc_request,
+                env,
+            ) {
+                Ok(response) => response,
+                Err(RpcCallError::ErrorResponse(failure)) => {
+                    return Err(RpcServiceError::UnexpectedError {
+                        reason: format!("{:?}", failure),
+                    })
+                }
+                Err(RpcCallError::Failure(failure)) => {
+                    return Err(RpcServiceError::UnexpectedError {
+                        reason: format!("{}", failure),
+                    })
+                }
+                Err(RpcCallError::NoDataFound(msg)) => {
+                    return Err(RpcServiceError::NoDataFoundError { reason: msg })
+                }
+            };
 
             // TODO: retry?
             let response = env
@@ -533,7 +578,10 @@ pub(crate) fn call_protocol_rpc(
                 .pool
                 .get()?
                 .api
-                .call_protocol_rpc(request)?;
+                .call_protocol_rpc(request)
+                .map_err(|e| RpcServiceError::UnexpectedError {
+                    reason: format!("Failed to call protocol rpc, reason: {}", e),
+                })?;
 
             Ok(Arc::new((
                 response.status_code(),
@@ -549,9 +597,24 @@ pub(crate) fn preapply_operations(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<serde_json::value::Value, failure::Error> {
+) -> Result<serde_json::value::Value, RpcServiceError> {
     let request =
-        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+        match create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env) {
+            Ok(response) => response,
+            Err(RpcCallError::ErrorResponse(failure)) => {
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!("{:?}", failure),
+                })
+            }
+            Err(RpcCallError::Failure(failure)) => {
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!("{}", failure),
+                })
+            }
+            Err(RpcCallError::NoDataFound(msg)) => {
+                return Err(RpcServiceError::NoDataFoundError { reason: msg })
+            }
+        };
 
     // TODO: retry?
     let response = env
@@ -559,9 +622,12 @@ pub(crate) fn preapply_operations(
         .pool
         .get()?
         .api
-        .helpers_preapply_operations(request)?;
+        .helpers_preapply_operations(request)
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("Failed to call helpers_preapply_operations, reason: {}", e),
+        })?;
 
-    Ok(serde_json::from_str(&response.body)?)
+    serde_json::from_str(&response.body).map_err(|e| e.into())
 }
 
 pub(crate) fn preapply_block(
@@ -570,25 +636,32 @@ pub(crate) fn preapply_block(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<serde_json::value::Value, failure::Error> {
+) -> Result<serde_json::value::Value, RpcServiceError> {
     let block_storage = BlockStorage::new(env.persistent_storage());
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
-
     let (block_header, (predecessor_block_metadata_hash, predecessor_ops_metadata_hash)) =
         match block_storage.get(&block_hash)? {
             Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
                 Some(block_header_additional_data) => {
                     (block_header, block_header_additional_data.into())
                 }
-                None => bail!(
-                    "No block additioanl data found for hash: {}",
-                    block_hash.to_base58_check()
-                ),
+                None => {
+                    return Err(RpcServiceError::NoDataFoundError {
+                        reason: format!(
+                            "No block additioanl data found for hash: {}",
+                            block_hash.to_base58_check()
+                        ),
+                    })
+                }
             },
-            None => bail!(
-                "No block header found for hash: {}",
-                block_hash.to_base58_check()
-            ),
+            None => {
+                return Err(RpcServiceError::NoDataFoundError {
+                    reason: format!(
+                        "No block header found for hash: {}",
+                        block_hash.to_base58_check()
+                    ),
+                })
+            }
         };
 
     // create request to ffi
@@ -609,9 +682,12 @@ pub(crate) fn preapply_block(
         .pool
         .get()?
         .api
-        .helpers_preapply_block(request)?;
+        .helpers_preapply_block(request)
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("Failed to call helpers_preapply_block, reason: {}", e),
+        })?;
 
-    Ok(serde_json::from_str(&response.body)?)
+    serde_json::from_str(&response.body).map_err(|e| e.into())
 }
 
 fn create_protocol_rpc_request(
@@ -620,15 +696,15 @@ fn create_protocol_rpc_request(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<ProtocolRpcRequest, failure::Error> {
-    let block_storage = BlockStorage::new(env.persistent_storage());
-    let block_header = match block_storage.get(&block_hash)? {
-        Some(header) => header.header.as_ref().clone(),
-        None => bail!(
-            "No block header found for hash: {}",
-            block_hash.to_base58_check()
-        ),
-    };
+) -> Result<ProtocolRpcRequest, RpcCallError> {
+    // get block header
+    let block_header =
+        get_raw_block_header_with_hash(&chain_id, &block_hash, env.persistent_storage())
+            .map(|block_header| block_header.header.as_ref().clone())
+            .map_err(|e| match e {
+                RpcServiceError::NoDataFoundError { reason } => RpcCallError::NoDataFound(reason),
+                rpce => RpcCallError::Failure(rpce.into()),
+            })?;
 
     // create request to ffi
     Ok(ProtocolRpcRequest {
@@ -697,6 +773,20 @@ impl From<FromBytesError> for ContextParamsError {
     }
 }
 
+#[allow(clippy::from_over_into)]
+impl Into<RpcServiceError> for ContextParamsError {
+    fn into(self) -> RpcServiceError {
+        match self {
+            ContextParamsError::StorageError { reason } => {
+                RpcServiceError::StorageError { error: reason }
+            }
+            e => RpcServiceError::UnexpectedError {
+                reason: format!("{}", e),
+            },
+        }
+    }
+}
+
 /// Get protocol and context constants as bytes from context list for desired block or level
 ///
 /// # Arguments
@@ -736,7 +826,7 @@ pub(crate) fn get_context_protocol_params(
         let context_hash = block_header.header.context();
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("protocol"))?
+            context.get_key_from_history(context_hash, context_key_owned!("protocol"))?
         {
             protocol_hash = ProtocolHash::try_from(data)?;
         } else {
@@ -746,7 +836,7 @@ pub(crate) fn get_context_protocol_params(
         }
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key_owned!("data/v1/constants"))?
+            context.get_key_from_history(context_hash, context_key_owned!("data/v1/constants"))?
         {
             constants = data;
         } else {

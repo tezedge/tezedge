@@ -1,6 +1,6 @@
 [package]
 name = "tezos_lib_storage_ffi"
-version = "1.6.10"
+version = "1.7.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 
@@ -10,7 +10,7 @@ edition = "2018"
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
 # local dependencies
 tezos_interop = { path = "../interop" }
-tezos_new_context = { path = "../new_context" }
+tezos_context = { path = "../context" }
 
 [dev-dependencies]
 tempfile = "3"

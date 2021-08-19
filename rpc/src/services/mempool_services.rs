@@ -6,7 +6,6 @@ use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use failure::{bail, format_err};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,6 +28,7 @@ use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
+use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
 
 const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -53,11 +53,9 @@ pub struct InjectedBlockWithOperations {
 pub fn get_pending_operations(
     _chain_id: &ChainId,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
-) -> Result<(MempoolOperations, Option<ProtocolHash>), failure::Error> {
+) -> Result<(MempoolOperations, Option<ProtocolHash>), RpcServiceError> {
     // get actual known state of mempool
-    let current_mempool_state = current_mempool_state_storage
-        .read()
-        .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
+    let current_mempool_state = current_mempool_state_storage.read()?;
 
     // convert to rpc data - we need protocol_hash
     let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state
@@ -92,9 +90,9 @@ pub fn get_pending_operations(
 }
 
 fn convert_applied(
-    applied: &Vec<Applied>,
+    applied: &[Applied],
     operations: &HashMap<OperationHash, Operation>,
-) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
+) -> Result<Vec<HashMap<String, Value>>, RpcServiceError> {
     let mut result: Vec<HashMap<String, Value>> = Vec::with_capacity(applied.len());
     for a in applied {
         let operation_hash = a.hash.to_base58_check();
@@ -102,10 +100,12 @@ fn convert_applied(
         let operation = match operations.get(&a.hash) {
             Some(b) => b,
             None => {
-                return Err(format_err!(
-                    "missing operation data for operation_hash: {}",
-                    &operation_hash
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "missing operation data for operation_hash: {}",
+                        &operation_hash
+                    ),
+                });
             }
         };
 
@@ -123,10 +123,10 @@ fn convert_applied(
 }
 
 fn convert_errored(
-    errored: &Vec<Errored>,
+    errored: &[Errored],
     operations: &HashMap<OperationHash, Operation>,
     protocol: &ProtocolHash,
-) -> Result<Vec<Value>, failure::Error> {
+) -> Result<Vec<Value>, RpcServiceError> {
     let mut result: Vec<Value> = Vec::with_capacity(errored.len());
     let protocol = protocol.to_base58_check();
 
@@ -135,10 +135,12 @@ fn convert_errored(
         let operation = match operations.get(&e.hash) {
             Some(b) => b,
             None => {
-                return Err(format_err!(
-                    "missing operation data for operation_hash: {}",
-                    &operation_hash
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "missing operation data for operation_hash: {}",
+                        &operation_hash
+                    ),
+                });
             }
         };
 
@@ -181,7 +183,7 @@ pub async fn inject_operation(
     chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
-) -> Result<String, failure::Error> {
+) -> Result<String, RpcServiceError> {
     info!(env.log(),
           "Operation injection requested";
           "chain_id" => chain_id.to_base58_check(),
@@ -204,11 +206,18 @@ pub async fn inject_operation(
         mempool_prevalidator
     } else {
         warn!(env.log(), "No mempool prevalidator was found"; "chain_id" => chain_id.to_base58_check(), "caller" => "mempool_services");
-        bail!("Prevalidator is not running, cannot inject the operation.");
+        return Err(RpcServiceError::UnexpectedError {
+            reason: "Prevalidator is not running, cannot inject the operation.".to_string(),
+        });
     };
 
     // parse operation data
-    let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
+    let operation: Operation =
+        Operation::from_bytes(hex::decode(operation_data)?).map_err(|e| {
+            RpcServiceError::UnexpectedError {
+                reason: format!("{}", e),
+            }
+        })?;
     let operation_hash = operation.message_typed_hash()?;
 
     // do prevalidation before add the operation to mempool
@@ -220,15 +229,20 @@ pub async fn inject_operation(
         &env.tezos_readonly_prevalidation_api().pool.get()?.api,
         &block_storage,
         &block_meta_storage,
-    )?;
+    )
+    .map_err(|e| RpcServiceError::UnexpectedError {
+        reason: format!("{}", e),
+    })?;
 
     // can accpect operation ?
     if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
-        return Err(format_err!(
-            "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
-            operation_hash.to_base58_check(),
-            result
-        ));
+        return Err(RpcServiceError::UnexpectedError {
+            reason: format!(
+                "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
+                operation_hash.to_base58_check(),
+                result
+            ),
+        });
     }
 
     // store operation in mempool storage
@@ -263,10 +277,11 @@ pub async fn inject_operation(
         )
         .is_err()
     {
-        return Err(format_err!(
+        return Err(RpcServiceError::UnexpectedError {
+            reason: format!(
                     "Operation injection error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
                     &operation_hash_b58check_string,
-                ));
+                )});
     }
 
     if let Some(receiver) = result_callback_receiver {
@@ -283,18 +298,20 @@ pub async fn inject_operation(
                                      "elapsed_async" => format!("{:?}", start_async.elapsed()));
             }
             Ok(Err(e)) => {
-                return Err(format_err!(
-                    "Operation injection error received, operation_hash: {}, reason: {}!",
-                    &operation_hash_b58check_string,
-                    e
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "Operation injection error received, operation_hash: {}, reason: {}!",
+                        &operation_hash_b58check_string, e
+                    ),
+                });
             }
             Err(e) => {
-                return Err(format_err!(
-                    "Operation injection error async wait, operation_hash: {}, reason: {}!",
-                    &operation_hash_b58check_string,
-                    e
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "Operation injection error async wait, operation_hash: {}, reason: {}!",
+                        &operation_hash_b58check_string, e
+                    ),
+                });
             }
         }
     }
@@ -308,14 +325,17 @@ pub async fn inject_block(
     injection_data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: &ShellChannelRef,
-) -> Result<String, failure::Error> {
+) -> Result<String, RpcServiceError> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
     let chain_id = Arc::new(chain_id);
 
     let start_request = Instant::now();
 
-    let header: BlockHeaderWithHash =
-        BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
+    let header: BlockHeaderWithHash = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("{}", e),
+        })?
+        .try_into()?;
     let block_hash_b58check_string = header.hash.to_base58_check();
     info!(env.log(),
           "Block injection requested";
@@ -336,7 +356,10 @@ pub async fn inject_block(
                         .map(|op| op.try_into())
                         .collect::<Result<_, _>>()
                 })
-                .collect::<Result<_, _>>()?,
+                .collect::<Result<_, _>>()
+                .map_err(|e| RpcServiceError::UnexpectedError {
+                    reason: format!("{}", e),
+                })?,
         )
     } else {
         None
@@ -344,10 +367,7 @@ pub async fn inject_block(
 
     // clean actual mempool_state - just applied should be enough
     if let Some(validation_passes) = &validation_passes {
-        let mut current_mempool_state = env
-            .current_mempool_state_storage()
-            .write()
-            .map_err(|e| format_err!("Failed to obtain write lock, reason: {}", e))?;
+        let mut current_mempool_state = env.current_mempool_state_storage().write()?;
 
         for vps in validation_passes {
             for vp in vps {
@@ -364,7 +384,10 @@ pub async fn inject_block(
             .pool
             .get()?
             .api
-            .compute_path(vps.try_into()?)?;
+            .compute_path(vps.try_into()?)
+            .map_err(|e| RpcServiceError::UnexpectedError {
+                reason: format!("{}", e),
+            })?;
         Some(response.operations_hashes_path)
     } else {
         None
@@ -419,18 +442,20 @@ pub async fn inject_block(
                 );
             }
             Ok(Err(e)) => {
-                return Err(format_err!(
-                    "Block injection error received, block_hash: {}, reason: {}!",
-                    &block_hash_b58check_string,
-                    e
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "Block injection error received, block_hash: {}, reason: {}!",
+                        &block_hash_b58check_string, e
+                    ),
+                });
             }
             Err(e) => {
-                return Err(format_err!(
-                    "Block injection error async wait, block_hash: {}, reason: {}!",
-                    &block_hash_b58check_string,
-                    e
-                ));
+                return Err(RpcServiceError::UnexpectedError {
+                    reason: format!(
+                        "Block injection error async wait, block_hash: {}, reason: {}!",
+                        &block_hash_b58check_string, e
+                    ),
+                });
             }
         }
     }
@@ -439,7 +464,7 @@ pub async fn inject_block(
     Ok(block_hash_b58check_string)
 }
 
-pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure::Error> {
+pub fn request_operations(shell_channel: ShellChannelRef) {
     // request current head from the peers
     shell_channel.tell(
         Publish {
@@ -448,7 +473,6 @@ pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure:
         },
         None,
     );
-    Ok(())
 }
 
 #[cfg(test)]

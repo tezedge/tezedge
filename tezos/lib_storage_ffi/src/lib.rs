@@ -344,23 +344,77 @@ pub mod tree {
     }
 }
 
+#[cfg(test)]
+macro_rules! key {
+    ($key:expr) => {{
+        $key.split('/').map(String::from).collect::<Vec<String>>()
+    }};
+    ($($arg:tt)*) => {{
+        key!(format!($($arg)*))
+    }};
+}
+
+#[cfg(test)]
+fn test_context_inodes(
+    cr: &mut OCamlRuntime,
+    tezedge_index: OCamlRef<TezosFfiContextIndex>,
+    tezedge_genesis_hash: &ContextHash,
+    irmin_index: OCamlRef<TezosFfiContextIndex>,
+    irmin_genesis_hash: &ContextHash,
+) {
+    use std::time::SystemTime;
+
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let mut tezedge_ctxt = context::checkout(cr, &tezedge_index, tezedge_genesis_hash).unwrap();
+    let mut irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
+
+    let tezedge_commit_hash_init = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let irmin_commit_hash_init = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+    for index in 0..2_000 {
+        let key = key!(format!("root/{}", index));
+
+        tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key, "".as_bytes());
+        irmin_ctxt = context::add(cr, &irmin_ctxt, &key, "".as_bytes());
+
+        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+        assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    }
+
+    for index in 0..2_000 {
+        let key = key!(format!("root/{}", index));
+
+        tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key);
+        irmin_ctxt = context::remove(cr, &irmin_ctxt, &key);
+
+        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+        assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    }
+
+    let tezedge_commit_hash_end = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let irmin_commit_hash_end = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    assert_eq!(irmin_commit_hash_end, tezedge_commit_hash_end);
+
+    assert_eq!(irmin_commit_hash_init, irmin_commit_hash_end);
+    assert_eq!(tezedge_commit_hash_init, tezedge_commit_hash_end);
+}
+
 #[test]
 fn test_context_calls() {
     use std::time::SystemTime;
     use tempfile::tempdir;
 
-    macro_rules! key {
-        ($key:expr) => {{
-            $key.split('/').map(String::from).collect::<Vec<String>>()
-        }};
-        ($($arg:tt)*) => {{
-            key!(format!($($arg)*))
-        }};
-    }
-
     // Initialize the persistent OCaml runtime and initialize callbacks
     ocaml_interop::OCamlRuntime::init_persistent();
-    tezos_new_context::ffi::initialize_callbacks();
+    tezos_context::ffi::initialize_callbacks();
 
     // OCaml runtime handle for FFI calls
     let cr = unsafe { ocaml_interop::OCamlRuntime::recover_handle() };
@@ -387,25 +441,61 @@ fn test_context_calls() {
         .unwrap()
         .as_secs();
 
+    test_context_inodes(
+        cr,
+        &tezedge_index,
+        &tezedge_genesis_hash,
+        &irmin_index,
+        &irmin_genesis_hash,
+    );
+
     let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_genesis_hash).unwrap();
+    let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("empty/value"), "".as_bytes());
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path"), "value".as_bytes());
+    let tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key!("some/path/nested"));
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path2"), "value".as_bytes());
     let tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key!("some/path2"));
-    let tezedge_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path3"), "value".as_bytes());
+    let tezedge_empty_tree = tree::empty(cr, &tezedge_ctxt);
+    let tezedge_ctxt =
+        context::add_tree(cr, &tezedge_ctxt, &key!("some/path3"), &tezedge_empty_tree);
+    let tezedge_ctxt = context::add(
+        cr,
+        &tezedge_ctxt,
+        &key!("some/path4/nest"),
+        "value".as_bytes(),
+    );
+    let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path4"), "value".as_bytes());
+    let tezedge_ctxt_hash = context::hash(cr, time as i64, None, &tezedge_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
 
     let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
+    let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("empty/value"), "".as_bytes());
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path"), "value".as_bytes());
+    let irmin_ctxt = context::remove(cr, &irmin_ctxt, &key!("some/path/nested"));
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path2"), "value".as_bytes());
     let irmin_ctxt = context::remove(cr, &irmin_ctxt, &key!("some/path2"));
-    let irmin_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path3"), "value".as_bytes());
+    let irmin_empty_tree = tree::empty(cr, &irmin_ctxt);
+    let irmin_ctxt = context::add_tree(cr, &irmin_ctxt, &key!("some/path3"), &irmin_empty_tree);
+    let irmin_ctxt = context::add(
+        cr,
+        &irmin_ctxt,
+        &key!("some/path4/nest"),
+        "value".as_bytes(),
+    );
+    let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path4"), "value".as_bytes());
+    let irmin_ctxt_hash = context::hash(cr, time as i64, None, &irmin_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
 
-    assert_eq!(irmin_hash, tezedge_hash);
+    assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    assert_eq!(tezedge_ctxt_hash, irmin_ctxt_hash);
 
-    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_hash);
+    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_commit_hash);
 
     assert!(tezedge_ctxt.is_some());
 
-    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_hash);
+    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_commit_hash);
 
     assert!(irmin_ctxt.is_some());
 
@@ -413,9 +503,15 @@ fn test_context_calls() {
     let irmin_ctxt = irmin_ctxt.unwrap();
 
     assert!(context::mem(cr, &tezedge_ctxt, &key!("some/path")));
+    assert!(context::mem_tree(cr, &tezedge_ctxt, &key!("some/path")));
     assert!(!context::mem(cr, &tezedge_ctxt, &key!("some/path2")));
+    assert!(!context::mem(cr, &tezedge_ctxt, &key!("some")));
+    assert!(context::mem_tree(cr, &tezedge_ctxt, &key!("some")));
     assert!(context::mem(cr, &irmin_ctxt, &key!("some/path")));
+    assert!(context::mem_tree(cr, &irmin_ctxt, &key!("some/path")));
     assert!(!context::mem(cr, &irmin_ctxt, &key!("some/path2")));
+    assert!(!context::mem(cr, &irmin_ctxt, &key!("some")));
+    assert!(context::mem_tree(cr, &irmin_ctxt, &key!("some")));
 
     let tezedge_tree = tree::empty(cr, &tezedge_ctxt);
 
@@ -444,26 +540,56 @@ fn test_context_calls() {
     let tezedge_ctxt = context::add_tree(cr, &tezedge_ctxt, &key!("tree"), &tezedge_tree);
     let irmin_ctxt = context::add_tree(cr, &irmin_ctxt, &key!("tree"), &irmin_tree);
 
-    let tezedge_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-    let irmin_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
 
-    assert_eq!(tezedge_hash, irmin_hash);
+    assert_eq!(tezedge_commit_hash, irmin_commit_hash);
 
-    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_hash);
+    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_commit_hash);
 
     assert!(tezedge_ctxt.is_some());
 
-    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_hash);
+    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_commit_hash);
 
     assert!(irmin_ctxt.is_some());
 
     let tezedge_ctxt = tezedge_ctxt.unwrap();
 
-    assert!(context::mem(cr, &tezedge_ctxt, &key!("tree/some/path")));
+    assert!(context::find_tree(cr, &tezedge_ctxt, &key!("tree/some")).is_some());
+    assert!(context::find_tree(cr, &tezedge_ctxt, &key!("tree/some/nonexistent")).is_none());
+    assert!(context::find_tree(cr, &tezedge_ctxt, &key!("tree/some/path")).is_some());
+    assert!(context::find_tree(cr, &tezedge_ctxt, &key!("tree")).is_some());
+    assert!(context::find_tree(cr, &tezedge_ctxt, &key!("nonexistent")).is_none());
+    assert!(context::find_tree(cr, &tezedge_ctxt, &vec![]).is_some());
+    assert!(context::find(cr, &tezedge_ctxt, &key!("tree")).is_none());
     assert!(!context::mem(cr, &tezedge_ctxt, &key!("tree/some/path2")));
+    let tv = context::find_tree(cr, &tezedge_ctxt, &key!("tree/some/path")).unwrap();
+    assert!(!tree::is_empty(cr, &tv));
+    assert!(!context::mem(cr, &tezedge_ctxt, &key!("tree/some")));
+    assert!(context::mem(cr, &tezedge_ctxt, &key!("tree/some/path")));
 
     let irmin_ctxt = irmin_ctxt.unwrap();
 
-    assert!(context::mem(cr, &irmin_ctxt, &key!("tree/some/path")));
+    assert!(context::find_tree(cr, &irmin_ctxt, &key!("tree/some")).is_some());
+    assert!(context::find_tree(cr, &irmin_ctxt, &key!("tree/some/nonexistent")).is_none());
+    assert!(context::find_tree(cr, &irmin_ctxt, &key!("tree/some/path")).is_some());
+    assert!(context::find_tree(cr, &irmin_ctxt, &key!("tree")).is_some());
+    assert!(context::find_tree(cr, &irmin_ctxt, &key!("nonexistent")).is_none());
+    assert!(context::find_tree(cr, &irmin_ctxt, &vec![]).is_some());
+    assert!(context::find(cr, &irmin_ctxt, &key!("tree")).is_none());
     assert!(!context::mem(cr, &irmin_ctxt, &key!("tree/some/path2")));
+    let tv = context::find_tree(cr, &irmin_ctxt, &key!("tree/some/path")).unwrap();
+    assert!(!tree::is_empty(cr, &tv));
+    assert!(!context::mem(cr, &irmin_ctxt, &key!("tree/some")));
+    assert!(context::mem(cr, &irmin_ctxt, &key!("tree/some/path")));
+
+    let tezedge_tree = context::find_tree(cr, &tezedge_ctxt, &key!("tree")).unwrap();
+    let irmin_tree = context::find_tree(cr, &irmin_ctxt, &key!("tree")).unwrap();
+    let tezedge_ctxt = context::add_tree(cr, &tezedge_ctxt, &key!("copy/path/tree"), &tezedge_tree);
+    let irmin_ctxt = context::add_tree(cr, &irmin_ctxt, &key!("copy/path/tree"), &irmin_tree);
+
+    assert_eq!(
+        context::hash(cr, 1, None, &tezedge_ctxt),
+        context::hash(cr, 1, None, &irmin_ctxt)
+    );
 }

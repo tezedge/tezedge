@@ -104,7 +104,7 @@ impl MempoolPrevalidator {
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_readonly_api.pool.get() {
-                        Ok(mut protocol_controller) => match process_prevalidation(
+                        Ok(protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
                             &mempool_storage,
@@ -364,14 +364,14 @@ fn process_prevalidation(
 
     // hydrate state
     hydrate_state(
-        &shell_channel,
+        shell_channel,
         block_storage,
         chain_meta_storage,
         mempool_storage,
         current_mempool_state_storage.clone(),
-        &api,
-        &chain_id,
-        &log,
+        api,
+        chain_id,
+        log,
     )?;
 
     // start receiving event
@@ -391,11 +391,11 @@ fn process_prevalidation(
 
                         // try to begin construction new context
                         let (prevalidator, head) = begin_construction(
-                            &api,
-                            &chain_id,
+                            api,
+                            chain_id,
                             header.hash.clone(),
                             header.header.clone(),
-                            &log,
+                            log,
                         )?;
 
                         // reinitialize state for new prevalidator and head
@@ -407,7 +407,7 @@ fn process_prevalidation(
                         operations_to_delete
                             .iter()
                             .for_each(|oph| {
-                                if let Err(err) = mempool_storage.delete(&oph) {
+                                if let Err(err) = mempool_storage.delete(oph) {
                                     warn!(log, "Mempool - delete operation failed"; "hash" => oph.to_base58_check(), "error" => format!("{:?}", err))
                                 }
                             });
@@ -434,10 +434,8 @@ fn process_prevalidation(
                             }) {
                                 warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
-                        } else {
-                            if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
-                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
-                            }
+                        } else if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
@@ -456,10 +454,10 @@ fn process_prevalidation(
 
         // 2. lets handle pending operations (if any)
         handle_pending_operations(
-            &shell_channel,
-            &api,
+            shell_channel,
+            api,
             current_mempool_state_storage.clone(),
-            &log,
+            log,
         )?;
     }
 
@@ -477,7 +475,7 @@ fn hydrate_state(
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
     // load current head
-    let current_head = match chain_meta_storage.get_current_head(&chain_id)? {
+    let current_head = match chain_meta_storage.get_current_head(chain_id)? {
         Some(head) => block_storage
             .get(head.block_hash())?
             .map(|header| (head, header.header)),
@@ -486,7 +484,7 @@ fn hydrate_state(
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some((head, header)) => begin_construction(api, &chain_id, head.into(), header, &log)?,
+        Some((head, header)) => begin_construction(api, chain_id, head.into(), header, log)?,
         None => (None, None),
     };
 
@@ -510,7 +508,7 @@ fn hydrate_state(
     drop(state);
 
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
-    handle_pending_operations(&shell_channel, &api, current_mempool_state_storage, &log)?;
+    handle_pending_operations(shell_channel, api, current_mempool_state_storage, log)?;
 
     Ok(())
 }
@@ -603,10 +601,10 @@ fn handle_pending_operations(
     }
 
     advertise_new_mempool(
-        &shell_channel,
+        shell_channel,
         prevalidator,
         head,
-        (&validation_result.applied, &pendings),
+        (&validation_result.applied, pendings),
     );
 
     Ok(())

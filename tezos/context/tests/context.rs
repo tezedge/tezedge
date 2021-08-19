@@ -8,10 +8,10 @@ use crypto::hash::ContextHash;
 use storage::tests_common::TmpStorage;
 use storage::{BlockHeaderWithHash, BlockStorage};
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
+use tezos_context::initializer::initialize_tezedge_context;
+use tezos_context::{context_key, ContextError, ContextKey, TezedgeContext};
+use tezos_context::{IndexApi, ProtocolContextApi, ShellContextApi};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
-use tezos_new_context::context_key;
-use tezos_new_context::initializer::initialize_tezedge_context;
-use tezos_new_context::{IndexApi, ProtocolContextApi, ShellContextApi};
 
 #[test]
 pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
@@ -27,7 +27,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
 
     // context
     let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
-        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMem,
+        backend: tezos_context::initializer::ContextKvStoreConfiguration::InMem,
         ipc_socket_path: None,
     })
     .unwrap();
@@ -78,7 +78,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
 
     // context
     let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
-        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMem,
+        backend: tezos_context::initializer::ContextKvStoreConfiguration::InMem,
         ipc_socket_path: None,
     })
     .unwrap();
@@ -214,6 +214,18 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     Ok(())
 }
 
+fn context_copy(
+    context: &TezedgeContext,
+    from: &ContextKey,
+    to: &ContextKey,
+) -> Result<Option<TezedgeContext>, ContextError> {
+    if let Some(tree) = context.find_tree(from)? {
+        Ok(Some(context.add_tree(to, &tree)?))
+    } else {
+        Ok(None)
+    }
+}
+
 #[test]
 pub fn test_context_copy() -> Result<(), failure::Error> {
     // prepare temp storage
@@ -228,7 +240,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 
     // context
     let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
-        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMem,
+        backend: tezos_context::initializer::ContextKvStoreConfiguration::InMem,
         ipc_socket_path: None,
     })
     .unwrap();
@@ -306,12 +318,12 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     ));
 
     // 1. copy
-    if let Some(new_context) = context.copy(
+    let context = context_copy(
+        &context,
         &context_key!("data/rolls/owner/current"),
         &context_key!("data/rolls/owner/snapshot/01/02"),
-    )? {
-        context = new_context;
-    }
+    )?
+    .unwrap();
 
     // commit
     let context_hash_2: ContextHash =

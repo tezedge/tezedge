@@ -111,7 +111,7 @@ fn ipc_fork_and_try_read_with_timeout() -> Result<(), failure::Error> {
 
     // 1. try read something with timeout but nothing comes
     match rx.try_receive(Some(Duration::from_secs(1)), None) {
-        Err(IpcError::ReceiveMessageTimeouted {}) => (/* ok */),
+        Err(IpcError::ReceiveMessageTimeout {}) => (/* ok */),
         Err(e) => return Err(format_err!("Unexpected result: {:?}", e)),
         Ok(_) => return Err(format_err!("Unexpected result")),
     }
@@ -131,8 +131,8 @@ fn ipc_fork_and_try_read_with_timeout() -> Result<(), failure::Error> {
 
     // 4. try ready one more
     match rx.receive() {
-        Err(IpcError::ReceiveMessageTimeouted { .. }) => {
-            Err(format_err!("Unexpected IpcError::ReceiveMessageTimeouted"))
+        Err(IpcError::ReceiveMessageTimeout { .. }) => {
+            Err(format_err!("Unexpected IpcError::ReceiveMessageTimeout"))
         }
         Err(_) => {
             assert!(common::wait(child_pid));

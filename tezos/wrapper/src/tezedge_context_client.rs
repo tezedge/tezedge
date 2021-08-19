@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::TezosApiConnectionPool;
 use crypto::hash::ContextHash;
 use failure::Fail;
-use tezos_new_context::{ContextError, ContextKeyOwned, ContextValue, StringTreeEntry};
+use tezos_context::{ContextError, ContextKeyOwned, ContextValue, StringTreeObject};
 
 #[derive(Clone)]
 pub struct TezedgeContextClient {
@@ -79,7 +79,7 @@ impl TezedgeContextClient {
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, TezedgeContextClientError> {
+    ) -> Result<StringTreeObject, TezedgeContextClientError> {
         Ok(self
             .tezos_readonly_api
             .pool

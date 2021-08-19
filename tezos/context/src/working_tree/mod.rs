@@ -3,11 +3,11 @@
 
 use std::{borrow::Cow, cell::Cell};
 
-use crate::hash::{hash_entry, EntryHash, HashingError};
+use crate::hash::{hash_object, HashingError, ObjectHash};
 use crate::{kv_store::HashId, ContextKeyValueStore};
 
 use self::{
-    storage::{BlobStorageId, Storage, TreeStorageId},
+    storage::{BlobId, DirectoryId, Storage},
     working_tree::MerkleError,
 };
 
@@ -17,8 +17,6 @@ pub mod string_interner;
 #[allow(clippy::module_inception)]
 pub mod working_tree;
 pub mod working_tree_stats; // TODO - TE-261 remove or reimplement
-
-pub type Tree = TreeStorageId;
 
 use modular_bitfield::prelude::*;
 use static_assertions::assert_eq_size;
@@ -36,9 +34,9 @@ pub enum NodeKind {
 pub struct NodeInner {
     node_kind: NodeKind,
     commited: bool,
-    entry_hash_id: B32,
-    entry_available: bool,
-    entry_id: B61,
+    object_hash_id: B32,
+    object_available: bool,
+    object_id: B61,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -58,9 +56,9 @@ pub struct Commit {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Entry {
-    Tree(Tree),
-    Blob(BlobStorageId),
+pub enum Object {
+    Directory(DirectoryId),
+    Blob(BlobId),
     Commit(Box<Commit>),
 }
 
@@ -78,56 +76,72 @@ impl Node {
         self.inner.get().node_kind()
     }
 
+    /// Returns the `HashId` of this node, _without_ computing it if it doesn't exist yet.
+    ///
+    /// Returns `None` if the `HashId` doesn't exist.
+    /// Use `Self::object_hash_id` to compute the hash.
     pub fn hash_id(&self) -> Option<HashId> {
-        let id = self.inner.get().entry_hash_id();
+        let id = self.inner.get().object_hash_id();
         HashId::new(id)
     }
 
-    pub fn get_entry(&self) -> Option<Entry> {
+    /// Returns the object of this `Node`.
+    ///
+    /// It returns `None` when the object has not been fetched from the repository.
+    /// In that case, `TezedgeIndex::get_object` must be used with the `HashId` of this
+    /// `Node` to get the object.
+    /// Alternative method: `TezedgeIndex::node_object`.
+    pub fn get_object(&self) -> Option<Object> {
         let inner = self.inner.get();
 
-        if !inner.entry_available() {
+        if !inner.object_available() {
             return None;
         }
 
-        let entry_id: u64 = inner.entry_id();
+        let object_id: u64 = inner.object_id();
         match self.node_kind() {
-            NodeKind::NonLeaf => Some(Entry::Tree(TreeStorageId::from(entry_id))),
-            NodeKind::Leaf => Some(Entry::Blob(BlobStorageId::from(entry_id))),
+            NodeKind::NonLeaf => Some(Object::Directory(DirectoryId::from(object_id))),
+            NodeKind::Leaf => Some(Object::Blob(BlobId::from(object_id))),
         }
     }
 
-    pub fn entry_hash<'a>(
+    /// Returns the `ObjectHash` of this node, computing it necessary.
+    ///
+    /// If this node is an inlined blob, this will return an error.
+    pub fn object_hash<'a>(
         &self,
         store: &'a mut ContextKeyValueStore,
-        tree_storage: &Storage,
-    ) -> Result<Cow<'a, EntryHash>, HashingError> {
+        storage: &Storage,
+    ) -> Result<Cow<'a, ObjectHash>, HashingError> {
         let hash_id = self
-            .entry_hash_id(store, tree_storage)?
+            .object_hash_id(store, storage)?
             .ok_or(HashingError::HashIdEmpty)?;
         store
             .get_hash(hash_id)?
             .ok_or(HashingError::HashIdNotFound { hash_id })
     }
 
-    pub fn entry_hash_id(
+    /// Returns the `HashId` of this node, it will compute the hash if necessary.
+    ///
+    /// If this node is an inlined blob, this will return `None`.
+    pub fn object_hash_id(
         &self,
         store: &mut ContextKeyValueStore,
-        tree_storage: &Storage,
+        storage: &Storage,
     ) -> Result<Option<HashId>, HashingError> {
         match self.hash_id() {
             Some(hash_id) => Ok(Some(hash_id)),
             None => {
-                let hash_id = hash_entry(
-                    self.get_entry()
+                let hash_id = hash_object(
+                    self.get_object()
                         .as_ref()
-                        .ok_or(HashingError::MissingEntry)?,
+                        .ok_or(HashingError::MissingObject)?,
                     store,
-                    tree_storage,
+                    storage,
                 )?;
                 if let Some(hash_id) = hash_id {
                     let mut inner = self.inner.get();
-                    inner.set_entry_hash_id(hash_id.as_u32());
+                    inner.set_object_hash_id(hash_id.as_u32());
                     self.inner.set(inner);
                 };
                 Ok(hash_id)
@@ -135,18 +149,18 @@ impl Node {
         }
     }
 
-    pub fn new(node_kind: NodeKind, entry: Entry) -> Self {
+    pub fn new(node_kind: NodeKind, object: Object) -> Self {
         Node {
             inner: Cell::new(
                 NodeInner::new()
                     .with_commited(false)
                     .with_node_kind(node_kind)
-                    .with_entry_hash_id(0)
-                    .with_entry_available(true)
-                    .with_entry_id(match entry {
-                        Entry::Tree(tree_id) => tree_id.into(),
-                        Entry::Blob(blob_id) => blob_id.into(),
-                        Entry::Commit(_) => unreachable!("A Node never contains a commit"),
+                    .with_object_hash_id(0)
+                    .with_object_available(true)
+                    .with_object_id(match object {
+                        Object::Directory(dir_id) => dir_id.into(),
+                        Object::Blob(blob_id) => blob_id.into(),
+                        Object::Commit(_) => unreachable!("A Node never contains a commit"),
                     }),
             ),
         }
@@ -155,51 +169,64 @@ impl Node {
     pub fn new_commited(
         node_kind: NodeKind,
         hash_id: Option<HashId>,
-        entry: Option<Entry>,
+        object: Option<Object>,
     ) -> Self {
         Node {
             inner: Cell::new(
                 NodeInner::new()
                     .with_commited(true)
                     .with_node_kind(node_kind)
-                    .with_entry_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
-                    .with_entry_available(entry.is_some())
-                    .with_entry_id(match entry {
-                        Some(Entry::Tree(tree_id)) => tree_id.into(),
-                        Some(Entry::Blob(blob_id)) => blob_id.into(),
-                        Some(Entry::Commit(_)) => unreachable!("A Node never contains a commit"),
+                    .with_object_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
+                    .with_object_available(object.is_some())
+                    .with_object_id(match object {
+                        Some(Object::Directory(dir_id)) => dir_id.into(),
+                        Some(Object::Blob(blob_id)) => blob_id.into(),
+                        Some(Object::Commit(_)) => unreachable!("A Node never contains a commit"),
                         None => 0,
                     }),
             ),
         }
     }
 
-    pub fn get_hash_id(&self) -> Result<HashId, MerkleError> {
-        self.hash_id()
-            .ok_or(MerkleError::InvalidState("Missing entry hash"))
+    pub fn new_non_leaf(object: Object) -> Self {
+        Node::new(NodeKind::NonLeaf, object)
     }
 
-    pub fn set_entry(&self, entry: &Entry) -> Result<(), MerkleError> {
+    pub fn new_leaf(object: Object) -> Self {
+        Node::new(NodeKind::Leaf, object)
+    }
+
+    /// Returns the `HashId` of this node, _without_ computing it if it doesn't exist yet.
+    ///
+    /// Returns an error if the `HashId` doesn't exist.
+    /// Use `Self::object_hash_id` to compute the hash.
+    pub fn get_hash_id(&self) -> Result<HashId, MerkleError> {
+        self.hash_id()
+            .ok_or(MerkleError::InvalidState("Missing object hash"))
+    }
+
+    /// Set the object of this node.
+    pub fn set_object(&self, object: &Object) -> Result<(), MerkleError> {
         let mut inner = self.inner.get();
 
-        match entry {
-            Entry::Tree(tree_id) => {
-                let tree_id: u64 = (*tree_id).into();
-                if tree_id != inner.entry_id() || !inner.entry_available() {
-                    inner.set_entry_available(true);
+        match object {
+            Object::Directory(dir_id) => {
+                let dir_id: u64 = (*dir_id).into();
+                if dir_id != inner.object_id() || !inner.object_available() {
+                    inner.set_object_available(true);
                     inner.set_node_kind(NodeKind::NonLeaf);
-                    inner.set_entry_id(tree_id);
+                    inner.set_object_id(dir_id);
                 }
             }
-            Entry::Blob(blob_id) => {
+            Object::Blob(blob_id) => {
                 let blob_id: u64 = (*blob_id).into();
-                if blob_id != inner.entry_id() || !inner.entry_available() {
-                    inner.set_entry_available(true);
+                if blob_id != inner.object_id() || !inner.object_available() {
+                    inner.set_object_available(true);
                     inner.set_node_kind(NodeKind::Leaf);
-                    inner.set_entry_id(blob_id);
+                    inner.set_object_id(blob_id);
                 }
             }
-            Entry::Commit(_) => {
+            Object::Commit(_) => {
                 unreachable!("A Node never contains a commit")
             }
         };

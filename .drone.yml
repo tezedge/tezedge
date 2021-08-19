@@ -59,8 +59,8 @@ environment:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:latest
-  pull: always
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
   user: root
   volumes:
     - name: build
@@ -83,13 +83,11 @@ steps:
     - cargo build --release --workspace
     - cargo test --release --workspace --no-run
     # collect binary artefacts
-    - mkdir $${BUILD_ARTIFACTS_PATH}
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/identities
     - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - mkdir $${TEST_ARTIFACTS_PATH}/tests
+    - mkdir -p $${TEST_ARTIFACTS_PATH}/tests
     - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
     # copy binaries
     - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
@@ -137,6 +135,27 @@ steps:
     - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
     - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
     - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
+    - chown -R 1000:1000 $${TEST_ARTIFACTS_PATH}
+    - chown -R 1000:1000 $${SANDBOX_ARTIFACTS_PATH}
+
+- name: synch-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
     # Modify permissions for ssh key
     - chown appuser /home/appuser/.ssh/id_rsa
     - chown appuser /home/appuser/.ssh
@@ -144,9 +163,8 @@ steps:
     - ls -la /home/appuser/.ssh
     # copy build files to all other runner machines
     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
@@ -158,6 +176,170 @@ volumes:
   - name: tests
     host:
       path: /usr/local/etc/tezedge-ci/tests/
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+
+---
+##############################################################################################################
+# This pipeline:
+# - only one which checkouts git
+# - runs just run tests, and build artifacts to 'build' volume,
+# - aslo copies files needed from git for other pipelines
+##############################################################################################################
+kind: pipeline
+name: build-old-tezedge-binaries
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: build-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # Build target (old) branch version
+    - git reset --hard origin/${DRONE_TARGET_BRANCH}
+    - cargo clean && cargo build --release -p light-node -p sandbox -p protocol-runner
+    # copy old binaries
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
+    - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files/old
+    - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files/old
+    - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/old
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
+
+- name: synch-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # Modify permissions for ssh key
+    - chown appuser /home/appuser/.ssh/id_rsa
+    - chown appuser /home/appuser/.ssh
+    - chmod 600 /home/appuser/.ssh/id_rsa
+    - ls -la /home/appuser/.ssh
+    # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/old /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/old /home/appuser/.ssh
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+  ref:
+    - refs/pull/*/head
+
+---
+##############################################################################################################
+# This pipeline:
+# Builds and sychronizes the monitoring binary
+##############################################################################################################
+kind: pipeline
+name: build-monitoring-artifacts
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: build-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  commands:
+    - cd apps/node_monitoring && cargo clean && cargo build --release
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+    - cp ./target/release/node-monitoring $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
+
+- name: synch-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # Modify permissions for ssh key
+    - chown appuser /home/appuser/.ssh/id_rsa
+    - chown appuser /home/appuser/.ssh
+    - chmod 600 /home/appuser/.ssh/id_rsa
+    - ls -la /home/appuser/.ssh
+    # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/monitoring /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/monitoring /home/appuser/.ssh
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
   - name: ids
     host:
       path: /usr/local/etc/tezedge-ci/id
@@ -187,7 +369,7 @@ environment:
 steps:
 
 - name: generate-artificial-load
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
   detach: true
   user: root
@@ -208,7 +390,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
   user: root
   volumes:
@@ -275,7 +457,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   - name: tezedge-updated-node-run-mainnet
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -390,7 +572,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -400,7 +582,7 @@ steps:
     - cargo test --release --workspace
 
 - name: run-unit-tests-multibackend-rockdb
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -411,7 +593,7 @@ steps:
     - cargo test --release --features maindb-backend-rocksdb
 
 - name: run-unit-tests-multibackend-sled
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -422,7 +604,7 @@ steps:
     - cargo test --release --features maindb-backend-sled
 
 - name: run-unit-tests-commit-log
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -431,6 +613,17 @@ steps:
   commands:
     - cd storage
     - cargo test --release --lib commit_log -- --nocapture
+
+- name: run-unit-tests-monitoring
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd apps/node_monitoring
+    - cargo test --release --workspace
 
 image_pull_secrets:
   - docker_pull_secret
@@ -462,7 +655,7 @@ steps:
 # GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and
 # all of then should initialize the context
 - name: protocol-runner-writable-and-readonly-context
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -483,7 +676,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
 # scenario accordingly
 - name: protocol-runner-acquisition-from-pool
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -504,7 +697,7 @@ steps:
 # GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to
 # the new head
 - name: shell-current-head
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -526,7 +719,7 @@ steps:
 # GIVEN we have one node with genesis and one node with level 3 WHEN we connect them a current branch is sent to the node with genesis
 # and THEN it bootstraps to level 3 then a new current_head is sent and applied by both nodes
 - name: shell-current-branch-then-current-head
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -547,7 +740,7 @@ steps:
 
 # GIVEN we run two nodes(1,2) with different branches WHEN we connect the two nodes THEN both branches are present in node 1
 - name: shell-simple-reorg
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -569,7 +762,7 @@ steps:
 # GIVEN we run two connected tezedge nodes WHEN one node sends CurrentHead with hacked protocol data THEN the node should blacklist
 # the node sending the hacked data
 - name: shell-multipass-blacklisting
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -591,7 +784,7 @@ steps:
 # GIVEN a mocke node on level 3 (level 7 is the current chain head) WHEN the node receives all CurrentHeadMessages THEN
 # the node is considered bootstrapped and mempool is activated
 - name: shell-bootstrapping-current-branch/heads
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -613,7 +806,7 @@ steps:
 # GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis
 # bootstraps to level 1324 and has its memool functional
 - name: shell-bootstrap-and-mempool
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -635,7 +828,7 @@ steps:
 # GIVEN we are running tezedge node WHEN accept connections from the network THEN we are not passing a the defined threshold with the
 # number of connected peers
 - name: p2p-comply-with-max-threshold
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -657,7 +850,7 @@ steps:
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
 # the connection should succeed
 - name: p2p-pow-success
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -679,7 +872,7 @@ steps:
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
 # the connection should fail
 - name: p2p-pow-fail
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -742,7 +935,7 @@ steps:
     - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
 - name: tezedge-node-bootstrap
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -785,7 +978,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: replay-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   pull: if-not-exists
   volumes:
@@ -811,7 +1004,7 @@ steps:
 
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:latest
+#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -899,7 +1092,7 @@ environment:
 steps:
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -929,7 +1122,7 @@ steps:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -947,7 +1140,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -963,7 +1156,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -979,7 +1172,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -995,7 +1188,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1012,7 +1205,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1029,7 +1222,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1045,7 +1238,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1061,7 +1254,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1077,7 +1270,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1093,7 +1286,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: basic-test
-  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1155,7 +1348,7 @@ environment:
 steps:
 
   - name: prepare-python-tests
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1185,7 +1378,7 @@ steps:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
   - name: baker-endorser-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1203,7 +1396,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1219,7 +1412,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1235,7 +1428,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1251,7 +1444,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1268,7 +1461,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1285,7 +1478,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1301,7 +1494,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1317,7 +1510,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1333,7 +1526,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1349,7 +1542,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
   - name: basic-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1410,7 +1603,7 @@ environment:
 steps:
 
   - name: prepare-python-tests
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1440,7 +1633,7 @@ steps:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
   - name: baker-endorser-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1458,7 +1651,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1474,7 +1667,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1490,7 +1683,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1506,7 +1699,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1523,7 +1716,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1540,7 +1733,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1556,7 +1749,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1572,7 +1765,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1588,7 +1781,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -1604,7 +1797,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
   - name: basic-test
-    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1695,7 +1888,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -1849,7 +2042,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1911,7 +2104,7 @@ environment:
 
 steps:
 - name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -2101,7 +2294,7 @@ environment:
 
 steps:
   - name: tezedge-sandbox-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -2320,7 +2513,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-edo2-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -2508,7 +2701,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2526,7 +2719,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2549,7 +2742,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2645,7 +2838,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-florence-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -2833,7 +3026,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2851,7 +3044,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2874,7 +3067,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2970,7 +3163,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-granada-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3158,7 +3351,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3176,7 +3369,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3199,7 +3392,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3362,7 +3555,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -3429,7 +3622,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -3590,7 +3783,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-edo2net-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3656,7 +3849,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3816,7 +4009,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-florencenet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3883,7 +4076,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4043,7 +4236,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-granadanet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4109,7 +4302,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4273,7 +4466,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-mainnet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4339,7 +4532,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4516,7 +4709,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4729,7 +4922,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4956,7 +5149,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -5032,6 +5225,270 @@ steps:
 
 ---
 ##############################################################################################################
+# The next few pipelines test the correctness of monitoring app and it's measurements
+##############################################################################################################
+kind: pipeline
+name: corr/monitoring-cpu-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--cpu-load"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
+    - sleep 10
+
+- name: test-cpu-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-cpu", "100.0"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-monitoring-artifacts
+
+---
+kind: pipeline
+name: corr/monitoring-memory-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+# TODO: build and send with other artifacts
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--memory-load", "3221225472"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
+    - sleep 10
+
+- name: test-memory-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-memory", "3221225472"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-monitoring-artifacts
+
+---
+kind: pipeline
+name: corr/monitoring-io-and-network-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--network-and-io-load", "512000"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
+    - sleep 10
+
+- name: test-io-and-network-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-networking-and-io", "512000"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-monitoring-artifacts
+---
+kind: pipeline
+name: corr/monitoring-disk-size-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  environment:
+    VOLUME_PATH: /tmp/tezedge/data
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+  detach: true
+  command: ["--disk-load", "1073741824"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge/data --wait-for-nodes
+
+- name: test-disk-size-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-disk", "1073741824"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-monitoring-artifacts
+
+---
+##############################################################################################################
 # This pipeline runs all the benchmarks included in the tezedge project
 ##############################################################################################################
 kind: pipeline
@@ -5047,7 +5504,7 @@ environment:
 steps:
 
   - name: run-benchmarks
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     environment:
@@ -5064,7 +5521,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     environment:
@@ -5093,7 +5550,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -5132,7 +5589,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -5220,7 +5677,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -5282,7 +5739,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -5422,7 +5879,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5435,17 +5892,16 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     THROTTLING_QUOTA_DISABLE: true
   commands:
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
     - echo "peers - $PEERS"
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5460,16 +5916,10 @@ steps:
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
     - echo "peers - $PEERS"
-    - mkdir -p /tmp/tezedge-target-branch
-    - cd /tmp/tezedge-target-branch
-    - rm -rf tezedge
-    - target_branch=$${DRONE_TARGET_BRANCH}
-    - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
-    - cd /tmp/tezedge-target-branch/tezedge
-    - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
-    - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/old/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - $${BUILD_ARTIFACTS_PATH}/build_files/old/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "$${BUILD_ARTIFACTS_PATH}/build_files/old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -5556,6 +6006,8 @@ trigger:
     - develop
 
 depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
 
 ---
@@ -5628,7 +6080,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5641,17 +6093,16 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     THROTTLING_QUOTA_DISABLE: true
   commands:
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
     - echo "peers - $PEERS"
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5666,16 +6117,10 @@ steps:
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
     - echo "peers - $PEERS"
-    - mkdir -p /tmp/tezedge-target-branch
-    - cd /tmp/tezedge-target-branch
-    - rm -rf tezedge
-    - target_branch=$${DRONE_TARGET_BRANCH}
-    - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
-    - cd /tmp/tezedge-target-branch/tezedge
-    - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
-    - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/old/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - $${BUILD_ARTIFACTS_PATH}/build_files/old/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "$${BUILD_ARTIFACTS_PATH}/build_files/old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -5786,6 +6231,8 @@ trigger:
     - develop
 
 depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
 
 
@@ -5837,7 +6284,7 @@ steps:
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -5887,7 +6334,7 @@ steps:
       - ms_print new-node.massif.out > new-node.msp.out
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -5973,6 +6420,239 @@ steps:
     when:
       ref:
       - refs/pull/*/head
+
+---
+##############################################################################################################
+# This pipeline bootstraps a tezedge node to 1000 and measures time this takes
+##############################################################################################################
+kind: pipeline
+name: perf/bootstrap-time-009-florence
+
+depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
+  - corr/real-time-environment-cyclictest-latencies
+
+node:
+  tag: real-time-linux-runner
+
+trigger:
+  branch:
+    - master
+    - develop
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
+  - name: identities
+    host:
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/identities
+  - name: snapshots
+    host:
+      path: /usr/local/etc/tezedge-ci/data/
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+
+environment:
+  BLOCK_LEVEL: 4000
+
+steps:
+
+  - name: octez-bootstrap-node
+    image: tezos/tezos:v9-release
+    detach: true
+    environment:
+      TEZOS_NODE_DIR: /home/tezos/data
+    volumes:
+      - name: identities
+        path: /identities
+      - name: snapshots
+        path: /snapshots
+    commands:
+      - tezos-node config init --network florencenet
+      - cp /identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
+      - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
+      - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+  - name: bootstrapping-octez-bootstrap-node
+    image: tezedge/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${BLOCK_LEVEL} --nodes http://octez-bootstrap-node:8732
+    when:
+      ref:
+      - refs/pull/*/head
+
+  - name: octez-node
+    image: tezos/tezos:v9-release
+    user: root
+    environment:
+      TEZOS_NODE_DIR: /tmp/tezos/data
+    volumes:
+      - name: identities
+        path: /identities
+    commands:
+      - apk add curl jq perl
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - tezos-node config init --network florencenet
+      - cp /identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
+      - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o octez-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o octez.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+
+  - name: tezedge-new-node
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+    user: root
+    volumes:
+      - name: build
+        path: /build
+      - name: tools
+        path: /tools
+    environment:
+      TROTTLING_QUOTA_DISABLE: false
+    commands:
+      # let octez node to be up and running
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH=/build/ffi
+      - >
+        /build/light-node --protocol-runner /build/protocol-runner
+        --network florencenet --peers $${OCTEZ_IP}:9732
+        --config-file /build/tezedge/tezedge_drone.config
+        --identity-file /build/identities/identity_2.json --rpc-port 8732
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --init-sapling-spend-params-file /build/ffi/sapling-spend.params
+        --init-sapling-output-params-file /build/ffi/sapling-output.params &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o tezedge-new-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o tezedge-new.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+
+  - name: tezedge-old-node
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+    user: root
+    volumes:
+      - name: build
+        path: /build
+      - name: tools
+        path: /tools
+    environment:
+      TROTTLING_QUOTA_DISABLE: false
+    commands:
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - rm -rf ./tezos-node-data ./light-node-data
+      - export LD_LIBRARY_PATH=/build/old/ffi
+      - >
+        /build/old/light-node --protocol-runner /build/old/protocol-runner
+        --network florencenet --peers $${OCTEZ_IP}:9732
+        --config-file /build/tezedge/tezedge_drone.config
+        --identity-file /build/identities/identity_2.json --rpc-port 8732
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --init-sapling-spend-params-file /build/ffi/sapling-spend.params
+        --init-sapling-output-params-file /build/ffi/sapling-output.params &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o tezedge-old-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o tezedge-old.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+    when:
+      ref:
+        - refs/pull/*/head
+
+  - name: report-and-verify-tezedge-new-vs-old-node
+    image: busybox
+    commands:
+      - oct=$(cat octez.time)
+      - new=$(cat tezedge-new.time)
+      - old=$(cat tezedge-old.time)
+      - oct1=$(cat octez-1.time)
+      - new1=$(cat tezedge-new-1.time)
+      - old1=$(cat tezedge-old-1.time)
+      - diff=$(echo "scale=2; diff = ($new - $old) / $old * 100; scale=0; diff / 1" | bc)
+      - |
+        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
+        echo "Octez node: $oct seconds ($oct1 seconds)"
+        echo "New node:   $new seconds ($new1 seconds)"
+        echo "Old node:   $old seconds ($new1 seconds)"
+        echo "Difference: $diff%"
+        if [ "$diff" -gt 15 ]; then
+          echo "New node bootstrap is more than 15% slower then the old one!!!"
+          exit 1
+        fi
+    when:
+      ref:
+        - refs/pull/*/head
+
+  - name: report-and-verify-tezedge
+    image: busybox
+    commands:
+      - oct=$(cat octez.time)
+      - new=$(cat tezedge-new.time)
+      - oct1=$(cat octez-1.time)
+      - new1=$(cat tezedge-new-1.time)
+      - |
+        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
+        echo "Octez node: $oct seconds ($oct1 seconds)"
+        echo "New node:   $new seconds ($new1 seconds)"
+    when:
+      ref:
+        exclude:
+          - refs/pull/*/head
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
@@ -6070,6 +6750,7 @@ depends_on:
   - corr/indexer-tzkt-tezedge-009-florence
   - perf/wrk-tests-009-florence
   - perf/memory-allocation-bootstrap-009-florence
+  - perf/bootstrap-time-009-florence
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
@@ -6175,3 +6856,4 @@ depends_on:
   - corr/indexer-tzkt-tezedge-009-florence
   - perf/wrk-tests-009-florence
   - perf/memory-allocation-bootstrap-009-florence
+  - perf/bootstrap-time-009-florence

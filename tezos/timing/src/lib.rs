@@ -33,14 +33,14 @@ pub struct SerializeStats {
     pub hash_ids_length: usize,
     pub keys_length: usize,
     pub highest_hash_id: u32,
-    pub ntree: usize,
+    pub ndirectories: usize,
     pub nblobs: usize,
     pub nblobs_inlined: usize,
     pub total_bytes: usize,
 }
 
 impl SerializeStats {
-    pub fn add_tree(
+    pub fn add_directory(
         &mut self,
         hash_ids_length: usize,
         keys_length: usize,
@@ -48,7 +48,7 @@ impl SerializeStats {
         nblobs_inlined: usize,
         blobs_length: usize,
     ) {
-        self.ntree += 1;
+        self.ndirectories += 1;
         self.hash_ids_length += hash_ids_length;
         self.keys_length += keys_length;
         self.highest_hash_id = self.highest_hash_id.max(highest_hash_id);
@@ -73,11 +73,13 @@ pub struct ContextMemoryUsage {
 pub struct StorageMemoryUsage {
     pub nodes_len: usize,
     pub nodes_cap: usize,
-    pub trees_len: usize,
-    pub trees_cap: usize,
-    pub temp_tree_cap: usize,
+    pub directories_len: usize,
+    pub directories_cap: usize,
+    pub temp_dir_cap: usize,
     pub blobs_len: usize,
     pub blobs_cap: usize,
+    pub inodes_len: usize,
+    pub inodes_cap: usize,
     pub strings: StringsMemoryUsage,
     pub total_bytes: usize,
 }
@@ -113,7 +115,7 @@ pub struct RepositoryMemoryUsage {
 }
 
 #[derive(Debug)]
-pub enum ActionKind {
+pub enum QueryKind {
     Mem,
     MemTree,
     Find,
@@ -123,16 +125,16 @@ pub enum ActionKind {
     Remove,
 }
 
-impl ActionKind {
+impl QueryKind {
     fn to_str(&self) -> &'static str {
         match self {
-            ActionKind::Mem => "mem",
-            ActionKind::MemTree => "mem_tree",
-            ActionKind::Find => "find",
-            ActionKind::FindTree => "find_tree",
-            ActionKind::Add => "add",
-            ActionKind::AddTree => "add_tree",
-            ActionKind::Remove => "remove",
+            QueryKind::Mem => "mem",
+            QueryKind::MemTree => "mem_tree",
+            QueryKind::Find => "find",
+            QueryKind::FindTree => "find_tree",
+            QueryKind::Add => "add",
+            QueryKind::AddTree => "add_tree",
+            QueryKind::Remove => "remove",
         }
     }
 }
@@ -161,7 +163,7 @@ pub enum TimingMessage {
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     },
-    Action(Action),
+    Query(Query),
     InitTiming {
         db_path: Option<PathBuf>,
     },
@@ -193,7 +195,7 @@ impl DetailedTime {
 #[serde(rename_all = "camelCase")]
 pub struct RangeStats {
     pub total_time: f64,
-    pub actions_count: usize,
+    pub queries_count: usize,
     pub one_to_ten_us: DetailedTime,
     pub ten_to_one_hundred_us: DetailedTime,
     pub one_hundred_us_to_one_ms: DetailedTime,
@@ -225,7 +227,7 @@ impl RangeStats {
         };
 
         self.total_time += time;
-        self.actions_count = self.actions_count.saturating_add(1);
+        self.queries_count = self.queries_count.saturating_add(1);
 
         let entry = match time {
             t if t < 0.00001 => &mut self.one_to_ten_us,
@@ -246,12 +248,12 @@ impl RangeStats {
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ActionStatsWithRange {
+pub struct QueryStatsWithRange {
     pub root: String,
     pub total_time_read: f64,
     pub total_time_write: f64,
     pub total_time: f64,
-    pub actions_count: usize,
+    pub queries_count: usize,
     pub mem: RangeStats,
     pub mem_tree: RangeStats,
     pub find: RangeStats,
@@ -261,7 +263,7 @@ pub struct ActionStatsWithRange {
     pub remove: RangeStats,
 }
 
-impl ActionStatsWithRange {
+impl QueryStatsWithRange {
     fn compute_mean(&mut self) {
         self.mem.compute_mean();
         self.mem_tree.compute_mean();
@@ -283,21 +285,21 @@ impl ActionStatsWithRange {
 
         self.total_time = self.total_time_read + self.total_time_write;
 
-        self.actions_count = self
+        self.queries_count = self
             .mem
-            .actions_count
-            .saturating_add(self.mem_tree.actions_count)
-            .saturating_add(self.find.actions_count)
-            .saturating_add(self.find_tree.actions_count)
-            .saturating_add(self.add.actions_count)
-            .saturating_add(self.add_tree.actions_count)
-            .saturating_add(self.remove.actions_count);
+            .queries_count
+            .saturating_add(self.mem_tree.queries_count)
+            .saturating_add(self.find.queries_count)
+            .saturating_add(self.find_tree.queries_count)
+            .saturating_add(self.add.queries_count)
+            .saturating_add(self.add_tree.queries_count)
+            .saturating_add(self.remove.queries_count);
     }
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ActionData {
+pub struct QueryData {
     pub root: String,
     pub tezedge_count: usize,
     pub irmin_count: usize,
@@ -311,8 +313,8 @@ pub struct ActionData {
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ActionStats {
-    pub data: ActionData,
+pub struct QueryStats {
+    pub data: QueryData,
     pub tezedge_mem: f64,
     pub tezedge_mem_tree: f64,
     pub tezedge_find: f64,
@@ -329,7 +331,7 @@ pub struct ActionStats {
     pub irmin_remove: f64,
 }
 
-impl ActionStats {
+impl QueryStats {
     fn compute_mean(&mut self) {
         let mean = self.data.tezedge_total_time / self.data.tezedge_count as f64;
         self.data.tezedge_mean_time = mean.max(0.0);
@@ -344,15 +346,15 @@ struct Timing {
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
     block_started_at: Option<(Duration, Instant)>,
-    /// Number of actions in current block
-    nactions: usize,
+    /// Number of queries in current block
+    nqueries: usize,
     /// Checkout time for the current block
     checkout_time: Option<(Option<f64>, Option<f64>)>,
     /// Statistics for the current block
-    block_stats: HashMap<String, ActionStats>,
+    block_stats: HashMap<String, QueryStats>,
     /// Global statistics
-    tezedge_global_stats: HashMap<String, ActionStatsWithRange>,
-    irmin_global_stats: HashMap<String, ActionStatsWithRange>,
+    tezedge_global_stats: HashMap<String, QueryStatsWithRange>,
+    irmin_global_stats: HashMap<String, QueryStatsWithRange>,
     tezedge_commit_stats: RangeStats,
     irmin_commit_stats: RangeStats,
     tezedge_checkout_stats: RangeStats,
@@ -370,8 +372,8 @@ impl std::fmt::Debug for Timing {
 }
 
 #[derive(Debug)]
-pub struct Action {
-    pub action_name: ActionKind,
+pub struct Query {
+    pub query_name: QueryKind,
     pub key: Vec<String>,
     pub irmin_time: Option<f64>,
     pub tezedge_time: Option<f64>,
@@ -525,7 +527,7 @@ impl Timing {
             current_operation: None,
             current_context: None,
             block_started_at: None,
-            nactions: 0,
+            nqueries: 0,
             checkout_time: None,
             block_stats: HashMap::default(),
             tezedge_global_stats: HashMap::default(),
@@ -552,7 +554,7 @@ impl Timing {
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(sql, operation_hash)
             }
-            TimingMessage::Action(action) => self.insert_action(sql, transaction, &action),
+            TimingMessage::Query(query) => self.insert_query(sql, transaction, &query),
             TimingMessage::Checkout {
                 context_hash,
                 irmin_time,
@@ -628,9 +630,9 @@ impl Timing {
             ":repo_total_bytes": stats.context.repo.total_bytes,
             ":storage_nodes_length": stats.context.storage.nodes_len,
             ":storage_nodes_capacity": stats.context.storage.nodes_cap,
-            ":storage_trees_length": stats.context.storage.trees_len,
-            ":storage_trees_capacity": stats.context.storage.trees_cap,
-            ":storage_temp_tree_capacity": stats.context.storage.temp_tree_cap,
+            ":storage_trees_length": stats.context.storage.directories_len,
+            ":storage_trees_capacity": stats.context.storage.directories_cap,
+            ":storage_temp_tree_capacity": stats.context.storage.temp_dir_cap,
             ":storage_blobs_length": stats.context.storage.blobs_len,
             ":storage_blobs_capacity": stats.context.storage.blobs_cap,
             ":storage_strings_length": stats.context.storage.strings.all_strings_len,
@@ -647,7 +649,7 @@ impl Timing {
             ":serialize_hashids_length": stats.serialize.hash_ids_length,
             ":serialize_keys_length": stats.serialize.keys_length,
             ":serialize_highest_hash_id_length": stats.serialize.highest_hash_id,
-            ":serialize_ntree": stats.serialize.ntree,
+            ":serialize_ntree": stats.serialize.ndirectories,
             ":serialize_nblobs": stats.serialize.nblobs,
             ":serialize_nblobs_inlined": stats.serialize.nblobs_inlined,
             ":serialize_total_bytes": stats.serialize.total_bytes,
@@ -716,7 +718,7 @@ impl Timing {
         self.current_context = None;
         self.current_operation = None;
         self.checkout_time = None;
-        self.nactions = 0;
+        self.nqueries = 0;
         self.block_stats = HashMap::default();
 
         Ok(())
@@ -782,7 +784,7 @@ impl Timing {
         // Related to this, in general we want to avoid except/unwrap, because this will kill the thread and
         // everything will stop working, it should be handled more gracefully if possible.
         // Not a priority right now but we have to think about how to properly handle such situations, specially
-        // if this functionality gets extended to include more data about the context actions.
+        // if this functionality gets extended to include more data about the context queries.
         sql.execute(
             &format!(
                 "INSERT OR IGNORE INTO {table} (hash) VALUES (?1);",
@@ -854,11 +856,11 @@ impl Timing {
         Ok(())
     }
 
-    fn insert_action<'a>(
+    fn insert_query<'a>(
         &mut self,
         sql: &'a Connection,
         transaction: &mut Option<Transaction<'a>>,
-        action: &Action,
+        query: &Query,
     ) -> Result<(), SQLError> {
         if self.current_block.is_none() {
             return Ok(());
@@ -867,13 +869,13 @@ impl Timing {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
-        let action_name = action.action_name.to_str();
+        let query_name = query.query_name.to_str();
 
-        let (root, key_id) = if action.key.is_empty() {
+        let (root, key_id) = if query.key.is_empty() {
             (None, None)
         } else {
-            let root = action.key[0].as_str();
-            let key = action.key.join("/");
+            let root = query.key[0].as_str();
+            let key = query.key.join("/");
 
             let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
 
@@ -894,7 +896,7 @@ impl Timing {
             if let Some(transaction) = transaction.as_ref() {
                 let mut stmt = transaction.prepare_cached(
                     "
-        INSERT INTO actions
+        INSERT INTO queries
           (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
           (:name, :key_root, :key_id, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
@@ -902,11 +904,11 @@ impl Timing {
                 )?;
 
                 stmt.execute(named_params! {
-                    ":name": action_name,
+                    ":name": query_name,
                     ":key_root": &root,
                     ":key_id": &key_id,
-                    ":irmin_time": &action.irmin_time,
-                    ":tezedge_time": &action.tezedge_time,
+                    ":irmin_time": &query.irmin_time,
+                    ":tezedge_time": &query.tezedge_time,
                     ":block_id": block_id,
                     ":operation_id": operation_id,
                     ":context_id": context_id
@@ -914,27 +916,27 @@ impl Timing {
 
                 drop(stmt);
             } else {
-                eprintln!("Timing cannot insert action: missing `transaction`");
+                eprintln!("Timing cannot insert query: missing `transaction`");
             }
         }
 
-        self.nactions = self.nactions.saturating_add(1);
+        self.nqueries = self.nqueries.saturating_add(1);
 
         let root = match root {
             Some(root) => root,
             None => return Ok(()),
         };
 
-        self.add_block_stats(root, &action);
-        self.add_global_stats(root, &action);
+        self.add_block_stats(root, &query);
+        self.add_global_stats(root, &query);
 
         Ok(())
     }
 
-    fn add_global_stats(&mut self, root: &str, action: &Action) {
+    fn add_global_stats(&mut self, root: &str, query: &Query) {
         for (global_stats, time) in &mut [
-            (&mut self.tezedge_global_stats, action.tezedge_time),
-            (&mut self.irmin_global_stats, action.irmin_time),
+            (&mut self.tezedge_global_stats, query.tezedge_time),
+            (&mut self.irmin_global_stats, query.irmin_time),
         ] {
             let time = match time {
                 Some(time) => time,
@@ -944,7 +946,7 @@ impl Timing {
             let entry = match global_stats.get_mut(root) {
                 Some(entry) => entry,
                 None => {
-                    let stats = ActionStatsWithRange {
+                    let stats = QueryStatsWithRange {
                         root: root.to_string(),
                         ..Default::default()
                     };
@@ -960,27 +962,27 @@ impl Timing {
             };
 
             let time = *time;
-            let action_stats = match action.action_name {
-                ActionKind::Mem => &mut entry.mem,
-                ActionKind::MemTree => &mut entry.mem_tree,
-                ActionKind::Find => &mut entry.find,
-                ActionKind::FindTree => &mut entry.find_tree,
-                ActionKind::Add => &mut entry.add,
-                ActionKind::AddTree => &mut entry.add_tree,
-                ActionKind::Remove => &mut entry.remove,
+            let query_stats = match query.query_name {
+                QueryKind::Mem => &mut entry.mem,
+                QueryKind::MemTree => &mut entry.mem_tree,
+                QueryKind::Find => &mut entry.find,
+                QueryKind::FindTree => &mut entry.find_tree,
+                QueryKind::Add => &mut entry.add,
+                QueryKind::AddTree => &mut entry.add_tree,
+                QueryKind::Remove => &mut entry.remove,
             };
 
-            entry.actions_count = entry.actions_count.saturating_add(1);
+            entry.queries_count = entry.queries_count.saturating_add(1);
             entry.total_time += time;
-            action_stats.add_time(time);
+            query_stats.add_time(time);
         }
     }
 
-    fn add_block_stats(&mut self, root: &str, action: &Action) {
+    fn add_block_stats(&mut self, root: &str, query: &Query) {
         let entry = match self.block_stats.get_mut(root) {
             Some(entry) => entry,
             None => {
-                let mut stats = ActionStats::default();
+                let mut stats = QueryStats::default();
                 stats.data.root = root.to_string();
                 self.block_stats.insert(root.to_string(), stats);
                 match self.block_stats.get_mut(root) {
@@ -993,24 +995,24 @@ impl Timing {
             }
         };
 
-        let (value_tezedge, value_irmin) = match action.action_name {
-            ActionKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
-            ActionKind::MemTree => (&mut entry.tezedge_mem_tree, &mut entry.irmin_mem_tree),
-            ActionKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
-            ActionKind::FindTree => (&mut entry.tezedge_find_tree, &mut entry.irmin_find_tree),
-            ActionKind::Add => (&mut entry.tezedge_add, &mut entry.irmin_add),
-            ActionKind::AddTree => (&mut entry.tezedge_add_tree, &mut entry.irmin_add_tree),
-            ActionKind::Remove => (&mut entry.tezedge_remove, &mut entry.irmin_remove),
+        let (value_tezedge, value_irmin) = match query.query_name {
+            QueryKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
+            QueryKind::MemTree => (&mut entry.tezedge_mem_tree, &mut entry.irmin_mem_tree),
+            QueryKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
+            QueryKind::FindTree => (&mut entry.tezedge_find_tree, &mut entry.irmin_find_tree),
+            QueryKind::Add => (&mut entry.tezedge_add, &mut entry.irmin_add),
+            QueryKind::AddTree => (&mut entry.tezedge_add_tree, &mut entry.irmin_add_tree),
+            QueryKind::Remove => (&mut entry.tezedge_remove, &mut entry.irmin_remove),
         };
 
-        if let Some(time) = action.tezedge_time {
+        if let Some(time) = query.tezedge_time {
             *value_tezedge += time;
             entry.data.tezedge_count = entry.data.tezedge_count.saturating_add(1);
             entry.data.tezedge_total_time += time;
             entry.data.tezedge_max_time = entry.data.tezedge_max_time.max(time);
         };
 
-        if let Some(time) = action.irmin_time {
+        if let Some(time) = query.irmin_time {
             *value_irmin += time;
             entry.data.irmin_count = entry.data.irmin_count.saturating_add(1);
             entry.data.irmin_total_time += time;
@@ -1019,18 +1021,18 @@ impl Timing {
     }
 
     fn sync_block_stats(&mut self, sql: &Connection) -> Result<(), SQLError> {
-        for action in self.block_stats.values_mut() {
-            action.compute_mean();
+        for query in self.block_stats.values_mut() {
+            query.compute_mean();
         }
 
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
 
-        for (root, action_stats) in self.block_stats.iter() {
+        for (root, query_stats) in self.block_stats.iter() {
             let root = root.as_str();
 
             let mut query = sql.prepare_cached(
                 "
-            INSERT INTO block_action_stats
+            INSERT INTO block_query_stats
               (root, block_id, tezedge_count, irmin_count,
                tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_mem_tree_time, tezedge_find_time,
                tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
@@ -1048,28 +1050,28 @@ impl Timing {
             query.execute(named_params! {
                 ":root": root,
                 ":block_id": block_id,
-                ":tezedge_count": action_stats.data.tezedge_count,
-                ":irmin_count": action_stats.data.irmin_count,
-                ":tezedge_mean_time": action_stats.data.tezedge_mean_time,
-                ":tezedge_max_time": action_stats.data.tezedge_max_time,
-                ":tezedge_total_time": action_stats.data.tezedge_total_time,
-                ":irmin_mean_time": action_stats.data.irmin_mean_time,
-                ":irmin_max_time": action_stats.data.irmin_max_time,
-                ":irmin_total_time": action_stats.data.irmin_total_time,
-                ":tezedge_mem_time": action_stats.tezedge_mem,
-                ":tezedge_mem_tree_time": action_stats.tezedge_mem_tree,
-                ":tezedge_add_time": action_stats.tezedge_add,
-                ":tezedge_add_tree_time": action_stats.tezedge_add_tree,
-                ":tezedge_find_time": action_stats.tezedge_find,
-                ":tezedge_find_tree_time": action_stats.tezedge_find_tree,
-                ":tezedge_remove_time": action_stats.tezedge_remove,
-                ":irmin_mem_time": action_stats.irmin_mem,
-                ":irmin_mem_tree_time": action_stats.irmin_mem_tree,
-                ":irmin_add_time": action_stats.irmin_add,
-                ":irmin_add_tree_time": action_stats.irmin_add_tree,
-                ":irmin_find_time": action_stats.irmin_find,
-                ":irmin_find_tree_time": action_stats.irmin_find_tree,
-                ":irmin_remove_time": action_stats.irmin_remove,
+                ":tezedge_count": query_stats.data.tezedge_count,
+                ":irmin_count": query_stats.data.irmin_count,
+                ":tezedge_mean_time": query_stats.data.tezedge_mean_time,
+                ":tezedge_max_time": query_stats.data.tezedge_max_time,
+                ":tezedge_total_time": query_stats.data.tezedge_total_time,
+                ":irmin_mean_time": query_stats.data.irmin_mean_time,
+                ":irmin_max_time": query_stats.data.irmin_max_time,
+                ":irmin_total_time": query_stats.data.irmin_total_time,
+                ":tezedge_mem_time": query_stats.tezedge_mem,
+                ":tezedge_mem_tree_time": query_stats.tezedge_mem_tree,
+                ":tezedge_add_time": query_stats.tezedge_add,
+                ":tezedge_add_tree_time": query_stats.tezedge_add_tree,
+                ":tezedge_find_time": query_stats.tezedge_find,
+                ":tezedge_find_tree_time": query_stats.tezedge_find_tree,
+                ":tezedge_remove_time": query_stats.tezedge_remove,
+                ":irmin_mem_time": query_stats.irmin_mem,
+                ":irmin_mem_tree_time": query_stats.irmin_mem_tree,
+                ":irmin_add_time": query_stats.irmin_add,
+                ":irmin_add_tree_time": query_stats.irmin_add_tree,
+                ":irmin_find_time": query_stats.irmin_find,
+                ":irmin_find_tree_time": query_stats.irmin_find_tree,
+                ":irmin_remove_time": query_stats.irmin_remove,
             })?;
         }
 
@@ -1090,7 +1092,7 @@ impl Timing {
         UPDATE
           blocks
         SET
-          actions_count = :actions_count,
+          queries_count = :queries_count,
           checkout_time_irmin = :checkout_time_irmin,
           checkout_time_tezedge = :checkout_time_tezedge,
           commit_time_irmin = :commit_time_irmin,
@@ -1101,7 +1103,7 @@ impl Timing {
         )?;
 
         query.execute(named_params! {
-            ":actions_count": &self.nactions,
+            ":queries_count": &self.nqueries,
             ":checkout_time_irmin": &self.checkout_time.as_ref().map(|(irmin, _)| irmin),
             ":checkout_time_tezedge": &self.checkout_time.as_ref().map(|(_, tezedge)| tezedge),
             ":commit_time_irmin": &commit_time_irmin,
@@ -1109,11 +1111,11 @@ impl Timing {
             ":block_id": block_id
         })?;
 
-        for action in self.tezedge_global_stats.values_mut() {
-            action.compute_mean();
+        for query in self.tezedge_global_stats.values_mut() {
+            query.compute_mean();
         }
-        for action in self.irmin_global_stats.values_mut() {
-            action.compute_mean();
+        for query in self.irmin_global_stats.values_mut() {
+            query.compute_mean();
         }
         self.tezedge_checkout_stats.compute_mean();
         self.irmin_checkout_stats.compute_mean();
@@ -1134,55 +1136,55 @@ impl Timing {
                 "irmin",
             ),
         ] {
-            for (root, action_stats) in global_stats.iter() {
+            for (root, query_stats) in global_stats.iter() {
                 let root = root.as_str();
 
-                self.insert_action_stats(sql, name, root, "mem", &action_stats.mem)?;
-                self.insert_action_stats(sql, name, root, "mem_tree", &action_stats.mem_tree)?;
-                self.insert_action_stats(sql, name, root, "find", &action_stats.find)?;
-                self.insert_action_stats(sql, name, root, "find_tree", &action_stats.find_tree)?;
-                self.insert_action_stats(sql, name, root, "add", &action_stats.add)?;
-                self.insert_action_stats(sql, name, root, "add_tree", &action_stats.add_tree)?;
-                self.insert_action_stats(sql, name, root, "remove", &action_stats.remove)?;
+                self.insert_query_stats(sql, name, root, "mem", &query_stats.mem)?;
+                self.insert_query_stats(sql, name, root, "mem_tree", &query_stats.mem_tree)?;
+                self.insert_query_stats(sql, name, root, "find", &query_stats.find)?;
+                self.insert_query_stats(sql, name, root, "find_tree", &query_stats.find_tree)?;
+                self.insert_query_stats(sql, name, root, "add", &query_stats.add)?;
+                self.insert_query_stats(sql, name, root, "add_tree", &query_stats.add_tree)?;
+                self.insert_query_stats(sql, name, root, "remove", &query_stats.remove)?;
             }
 
-            self.insert_action_stats(sql, name, "commit", "commit", commits)?;
-            self.insert_action_stats(sql, name, "checkout", "checkout", checkouts)?;
+            self.insert_query_stats(sql, name, "commit", "commit", commits)?;
+            self.insert_query_stats(sql, name, "checkout", "checkout", checkouts)?;
         }
 
         Ok(())
     }
 
-    fn insert_action_stats(
+    fn insert_query_stats(
         &self,
         sql: &Connection,
         context_name: &str,
         root: &str,
-        action_name: &str,
+        query_name: &str,
         range_stats: &RangeStats,
     ) -> Result<(), SQLError> {
         let mut query = sql.prepare_cached(
             "
-        INSERT OR IGNORE INTO global_action_stats
-          (root, action_name, context_name)
+        INSERT OR IGNORE INTO global_query_stats
+          (root, query_name, context_name)
         VALUES
-          (:root, :action_name, :context_name)
+          (:root, :query_name, :context_name)
             ",
         )?;
 
         query.execute(named_params! {
             ":root": root,
-            ":action_name": action_name,
+            ":query_name": query_name,
             ":context_name": context_name,
         })?;
 
         let mut query = sql.prepare_cached(
             "
         UPDATE
-          global_action_stats
+          global_query_stats
         SET
           total_time = :total_time,
-          actions_count = :actions_count,
+          queries_count = :queries_count,
           one_to_ten_us_count = :one_to_ten_us_count,
           one_to_ten_us_mean_time = :one_to_ten_us_mean_time,
           one_to_ten_us_max_time = :one_to_ten_us_max_time,
@@ -1220,17 +1222,17 @@ impl Timing {
           one_hundred_s_max_time = :one_hundred_s_max_time,
           one_hundred_s_total_time = :one_hundred_s_total_time
         WHERE
-          root = :root AND action_name = :action_name AND context_name = :context_name;
+          root = :root AND query_name = :query_name AND context_name = :context_name;
         ",
         )?;
 
         query.execute(
             named_params! {
                 ":root": root,
-                ":action_name": action_name,
+                ":query_name": query_name,
                 ":context_name": context_name,
                 ":total_time": &range_stats.total_time,
-                ":actions_count": &range_stats.actions_count,
+                ":queries_count": &range_stats.queries_count,
                 ":one_to_ten_us_count": &range_stats.one_to_ten_us.count,
                 ":one_to_ten_us_mean_time": &range_stats.one_to_ten_us.mean_time,
                 ":one_to_ten_us_max_time": &range_stats.one_to_ten_us.max_time,
@@ -1352,11 +1354,11 @@ mod tests {
         assert_ne!(block_id, other_block_id);
 
         timing
-            .insert_action(
+            .insert_query(
                 &sql,
                 &mut transaction,
-                &Action {
-                    action_name: ActionKind::Mem,
+                &Query {
+                    query_name: QueryKind::Mem,
                     key: vec!["a", "b", "c"]
                         .iter()
                         .map(ToString::to_string)
@@ -1374,7 +1376,7 @@ mod tests {
     }
 
     #[test]
-    fn test_actions_db() {
+    fn test_queries_db() {
         let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
         let context_hash = ContextHash::try_from_bytes(&[2; 32]).unwrap();
 
@@ -1396,8 +1398,8 @@ mod tests {
             })
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Add,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Add,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -1407,8 +1409,8 @@ mod tests {
             }))
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Find,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Find,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -1418,8 +1420,8 @@ mod tests {
             }))
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Find,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Find,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -1429,8 +1431,8 @@ mod tests {
             }))
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Mem,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Mem,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)
@@ -1440,8 +1442,8 @@ mod tests {
             }))
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Add,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Add,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)
@@ -1451,8 +1453,8 @@ mod tests {
             }))
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::Action(Action {
-                action_name: ActionKind::Add,
+            .send(TimingMessage::Query(Query {
+                query_name: QueryKind::Add,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)

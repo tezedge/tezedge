@@ -5,10 +5,13 @@ use crate::{make_response_with_status_and_json_string, not_found};
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
+use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id, RpcServiceError};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::protocol::{ContextParamsError, RightsError, VotesError};
-use crate::{required_param, result_to_json_response, services, ServiceResult};
+use crate::{
+    handle_rpc_service_error, parse_block_hash_or_fail, required_param, result_to_json_response,
+    services, ServiceResult,
+};
 use std::sync::Arc;
 
 pub async fn context_constants(
@@ -19,7 +22,8 @@ pub async fn context_constants(
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     // try to call our implementation
     let result = services::protocol::get_context_constants_just_for_rpc(&block_hash, &env);
@@ -49,7 +53,8 @@ pub async fn baking_rights(
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     let max_priority = query.get_str("max_priority");
     let level = query.get_str("level");
@@ -67,30 +72,28 @@ pub async fn baking_rights(
         &env,
     ) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
-        Err(e) => {
-            // fallback, if protocol is not supported, we trigger rpc protocol router
-            if let RightsError::UnsupportedProtocolError { .. } = e {
-                result_to_json_response(
-                    services::protocol::call_protocol_rpc(
-                        chain_id_param,
-                        chain_id,
-                        block_hash,
-                        create_rpc_request(req).await?,
-                        &env,
-                    ),
-                    env.log(),
-                )
-            } else {
-                //pass error to response parser
-                let res: Result<Option<String>, failure::Error> = Err(e.into());
-                result_to_json_response(res, env.log())
-            }
-        }
-        _ => {
-            //ignore other options from enum
-            warn!(env.log(), "Wrong RpcResponseData format");
-            let res: Result<Option<String>, failure::Error> = Ok(None);
+        Ok(None) => {
+            let res: Result<Option<String>, RpcServiceError> = Ok(None);
             result_to_json_response(res, env.log())
+        }
+        Err(RightsError::UnsupportedProtocolError { .. }) => {
+            // fallback, if protocol is not supported, we trigger rpc protocol router
+            result_to_json_response(
+                services::protocol::call_protocol_rpc(
+                    chain_id_param,
+                    chain_id,
+                    block_hash,
+                    create_rpc_request(req).await?,
+                    &env,
+                ),
+                env.log(),
+            )
+        }
+        Err(RightsError::ServiceError { reason }) => {
+            slog::warn!(env.log(), "Failed to execute RPC function for baking rights"; "reason" => format!("{:?}", &reason));
+            handle_rpc_service_error(RpcServiceError::UnexpectedError {
+                reason: format!("{}", reason),
+            })
         }
     }
 }
@@ -103,7 +106,8 @@ pub async fn endorsing_rights(
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     let level = query.get_str("level");
     let cycle = query.get_str("cycle");
@@ -120,30 +124,28 @@ pub async fn endorsing_rights(
         &env,
     ) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
-        Err(e) => {
-            // fallback, if protocol is not supported, we trigger rpc protocol router
-            if let RightsError::UnsupportedProtocolError { .. } = e {
-                result_to_json_response(
-                    services::protocol::call_protocol_rpc(
-                        chain_id_param,
-                        chain_id,
-                        block_hash,
-                        create_rpc_request(req).await?,
-                        &env,
-                    ),
-                    env.log(),
-                )
-            } else {
-                //pass error to response parser
-                let res: Result<Option<String>, failure::Error> = Err(e.into());
-                result_to_json_response(res, env.log())
-            }
-        }
-        _ => {
-            //ignore other options from enum
-            warn!(env.log(), "Wrong RpcResponseData format");
-            let res: Result<Option<String>, failure::Error> = Ok(None);
+        Ok(None) => {
+            let res: Result<Option<String>, RpcServiceError> = Ok(None);
             result_to_json_response(res, env.log())
+        }
+        Err(RightsError::UnsupportedProtocolError { .. }) => {
+            // fallback, if protocol is not supported, we trigger rpc protocol router
+            result_to_json_response(
+                services::protocol::call_protocol_rpc(
+                    chain_id_param,
+                    chain_id,
+                    block_hash,
+                    create_rpc_request(req).await?,
+                    &env,
+                ),
+                env.log(),
+            )
+        }
+        Err(RightsError::ServiceError { reason }) => {
+            slog::warn!(env.log(), "Failed to execute RPC function for endorsing rights"; "reason" => format!("{:?}", &reason));
+            handle_rpc_service_error(RpcServiceError::UnexpectedError {
+                reason: format!("{}", reason),
+            })
         }
     }
 }
@@ -156,34 +158,43 @@ pub async fn votes_listings(
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     // try to call our implementation
-    let result = services::protocol::get_votes_listings(&block_hash, &env);
-
-    // if our implementation returns None, it means that the protocol does not support
-    if let Err(VotesError::UnsupportedProtocolRpc { protocol }) = result {
-        warn!(
-            env.log(),
-            "This rpc is not supported in protocol {}", protocol
-        );
-        return not_found();
-    }
-
-    // fallback, if protocol is not supported, we trigger rpc protocol router
-    if let Err(VotesError::UnsupportedProtocolError { .. }) = result {
-        result_to_json_response(
-            services::protocol::call_protocol_rpc(
-                chain_id_param,
-                chain_id,
-                block_hash,
-                create_rpc_request(req).await?,
-                &env,
-            ),
-            env.log(),
-        )
-    } else {
-        result_to_json_response(result.map_err(|e| e.into()), env.log())
+    match services::protocol::get_votes_listings(&chain_id, &block_hash, &env) {
+        Ok(votings) => result_to_json_response(Ok(votings), env.log()),
+        Err(VotesError::UnsupportedProtocolRpc { protocol }) => {
+            // if our implementation returns None, it means that the protocol does not support
+            warn!(
+                env.log(),
+                "This rpc is not supported in protocol {}", protocol
+            );
+            not_found()
+        }
+        Err(VotesError::UnsupportedProtocolError { .. }) => {
+            // fallback, if protocol is not supported in Tezedge impl, we trigger rpc protocol router
+            result_to_json_response(
+                services::protocol::call_protocol_rpc(
+                    chain_id_param,
+                    chain_id,
+                    block_hash,
+                    create_rpc_request(req).await?,
+                    &env,
+                ),
+                env.log(),
+            )
+        }
+        Err(VotesError::ServiceError { reason }) => {
+            slog::warn!(env.log(), "Failed to execute RPC function  for votings"; "reason" => format!("{:?}", &reason));
+            handle_rpc_service_error(RpcServiceError::UnexpectedError {
+                reason: format!("{}", reason),
+            })
+        }
+        Err(VotesError::RpcServiceError { reason }) => {
+            slog::warn!(env.log(), "Failed to execute RPC function for votings"; "reason" => format!("{:?}", &reason));
+            handle_rpc_service_error(reason)
+        }
     }
 }
 pub async fn call_protocol_rpc(
@@ -194,7 +205,8 @@ pub async fn call_protocol_rpc(
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     let json_request = create_rpc_request(req).await?;
     let context_path = json_request.context_path.clone();
