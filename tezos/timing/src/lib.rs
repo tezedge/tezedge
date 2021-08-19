@@ -1015,7 +1015,7 @@ impl Timing {
 
             let root = match key.split_once('/') {
                 Some(slice) => slice.0,
-                None => action.key.as_str(),
+                None => key,
             };
 
             // let key = &action.key;

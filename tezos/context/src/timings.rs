@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ocaml_interop::*;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash, from_ocaml::hash_as_bytes};
-use tezos_timing::{Action, QueryKind, BlockMemoryUsage, TIMING_CHANNEL, TimingMessage, container::{InlinedString, InlinedBlockHash, InlinedContextHash, InlinedOperationHash}};
+use tezos_timing::{Query, QueryKind, BlockMemoryUsage, TIMING_CHANNEL, TimingMessage, container::{InlinedString, InlinedBlockHash, InlinedContextHash, InlinedOperationHash}};
 
 pub fn send_statistics(stats: BlockMemoryUsage) {
     // return;
@@ -105,38 +105,38 @@ pub fn commit(
     }
 }
 
-fn get_action_kind(name: &[u8]) -> Option<ActionKind> {
+fn get_query_kind(name: &[u8]) -> Option<QueryKind> {
     let first = name.get(0)?;
     let length = name.len();
 
     match first {
         b'm' => {
             if length == 3 {
-                Some(ActionKind::Mem)
+                Some(QueryKind::Mem)
             } else {
-                Some(ActionKind::MemTree)
+                Some(QueryKind::MemTree)
             }
         }
         b'f' => {
             if length == 3 {
-                Some(ActionKind::Find)
+                Some(QueryKind::Find)
             } else {
-                Some(ActionKind::FindTree)
+                Some(QueryKind::FindTree)
             }
         }
         b'a' => {
             if length == 3 {
-                Some(ActionKind::Add)
+                Some(QueryKind::Add)
             } else {
-                Some(ActionKind::AddTree)
+                Some(QueryKind::AddTree)
             }
         }
-        b'r' => Some(ActionKind::Remove),
+        b'r' => Some(QueryKind::Remove),
         _ => None
     }
 }
 
-pub fn context_action(
+pub fn context_query(
     rt: &OCamlRuntime,
     query_name: OCamlRef<String>,
     key: OCamlRef<OCamlList<String>>,
@@ -145,24 +145,24 @@ pub fn context_action(
 ) {
     // return;
 
-    let action_name = rt.get(action_name);
-    // let action_name = match action_name.as_bytes() {
-    //     b"mem" => ActionKind::Mem,
-    //     b"mem_tree" => ActionKind::MemTree,
-    //     b"find" => ActionKind::Find,
-    //     b"find_tree" => ActionKind::FindTree,
-    //     b"add" => ActionKind::Add,
-    //     b"add_tree" => ActionKind::AddTree,
-    //     b"remove" => ActionKind::Remove,
+    let query_name = rt.get(query_name);
+    // let query_name = match query_name.as_bytes() {
+    //     b"mem" => QueryKind::Mem,
+    //     b"mem_tree" => QueryKind::MemTree,
+    //     b"find" => QueryKind::Find,
+    //     b"find_tree" => QueryKind::FindTree,
+    //     b"add" => QueryKind::Add,
+    //     b"add_tree" => QueryKind::AddTree,
+    //     b"remove" => QueryKind::Remove,
     //     _ => return,
     // };
 
-    let action_name = match get_action_kind(action_name.as_bytes()) {
+    let query_name = match get_query_kind(query_name.as_bytes()) {
         Some(name) => name,
         None => return,
     };
 
-    // let action_name = ActionKind::Remove;
+    // let query_name = QueryKind::Remove;
 
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
@@ -191,8 +191,8 @@ pub fn context_action(
 
     // let key: Vec<String> = key.to_rust(rt);
 
-    let action = Action {
-        action_name,
+    let query = Query {
+        query_name,
         key: string,
         irmin_time,
         tezedge_time,
