@@ -23,9 +23,10 @@ use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
 pub mod proposal_loader;
+use proposal_loader::{NoopProposalLoader, ProposalLoader};
+
 pub mod proposal_persister;
-use proposal_loader::ProposalLoader;
-use proposal_persister::{ProposalPersister, ProposalPersisterHandle};
+use proposal_persister::{NoopProposalPersister, ProposalPersister};
 
 macro_rules! accept_proposal {
     ($state: expr, $proposal: expr, $proposal_persister: expr) => {
@@ -35,7 +36,7 @@ macro_rules! accept_proposal {
             Some(persister) => {
                 let mut recorder = proposal.default_recorder();
                 $state.accept(recorder.record());
-                persister.persist(recorder.finish_recording());
+                persister.persist_proposal(recorder.finish_recording());
             }
             None => $state.accept(proposal),
         }
@@ -222,32 +223,32 @@ impl InternalClock {
 pub struct TezedgeProposerConfig {
     pub wait_for_events_timeout: Option<Duration>,
     pub events_limit: usize,
-    pub record: bool,
-    pub replay: bool,
 }
 
 /// Tezedge proposer wihtout `events`.
 #[derive(Clone)]
-struct TezedgeProposerInner<Efs, M> {
+struct TezedgeProposerInner<Efs, M, PP = NoopProposalPersister, PL = NoopProposalLoader> {
     log: Logger,
     config: TezedgeProposerConfig,
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
     effects: Efs,
     time: InternalClock,
-    proposal_persister: Option<ProposalPersisterHandle>,
+    proposal_persister: Option<PP>,
     /// Proposal loader for replay.
-    proposal_loader: Option<ProposalLoader>,
+    proposal_loader: Option<PL>,
     state: TezedgeStateWrapper,
     manager: M,
 }
 
-impl<S, NetE, Es, Efs, M> TezedgeProposerInner<Efs, M>
+impl<S, NetE, Es, Efs, M, PP, PL> TezedgeProposerInner<Efs, M, PP, PL>
 where
     S: Read + Write,
     NetE: NetworkEvent + Debug,
     Efs: Effects + Debug,
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
+    PP: ProposalPersister,
+    PL: ProposalLoader,
 {
     #[inline]
     fn wait_for_events(&mut self, events: &mut Es) {
@@ -369,7 +370,7 @@ where
         for req in self.requests.drain(..) {
             match req {
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     let status = match self.manager.start_listening_to_server_events() {
@@ -390,7 +391,7 @@ where
                     );
                 }
                 TezedgeRequest::StopListeningForNewPeers { req_id } => {
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     self.manager.stop_listening_to_server_events();
@@ -406,7 +407,7 @@ where
                     );
                 }
                 TezedgeRequest::ConnectPeer { req_id, peer } => {
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     match self.manager.get_peer_or_connect_mut(&peer) {
@@ -439,7 +440,7 @@ where
                 TezedgeRequest::DisconnectPeer { req_id, peer } => {
                     self.notifications
                         .push(Notification::PeerDisconnected { peer });
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     self.manager.disconnect_peer(&peer);
@@ -457,7 +458,7 @@ where
                 TezedgeRequest::BlacklistPeer { req_id, peer } => {
                     self.notifications
                         .push(Notification::PeerBlacklisted { peer });
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     self.manager.disconnect_peer(&peer);
@@ -479,7 +480,7 @@ where
                 } => {
                     self.notifications
                         .push(Notification::MessageReceived { peer, message });
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     accept_proposal!(
@@ -506,7 +507,7 @@ where
                         metadata,
                         network_version,
                     });
-                    if self.config.replay {
+                    if self.proposal_loader.is_some() {
                         continue;
                     }
                     accept_proposal!(
@@ -528,7 +529,7 @@ where
     where
         P: IntoIterator<Item = SocketAddr>,
     {
-        if self.config.replay {
+        if self.proposal_loader.is_some() {
             return;
         }
 
@@ -544,7 +545,7 @@ where
     }
 
     pub fn disconnect_peer(&mut self, at: Instant, peer: PeerAddress) {
-        if self.config.replay {
+        if self.proposal_loader.is_some() {
             return;
         }
 
@@ -560,7 +561,7 @@ where
     }
 
     pub fn blacklist_peer(&mut self, at: Instant, peer: PeerAddress) {
-        if self.config.replay {
+        if self.proposal_loader.is_some() {
             return;
         }
 
@@ -586,7 +587,7 @@ where
         addr: PeerAddress,
         message: PeerMessage,
     ) {
-        if self.config.replay {
+        if self.proposal_loader.is_some() {
             return;
         }
         self.time.update(at);
@@ -686,17 +687,19 @@ where
 /// TezedgeProposer wraps around [TezedgeState] and it is what connects
 /// state machine to the outside world.
 #[derive(Clone)]
-pub struct TezedgeProposer<Es, Efs, M> {
-    inner: TezedgeProposerInner<Efs, M>,
+pub struct TezedgeProposer<Es, Efs, M, PP = NoopProposalPersister, PL = NoopProposalLoader> {
+    inner: TezedgeProposerInner<Efs, M, PP, PL>,
     events: Es,
 }
 
-impl<S, NetE, Es, Efs, M> TezedgeProposer<Es, Efs, M>
+impl<S, NetE, Es, Efs, M, PP, PL> TezedgeProposer<Es, Efs, M, PP, PL>
 where
     S: Read + Write,
     NetE: NetworkEvent + Debug,
     Efs: Effects + Debug,
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
+    PP: ProposalPersister,
+    PL: ProposalLoader,
 {
     pub fn new<T>(
         initial_time: Instant,
@@ -706,22 +709,14 @@ where
         state: T,
         mut events: Es,
         manager: M,
+        proposal_persister: Option<PP>,
+        proposal_loader: Option<PL>,
     ) -> Self
     where
         T: Into<TezedgeStateWrapper>,
         Es: Events,
     {
         events.set_limit(config.events_limit);
-        let proposal_persister = if config.record && !config.replay {
-            Some(ProposalPersister::start(log.clone()))
-        } else {
-            None
-        };
-        let proposal_loader = if config.replay {
-            Some(ProposalLoader::new())
-        } else {
-            None
-        };
 
         Self {
             inner: TezedgeProposerInner {
@@ -858,7 +853,7 @@ where
                 Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
             );
         }
-        if self.inner.config.replay {
+        if self.inner.proposal_loader.is_some() {
             self.replay_proposals();
         } else {
             self.wait_for_events();

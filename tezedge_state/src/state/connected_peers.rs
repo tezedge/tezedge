@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::crypto_box::PublicKey;
-use getset::{CopyGetters, Getters};
 use slog::Logger;
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
@@ -19,37 +18,19 @@ use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 
 /// Peer who have undergone handshake.
-#[derive(Getters, CopyGetters, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectedPeer {
-    // #[get = "pub"]
     pub address: PeerAddress,
-
-    // #[get = "pub"]
     pub port: Port,
-
-    // #[get = "pub"]
     pub version: NetworkVersion,
-
-    // #[get = "pub"]
     pub public_key: PublicKey,
-
-    // #[get = "pub"]
     pub crypto: PeerCrypto,
-
-    // #[get_copy = "pub"]
     pub disable_mempool: bool,
-
-    // #[get_copy = "pub"]
     pub private_node: bool,
-
-    // #[get_copy = "pub"]
     pub connected_since: SystemTime,
-
     read_buf: MessageReadBuffer,
-
     cur_send_message: Option<EncryptedMessageWriter>,
     send_message_queue: VecDeque<PeerMessage>,
-
     quota: ThrottleQuota,
 }
 
@@ -110,7 +91,7 @@ pub struct ConnectedPeers {
 impl ConnectedPeers {
     #[inline]
     pub fn new(log: Logger, capacity: Option<usize>, quota_reset_interval: Duration) -> Self {
-        let peers = if let Some(capacity) = capacity {
+        let peers = if let Some(_) = capacity {
             // BTreeMap doesn't have `with_capcity` method.
             BTreeMap::new()
         } else {
@@ -129,59 +110,32 @@ impl ConnectedPeers {
         self.peers.len()
     }
 
-    // fn find_index(&self, address: &PeerAddress) -> Option<usize> {
-    //     // TODO: use token instead of address.
-    //     self.peers.iter()
-    //         .find(|(_, x)| &x.address == address)
-    //         .map(|(index, _)| index)
-    // }
-
     #[inline]
     pub fn contains_address(&self, address: &PeerAddress) -> bool {
-        // self.find_index(address).is_some()
         self.peers.contains_key(address)
     }
 
     #[inline]
     pub fn get(&self, id: &PeerAddress) -> Option<&ConnectedPeer> {
-        // if let Some(index) = self.find_index(id) {
-        //     self.peers.get(index)
-        // } else {
-        //     None
-        // }
         self.peers.get(id)
     }
 
     #[inline]
     pub fn get_mut(&mut self, id: &PeerAddress) -> Option<&mut ConnectedPeer> {
-        // if let Some(index) = self.find_index(id) {
-        //     self.peers.get_mut(index)
-        // } else {
-        //     None
-        // }
         self.peers.get_mut(id)
     }
 
-    // #[inline]
-    // pub(crate) fn insert(&mut self, peer: ConnectedPeer) -> usize {
-    //     self.peers.insert(peer)
-    // }
-
     #[inline]
     pub(crate) fn remove(&mut self, id: &PeerAddress) -> Option<ConnectedPeer> {
-        // self.find_index(id)
-        //     .map(|index| self.peers.remove(index))
         self.peers.remove(id)
     }
 
     #[inline]
-    // pub fn iter(&self) -> slab::Iter<ConnectedPeer> {
     pub fn iter(&self) -> impl Iterator<Item = &ConnectedPeer> {
         self.peers.iter().map(|(_, peer)| peer)
     }
 
     #[inline]
-    // pub fn iter_mut(&mut self) -> slab::IterMut<ConnectedPeer> {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut ConnectedPeer> {
         self.peers.iter_mut().map(|(_, peer)| peer)
     }
@@ -193,7 +147,6 @@ impl ConnectedPeers {
         result: HandshakeResult,
     ) -> &mut ConnectedPeer {
         let log = &self.log;
-        // self.peers.vacant_entry().insert(ConnectedPeer {
         self.peers
             .entry(peer_address)
             .or_insert_with(|| ConnectedPeer {

@@ -211,6 +211,8 @@ impl OneRealNodeCluster {
             state,
             FakeEvents::new(),
             OneRealNodeManager::new(pow_target, wait_for_events_timeout),
+            None,
+            None,
         );
         // needed to start listening for incoming connections.
         proposer.make_progress();
@@ -585,8 +587,6 @@ mod tests {
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
-                record: false,
-                replay: false,
             },
             effects,
             state,
@@ -633,8 +633,6 @@ mod tests {
             TezedgeProposerConfig {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
-                record: false,
-                replay: false,
             },
             effects,
             state,
