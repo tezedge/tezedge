@@ -292,6 +292,15 @@ impl TezedgeState {
             .unwrap_or(0)
     }
 
+    #[inline]
+    fn missing_pending_outgoing_connections(&self) -> usize {
+        self.config
+            .min_connected_peers
+            .min(self.config.max_pending_peers)
+            .checked_sub(self.connected_peers.len() + self.pending_peers.len())
+            .unwrap_or(0)
+    }
+
     pub fn stats(&self) -> TezedgeStats {
         TezedgeStats {
             time: self.time,
@@ -428,7 +437,6 @@ impl TezedgeState {
                 self.p2p_state = ReadyFull;
             } else {
                 self.p2p_state = Ready;
-                should_initiate_connections = true;
             }
         }
 
@@ -542,10 +550,13 @@ impl TezedgeState {
         use P2pState::*;
 
         match self.p2p_state {
-            ReadyMaxed | ReadyFull | PendingFull => return,
-            Pending | Ready => {}
+            ReadyMaxed | ReadyFull | PendingFull | Ready => return,
+            Pending => {}
         }
-        let len = self.potential_peers.len().min(self.missing_pending_peers());
+        let len = self
+            .potential_peers
+            .len()
+            .min(self.missing_pending_outgoing_connections());
 
         if len == 0 {
             return;
