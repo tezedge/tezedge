@@ -1,23 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::Cell,
-    collections::HashMap,
-    convert::TryInto,
-    path::PathBuf,
-    sync::{
-        mpsc::{sync_channel, Receiver, SendError, SyncSender},
-        Mutex, PoisonError,
-    },
-    time::{Duration, Instant},
-};
+use std::{cell::Cell, collections::HashMap, convert::TryInto, path::PathBuf, sync::{Arc, Condvar, Mutex, PoisonError, atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, mpsc::{sync_channel, Receiver, SendError, SyncSender}}, time::{Duration, Instant}};
 
-use crypto::hash::{BlockHash, ContextHash, OperationHash};
+use container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString};
 use failure::Fail;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
+use static_assertions::assert_eq_size;
+use tezos_spsc::{Consumer, PopError::{Closed, Empty}, Producer, PushError, bounded};
+
+pub mod container;
 
 pub const FILENAME_DB: &str = "context_stats.db";
 
@@ -144,7 +138,7 @@ impl QueryKind {
 #[derive(Debug)]
 pub enum TimingMessage {
     SetBlock {
-        block_hash: Option<BlockHash>,
+        block_hash: Option<InlinedBlockHash>,
         /// Duration since std::time::UNIX_EPOCH.
         /// It is `None` when `block_hash` is `None`.
         timestamp: Option<Duration>,
@@ -153,9 +147,10 @@ pub enum TimingMessage {
         /// is used to get `timestamp`) is not.
         instant: Instant,
     },
-    SetOperation(Option<OperationHash>),
+    SetOperation(Option<InlinedOperationHash>),
     Checkout {
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
+        // context_hash: ContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     },
@@ -171,6 +166,9 @@ pub enum TimingMessage {
         stats: BlockMemoryUsage,
     },
 }
+
+assert_eq_size!([u8; 576], TimingMessage);
+assert_eq_size!([u8; 16], Option<f64>);
 
 // Id of the hash in the database
 type HashId = String;
@@ -342,9 +340,9 @@ impl QueryStats {
 }
 
 struct Timing {
-    current_block: Option<(HashId, BlockHash)>,
-    current_operation: Option<(HashId, OperationHash)>,
-    current_context: Option<(HashId, ContextHash)>,
+    current_block: Option<(HashId, InlinedBlockHash)>,
+    current_operation: Option<(HashId, InlinedOperationHash)>,
+    current_context: Option<(HashId, InlinedContextHash)>,
     block_started_at: Option<(Duration, Instant)>,
     /// Number of queries in current block
     nqueries: usize,
@@ -374,10 +372,89 @@ impl std::fmt::Debug for Timing {
 #[derive(Debug)]
 pub struct Query {
     pub query_name: QueryKind,
-    pub key: Vec<String>,
+    pub key: InlinedString,
     pub irmin_time: Option<f64>,
     pub tezedge_time: Option<f64>,
 }
+
+#[derive(Default)]
+pub struct TimingChannelCommon {
+    mutex: Mutex<()>,
+    condvar: Condvar,
+    counter: AtomicUsize,
+    is_waiting: AtomicBool,
+}
+
+#[derive(Default)]
+pub struct TimingChannel {
+    common: Arc<TimingChannelCommon>,
+    // mutex: Mutex<()>,
+    // condvar: Condvar,
+    // counter: AtomicUsize,
+    producer: AtomicPtr<Producer<TimingMessage>>,
+    // producer: Cell<Option<Producer<TimingMessage>>>,
+}
+
+#[derive(Debug)]
+pub enum ChannelError {
+    PtrNull,
+    PushError(PushError<TimingMessage>),
+}
+
+impl TimingChannel {
+    fn new(producer: Producer<TimingMessage>) -> Self {
+        Self {
+            common: Arc::new(TimingChannelCommon {
+                mutex: Default::default(),
+                condvar: Default::default(),
+                counter: AtomicUsize::new(0),
+                is_waiting: AtomicBool::new(false),
+            }),
+            producer: AtomicPtr::new(Box::into_raw(Box::new(producer))),
+        }
+    }
+
+    fn with_producer<Fun>(&self, fun: Fun) -> Result<(), ChannelError>
+    where
+        Fun: FnOnce(&mut Producer<TimingMessage>) -> Result<(), PushError<TimingMessage>>
+    {
+        let producer_ptr = self.producer.swap(std::ptr::null_mut(), Ordering::AcqRel);
+
+        if producer_ptr.is_null() {
+            eprintln!("Producer pointer null");
+            return Err(ChannelError::PtrNull);
+        }
+
+        let producer = unsafe { &mut *producer_ptr as &mut Producer<_> };
+
+        let result = fun(producer);
+
+        self.producer.swap(producer_ptr, Ordering::Release);
+
+        result.map_err(|e| ChannelError::PushError(e))
+    }
+
+    pub fn send(&self, msg: TimingMessage) -> Result<(), ChannelError> {
+        // let counter = self.common.counter.fetch_add(1, Ordering::Release);
+
+        // if counter >= 3 {
+        //     println!("NOTIFY {:?} !", counter);
+        //     self.common.condvar.notify_one();
+        // } else {
+
+        // }
+
+        if self.common.is_waiting.load(Ordering::Acquire) {
+            println!("NOTIFY !");
+            self.common.condvar.notify_one();
+        }
+
+        self.with_producer(|producer| {
+            producer.push(msg)
+        })
+    }
+}
+
 
 #[derive(Fail, Debug)]
 pub enum BufferedTimingChannelSendError {
@@ -462,31 +539,42 @@ impl BufferedTimingChannel {
     }
 }
 
-pub static TIMING_CHANNEL: Lazy<BufferedTimingChannel> = Lazy::new(|| {
-    let (sender, receiver) = sync_channel(10_000);
+pub static TIMING_CHANNEL: Lazy<TimingChannel> = Lazy::new(|| {
+    let (producer, consumer) = bounded(20_000);
+
+    // let channel = Arc::new(TimingChannel::default());
+
+    let channel = TimingChannel::new(producer);
+
+    // let (sender, receiver) = sync_channel(10_000);
+
+    let common = channel.common.clone();
 
     if let Err(e) = std::thread::Builder::new()
         .name("ctx-timings-thread".to_string())
         .spawn(|| {
-            start_timing(receiver);
+            start_timing(consumer, common);
         })
     {
         eprintln!("Fail to create timing channel: {:?}", e);
     }
 
-    BufferedTimingChannel::new(sender)
+    channel
+
+    // todo!()
+
+    // producer
+    // BufferedTimingChannel::new(sender)
 });
 
-fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
+fn start_timing(mut recv: Consumer<TimingMessage>, channel: Arc<TimingChannelCommon>) {
     let mut db_path: Option<PathBuf> = None;
 
-    'outer: for msgpack in &recv {
-        for msg in msgpack {
-            if let TimingMessage::InitTiming { db_path: path } = msg {
-                db_path = path;
-                break 'outer;
-            };
-        }
+    while let Ok(msg) = recv.pop() {
+        if let TimingMessage::InitTiming { db_path: path } = msg {
+            db_path = path;
+            break;
+        };
     }
 
     let sql = match Timing::init_sqlite(db_path) {
@@ -500,13 +588,62 @@ fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
     let mut timing = Timing::new();
     let mut transaction = None;
 
-    for msgpack in recv {
-        for msg in msgpack {
-            if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-                eprintln!("Timing error={:?}", err);
+    let mut nempty = 0;
+
+    loop {
+        match recv.pop() {
+            Ok(msg) => {
+                nempty = 0;
+                channel.counter.store(0, Ordering::Release);
+                if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+                    eprintln!("Timing error={:?}", err);
+                }
+            },
+            Err(Empty) => {
+                if nempty < 5 {
+                    // println!("WAITING {:?}", nempty);
+                    std::thread::sleep_ms(10 * (nempty + 1));
+                    nempty += 1;
+                    continue;
+                }
+                nempty = 0;
+
+                channel.is_waiting.store(true, Ordering::Release);
+
+                // println!("LOCK");
+                let lock = channel.mutex.lock().unwrap();
+                let lock = channel.condvar.wait(lock).unwrap();
+                // println!("UNLOCK");
+
+                channel.is_waiting.store(false, Ordering::Release);
+            },
+            Err(Closed) => {
+                return;
             }
         }
     }
+
+    // while let Ok(msg) = recv.pop() {
+    //     if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+    //         eprintln!("Timing error={:?}", err);
+    //     }
+    // }
+
+    // for msgpack in recv {
+    //     for msg in msgpack {
+    //         if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+    //             eprintln!("Timing error={:?}", err);
+    //         }
+    //     }
+    // }
+
+    // for msgpack in recv {
+    //     for msg in msgpack {
+    //         if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+    //             eprintln!("Timing error={:?}", err);
+    //         }
+    //     }
+    // }
 }
 
 pub fn hash_to_string(hash: &[u8]) -> String {
@@ -665,7 +802,7 @@ impl Timing {
     fn set_current_block<'a>(
         &mut self,
         sql: &'a Connection,
-        block_hash: Option<BlockHash>,
+        block_hash: Option<InlinedBlockHash>,
         mut timestamp: Option<Duration>,
         instant: Instant,
         transaction: &mut Option<Transaction<'a>>,
@@ -727,7 +864,7 @@ impl Timing {
     fn set_current_operation(
         &mut self,
         sql: &Connection,
-        operation_hash: Option<OperationHash>,
+        operation_hash: Option<InlinedOperationHash>,
     ) -> Result<(), SQLError> {
         Self::set_current(
             sql,
@@ -740,7 +877,7 @@ impl Timing {
     fn set_current_context(
         &mut self,
         sql: &Connection,
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
     ) -> Result<(), SQLError> {
         Self::set_current(
             sql,
@@ -758,7 +895,7 @@ impl Timing {
     ) -> Result<(), SQLError>
     where
         T: Eq,
-        T: AsRef<Vec<u8>>,
+        T: AsRef<[u8]>,
     {
         match (hash.as_ref(), current.as_ref()) {
             (None, _) => {
@@ -822,7 +959,7 @@ impl Timing {
     fn insert_checkout(
         &mut self,
         sql: &Connection,
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     ) -> Result<(), SQLError> {
@@ -874,16 +1011,24 @@ impl Timing {
         let (root, key_id) = if query.key.is_empty() {
             (None, None)
         } else {
-            let root = query.key[0].as_str();
-            let key = query.key.join("/");
+            let key = query.key.as_str();
+
+            let root = match key.split_once('/') {
+                Some(slice) => slice.0,
+                None => action.key.as_str(),
+            };
+
+            // let key = &action.key;
+            // let root = action.key[0].as_str();
+            //let key = action.key.join("/");
 
             let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
 
-            stmt.execute([key.as_str()])?;
+            stmt.execute([key])?;
 
             let mut stmt = sql.prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
 
-            let key_id: usize = stmt.query_row([key.as_str()], |row| row.get(0))?;
+            let key_id: usize = stmt.query_row([key], |row| row.get(0))?;
 
             (Some(root), Some(key_id))
         };
@@ -1305,6 +1450,8 @@ impl Timing {
 mod tests {
     use crypto::hash::HashTrait;
 
+    use crate::container::{InlinedBlockHash, InlinedContextHash};
+
     use super::*;
 
     #[test]
@@ -1315,7 +1462,8 @@ mod tests {
 
         assert!(timing.current_block.is_none());
 
-        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
+        // let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
+        let block_hash = InlinedBlockHash::from([1; 32]);
         timing
             .set_current_block(
                 &sql,
@@ -1343,7 +1491,7 @@ mod tests {
         timing
             .set_current_block(
                 &sql,
-                Some(BlockHash::try_from_bytes(&[2; 32]).unwrap()),
+                Some(InlinedBlockHash::from([2; 32])),
                 None,
                 Instant::now(),
                 &mut transaction,
@@ -1376,9 +1524,9 @@ mod tests {
     }
 
     #[test]
-    fn test_queries_db() {
-        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
-        let context_hash = ContextHash::try_from_bytes(&[2; 32]).unwrap();
+    fn test_actions_db() {
+        let block_hash = InlinedBlockHash::from([1; 32]);
+        let context_hash = InlinedContextHash::from([2; 32]);
 
         TIMING_CHANNEL
             .send(TimingMessage::InitTiming { db_path: None })

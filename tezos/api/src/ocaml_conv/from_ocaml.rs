@@ -50,6 +50,25 @@ macro_rules! from_ocaml_typed_hash {
     };
 }
 
+// macro_rules! hash_as_bytes {
+// 	($ocaml_hash:ident) => {
+//         fn hash_as_bytes(hash: OCaml<OCamlHash>) -> &[u8] {
+//             let field = unsafe { hash.field::<OCamlBytes>(0) };
+//             field.as_bytes()
+//         }
+// 	};
+// }
+
+// fn hash_as_bytes(hash: OCaml<OCamlHash>) -> &[u8] {
+//     let field = unsafe { hash.field::<OCamlBytes>(0) };
+//     field.as_bytes()
+// }
+
+pub fn hash_as_bytes<T>(hash: OCaml<T>) -> &[u8] {
+    let field = unsafe { hash.field::<OCamlBytes>(0) };
+    field.as_bytes()
+}
+
 from_ocaml_hash!(OCamlHash, Hash);
 from_ocaml_typed_hash!(OCamlOperationHash, OperationHash);
 from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);

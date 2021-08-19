@@ -3,20 +3,28 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
-use tezos_timing::{BlockMemoryUsage, Query, QueryKind, TimingMessage, TIMING_CHANNEL};
+use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash, from_ocaml::hash_as_bytes};
+use tezos_timing::{Action, QueryKind, BlockMemoryUsage, TIMING_CHANNEL, TimingMessage, container::{InlinedString, InlinedBlockHash, InlinedContextHash, InlinedOperationHash}};
 
 pub fn send_statistics(stats: BlockMemoryUsage) {
+    // return;
+
     if let Err(e) = TIMING_CHANNEL.send(TimingMessage::BlockMemoryUsage { stats }) {
         eprintln!("send_statistics error = {:?}", e);
     }
 }
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
+    let hash = rt.get(block_hash);
+
+    let block_hash = hash.to_option().map(|h| {
+        let bytes = hash_as_bytes(h);
+        InlinedBlockHash::from(bytes)
+    });
+
     let instant = Instant::now();
-    let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
+    // let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
     let timestamp = if block_hash.is_some() {
         let timestamp = SystemTime::now()
@@ -37,7 +45,14 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
 }
 
 pub fn set_operation(rt: &OCamlRuntime, operation_hash: OCamlRef<Option<OCamlOperationHash>>) {
-    let operation_hash: Option<OperationHash> = operation_hash.to_rust(rt);
+    let hash = rt.get(operation_hash);
+
+    let operation_hash = hash.to_option().map(|h| {
+        let bytes = hash_as_bytes(h);
+        InlinedOperationHash::from(bytes)
+    });
+
+    // let operation_hash: Option<OperationHash> = operation_hash.to_rust(rt);
 
     if let Err(e) = TIMING_CHANNEL.send(TimingMessage::SetOperation(operation_hash)) {
         eprintln!("Timing set_operation hook error = {:?}", e);
@@ -50,7 +65,15 @@ pub fn checkout(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    let context_hash: ContextHash = context_hash.to_rust(rt);
+    let hash = rt.get(context_hash);
+    let bytes = hash_as_bytes(hash);
+    let context_hash = InlinedContextHash::from(bytes);
+
+    // println!("CHECKOUT LEN={:?}", bytes.len());
+
+    // return;
+
+    // let context_hash: ContextHash = context_hash.to_rust(rt);
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
@@ -69,6 +92,8 @@ pub fn commit(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
+    // return;
+
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
@@ -80,32 +105,95 @@ pub fn commit(
     }
 }
 
-pub fn context_query(
+fn get_action_kind(name: &[u8]) -> Option<ActionKind> {
+    let first = name.get(0)?;
+    let length = name.len();
+
+    match first {
+        b'm' => {
+            if length == 3 {
+                Some(ActionKind::Mem)
+            } else {
+                Some(ActionKind::MemTree)
+            }
+        }
+        b'f' => {
+            if length == 3 {
+                Some(ActionKind::Find)
+            } else {
+                Some(ActionKind::FindTree)
+            }
+        }
+        b'a' => {
+            if length == 3 {
+                Some(ActionKind::Add)
+            } else {
+                Some(ActionKind::AddTree)
+            }
+        }
+        b'r' => Some(ActionKind::Remove),
+        _ => None
+    }
+}
+
+pub fn context_action(
     rt: &OCamlRuntime,
     query_name: OCamlRef<String>,
     key: OCamlRef<OCamlList<String>>,
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    let query_name = rt.get(query_name);
-    let query_name = match query_name.as_bytes() {
-        b"mem" => QueryKind::Mem,
-        b"mem_tree" => QueryKind::MemTree,
-        b"find" => QueryKind::Find,
-        b"find_tree" => QueryKind::FindTree,
-        b"add" => QueryKind::Add,
-        b"add_tree" => QueryKind::AddTree,
-        b"remove" => QueryKind::Remove,
-        _ => return,
+    // return;
+
+    let action_name = rt.get(action_name);
+    // let action_name = match action_name.as_bytes() {
+    //     b"mem" => ActionKind::Mem,
+    //     b"mem_tree" => ActionKind::MemTree,
+    //     b"find" => ActionKind::Find,
+    //     b"find_tree" => ActionKind::FindTree,
+    //     b"add" => ActionKind::Add,
+    //     b"add_tree" => ActionKind::AddTree,
+    //     b"remove" => ActionKind::Remove,
+    //     _ => return,
+    // };
+
+    let action_name = match get_action_kind(action_name.as_bytes()) {
+        Some(name) => name,
+        None => return,
     };
+
+    // let action_name = ActionKind::Remove;
+
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
-    let key: Vec<String> = key.to_rust(rt);
 
-    let query = Query {
-        query_name,
-        key,
+    // let vector = String::new();
+
+    let mut key = rt.get(key);
+    let mut string: InlinedString = Default::default();
+
+    let mut first = true;
+
+    while let Some((head, tail)) = key.uncons() {
+        if first {
+            first = false;
+        } else {
+            string.push_str("/");
+        }
+        string.push_str(unsafe { head.as_str_unchecked() });
+        key = tail;
+    }
+
+    // println!("LEN={:?}", string.len());
+
+    // vector
+
+    // let key: Vec<String> = key.to_rust(rt);
+
+    let action = Action {
+        action_name,
+        key: string,
         irmin_time,
         tezedge_time,
     };

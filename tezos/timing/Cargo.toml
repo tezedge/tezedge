@@ -10,3 +10,6 @@ failure = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 once_cell = "1.7.2"
 rusqlite = { version = "0.25.1", features = ["bundled"] }
+static_assertions = "1.1"
+tezos_spsc = { path = "../spsc" }
+# tinyvec = { version = "1", features = ["alloc"] }

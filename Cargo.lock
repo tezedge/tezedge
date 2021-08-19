@@ -3693,6 +3693,8 @@ dependencies = [
  "once_cell",
  "rusqlite",
  "serde 1.0.123",
+ "static_assertions",
+ "tezos_spsc",
 ]
 
 [[package]]
