@@ -16,6 +16,7 @@ use crate::state::ThrottleQuota;
 use crate::{PeerAddress, PeerCrypto, Port};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
+use tezos_messages::Head;
 
 /// Peer who have undergone handshake.
 #[derive(Debug, Clone)]
@@ -32,6 +33,12 @@ pub struct ConnectedPeer {
     cur_send_message: Option<EncryptedMessageWriter>,
     send_message_queue: VecDeque<PeerMessage>,
     quota: ThrottleQuota,
+
+    // TOOD: use here Rc?
+    /// Peer's last known current head
+    current_head: Option<Head>,
+    /// Peer's last current head update (can be used to detect stalled peers)
+    current_head_update_last: Option<SystemTime>,
 }
 
 impl ConnectedPeer {
@@ -76,6 +83,12 @@ impl ConnectedPeer {
         } else {
             Err(WriteMessageError::Empty)
         }
+    }
+
+    pub(crate) fn update_current_head(&mut self, head: Head) {
+        self.current_head = Some(head);
+        // TODO: how to set time?
+        // self.current_head_update_last = Some(SystemTime::now());
     }
 }
 
@@ -165,6 +178,9 @@ impl ConnectedPeers {
                 send_message_queue: VecDeque::new(),
 
                 quota: ThrottleQuota::new(log.clone()),
+
+                current_head: None,
+                current_head_update_last: None,
             })
     }
 

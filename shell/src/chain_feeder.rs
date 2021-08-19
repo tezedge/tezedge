@@ -731,6 +731,7 @@ fn feed_chain_to_protocol(
                                             );
                                         }
 
+                                        // TOOD: change to proposer.notify
                                         // notify  chain current head manager (only for new applied block)
                                         chain_current_head_manager.tell(validated_block, None);
                                     }
@@ -1113,6 +1114,7 @@ pub(crate) fn initialize_protocol_context(
 
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {
+                // TOOD: change to proposer.notify
                 // notify others that the block successfully applied
                 chain_current_head_manager.tell(
                     ProcessValidatedBlock::new(

@@ -4,6 +4,8 @@
 
 //! This crate provides definitions of tezos messages.
 
+use std::convert::TryInto;
+
 use chrono::prelude::*;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
@@ -11,7 +13,8 @@ use std::fmt;
 
 use crypto::hash::BlockHash;
 
-use crate::p2p::encoding::block_header::{display_fitness, Fitness, Level};
+use crate::p2p::binary_message::{MessageHash, MessageHashError};
+use crate::p2p::encoding::block_header::{display_fitness, BlockHeader, Fitness, Level};
 
 pub mod base;
 pub mod p2p;
@@ -82,5 +85,23 @@ impl From<Head> for BlockHash {
 impl From<Head> for Level {
     fn from(h: Head) -> Self {
         h.level
+    }
+}
+
+impl std::convert::TryFrom<&BlockHeader> for Head {
+    type Error = MessageHashError;
+
+    fn try_from(block_header: &BlockHeader) -> Result<Self, Self::Error> {
+        let block_hash = if let Some(hash) = block_header.hash().as_ref() {
+            hash.as_slice().try_into()?
+        } else {
+            block_header.message_hash()?.try_into()?
+        };
+
+        Ok(Self::new(
+            block_hash,
+            block_header.level(),
+            block_header.fitness().to_vec(),
+        ))
     }
 }

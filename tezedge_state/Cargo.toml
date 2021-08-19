@@ -23,6 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 # local dependencies
 tla-sm = { path = "../tla_sm" }
 crypto = { path = "../crypto" }
+storage = { path = "../storage" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }

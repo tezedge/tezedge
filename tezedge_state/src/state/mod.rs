@@ -11,6 +11,7 @@ use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::{
     GetCurrentBranchMessage, MetadataMessage, PeerMessage,
 };
+use tezos_messages::Head;
 pub use tla_sm::{Acceptor, GetRequests, Proposal};
 
 use crate::peer_address::{DebugVecItemsAsStr, PeerListenerAddress};
@@ -33,6 +34,9 @@ pub(crate) use connected_peers::*;
 
 mod blacklisted_peers;
 pub(crate) use blacklisted_peers::*;
+
+mod head_state;
+pub(crate) use head_state::*;
 
 #[derive(Debug)]
 pub struct NotMatchingAddress;
@@ -149,6 +153,9 @@ pub struct TezedgeState {
 
     /// Main chain_id
     pub(crate) main_chain_id: ChainId,
+
+    /// Current head state
+    pub(crate) current_head: CurrentHead,
 }
 
 impl TezedgeState {
@@ -346,6 +353,7 @@ impl TezedgeState {
             time: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
             main_chain_id,
+            current_head: CurrentHead::new(None, None),
         }
         .init(effects)
     }
