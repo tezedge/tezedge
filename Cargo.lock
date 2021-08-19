@@ -3744,11 +3744,11 @@ dependencies = [
 name = "tezos_timing"
 version = "1.10.0"
 dependencies = [
- "crypto",
- "once_cell",
  "rusqlite",
  "serde 1.0.130",
- "thiserror",
+ "static_assertions",
+ "tezos_conv",
+ "tezos_spsc",
 ]
 
 [[package]]
