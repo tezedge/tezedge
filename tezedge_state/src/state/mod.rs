@@ -145,7 +145,7 @@ pub struct TezedgeState {
     // TODO: blacklist identities as well.
     pub(crate) p2p_state: P2pState,
     /// Currently pending requests. Completed requests is removed.
-    pub(crate) requests: slab::Slab<PendingRequestState>,
+    pub(crate) requests: TezedgeRequests,
 
     /// Main chain_id
     pub(crate) main_chain_id: ChainId,
@@ -171,10 +171,6 @@ impl TezedgeState {
 
     pub fn blacklisted_peers(&self) -> &BlacklistedPeers {
         &self.blacklisted_peers
-    }
-
-    pub fn request_states(&self) -> &slab::Slab<PendingRequestState> {
-        &self.requests
     }
 
     #[inline(always)]
@@ -237,10 +233,8 @@ impl TezedgeState {
         self.pending_peers.remove(&address);
         self.connected_peers.remove(&address);
 
-        self.requests.insert(PendingRequestState {
-            request: PendingRequest::DisconnectPeer { peer: address },
-            status: RetriableRequestState::Idle { at: self.time },
-        });
+        self.requests
+            .add(self.time, PendingRequest::DisconnectPeer { peer: address });
     }
 
     pub(crate) fn blacklist_peer(&mut self, address: PeerAddress) {
@@ -269,10 +263,8 @@ impl TezedgeState {
         );
         // TODO: blacklist identity as well.
 
-        self.requests.insert(PendingRequestState {
-            request: PendingRequest::BlacklistPeer { peer: address },
-            status: RetriableRequestState::Idle { at: self.time },
-        });
+        self.requests
+            .add(self.time, PendingRequest::BlacklistPeer { peer: address });
     }
 
     #[inline]
@@ -309,7 +301,7 @@ impl TezedgeState {
             connected_peers_len: self.connected_peers.len(),
             blacklisted_peers_len: self.blacklisted_peers.len(),
             pending_peers_len: self.pending_peers_len(),
-            requests_len: self.requests.len(),
+            requests_len: self.requests.total_len(),
         }
     }
 }
@@ -350,7 +342,7 @@ impl TezedgeState {
             ),
             blacklisted_peers: BlacklistedPeers::new(),
             p2p_state: P2pState::Pending,
-            requests: slab::Slab::new(),
+            requests: TezedgeRequests::new(),
             time: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
             main_chain_id,
@@ -359,10 +351,8 @@ impl TezedgeState {
     }
 
     fn init<Efs: Effects>(mut self, effects: &mut Efs) -> Self {
-        self.requests.insert(PendingRequestState {
-            request: PendingRequest::StartListeningForNewPeers,
-            status: RetriableRequestState::Idle { at: self.time },
-        });
+        self.requests
+            .add(self.time, PendingRequest::StartListeningForNewPeers);
         self.adjust_p2p_state(effects);
 
         self
@@ -392,9 +382,10 @@ impl TezedgeState {
             self.connected_peers
                 .set_peer_connected(self.time, peer_address, result);
 
-        self.requests.insert(PendingRequestState {
-            request: PendingRequest::NotifyHandshakeSuccessful {
-                peer_address: peer_address,
+        self.requests.add(
+            self.time,
+            PendingRequest::NotifyHandshakeSuccessful {
+                peer_address,
                 peer_public_key_hash: public_key_hash,
                 metadata: MetadataMessage::new(
                     connected_peer.disable_mempool,
@@ -402,8 +393,7 @@ impl TezedgeState {
                 ),
                 network_version: connected_peer.version.clone(),
             },
-            status: RetriableRequestState::Idle { at: self.time },
-        });
+        );
 
         // ask for more peers
         connected_peer.enqueue_send_message(PeerMessage::Bootstrap);
@@ -580,10 +570,8 @@ impl TezedgeState {
                 false,
                 HandshakeStep::Initiated { at: self.time },
             ));
-            self.requests.insert(PendingRequestState {
-                status: RetriableRequestState::Idle { at: self.time },
-                request: PendingRequest::ConnectPeer { peer: peer.into() },
-            });
+            self.requests
+                .add(self.time, PendingRequest::ConnectPeer { peer: peer.into() });
         }
 
         self.adjust_p2p_state(effects);

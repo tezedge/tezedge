@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tla_sm::{recorders::CloneRecorder, DefaultRecorder, Proposal};
 
-use crate::{EffectsRecorder, RecordedEffects};
+use crate::{EffectsRecorder, RecordedEffects, RequestId};
 
 use super::MaybeRecordedProposal;
 
@@ -49,7 +49,7 @@ impl DefaultRecorder for PendingRequestMsg {
 pub struct PendingRequestProposal<'a, Efs> {
     pub effects: &'a mut Efs,
     pub time_passed: Duration,
-    pub req_id: usize,
+    pub req_id: RequestId,
     pub message: PendingRequestMsg,
 }
 
@@ -75,7 +75,7 @@ impl<'a, Efs> DefaultRecorder for PendingRequestProposal<'a, Efs> {
 pub struct RecordedPendingRequestProposal {
     pub effects: RecordedEffects,
     pub time_passed: Duration,
-    pub req_id: usize,
+    pub req_id: RequestId,
     pub message: PendingRequestMsg,
 }
 
@@ -95,7 +95,7 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedPendingRequestProposal {
 pub struct PendingRequestProposalRecorder<'a, Efs> {
     effects: EffectsRecorder<'a, Efs>,
     time_passed: CloneRecorder<Duration>,
-    req_id: CloneRecorder<usize>,
+    req_id: CloneRecorder<RequestId>,
     message: CloneRecorder<PendingRequestMsg>,
 }
 
