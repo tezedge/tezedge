@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "simulator"
-version = "0.1.0"
+version = "1.8.0"
 dependencies = [
  "bytes 1.0.1",
  "criterion",
@@ -3573,7 +3573,7 @@ dependencies = [
 
 [[package]]
 name = "tezedge-state"
-version = "0.1.0"
+version = "1.8.0"
 dependencies = [
  "bytes 1.0.1",
  "criterion",
@@ -3587,6 +3587,8 @@ dependencies = [
  "quickcheck",
  "quickcheck_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.3",
+ "serde 1.0.123",
+ "serde_json",
  "slab",
  "slog",
  "slog-async",
@@ -3895,7 +3897,10 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tla-sm"
-version = "0.1.0"
+version = "1.8.0"
+dependencies = [
+ "serde 1.0.123",
+]
 
 [[package]]
 name = "tokio"
