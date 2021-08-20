@@ -65,7 +65,7 @@ services:
       - "ocaml-shared-data:/var/run/tezos/node"
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.7
+    image: tezedge/tezedge-explorer:latest
     environment:
       # need a better way to provide such information
       - API=[{"id":"tezedge","type":"tezedge","name":"tezedge.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"octez","type":"octez","name":"octez.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18733","p2p_port":9733,"features":[{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
