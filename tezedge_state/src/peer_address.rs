@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Debug};
+use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
