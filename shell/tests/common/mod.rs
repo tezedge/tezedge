@@ -11,7 +11,7 @@ use slog::{Drain, Level, Logger};
 
 use crypto::hash::OperationHash;
 use networking::ShellCompatibilityVersion;
-use shell::peer_manager::P2p;
+use shell::tezedge_state_manager::P2p;
 use shell::PeerConnectionThreshold;
 use tezos_messages::p2p::encoding::prelude::Operation;
 

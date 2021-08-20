@@ -2,6 +2,9 @@ cargo-features = ["named-profiles"]
 
 [workspace]
 members = [
+    "tla_sm",
+    "tezedge_state",
+    "simulator",
     "ipc",
     "logging",
     "crypto",
@@ -19,6 +22,7 @@ members = [
     "tezos/timing",
     "tezos/lib_storage_ffi",
     "networking",
+    "old_networking",
     "shell",
     "storage",
     "sandbox",

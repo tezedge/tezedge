@@ -11,10 +11,10 @@ pub mod chain_feeder;
 pub mod chain_manager;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;
-pub mod peer_manager;
 pub mod shell_channel;
 pub mod state;
 pub mod stats;
+pub mod tezedge_state_manager;
 pub mod utils;
 pub mod validation;
 
@@ -31,8 +31,8 @@ pub struct InvalidRangeError(String);
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
 pub struct PeerConnectionThreshold {
-    low: usize,
-    high: usize,
+    pub low: usize,
+    pub high: usize,
     peers_for_bootstrap_threshold: Option<usize>,
 }
 
@@ -198,38 +198,6 @@ pub mod subscription {
             Subscribe {
                 actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellShutdown.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub(crate) fn subscribe_to_dead_letters<M, E>(dl_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub(crate) fn unsubscribe_from_dead_letters<M, E>(
-        dl_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Unsubscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
             },
             None,
         );

@@ -6,21 +6,20 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use riker::actors::*;
+use slog::Logger;
 
 use crypto::hash::{BlockHash, OperationHash};
-use networking::p2p::peer::SendMessage;
-use networking::PeerId;
+use networking::{PeerAddress, PeerId};
 use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
-use tezos_messages::p2p::encoding::prelude::{
-    GetOperationsMessage, MetadataMessage, PeerMessageResponse,
-};
+use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, MetadataMessage};
 
+use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
+use crate::tezedge_state_manager::ProposerHandle;
 
 /// Limit to how many mempool operations to request in a batch
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = limits::MEMPOOL_MAX_OPERATIONS;
@@ -156,7 +155,11 @@ impl PeerState {
             .push((operation_hash, mempool_type));
     }
 
-    pub fn schedule_missing_operations_for_mempool(peers: &mut HashMap<ActorUri, PeerState>) {
+    pub fn schedule_missing_operations_for_mempool(
+        proposer: &ProposerHandle,
+        peers: &mut HashMap<PeerAddress, PeerState>,
+        log: &Logger,
+    ) {
         peers
             .values_mut()
             .filter(|peer| !peer.missing_mempool_operations.is_empty())
@@ -189,10 +192,20 @@ impl PeerState {
                     ops_to_get
                         .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
                         .for_each(|ops_to_get| {
-                            tell_peer(GetOperationsMessage::new(ops_to_get.into()).into(), peer)
+                            tell_peer(
+                                &proposer,
+                                &peer.peer_id,
+                                GetOperationsMessage::new(ops_to_get.into()).into(),
+                                log,
+                            )
                         });
                 } else {
-                    tell_peer(GetOperationsMessage::new(ops_to_get).into(), peer);
+                    tell_peer(
+                        &proposer,
+                        &peer.peer_id,
+                        GetOperationsMessage::new(ops_to_get).into(),
+                        log,
+                    );
                 }
             });
     }
@@ -330,8 +343,4 @@ impl UpdateIsBootstrapped for PeerState {
     fn is_bootstrapped(&self) -> bool {
         self.is_bootstrapped
     }
-}
-
-pub fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
-    peer.peer_id.peer_ref.tell(SendMessage::new(msg), None);
 }

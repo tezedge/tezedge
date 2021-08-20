@@ -22,16 +22,17 @@ use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
 use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
-use shell::chain_manager::{ChainManager, ChainManagerRef};
+use shell::chain_manager::ChainManager;
 use shell::mempool::{
     init_mempool_state_storage, CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory,
 };
-use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::{
     init_synchronization_bootstrap_state_storage, SynchronizationBootstrapStateRef,
 };
+use shell::subscription::*;
+use shell::tezedge_state_manager::{P2p, TezedgeStateManager};
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
@@ -50,9 +51,8 @@ use crate::common;
 pub struct NodeInfrastructure {
     name: String,
     pub log: Logger,
-    pub peer_manager: Option<PeerManagerRef>,
+    pub tezedge_state_manager: TezedgeStateManager,
     pub block_applier: ChainFeederRef,
-    pub chain_manager: ChainManagerRef,
     pub shell_channel: ShellChannelRef,
     pub network_channel: NetworkChannelRef,
     pub actor_system: ActorSystem,
@@ -61,6 +61,7 @@ pub struct NodeInfrastructure {
     pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
+    pub mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
 }
 
 impl NodeInfrastructure {
@@ -188,6 +189,24 @@ impl NodeInfrastructure {
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+
+        // initialize tezedge state
+        let mut tezedge_state_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p
+        {
+            TezedgeStateManager::new(
+                network_channel.clone(),
+                log.clone(),
+                identity.clone(),
+                Arc::new(shell_compatibility_version),
+                p2p_config,
+                pow_target,
+                init_storage_data.chain_id.clone(),
+            )
+        } else {
+            panic!("P2p cfg is required")
+        };
+
+        // initialize actors
         let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
             shell_channel.clone(),
             persistent_storage.clone(),
@@ -219,10 +238,11 @@ impl NodeInfrastructure {
             log.clone(),
         )
         .expect("Failed to create chain feeder");
-        let chain_manager = ChainManager::actor(
+        let chain_manager_wrapper = ChainManager::actor(
             &actor_system,
             block_applier.clone(),
             network_channel.clone(),
+            tezedge_state_manager.proposer_handle(),
             shell_channel.clone(),
             persistent_storage.clone(),
             tezos_readonly_api_pool.clone(),
@@ -232,34 +252,18 @@ impl NodeInfrastructure {
             remote_current_head_state,
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
-            mempool_prevalidator_factory,
+            mempool_prevalidator_factory.clone(),
             identity.clone(),
         )
         .expect("Failed to create chain manager");
 
         // and than open p2p and others - if configured
-        let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
-            let peer_manager = PeerManager::actor(
-                &actor_system,
-                network_channel.clone(),
-                shell_channel.clone(),
-                tokio_runtime.handle().clone(),
-                identity,
-                Arc::new(shell_compatibility_version),
-                p2p_config,
-                pow_target,
-            )
-            .expect("Failed to create peer manager");
-            Some(peer_manager)
-        } else {
-            None
-        };
+        tezedge_state_manager.start();
 
         Ok(NodeInfrastructure {
             name: String::from(name),
             log,
-            peer_manager,
-            chain_manager,
+            tezedge_state_manager,
             block_applier,
             shell_channel,
             network_channel,
@@ -269,6 +273,7 @@ impl NodeInfrastructure {
             current_mempool_state_storage,
             bootstrap_state,
             tezos_env: tezos_env.clone(),
+            mempool_prevalidator_factory,
         })
     }
 
@@ -278,6 +283,7 @@ impl NodeInfrastructure {
             shell_channel,
             actor_system,
             tokio_runtime,
+            tezedge_state_manager,
             ..
         } = self;
         warn!(log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
@@ -290,6 +296,9 @@ impl NodeInfrastructure {
             },
             None,
         );
+
+        // close tezedge state explicitly
+        drop(tezedge_state_manager);
 
         let _ = tokio_runtime.block_on(async move {
             tokio::time::timeout(Duration::from_secs(10), actor_system.shutdown()).await
@@ -422,9 +431,10 @@ impl NodeInfrastructure {
     }
 
     pub fn whitelist_all(&self) {
-        if let Some(peer_manager) = &self.peer_manager {
-            peer_manager.tell(WhitelistAllIpAddresses, None);
-        }
+        // TODO: TE-652 - whitelist scenario
+        // if let Some(peer_manager) = &self.peer_manager {
+        //     peer_manager.tell(WhitelistAllIpAddresses, None);
+        // }
     }
 }
 
@@ -539,16 +549,16 @@ pub mod test_actor {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
+                        peer_id.public_key_hash.clone(),
                         PeerConnectionStatus::Connected,
                     );
                 }
                 NetworkChannelMsg::BlacklistPeer(..) => {}
                 NetworkChannelMsg::PeerBlacklisted(peer_id) => {
-                    self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
-                        PeerConnectionStatus::Blacklisted,
-                    );
+                    // self.peers_mirror.write().unwrap().insert(
+                    //     peer_id.public_key_hash.clone(),
+                    //     PeerConnectionStatus::Blacklisted,
+                    // );
                 }
                 _ => (),
             }
@@ -586,11 +596,11 @@ pub mod test_actor {
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
             let start = Instant::now();
-            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
+            let public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();
-                if let Some(peer_state) = peers_mirror.get(peer_public_key_hash) {
+                if let Some(peer_state) = peers_mirror.get(public_key_hash) {
                     if peer_state == &expected_state {
                         break Ok(());
                     }
@@ -603,7 +613,7 @@ pub mod test_actor {
                     break Err(
                         failure::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
+                            peer.name, public_key_hash.to_base58_check(), expected_state, timeout, delay
                         )
                     );
                 }
@@ -612,3 +622,229 @@ pub mod test_actor {
         }
     }
 }
+
+// pub mod test_actor_for_state_machine {
+//     use std::collections::HashMap;
+//     use std::sync::{Arc, RwLock, mpsc};
+//     use std::time::{Duration, Instant};
+//
+//     use crypto::hash::CryptoboxPublicKeyHash;
+//     use shell::subscription::*;
+//
+//     use crate::common::test_node_peer::TestNodePeer;
+//     use std::net::IpAddr;
+//
+//     #[derive(PartialEq, Eq, Debug)]
+//     pub enum PeerConnectionStatus {
+//         Connected,
+//         Blacklisted,
+//         Stalled,
+//     }
+//
+//     pub type PeersMirror = Arc<
+//         RwLock<(
+//             HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>,
+//             HashMap<IpAddr, PeerConnectionStatus>,
+//             HashMap<CryptoboxPublicKeyHash, IpAddr>,
+//         )>,
+//     >;
+//
+//     pub enum NotifyNetworkEventListenerMsg {
+//         NetworkEvent(NetworkEventNotificationRef),
+//         Shutdown,
+//     }
+//
+//     pub struct NetworkEventListener {
+//         peers_mirror: PeersMirror,
+//         notify_tx: mpsc::SyncSender<NotifyNetworkEventListenerMsg>,
+//     }
+//
+//     impl NetworkEventListener {
+//
+//         pub fn create_and_start(
+//             peers_mirror: PeersMirror,
+//             log: slog::Logger,
+//         ) -> Result<NetworkEventListener, std::io::Error> {
+//
+//             // start temporariry new network event listener thread
+//             let (notify_tx, notify_rx) =
+//                 mpsc::sync_channel(1000);
+//
+//             // spawn mpsc queue receiver for notifications
+//             {
+//                 let peers_mirror = peers_mirror.clone();
+//                 std::thread::Builder::new()
+//                     .name("test-network-event-listener".to_owned())
+//                     .spawn(move || {
+//                         Self::run_notify_network_event_listener(
+//                             notify_rx,
+//                             peers_mirror,
+//                             log,
+//                         );
+//                     })?;
+//             };
+//
+//             Ok(NetworkEventListener {
+//                 peers_mirror,
+//                 notify_tx,
+//             })
+//         }
+//
+//         fn process_network_event_message(
+//             peers_mirror: &PeersMirror,
+//             msg: NetworkEventNotificationRef,
+//         ) {
+//             match msg.as_ref() {
+//                 NetworkEventNotification::PeerMessageReceived(_) => {}
+//                 NetworkEventNotification::PeerDisconnected(_) => {}
+//                 NetworkEventNotification::PeerBootstrapped(peer_id, _, _) => {
+//                     peers_mirror.write().unwrap().0.insert(
+//                         peer_id.public_key_hash.clone(),
+//                         PeerConnectionStatus::Connected,
+//                     );
+//                     peers_mirror
+//                         .write()
+//                         .unwrap()
+//                         .1
+//                         .insert(peer_id.address.ip(), PeerConnectionStatus::Connected);
+//                     peers_mirror
+//                         .write()
+//                         .unwrap()
+//                         .2
+//                         .insert(peer_id.public_key_hash.clone(), peer_id.address.ip());
+//                 }
+//                 NetworkEventNotification::PeerBlacklisted(peer_address) => {
+//                     peers_mirror
+//                         .write()
+//                         .unwrap()
+//                         .1
+//                         .insert(peer_address.ip(), PeerConnectionStatus::Blacklisted);
+//                 }
+//             }
+//         }
+//
+//         pub fn verify_connected(
+//             peer: &TestNodePeer,
+//             peers_mirror: PeersMirror,
+//         ) -> Result<(), failure::Error> {
+//             Self::verify_state(
+//                 PeerConnectionStatus::Connected,
+//                 peer,
+//                 peers_mirror,
+//                 (Duration::from_secs(5), Duration::from_millis(250)),
+//             )
+//         }
+//
+//         pub fn verify_blacklisted(
+//             peer: &TestNodePeer,
+//             peers_mirror: PeersMirror,
+//         ) -> Result<(), failure::Error> {
+//             Self::verify_state(
+//                 PeerConnectionStatus::Blacklisted,
+//                 peer,
+//                 peers_mirror,
+//                 (Duration::from_secs(5), Duration::from_millis(250)),
+//             )
+//         }
+//
+//         // TODO: refactor with async/condvar, not to block main thread
+//         fn verify_state(
+//             expected_state: PeerConnectionStatus,
+//             peer: &TestNodePeer,
+//             peers_mirror: PeersMirror,
+//             (timeout, delay): (Duration, Duration),
+//         ) -> Result<(), failure::Error> {
+//             let start = Instant::now();
+//             let public_key_hash = &peer.identity.public_key.public_key_hash()?;
+//
+//             let result = loop {
+//                 let peers_mirror = peers_mirror.read().unwrap();
+//                 if let Some(peer_state) = peers_mirror.0.get(public_key_hash) {
+//                     if peer_state == &expected_state {
+//                         break Ok(());
+//                     }
+//
+//                     // if we know peer we check also blacklisted IPs
+//                     if let Some(peer_address) = peers_mirror.2.get(public_key_hash) {
+//                         // check ips
+//                         if let Some(peer_address_state) = peers_mirror.1.get(peer_address) {
+//                             if peer_address_state == &expected_state {
+//                                 break Ok(());
+//                             }
+//                         }
+//                     }
+//                 }
+//
+//                 // kind of simple retry policy
+//                 if start.elapsed().le(&timeout) {
+//                     std::thread::sleep(delay);
+//                 } else {
+//                     break Err(
+//                         failure::format_err!(
+//                             "[{}] verify_state - peer_public_key({}) - (expected_state: {:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
+//                             peer.name, public_key_hash.to_base58_check(), expected_state, timeout, delay
+//                         )
+//                     );
+//                 }
+//             };
+//             result
+//         }
+//
+//         fn run_notify_network_event_listener(
+//             rx: mpsc::Receiver<NotifyNetworkEventListenerMsg>,
+//             peers_mirror: PeersMirror,
+//             log: slog::Logger,
+//         ) {
+//             // Read and handle messages incoming from actor system or `PeerManager`.
+//             loop {
+//                 match rx.recv() {
+//                     Ok(NotifyNetworkEventListenerMsg::NetworkEvent(notification)) => {
+//                         Self::process_network_event_message(&peers_mirror, notification)
+//                     }
+//                     Ok(NotifyNetworkEventListenerMsg::Shutdown) => {
+//                         slog::info!(log, "Network event listener notification listener finished");
+//                         break;
+//                     }
+//                     Err(mpsc::RecvError) => {
+//                         slog::info!(log, "Network event listener notification listener finished (by disconnect)");
+//                         return;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//
+//     impl NotifyCallbackRegistrar<NetworkEventNotificationRef> for NetworkEventListener {
+//         fn subscribe(&self, notifier: &mut Notifier<NetworkEventNotificationRef>) {
+//             notifier.register(
+//                 Box::new(NetworkEventListenerNotifyCallback(
+//                     self.notify_tx.clone(),
+//                 )),
+//                 "chain-manager-network-event-listener".to_string(),
+//             );
+//         }
+//     }
+//
+//     struct NetworkEventListenerNotifyCallback(mpsc::SyncSender<NotifyNetworkEventListenerMsg>);
+//
+//     impl NotifyCallback<NetworkEventNotificationRef> for NetworkEventListenerNotifyCallback {
+//         fn notify(
+//             &self,
+//             notification: NetworkEventNotificationRef,
+//         ) -> Result<(), SendNotificationError> {
+//             self.0
+//                 .send(NotifyNetworkEventListenerMsg::NetworkEvent(notification))
+//                 .map_err(|e| SendNotificationError {
+//                     reason: format!("{}", e),
+//                 })
+//         }
+//
+//         fn shutdown(&self) -> Result<(), ShutdownCallbackError> {
+//             self.0
+//                 .try_send(NotifyNetworkEventListenerMsg::Shutdown)
+//                 .map_err(|e| ShutdownCallbackError {
+//                     reason: format!("{}", e),
+//                 })
+//         }
+//     }
+// }
