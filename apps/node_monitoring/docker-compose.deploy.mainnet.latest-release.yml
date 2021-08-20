@@ -31,10 +31,10 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.7.0-frame-pointers-enabled
+    image: local-tezedge:deploy
     pid: host
     network_mode: host
-    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--context-stats-db-path", "context-stats-db", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
+    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "tezedge", "--context-stats-db-path", "context-stats-db", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -45,7 +45,7 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
-    depends_on: 
+    depends_on:
       - "tezedge-memprof"
 
   ocaml-node:
