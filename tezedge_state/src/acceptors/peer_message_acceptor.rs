@@ -50,13 +50,13 @@ where
                 // create a request to notify proposer about the message,
                 // which in turn will notify actor system.
                 _ => {
-                    self.requests.insert(PendingRequestState {
-                        request: PendingRequest::PeerMessageReceived {
+                    self.requests.add(
+                        self.time,
+                        PendingRequest::PeerMessageReceived {
                             peer: proposal.peer,
                             message: Arc::new(proposal.message),
                         },
-                        status: RetriableRequestState::Idle { at: self.time },
-                    });
+                    );
                 }
             }
         } else {

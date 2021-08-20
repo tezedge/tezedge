@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -8,10 +9,19 @@ use crypto::hash::CryptoboxPublicKeyHash;
 
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
+use tla_sm::recorders::CloneRecorder;
+use tla_sm::{impl_default_recorder_for_simple_clonable, DefaultRecorder};
 pub use tla_sm::{GetRequests, Proposal};
 
 use crate::state::TezedgeState;
 use crate::PeerAddress;
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy)]
+pub struct RequestId {
+    index: usize,
+}
+
+impl_default_recorder_for_simple_clonable!(RequestId);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum RequestState {
@@ -33,30 +43,30 @@ pub enum RetriableRequestState {
 #[derive(Debug, Clone)]
 pub enum TezedgeRequest {
     StartListeningForNewPeers {
-        req_id: usize,
+        req_id: RequestId,
     },
     StopListeningForNewPeers {
-        req_id: usize,
+        req_id: RequestId,
     },
     ConnectPeer {
-        req_id: usize,
+        req_id: RequestId,
         peer: PeerAddress,
     },
     DisconnectPeer {
-        req_id: usize,
+        req_id: RequestId,
         peer: PeerAddress,
     },
     BlacklistPeer {
-        req_id: usize,
+        req_id: RequestId,
         peer: PeerAddress,
     },
     PeerMessageReceived {
-        req_id: usize,
+        req_id: RequestId,
         peer: PeerAddress,
         message: Arc<PeerMessageResponse>,
     },
     NotifyHandshakeSuccessful {
-        req_id: usize,
+        req_id: RequestId,
         peer_address: PeerAddress,
         peer_public_key_hash: CryptoboxPublicKeyHash,
         metadata: MetadataMessage,
@@ -96,6 +106,60 @@ pub enum PendingRequest {
 pub struct PendingRequestState {
     pub request: PendingRequest,
     pub status: RetriableRequestState,
+}
+
+#[derive(Debug, Clone)]
+pub struct TezedgeRequests {
+    requests: slab::Slab<PendingRequestState>,
+}
+
+impl TezedgeRequests {
+    pub fn new() -> Self {
+        Self {
+            requests: slab::Slab::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.requests.is_empty()
+    }
+
+    pub fn total_len(&self) -> usize {
+        self.requests.len()
+    }
+
+    pub fn get(&self, req_id: RequestId) -> Option<&PendingRequestState> {
+        self.requests.get(req_id.index)
+    }
+
+    pub fn get_mut(&mut self, req_id: RequestId) -> Option<&mut PendingRequestState> {
+        self.requests.get_mut(req_id.index)
+    }
+
+    pub fn add(&mut self, at: SystemTime, request: PendingRequest) -> usize {
+        self.requests.insert(PendingRequestState {
+            request,
+            status: RetriableRequestState::Idle { at },
+        })
+    }
+
+    /// Finish and remove the request.
+    pub fn finish(&mut self, req_id: RequestId) -> PendingRequestState {
+        self.requests.remove(req_id.index)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (RequestId, &'a PendingRequestState)> {
+        self.requests
+            .iter()
+            .map(|(index, req)| (RequestId { index }, req))
+    }
+
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(usize, &mut PendingRequestState) -> bool,
+    {
+        self.requests.retain(f)
+    }
 }
 
 impl GetRequests for TezedgeState {
@@ -209,7 +273,7 @@ mod tests {
             },
         });
 
-        match state.requests[req_id].status {
+        match state.requests.get(req_id).unwrap().status {
             RetriableRequestState::Retry { at } => {
                 assert_eq!(initial_time + state.config.periodic_react_interval, at);
             }
