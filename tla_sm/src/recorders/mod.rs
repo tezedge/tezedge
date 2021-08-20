@@ -27,6 +27,7 @@ pub use iterator_recorder::*;
 mod stream_recorder;
 pub use stream_recorder::*;
 
+#[macro_export]
 macro_rules! impl_default_recorder_for_simple_clonable {
     ($name:ident) => {
         impl DefaultRecorder for $name {

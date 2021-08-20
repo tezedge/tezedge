@@ -25,7 +25,7 @@ where
             match &req.request {
                 PendingRequest::StartListeningForNewPeers => match proposal.message {
                     PendingRequestMsg::StartListeningForNewPeersSuccess => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                         slog::info!(&self.log, "Started listening for new p2p connections"; "port" => self.config.port.to_string());
                     }
                     PendingRequestMsg::StartListeningForNewPeersError { error } => {
@@ -33,7 +33,6 @@ where
                         req.status = RetriableRequestState::Retry {
                             at: self.time + self.config.periodic_react_interval,
                         };
-                        // self.requests.remove(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "StartListeningForNewPeers", "update" => format!("{:?}", msg))
@@ -41,7 +40,7 @@ where
                 },
                 PendingRequest::StopListeningForNewPeers => match proposal.message {
                     PendingRequestMsg::StopListeningForNewPeersSuccess => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "StopListeningForNewPeers", "update" => format!("{:?}", msg))
@@ -69,13 +68,13 @@ where
                                 received: None,
                             };
                         }
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     PendingRequestMsg::ConnectPeerError => {
                         let peer = *peer;
                         slog::warn!(&self.log, "Disconnecting peer!"; "reason" => "Initiating connection failed!");
                         self.blacklist_peer(peer);
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "ConnectPeer", "update" => format!("{:?}", msg))
@@ -86,7 +85,7 @@ where
                         req.status = RetriableRequestState::Pending { at: self.time };
                     }
                     PendingRequestMsg::DisconnectPeerSuccess => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "DisconnectPeer", "update" => format!("{:?}", msg))
@@ -97,7 +96,7 @@ where
                         req.status = RetriableRequestState::Pending { at: self.time };
                     }
                     PendingRequestMsg::BlacklistPeerSuccess => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "BlacklistPeer", "update" => format!("{:?}", msg))
@@ -105,7 +104,7 @@ where
                 },
                 PendingRequest::PeerMessageReceived { .. } => match proposal.message {
                     PendingRequestMsg::PeerMessageReceivedNotified => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "PeerMessageReceived", "update" => format!("{:?}", msg))
@@ -113,7 +112,7 @@ where
                 },
                 PendingRequest::NotifyHandshakeSuccessful { .. } => match proposal.message {
                     PendingRequestMsg::HandshakeSuccessfulNotified => {
-                        self.requests.remove(proposal.req_id);
+                        self.requests.finish(proposal.req_id);
                     }
                     msg => {
                         slog::trace!(&self.log, "Unexpected request update"; "request" => "NotifyHandshakeSuccessful", "update" => format!("{:?}", msg))
@@ -121,7 +120,9 @@ where
                 },
             }
         } else {
-            slog::warn!(&self.log, "Request update received for non-existant request"; "req_id" => proposal.req_id, "message" => format!("{:?}", proposal.message));
+            slog::warn!(&self.log, "Request update received for non-existant request";
+                        "req_id" => format!("{:?}", proposal.req_id),
+                        "message" => format!("{:?}", proposal.message));
         }
 
         self.adjust_p2p_state(proposal.effects);
