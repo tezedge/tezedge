@@ -12,7 +12,6 @@ use std::{
 };
 
 use failure::Fail;
-pub use rocksdb;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};

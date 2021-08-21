@@ -10,8 +10,6 @@ use nom::{
     combinator::{map, success},
     sequence::preceded,
 };
-use quickcheck::Arbitrary;
-use quickcheck_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::{
@@ -23,7 +21,7 @@ use crate::p2p::binary_message::{complete_input, SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader, Arbitrary, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
 pub enum AckMessage {
     #[encoding(tag = 0x00)]
     Ack,
@@ -53,7 +51,7 @@ impl SizeFromChunk for AckMessage {
     }
 }
 
-#[derive(Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader, Clone)]
+#[derive(Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader)]
 pub struct NackInfo {
     #[get = "pub"]
     motive: NackMotive,
@@ -66,16 +64,7 @@ pub struct NackInfo {
     potential_peers_to_connect: Vec<String>,
 }
 
-impl Arbitrary for NackInfo {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        NackInfo {
-            motive: NackMotive::arbitrary(g),
-            potential_peers_to_connect: vec![],
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader, Arbitrary, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader)]
 #[encoding(tags = "u16")]
 pub enum NackMotive {
     NoMotive,

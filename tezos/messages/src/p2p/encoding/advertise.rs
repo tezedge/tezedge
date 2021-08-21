@@ -19,13 +19,10 @@ pub struct AdvertiseMessage {
 }
 
 impl AdvertiseMessage {
-    pub fn new<I>(addresses: I) -> Self
-    where
-        I: IntoIterator<Item = SocketAddr>,
-    {
+    pub fn new(addresses: &[SocketAddr]) -> Self {
         Self {
             id: addresses
-                .into_iter()
+                .iter()
                 .map(|address| format!("{}", address))
                 .collect(),
         }

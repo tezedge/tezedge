@@ -3,21 +3,32 @@
 
 //! This channel is used to transmit p2p networking messages between actors.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use riker::actors::*;
 
+use tezos_messages::p2p::encoding::advertise::AdvertiseMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::{PeerAddress, PeerId};
+use crate::PeerId;
 
+use super::peer::PeerRef;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
+
+/// Peer has been bootstrapped.
+#[derive(Clone, Debug)]
+pub struct PeerBootstrapFailed {
+    pub address: SocketAddr,
+    /// List of potential peers to connect to. Is extracted from `Nack`.
+    pub potential_peers_to_connect: Option<Vec<String>>,
+}
 
 /// We have received message from another peer
 #[derive(Clone, Debug)]
 pub struct PeerMessageReceived {
-    pub peer_address: PeerAddress,
+    pub peer: PeerRef,
     pub message: Arc<PeerMessageResponse>,
 }
 
@@ -25,15 +36,22 @@ pub struct PeerMessageReceived {
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
     /// Events
-    PeerBootstrapped(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
-    PeerDisconnected(PeerAddress),
-    PeerBlacklisted(PeerAddress),
+    PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>, Arc<NetworkVersion>),
+    PeerBlacklisted(Arc<PeerId>),
     PeerMessageReceived(PeerMessageReceived),
-    PeerStalled(Arc<PeerId>),
+    PeerStalled(Arc<ActorUri>),
     /// Commands (dedicated to peer_manager)
     /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
     BlacklistPeer(Arc<PeerId>, String),
-    SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
+    ProcessAdvertisedPeers(Arc<PeerId>, AdvertiseMessage),
+    SendBootstrapPeers(Arc<PeerId>),
+    ProcessFailedBootstrapAddress(PeerBootstrapFailed),
+}
+
+impl From<PeerMessageReceived> for NetworkChannelMsg {
+    fn from(msg: PeerMessageReceived) -> Self {
+        NetworkChannelMsg::PeerMessageReceived(msg)
+    }
 }
 
 /// Represents various topics

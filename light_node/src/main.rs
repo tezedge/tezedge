@@ -15,11 +15,11 @@ use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
+use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use shell::tezedge_state_manager::TezedgeStateManager;
 use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
 use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
@@ -252,19 +252,6 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-
-    // initialize tezedge state
-    let mut tezedge_state_manager = TezedgeStateManager::new(
-        network_channel.clone(),
-        log.clone(),
-        identity.clone(),
-        shell_compatibility_version.clone(),
-        env.p2p.clone(),
-        env.identity.expected_pow,
-        init_storage_data.chain_id.clone(),
-    );
-
-    // initialize actors
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
         shell_channel.clone(),
         persistent_storage.clone(),
@@ -300,7 +287,6 @@ fn block_on_actors(
         &actor_system,
         block_applier.clone(),
         network_channel.clone(),
-        tezedge_state_manager.proposer_handle(),
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
@@ -328,7 +314,7 @@ fn block_on_actors(
 
         let _ = Monitor::actor(
             &actor_system,
-            network_channel,
+            network_channel.clone(),
             websocket_handler,
             shell_channel.clone(),
             persistent_storage.clone(),
@@ -367,10 +353,20 @@ fn block_on_actors(
     } else {
         // TODO: TE-386 - controlled startup
         std::thread::sleep(std::time::Duration::from_secs(2));
-    }
 
-    // start tezedge_state machine with p2p
-    tezedge_state_manager.start();
+        // and than open p2p and others
+        let _ = PeerManager::actor(
+            &actor_system,
+            network_channel,
+            shell_channel.clone(),
+            tokio_runtime.handle().clone(),
+            identity,
+            shell_compatibility_version,
+            env.p2p,
+            env.identity.expected_pow,
+        )
+        .expect("Failed to create peer manager");
+    }
 
     info!(log, "Actors initialized");
 
@@ -383,7 +379,7 @@ fn block_on_actors(
             .expect("Failed to listen for ctrl-c event");
         info!(log, "Ctrl-c or SIGINT received!");
 
-        info!(log, "Sending shutdown notification to actors (1/6)");
+        info!(log, "Sending shutdown notification to actors (1/5)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -395,27 +391,24 @@ fn block_on_actors(
         // give actors some time to shut down
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors (2/6)");
+        info!(log, "Shutting down actors (2/5)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Shutting down protocol runner pools (3/6)");
+        info!(log, "Shutting down protocol runner pools (3/5)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
         drop(tezos_writeable_api_pool);
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Shutting down tezedge state (4/6)");
-        drop(tezedge_state_manager);
-
-        info!(log, "Flushing databases (5/6)");
+        info!(log, "Flushing databases (4/5)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (6/6)");
+        info!(log, "Shutdown complete (5/5)");
     });
 }
 

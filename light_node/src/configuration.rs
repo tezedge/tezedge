@@ -16,7 +16,7 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
-use shell::tezedge_state_manager::P2p;
+use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
@@ -366,12 +366,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .requires("peers")
             .conflicts_with("bootstrap-lookup-address")
             .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
-        .arg(Arg::with_name("effects-seed")
-            .long("effects-seed")
-            .takes_value(true)
-            .value_name("SEED")
-            .help("The seed")
-        )
         .arg(Arg::with_name("network")
             .long("network")
             .global(true)
@@ -607,20 +601,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
-        .arg(Arg::with_name("persist-proposals")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path where we should persist proposals.")
-            .conflicts_with("replay-proposals")
-        )
-        .arg(Arg::with_name("replay-proposals")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to recorded proposals, which will be used to replay state.")
-            .conflicts_with("persist-proposals")
-        )
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
             .global(true)
@@ -1086,12 +1066,6 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
-                effects_seed: args.value_of("effects-seed").map(|s| {
-                    s.parse::<u64>()
-                        .expect("Provided value cannot be converted to u64")
-                }),
-                persist_proposals: args.value_of("persist-proposals").map(|s| s.to_owned()),
-                replay_proposals: args.value_of("replay-proposals").map(|s| s.to_owned()),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 use num_bigint::{BigUint, RandBigInt};
@@ -25,7 +24,7 @@ macro_rules! merge_slices {
 }
 
 /// Arbitrary number that can be used once in communication.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct Nonce {
     value: BigUint,
 }
@@ -89,7 +88,6 @@ impl Nonce {
 }
 
 /// Pair of local/remote nonces
-#[derive(Debug, Clone)]
 pub struct NoncePair {
     pub local: Nonce,
     pub remote: Nonce,

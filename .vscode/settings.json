@@ -5,7 +5,6 @@
     "**/target/debug/incremental/**": true
   },
   "cSpell.words": [
-    "Seedable",
     "Tezedge",
     "shiplift",
     "simplestakingcom"

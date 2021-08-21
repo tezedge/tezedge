@@ -4,3 +4,5 @@
 //! This module handles low level p2p communication.
 
 pub mod network_channel;
+pub mod peer;
+pub mod stream;

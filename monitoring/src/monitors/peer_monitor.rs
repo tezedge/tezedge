@@ -4,12 +4,11 @@
 use std::{net::SocketAddr, time::Instant};
 
 use crate::websocket::ws_messages::PeerMetrics;
-use crypto::hash::CryptoboxPublicKeyHash;
 
 /// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
     peer_address: SocketAddr,
-    peer_public_key_hash: CryptoboxPublicKeyHash,
+    public_key: String,
 
     total_transferred: usize,
     current_transferred: usize,
@@ -18,11 +17,11 @@ pub(crate) struct PeerMonitor {
 }
 
 impl PeerMonitor {
-    pub fn new(peer_address: SocketAddr, peer_public_key_hash: CryptoboxPublicKeyHash) -> Self {
+    pub fn new(peer_addr: SocketAddr, public_key: String) -> Self {
         let now = Instant::now();
         Self {
-            peer_address,
-            peer_public_key_hash,
+            peer_address: peer_addr,
+            public_key,
             total_transferred: 0,
             current_transferred: 0,
             last_update: now,
@@ -45,7 +44,7 @@ impl PeerMonitor {
 
     pub fn snapshot(&mut self) -> PeerMetrics {
         let ret = PeerMetrics::new(
-            self.peer_public_key_hash(),
+            self.public_key.clone(),
             self.peer_address(),
             self.total_transferred,
             self.avg_speed(),
@@ -59,9 +58,5 @@ impl PeerMonitor {
 
     pub fn peer_address(&self) -> String {
         self.peer_address.to_string()
-    }
-
-    pub fn peer_public_key_hash(&self) -> String {
-        self.peer_public_key_hash.to_base58_check()
     }
 }
