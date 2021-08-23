@@ -10,13 +10,8 @@ where
     Efs: Effects,
 {
     fn accept(&mut self, proposal: PeerDisconnectProposal<'a, Efs>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         slog::warn!(&self.log, "Disconnecting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Requested by the Proposer");
         self.disconnect_peer(proposal.peer);
-
-        self.periodic_react(proposal.effects);
+        self.adjust_p2p_state(proposal.effects);
     }
 }

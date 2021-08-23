@@ -8,7 +8,7 @@ use tezos_messages::p2p::encoding::prelude::{AdvertiseMessage, PeerMessage};
 use tla_sm::Acceptor;
 
 use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
-use crate::{Effects, PendingRequest, PendingRequestState, RetriableRequestState, TezedgeState};
+use crate::{Effects, PendingRequest, TezedgeState};
 
 impl<'a, Efs> Acceptor<PeerMessageProposal<'a, Efs>> for TezedgeState
 where
@@ -19,10 +19,6 @@ where
     /// This method isn't invoked by proposer, it's more of an internal
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerMessageProposal<'a, Efs>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             // handle connected peer messages.
             match proposal.message.message() {
@@ -39,7 +35,6 @@ where
                 PeerMessage::Advertise(message) => {
                     self.accept_internal(ExtendPotentialPeersProposal {
                         effects: proposal.effects,
-                        time_passed: Default::default(),
                         peers: message
                             .id()
                             .iter()
@@ -65,6 +60,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

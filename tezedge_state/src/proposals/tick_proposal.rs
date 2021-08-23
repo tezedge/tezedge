@@ -12,24 +12,15 @@ use super::MaybeRecordedProposal;
 
 /// `TickProposal` is a way for us to update logical clock for state machine.
 ///
-/// Every `Proposal` updates logical clock of the state machine after
-/// it has been fed to `Acceptor`. This is in case we want to explicitly
-/// update time, or if we haven't sent proposals to state machine for
-/// some time and want to update time.
+/// This update on time will trigger actions that are time dependant. If we
+/// never update internal logical clock with this proposal, those actions
+/// will never be triggered.
 pub struct TickProposal<'a, Efs> {
     pub effects: &'a mut Efs,
     pub time_passed: Duration,
 }
 
-impl<'a, Efs> Proposal for TickProposal<'a, Efs> {
-    fn time_passed(&self) -> Duration {
-        self.time_passed
-    }
-
-    fn nullify_time_passed(&mut self) {
-        self.time_passed = Duration::new(0, 0);
-    }
-}
+impl<'a, Efs> Proposal for TickProposal<'a, Efs> {}
 
 impl<'a, Efs> TickProposal<'a, Efs> {
     pub fn default_recorder(self) -> TickProposalRecorder<'a, Efs> {

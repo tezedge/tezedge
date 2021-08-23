@@ -17,9 +17,6 @@ where
     /// Peer's stream might be ready for writing, try to write/flush
     /// pending messages to the provided stream.
     fn accept(&mut self, proposal: PeerWritableProposal<'a, Efs, S>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
         let time = self.time;
 
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
@@ -64,7 +61,6 @@ where
                                             // after successful handshake.
                                             self.accept_internal(PeerReadableProposal {
                                                 effects: proposal.effects,
-                                                time_passed: Default::default(),
                                                 peer: proposal.peer,
                                                 stream: proposal.stream,
                                             });
@@ -79,7 +75,7 @@ where
                                             slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Sent Nack");
                                             self.blacklist_peer(proposal.peer);
                                             self.adjust_p2p_state(proposal.effects);
-                                            return self.periodic_react(proposal.effects);
+                                            return;
                                         }
                                     }
                                 }
@@ -153,6 +149,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

@@ -11,10 +11,6 @@ where
 {
     /// Handle new incoming connection.
     fn accept(&mut self, proposal: NewPeerConnectProposal<'a, Efs>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         // TODO: if private node, check if peer trying to connect to us
         // is trusted.
         if self.is_address_blacklisted(&proposal.peer) {
@@ -37,6 +33,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

@@ -166,19 +166,16 @@ fn try_sequence<Efs: Effects + Clone>(
         match msg {
             Messages::Handshake(msg) => state.accept(PeerHandshakeMessageProposal {
                 effects,
-                time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
                 message: msg.clone(),
             }),
             Messages::Writable(writable) => state.accept(PeerWritableProposal {
                 effects,
-                time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
                 stream: &mut writable.clone(),
             }),
             Messages::Disconnected => state.accept(PeerDisconnectedProposal {
                 effects,
-                time_passed: Duration::from_millis(1),
                 peer: peer.clone(),
             }),
         };
@@ -224,7 +221,6 @@ fn fork_state_and_init_incoming<Efs: Effects + Clone>(
     let mut state = state.clone();
     state.accept(NewPeerConnectProposal {
         effects: &mut effects,
-        time_passed: Duration::new(0, 0),
         peer: peer_addr,
     });
 
@@ -241,7 +237,6 @@ fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
     let mut state = state.clone();
     state.accept(ExtendPotentialPeersProposal {
         effects: &mut effects,
-        time_passed: Duration::new(0, 0),
         peers: std::iter::once(peer_addr.into()),
     });
     let mut requests = vec![];
@@ -254,7 +249,6 @@ fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
                 req_found = true;
                 state.accept(PendingRequestProposal {
                     effects: &mut effects,
-                    time_passed: Duration::new(0, 0),
                     req_id,
                     message: match success {
                         true => PendingRequestMsg::ConnectPeerSuccess,

@@ -154,7 +154,7 @@ impl TezedgeRequests {
             .map(|(index, req)| (RequestId { index }, req))
     }
 
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(usize, &mut PendingRequestState) -> bool,
     {
@@ -229,7 +229,7 @@ impl GetRequests for TezedgeState {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
     use tla_sm::{Acceptor, GetRequests};
 
     use super::*;
@@ -266,7 +266,6 @@ mod tests {
 
         state.accept(PendingRequestProposal {
             effects: &mut effects,
-            time_passed: Duration::new(0, 0),
             req_id,
             message: PendingRequestMsg::StartListeningForNewPeersError {
                 error: std::io::ErrorKind::AddrInUse,
@@ -308,7 +307,6 @@ mod tests {
 
         state.accept(PendingRequestProposal {
             effects: &mut effects,
-            time_passed: Duration::new(0, 0),
             req_id,
             message: PendingRequestMsg::StartListeningForNewPeersSuccess,
         });
