@@ -10,10 +10,7 @@ where
     Efs: Effects,
 {
     fn accept(&mut self, proposal: TickProposal<'a, Efs>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
+        self.time += proposal.time_passed;
         self.periodic_react(proposal.effects);
     }
 }

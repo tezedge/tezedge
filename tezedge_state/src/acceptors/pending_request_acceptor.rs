@@ -15,10 +15,6 @@ where
 {
     /// Handle status update for pending request.
     fn accept(&mut self, proposal: PendingRequestProposal<'a, Efs>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         if let Some(req) = self.requests.get_mut(proposal.req_id) {
             // Unexpected requests can happen in fuzzer or simulator
             // environment, but it shouldn't happen in real world.
@@ -126,6 +122,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

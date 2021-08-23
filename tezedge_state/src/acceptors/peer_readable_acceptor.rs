@@ -18,17 +18,11 @@ where
 {
     /// Peer's stream might be ready for reading, try to read from passed stream.
     fn accept(&mut self, proposal: PeerReadableProposal<'a, Efs, S>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             match peer.read_message_from(proposal.stream) {
                 Ok(message) => {
-                    self.periodic_react(proposal.effects);
                     self.accept_internal(PeerMessageProposal {
                         effects: proposal.effects,
-                        time_passed: Default::default(),
                         peer: proposal.peer,
                         message,
                     });
@@ -60,7 +54,6 @@ where
                 } else if let Some(message) = peer.read_buf.take_if_ready() {
                     self.accept_internal(PeerHandshakeMessageProposal {
                         effects: proposal.effects,
-                        time_passed: Default::default(),
                         peer: proposal.peer,
                         message: PeerBinaryHandshakeMessage::new(message),
                     });
@@ -75,6 +68,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

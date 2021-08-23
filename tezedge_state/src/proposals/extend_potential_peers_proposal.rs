@@ -3,9 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::time::Duration;
 use tla_sm::{
-    recorders::{CloneRecorder, IteratorRecorder, RecordedIterator},
+    recorders::{IteratorRecorder, RecordedIterator},
     DefaultRecorder, Proposal,
 };
 
@@ -15,19 +14,10 @@ use super::MaybeRecordedProposal;
 
 pub struct ExtendPotentialPeersProposal<'a, Efs, P> {
     pub effects: &'a mut Efs,
-    pub time_passed: Duration,
     pub peers: P,
 }
 
-impl<'a, Efs, P> Proposal for ExtendPotentialPeersProposal<'a, Efs, P> {
-    fn time_passed(&self) -> Duration {
-        self.time_passed
-    }
-
-    fn nullify_time_passed(&mut self) {
-        self.time_passed = Duration::new(0, 0);
-    }
-}
+impl<'a, Efs, P> Proposal for ExtendPotentialPeersProposal<'a, Efs, P> {}
 
 impl<'a, Efs, P> DefaultRecorder for ExtendPotentialPeersProposal<'a, Efs, P>
 where
@@ -43,7 +33,6 @@ where
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct RecordedExtendPotentialPeersProposal {
     pub effects: RecordedEffects,
-    pub time_passed: Duration,
     pub peers: Vec<SocketAddr>,
 }
 
@@ -53,7 +42,6 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedExtendPotentialPeersProposal 
     fn as_proposal(self) -> Self::Proposal {
         Self::Proposal {
             effects: &mut self.effects,
-            time_passed: self.time_passed,
             peers: self.peers.clone(),
         }
     }
@@ -61,7 +49,6 @@ impl<'a> MaybeRecordedProposal for &'a mut RecordedExtendPotentialPeersProposal 
 
 pub struct ExtendPotentialPeersProposalRecorder<'a, Efs, I> {
     effects: EffectsRecorder<'a, Efs>,
-    time_passed: CloneRecorder<Duration>,
     peers: IteratorRecorder<I, SocketAddr>,
 }
 
@@ -72,7 +59,6 @@ impl<'a, Efs, I> ExtendPotentialPeersProposalRecorder<'a, Efs, I> {
     {
         Self {
             effects: EffectsRecorder::new(proposal.effects),
-            time_passed: proposal.time_passed.default_recorder(),
             peers: IteratorRecorder::new(proposal.peers.into_iter()),
         }
     }
@@ -86,7 +72,6 @@ impl<'a, Efs, I> ExtendPotentialPeersProposalRecorder<'a, Efs, I> {
     > {
         ExtendPotentialPeersProposal {
             effects: self.effects.record(),
-            time_passed: self.time_passed.record(),
             peers: self.peers.record(),
         }
     }
@@ -94,7 +79,6 @@ impl<'a, Efs, I> ExtendPotentialPeersProposalRecorder<'a, Efs, I> {
     pub fn finish_recording(self) -> RecordedExtendPotentialPeersProposal {
         RecordedExtendPotentialPeersProposal {
             effects: self.effects.finish_recording(),
-            time_passed: self.time_passed.finish_recording(),
             peers: self.peers.finish_recording(),
         }
     }

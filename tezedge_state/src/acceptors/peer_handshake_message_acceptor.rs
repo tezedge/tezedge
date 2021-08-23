@@ -18,10 +18,6 @@ where
     /// This method isn't invoked by proposer, it's more of an internal
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerHandshakeMessageProposal<'a, Efs, M>) {
-        if let Err(_err) = self.validate_proposal(&proposal) {
-            return;
-        }
-
         // handle handshake messages.
         use HandshakeStep::*;
 
@@ -33,8 +29,7 @@ where
                 // we add new pending peer with `Initiated` state. So this
                 // can only happen if outside world is out of sync with TezedgeState.
                 slog::warn!(&self.log, "Received decrypted/decoded handshake message proposal from an unknown peer. Should be impossible!");
-                self.disconnect_peer(proposal.peer);
-                return self.periodic_react(proposal.effects);
+                return self.disconnect_peer(proposal.peer);
             }
         };
 
@@ -166,6 +161,5 @@ where
         }
 
         self.adjust_p2p_state(proposal.effects);
-        self.periodic_react(proposal.effects);
     }
 }

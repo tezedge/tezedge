@@ -14,7 +14,6 @@ use tezos_messages::p2p::encoding::prelude::{
 pub use tla_sm::{Acceptor, GetRequests, Proposal};
 
 use crate::peer_address::{DebugVecItemsAsStr, PeerListenerAddress};
-use crate::proposals::InvalidProposalError;
 use crate::{Effects, PeerAddress, Port, ShellCompatibilityVersion};
 
 mod assert_state;
@@ -160,15 +159,6 @@ impl TezedgeState {
         self.time
     }
 
-    pub fn validate_proposal<P: Proposal>(
-        &mut self,
-        proposal: &P,
-    ) -> Result<(), InvalidProposalError> {
-        self.time += proposal.time_passed();
-
-        Ok(())
-    }
-
     pub fn blacklisted_peers(&self) -> &BlacklistedPeers {
         &self.blacklisted_peers
     }
@@ -182,14 +172,11 @@ impl TezedgeState {
         MetadataMessage::new(self.config.disable_mempool, self.config.private_node)
     }
 
-    pub(crate) fn accept_internal<P>(&mut self, mut proposal: P)
+    pub(crate) fn accept_internal<P>(&mut self, proposal: P)
     where
         P: Proposal,
         Self: Acceptor<P>,
     {
-        // since this is internal proposal call, set passed time to 0 (nullify),
-        // to avoid increasing internal clock by extra time.
-        proposal.nullify_time_passed();
         self.accept(proposal)
     }
 

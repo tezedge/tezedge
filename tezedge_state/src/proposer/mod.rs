@@ -270,13 +270,20 @@ where
                 );
             }
             Event::Network(event) => {
+                accept_proposal!(
+                    self.state,
+                    TickProposal {
+                        time_passed: self.time.update(event.time()).take_elapsed(),
+                        effects: &mut self.effects
+                    },
+                    self.proposal_persister
+                );
                 self.handle_network_event(event);
             }
         }
     }
 
     fn handle_network_event(&mut self, event: &NetE) {
-        self.time.update(event.time());
         if event.is_server_event() {
             // we received event for the server (client opened tcp stream to us).
             loop {
@@ -292,7 +299,6 @@ where
                                 self.state,
                                 NewPeerConnectProposal {
                                     effects: &mut self.effects,
-                                    time_passed: self.time.take_elapsed(),
                                     peer: peer.address().clone(),
                                 },
                                 self.proposal_persister
@@ -310,7 +316,6 @@ where
     }
 
     fn handle_readiness_event(&mut self, event: &NetE) {
-        self.time.update(event.time());
         let peer = match self.manager.get_peer_for_event_mut(&event) {
             Some(peer) => peer,
             None => {
@@ -328,7 +333,6 @@ where
                 self.state,
                 PeerDisconnectedProposal {
                     effects: &mut self.effects,
-                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                 },
                 self.proposal_persister
@@ -341,7 +345,6 @@ where
                 self.state,
                 PeerReadableProposal {
                     effects: &mut self.effects,
-                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -354,7 +357,6 @@ where
                 self.state,
                 PeerWritableProposal {
                     effects: &mut self.effects,
-                    time_passed: self.time.take_elapsed(),
                     peer: peer.address().clone(),
                     stream: &mut peer.stream,
                 },
@@ -385,7 +387,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: status,
                         },
                         self.proposal_persister
@@ -401,7 +402,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: PendingRequestMsg::StopListeningForNewPeersSuccess,
                         },
                         self.proposal_persister
@@ -418,7 +418,6 @@ where
                                 PendingRequestProposal {
                                     effects: &mut self.effects,
                                     req_id,
-                                    time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerSuccess,
                                 },
                                 self.proposal_persister
@@ -430,7 +429,6 @@ where
                                 PendingRequestProposal {
                                     effects: &mut self.effects,
                                     req_id,
-                                    time_passed: Default::default(),
                                     message: PendingRequestMsg::ConnectPeerError,
                                 },
                                 self.proposal_persister
@@ -450,7 +448,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: PendingRequestMsg::DisconnectPeerSuccess,
                         },
                         self.proposal_persister
@@ -468,7 +465,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: PendingRequestMsg::BlacklistPeerSuccess,
                         },
                         self.proposal_persister
@@ -489,7 +485,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: PendingRequestMsg::PeerMessageReceivedNotified,
                         },
                         self.proposal_persister
@@ -516,7 +511,6 @@ where
                         PendingRequestProposal {
                             effects: &mut self.effects,
                             req_id,
-                            time_passed: Default::default(),
                             message: PendingRequestMsg::HandshakeSuccessfulNotified,
                         },
                         self.proposal_persister
@@ -536,8 +530,16 @@ where
 
         accept_proposal!(
             self.state,
-            ExtendPotentialPeersProposal {
+            TickProposal {
+                effects: &mut self.effects,
                 time_passed: self.time.update(at).take_elapsed(),
+            },
+            self.proposal_persister
+        );
+
+        accept_proposal!(
+            self.state,
+            ExtendPotentialPeersProposal {
                 effects: &mut self.effects,
                 peers,
             },
@@ -552,8 +554,16 @@ where
 
         accept_proposal!(
             self.state,
-            PeerDisconnectProposal {
+            TickProposal {
+                effects: &mut self.effects,
                 time_passed: self.time.update(at).take_elapsed(),
+            },
+            self.proposal_persister
+        );
+
+        accept_proposal!(
+            self.state,
+            PeerDisconnectProposal {
                 effects: &mut self.effects,
                 peer
             },
@@ -568,8 +578,16 @@ where
 
         accept_proposal!(
             self.state,
-            PeerBlacklistProposal {
+            TickProposal {
+                effects: &mut self.effects,
                 time_passed: self.time.update(at).take_elapsed(),
+            },
+            self.proposal_persister
+        );
+
+        accept_proposal!(
+            self.state,
+            PeerBlacklistProposal {
                 effects: &mut self.effects,
                 peer
             },
@@ -591,14 +609,20 @@ where
         if self.proposal_loader.is_some() {
             return;
         }
-        self.time.update(at);
+        accept_proposal!(
+            self.state,
+            TickProposal {
+                effects: &mut self.effects,
+                time_passed: self.time.update(at).take_elapsed(),
+            },
+            self.proposal_persister
+        );
 
         if let Some(peer) = self.manager.get_peer(&addr) {
             accept_proposal!(
                 self.state,
                 SendPeerMessageProposal {
                     effects: &mut self.effects,
-                    time_passed: self.time.take_elapsed(),
                     peer: addr,
                     message,
                 },
@@ -611,7 +635,6 @@ where
                 self.state,
                 PeerWritableProposal {
                     effects: &mut self.effects,
-                    time_passed: Default::default(),
                     peer: addr,
                     stream: &mut peer.stream,
                 },
@@ -632,6 +655,15 @@ where
     ) -> io::Result<()> {
         use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 
+        accept_proposal!(
+            self.state,
+            TickProposal {
+                effects: &mut self.effects,
+                time_passed: self.time.update(at).take_elapsed(),
+            },
+            self.proposal_persister
+        );
+
         let peer = match self.manager.get_peer(&addr) {
             Some(peer) => peer,
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "peer not found!")),
@@ -641,7 +673,6 @@ where
             self.state,
             SendPeerMessageProposal {
                 effects: &mut self.effects,
-                time_passed: self.time.update(at).take_elapsed(),
                 peer: addr,
                 message,
             },
@@ -652,7 +683,6 @@ where
             self.state,
             PeerWritableProposal {
                 effects: &mut self.effects,
-                time_passed: Default::default(),
                 peer: addr,
                 stream: &mut ExtendableAsWritable::from(&mut send_buf),
             },
@@ -775,57 +805,45 @@ where
             };
             use RecordedProposal::*;
 
-            let time_passed;
             match &mut proposal {
                 ExtendPotentialPeersProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 NewPeerConnectProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerBlacklistProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerDisconnectProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerDisconnectedProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerMessageProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerReadableProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PeerWritableProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 PendingRequestProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 SendPeerMessageProposal(proposal) => {
-                    time_passed = proposal.time_passed;
                     self.inner.state.accept(proposal);
                 }
                 TickProposal(proposal) => {
-                    time_passed = proposal.time_passed;
+                    // TODO: We have to do this sleep because of non-deterministic
+                    // parts that are outside of state machine, like riker.
+                    // Once those parts are moved in, this should be removed.
+                    std::thread::sleep(proposal.time_passed);
                     self.inner.state.accept(proposal);
                 }
             };
-            // TODO: We have to do this sleep because of non-deterministic
-            // parts that are outside of state machine, like riker.
-            // Once those parts are moved in, this should be removed.
-            std::thread::sleep(time_passed);
         } else {
             let mut file = std::fs::File::create("state_after_replay").unwrap();
             write!(file, "{:?}", self.state()).unwrap();
