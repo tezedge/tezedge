@@ -5,8 +5,8 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 
+use tezedge_proposer::Peer;
 use tezedge_state::chunking::{ChunkReadBuffer, EncryptedMessageWriter, MessageReadBuffer};
-use tezedge_state::proposer::Peer;
 use tezedge_state::PeerCrypto;
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};

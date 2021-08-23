@@ -23,6 +23,4 @@ pub use state::*;
 mod tezedge_state_wrapper;
 pub use tezedge_state_wrapper::*;
 
-pub mod proposer;
-
 pub mod sample_tezedge_state;

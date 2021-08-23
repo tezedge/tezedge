@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
-use tezedge_state::proposer::{Event, Manager, Peer, TezedgeProposer, TezedgeProposerConfig};
+use tezedge_proposer::{Event, Manager, Peer, TezedgeProposer, TezedgeProposerConfig};
 use tezedge_state::{DefaultEffects, PeerAddress, PeerCrypto, TezedgeState};
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::NackInfo;

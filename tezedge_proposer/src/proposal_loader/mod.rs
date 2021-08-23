@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::proposals::RecordedProposal;
+use tezedge_state::proposals::RecordedProposal;
 
 mod file_proposal_loader;
 pub use file_proposal_loader::*;

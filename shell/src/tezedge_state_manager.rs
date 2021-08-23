@@ -30,12 +30,10 @@ use tla_sm::Acceptor;
 use tezedge_state::proposals::ExtendPotentialPeersProposal;
 use tezedge_state::{Effects, TezedgeConfig, TezedgeState};
 
-use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
-use tezedge_state::proposer::proposal_loader::FileProposalLoader;
-use tezedge_state::proposer::proposal_persister::{
-    FileProposalPersister, FileProposalPersisterHandle,
-};
-use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
+use tezedge_proposer::mio_manager::{MioEvents, MioManager};
+use tezedge_proposer::proposal_loader::FileProposalLoader;
+use tezedge_proposer::proposal_persister::{FileProposalPersister, FileProposalPersisterHandle};
+use tezedge_proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
 
 #[derive(Debug, Clone)]
 pub struct P2p {

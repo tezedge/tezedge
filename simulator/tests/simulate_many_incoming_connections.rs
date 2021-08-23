@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use simulator::one_real_node_cluster::*;
-use tezedge_state::proposer::TezedgeProposerConfig;
+use tezedge_proposer::TezedgeProposerConfig;
 use tezedge_state::{sample_tezedge_state, DefaultEffects, TezedgeConfig, TezedgeState};
 
 fn default_state(initial_time: SystemTime, effects: &mut DefaultEffects) -> TezedgeState {

@@ -3211,6 +3211,7 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezedge-proposer",
  "tezedge-state",
  "tezos-sys",
  "tezos_api",
@@ -3270,6 +3271,7 @@ dependencies = [
  "slog",
  "slog-async",
  "slog-term",
+ "tezedge-proposer",
  "tezedge-state",
  "tezos_encoding",
  "tezos_identity",
@@ -3578,23 +3580,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezedge-proposer"
+version = "1.8.0"
+dependencies = [
+ "crypto",
+ "failure",
+ "mio",
+ "serde 1.0.123",
+ "serde_json",
+ "slab",
+ "slog",
+ "tezedge-state",
+ "tezos_messages",
+ "tla-sm",
+]
+
+[[package]]
 name = "tezedge-state"
 version = "1.8.0"
 dependencies = [
  "bytes 1.0.1",
- "criterion",
  "crypto",
- "failure",
- "getset",
  "hex",
  "itertools 0.10.0",
  "lazy_static",
- "mio",
  "quickcheck",
  "quickcheck_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.3",
  "serde 1.0.123",
- "serde_json",
  "slab",
  "slog",
  "slog-async",

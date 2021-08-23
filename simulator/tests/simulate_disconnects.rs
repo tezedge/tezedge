@@ -5,7 +5,7 @@
 
 // use crypto::nonce::Nonce;
 // use simulator::one_real_node_cluster::*;
-// use tezedge_state::proposer::TezedgeProposerConfig;
+// use tezedge_proposer::TezedgeProposerConfig;
 // use tezedge_state::{sample_tezedge_state, TezedgeConfig, TezedgeState};
 // use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 // use tezos_messages::p2p::encoding::prelude::NetworkVersion;

@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc};
 
 use slog::Logger;
 
-use crate::proposals::*;
+use tezedge_state::proposals::RecordedProposal;
 
 use super::ProposalPersister;
 

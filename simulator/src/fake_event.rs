@@ -4,7 +4,7 @@
 use std::io;
 use std::time::Instant;
 
-use tezedge_state::proposer::{Event, EventRef, NetworkEvent};
+use tezedge_proposer::{Event, EventRef, NetworkEvent};
 
 use crate::fake_peer_id::FakePeerId;
 
