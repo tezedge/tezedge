@@ -11,13 +11,13 @@ use std::time::{Duration, Instant};
 use crypto::hash::CryptoboxPublicKeyHash;
 use tla_sm::{Acceptor, DefaultRecorder, GetRequests};
 
-use crate::proposals::{
+use tezedge_state::proposals::{
     ExtendPotentialPeersProposal, NewPeerConnectProposal, PeerBlacklistProposal,
     PeerDisconnectProposal, PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal,
     PendingRequestMsg, PendingRequestProposal, RecordedProposal, SendPeerMessageProposal,
     TickProposal,
 };
-use crate::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
+use tezedge_state::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
@@ -653,7 +653,7 @@ where
         addr: PeerAddress,
         message: PeerMessage,
     ) -> io::Result<()> {
-        use crate::chunking::extendable_as_writable::ExtendableAsWritable;
+        use tezedge_state::chunking::extendable_as_writable::ExtendableAsWritable;
 
         accept_proposal!(
             self.state,

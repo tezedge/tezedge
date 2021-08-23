@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use simulator::one_real_node_cluster::*;
-use tezedge_state::proposer::TezedgeProposerConfig;
+use tezedge_proposer::TezedgeProposerConfig;
 use tezedge_state::{sample_tezedge_state, DefaultEffects, TezedgeConfig, TezedgeState};
 
 pub fn black_box<T>(dummy: T) -> T {

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::PeerAddress;
+use tezedge_state::PeerAddress;
 
 pub type MioEvent = mio::event::Event;
 pub type NetPeer = Peer<TcpStream>;

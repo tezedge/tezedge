@@ -36,6 +36,7 @@ tezos_context = { path = "../tezos/context" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 tla-sm = { path = "../tla_sm" }
 tezedge-state = { path = "../tezedge_state" }
+tezedge-proposer = { path = "../tezedge_proposer" }
 
 [dev-dependencies]
 r2d2 = "0.8.9"

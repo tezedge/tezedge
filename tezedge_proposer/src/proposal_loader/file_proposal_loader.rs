@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-use crate::proposals::*;
+use tezedge_state::proposals::RecordedProposal;
 
 pub struct FileProposalLoader {
     reader: StreamDeserializer<'static, IoRead<BufReader<File>>, RecordedProposal>,

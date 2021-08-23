@@ -24,6 +24,7 @@ mio = { version = "0.7.11", features = ["os-poll", "net"] }
 tla-sm = { path = "../tla_sm" }
 crypto = { path = "../crypto" }
 tezedge-state = { path = "../tezedge_state" }
+tezedge-proposer = { path = "../tezedge_proposer" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
