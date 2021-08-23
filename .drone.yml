@@ -5531,6 +5531,9 @@ steps:
       # message_benchmark
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - cargo bench --bench message_benchmark -- --noplot
+      # encoders_benchmark
+      - echo "" && echo "" && echo "...encoders_benchmark..." && echo "" && echo ""
+      - cargo bench --bench encoders_benchmark -- --noplot
       # decoders_benchmark
       - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
       - cargo bench --bench decoders_benchmark -- --noplot
@@ -5570,6 +5573,9 @@ steps:
       # message_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench message_benchmark --no-run
+      # encoders_benchmark
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench encoders_benchmark --no-run
       # decoders_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench decoders_benchmark --no-run
@@ -5610,6 +5616,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
       - critcmp --export message_benchmark_target_branch_result > $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json
+      # encoders_benchmark - target
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench encoders_benchmark --no-run
+      - cargo bench --bench encoders_benchmark -- --noplot --save-baseline encoders_benchmark_target_branch_result
+      - critcmp --export encoders_benchmark_target_branch_result > $${CACHE_DATA_PATH}/encoders_benchmark_target_branch_result.json
       # decoders_benchmark - target
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench decoders_benchmark --no-run
@@ -5640,6 +5651,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
       - critcmp --export message_benchmark_current_branch_result > $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json
+      # encoders_benchmark - current
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench encoders_benchmark --no-run
+      - cargo bench --bench encoders_benchmark -- --noplot --save-baseline encoders_benchmark_current_branch_result
+      - critcmp --export encoders_benchmark_current_branch_result > $${CACHE_DATA_PATH}/encoders_benchmark_current_branch_result.json
       # decoders_benchmark - current
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench decoders_benchmark --no-run
@@ -5663,6 +5679,8 @@ steps:
       # compare results
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json --list
+      - echo "" && echo "" && echo "...encoders_benchmark..." && echo "" && echo ""
+      - critcmp $${CACHE_DATA_PATH}/encoders_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/encoders_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/decoders_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/decoders_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
