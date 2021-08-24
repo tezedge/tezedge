@@ -164,9 +164,6 @@ name: build-old-tezedge-binaries
 workspace:
   path: /drone/src
 
-environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
-
 steps:
 
 - name: build-artifacts
@@ -234,9 +231,6 @@ name: build-monitoring-artifacts
 workspace:
   path: /drone/src
 
-environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
-
 steps:
 
 - name: build-artifacts
@@ -285,9 +279,6 @@ name: corr/real-time-environment-cyclictest-latencies
 
 clone:
   disable: true
-
-environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
 
 steps:
 
