@@ -78,7 +78,7 @@ steps:
     - mkdir -p drone-cache/build_files/identities
     - mkdir -p drone-cache/test_data/tests/resources
     - mkdir -p drone-cache/tests
-    - mkdir -p drone-cache/sanbox_files
+    - mkdir -p drone-cache/sandbox_files
     # - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
     # copy binaries
     - cp ./target/release/light-node drone-cache/build_files
@@ -90,18 +90,18 @@ steps:
     - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params drone-cache/build_files/ffi
     - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params drone-cache/build_files/ffi
     # copy sandbox resources
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sanbox_files
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sanbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sandbox_files
     # copy other resources
     - cp ./light_node/etc/drone/assert_equals.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_equals.sh
     - cp ./light_node/etc/drone/assert_contains.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_contains.sh
@@ -1085,7 +1085,7 @@ steps:
     - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
     - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
     - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1327,7 +1327,7 @@ steps:
     - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
     - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
     - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1569,7 +1569,7 @@ steps:
     - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
     - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
     - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1819,9 +1819,9 @@ steps:
     # - mkdir -p $${SANDBOX_DATA_PATH}
     - mkdir -p /data/sandbox/tezos-client
     # - echo $${SANDBOX_DATA_PATH}
-    - cp drone-cache/sanbox_files/tezedge_drone_sandbox.config /data/sandbox/
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json /data/sandbox/
-    - cp drone-cache/sanbox_files/006-carthage-protocol-parameters.json /data/sandbox/
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox/
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox/
+    - cp drone-cache/sandbox_files/006-carthage-protocol-parameters.json /data/sandbox/
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
@@ -2061,7 +2061,7 @@ steps:
   commands:
     - sleep 5
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_start_light_node_args.json
+    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
 
 - name: check-running-nodes
   user: root
@@ -2085,7 +2085,7 @@ steps:
   image: cfmanteiga/alpine-bash-curl-jq
   commands:
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_init_client_request.json)
+    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
     - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
 
 - name: check-wallets
@@ -2104,7 +2104,7 @@ steps:
   image: cfmanteiga/alpine-bash-curl-jq
   commands:
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_activate_protocol_009_request.json)
+    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_009_request.json)
     - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
 
 - name: wait-sandbox-node-start-level-1
@@ -2129,7 +2129,7 @@ steps:
   image: cfmanteiga/alpine-bash-curl-jq
   commands:
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_bake_empty_block.json)
+    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
     - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
 
 - name: wait-sandbox-node-start-level-2
@@ -2234,7 +2234,7 @@ steps:
     commands:
       - sleep 5
       - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-      - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_start_light_node_args.json
+      - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
 
   - name: check-running-nodes
     user: root
@@ -2258,7 +2258,7 @@ steps:
     image: cfmanteiga/alpine-bash-curl-jq
     commands:
       - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-      - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_init_client_request.json)
+      - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
       - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
 
   - name: check-wallets
@@ -2277,7 +2277,7 @@ steps:
     image: cfmanteiga/alpine-bash-curl-jq
     commands:
       - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-      - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_activate_protocol_010_request.json)
+      - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_010_request.json)
       - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
 
   - name: wait-sandbox-node-start-level-1
@@ -2302,7 +2302,7 @@ steps:
     image: cfmanteiga/alpine-bash-curl-jq
     commands:
       - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-      - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sanbox_files/sandbox_bake_empty_block.json)
+      - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
       - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
 
   - name: wait-sandbox-node-start-level-2
@@ -2399,9 +2399,9 @@ steps:
       path: /data/sandbox
   commands:
     - mkdir -p /data/sandbox/tezos-client
-    - cp drone-cache/sanbox_files/tezedge_drone_sandbox.config /data/sandbox
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json /data/sandbox
-    - cp drone-cache/sanbox_files/008-edo-protocol-parameters.json /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/008-edo-protocol-parameters.json /data/sandbox
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-edo2-run
@@ -2714,9 +2714,9 @@ steps:
     - mkdir -p /data/sandbox
     - mkdir -p /data/sandbox/tezos-client
     - echo /data/sandbox
-    - cp drone-cache/sanbox_files/tezedge_drone_sandbox.config /data/sandbox
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json /data/sandbox
-    - cp drone-cache/sanbox_files/009-florence-protocol-parameters.json /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/009-florence-protocol-parameters.json /data/sandbox
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-florence-run
@@ -3026,9 +3026,9 @@ steps:
     - mkdir -p /data/sandbox
     - mkdir -p /data/sandbox/tezos-client
     - echo /data/sandbox
-    - cp drone-cache/sanbox_files/tezedge_drone_sandbox.config /data/sandbox
-    - cp drone-cache/sanbox_files/sandbox-patch-context.json /data/sandbox
-    - cp drone-cache/sanbox_files/010-granada-protocol-parameters.json /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/010-granada-protocol-parameters.json /data/sandbox
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-granada-run
