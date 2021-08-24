@@ -136,8 +136,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -203,8 +203,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -250,8 +250,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -282,26 +282,26 @@ clone:
 
 steps:
 
-# - name: generate-artificial-load
-#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-#   privileged: true
-#   detach: true
-#   user: root
-#   commands:
-#     - taskset -c 0 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 1 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 2 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 3 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 4 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 5 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 6 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 7 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 8 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 9 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 10 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 11 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - taskset -c 12 /bin/ping -l 100000 -q -s 10 -f localhost &
-#     - sleep 65
+- name: generate-artificial-load
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  privileged: true
+  detach: true
+  user: root
+  commands:
+    - taskset -c 0 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 1 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 2 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 3 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 4 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 5 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 6 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 7 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 8 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 9 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 10 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 11 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - taskset -c 12 /bin/ping -l 100000 -q -s 10 -f localhost &
+    - sleep 65
 
 - name: run-cyclic-test
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
@@ -311,9 +311,8 @@ steps:
     - name: build
       path: /artifacts
   commands:
-    # - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
-    # - drone-cache/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
-    - exit 0
+    - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
+    - drone-cache/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
 depends_on:
   - build-tezedge-binaries
@@ -321,19 +320,13 @@ depends_on:
 image_pull_secrets:
   - docker_pull_secret
 
-# TODO: include
-# node:
-#   tag: real-time-linux-runner
+node:
+  tag: real-time-linux-runner
 
 trigger:
   branch:
     - master
     - develop
-
-# volumes:
-#   - name: build
-#     host:
-#       path: /usr/local/etc/tezedge-ci/build/
 
 #############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration against octez node with different network cfg
@@ -375,8 +368,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -577,8 +570,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -873,8 +866,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -1048,8 +1041,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -1242,8 +1235,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -1291,8 +1284,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -1484,8 +1477,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -1533,8 +1526,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -1726,8 +1719,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     rebuild: true
@@ -1788,8 +1781,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -2020,8 +2013,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -2191,8 +2184,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -2371,8 +2364,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -2681,8 +2674,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -2996,8 +2989,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -3323,8 +3316,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -3557,8 +3550,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -3782,8 +3775,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -4008,8 +4001,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -4237,8 +4230,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -4536,8 +4529,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -4765,8 +4758,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -5008,8 +5001,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -5127,8 +5120,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5208,8 +5201,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5290,8 +5283,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5370,8 +5363,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5463,8 +5456,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -5665,9 +5658,8 @@ steps:
 depends_on:
   - corr/real-time-environment-cyclictest-latencies
 
-# TODO: include
-# node:
-#   tag: real-time-linux-runner
+node:
+  tag: real-time-linux-runner
 
 volumes:
   - name: cache
@@ -5778,8 +5770,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5798,8 +5790,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -5953,9 +5945,8 @@ steps:
     ref:
     - refs/pull/*/head
 
-# TODO: include
-# node:
-#   tag: real-time-linux-runner
+node:
+  tag: real-time-linux-runner
 
 volumes:
   - name: octez-node-delphinet-snapshot-data-1
@@ -6034,8 +6025,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -6054,8 +6045,8 @@ steps:
     SFTP_PASSWORD:
       from_secret: sftp_password
     SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 116.202.128.230
-    SFTP_PORT: 2732
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
     SFTP_CACHE_ROOT: "/upload"
   settings:
     restore: true
@@ -6209,9 +6200,8 @@ steps:
     ref:
     - refs/pull/*/head
 
-# TODO: inlcude
-# node:
-#   tag: real-time-linux-runner
+node:
+  tag: real-time-linux-runner
 
 volumes:
   - name: data
@@ -6275,8 +6265,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -6446,9 +6436,8 @@ depends_on:
   - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
 
-# TODO: include
-# node:
-#   tag: real-time-linux-runner
+node:
+  tag: real-time-linux-runner
 
 trigger:
   branch:
@@ -6486,8 +6475,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
@@ -6506,8 +6495,8 @@ steps:
       SFTP_PASSWORD:
         from_secret: sftp_password
       SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 116.202.128.230
-      SFTP_PORT: 2732
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
       SFTP_CACHE_ROOT: "/upload"
     settings:
       restore: true
