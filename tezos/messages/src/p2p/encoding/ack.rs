@@ -81,7 +81,9 @@ impl Arbitrary for NackInfo {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader, BinWriter, Arbitrary, Clone)]
+#[derive(
+    Serialize, Deserialize, PartialEq, Clone, HasEncoding, NomReader, BinWriter, Generated, Arbitrary,
+)]
 #[encoding(tags = "u16")]
 pub enum NackMotive {
     NoMotive,
