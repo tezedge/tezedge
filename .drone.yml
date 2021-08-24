@@ -282,6 +282,35 @@ clone:
 
 steps:
 
+- name: prepare-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
 - name: generate-artificial-load
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
@@ -307,18 +336,12 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   commands:
     - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
     - drone-cache/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
 depends_on:
   - build-tezedge-binaries
-
-image_pull_secrets:
-  - docker_pull_secret
 
 node:
   tag: real-time-linux-runner
@@ -5127,7 +5150,7 @@ steps:
     restore: true
     debug: true
     backend: "sftp"
-    cache_key: 'build-monitoring-430'
+    cache_key: 'build-monitoring-{{ .Build.Number }}'
     mount:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
@@ -5208,7 +5231,7 @@ steps:
     restore: true
     debug: true
     backend: "sftp"
-    cache_key: 'build-monitoring-430'
+    cache_key: 'build-monitoring-{{ .Build.Number }}'
     mount:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
@@ -5370,7 +5393,7 @@ steps:
     restore: true
     debug: true
     backend: "sftp"
-    cache_key: 'build-monitoring-430'
+    cache_key: 'build-monitoring-{{ .Build.Number }}'
     mount:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
