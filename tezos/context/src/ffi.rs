@@ -96,9 +96,58 @@ impl From<TezedgeContext> for TezedgeContextFFI {
     }
 }
 
-fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&'a str> {
+enum InlinedKeys<'a> {
+    Inlined {
+        length: usize,
+        array: [&'a str; 128],
+    },
+    Heap(Vec<&'a str>),
+}
+
+impl<'a> InlinedKeys<'a> {
+    fn new() -> Self {
+        Self::Inlined {
+            length: 0,
+            array: [""; 128],
+        }
+        // Self::Heap(Vec::with_capacity(128))
+    }
+
+    fn push(&mut self, str_ref: &'a str) {
+        match self {
+            InlinedKeys::Inlined { length, array } => {
+                if *length + 1 <= 128 {
+                    array[*length] = str_ref;
+                    *length += 1;
+                } else {
+                    let mut vec = Vec::with_capacity(256);
+                    vec.extend_from_slice(&array[..]);
+                    vec.push(str_ref);
+                    *self = Self::Heap(vec);
+                }
+            }
+            InlinedKeys::Heap(heap) => {
+                heap.push(str_ref);
+            }
+        }
+    }
+}
+
+impl<'a> std::ops::Deref for InlinedKeys<'a> {
+    type Target = [&'a str];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            InlinedKeys::Inlined { length, array } => &array[..*length],
+            InlinedKeys::Heap(heap) => &heap,
+        }
+    }
+}
+
+fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> InlinedKeys<'a> {
     let mut key = rt.get(key);
-    let mut vector: Vec<&str> = Vec::with_capacity(128);
+
+    let mut vector: InlinedKeys = InlinedKeys::new();
 
     while let Some((head, tail)) = key.uncons() {
         vector.push(unsafe { head.as_str_unchecked() });
@@ -107,6 +156,18 @@ fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&
 
     vector
 }
+
+// fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&'a str> {
+//     let mut key = rt.get(key);
+//     let mut vector: Vec<&str> = Vec::with_capacity(128);
+
+//     while let Some((head, tail)) = key.uncons() {
+//         vector.push(unsafe { head.as_str_unchecked() });
+//         key = tail;
+//     }
+
+//     vector
+// }
 
 // TODO: move this static and its accessors to a better place
 lazy_static! {
