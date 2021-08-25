@@ -1,15 +1,27 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, collections::HashMap, convert::TryInto, path::PathBuf, sync::{Arc, Condvar, Mutex, PoisonError, atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, mpsc::{sync_channel, Receiver, SendError, SyncSender}}, time::{Duration, Instant}};
+use std::cell::RefCell;
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
+    },
+    time::{Duration, Instant},
+};
 
 use container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString};
-use failure::Fail;
-use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
 use static_assertions::assert_eq_size;
-use tezos_spsc::{Consumer, PopError::{Closed, Empty}, Producer, PushError, bounded};
+use tezos_spsc::{
+    bounded, Consumer,
+    PopError::{Closed, Empty},
+    Producer, PushError,
+};
 
 pub mod container;
 
@@ -378,21 +390,15 @@ pub struct Query {
 }
 
 #[derive(Default)]
-pub struct TimingChannelCommon {
+pub struct TimingChannelShared {
     mutex: Mutex<()>,
     condvar: Condvar,
-    counter: AtomicUsize,
     is_waiting: AtomicBool,
 }
 
-#[derive(Default)]
 pub struct TimingChannel {
-    common: Arc<TimingChannelCommon>,
-    // mutex: Mutex<()>,
-    // condvar: Condvar,
-    // counter: AtomicUsize,
-    producer: AtomicPtr<Producer<TimingMessage>>,
-    // producer: Cell<Option<Producer<TimingMessage>>>,
+    shared: Arc<TimingChannelShared>,
+    producer: Producer<TimingMessage>,
 }
 
 #[derive(Debug)]
@@ -404,151 +410,50 @@ pub enum ChannelError {
 impl TimingChannel {
     fn new(producer: Producer<TimingMessage>) -> Self {
         Self {
-            common: Arc::new(TimingChannelCommon {
+            shared: Arc::new(TimingChannelShared {
                 mutex: Default::default(),
                 condvar: Default::default(),
-                counter: AtomicUsize::new(0),
                 is_waiting: AtomicBool::new(false),
             }),
-            producer: AtomicPtr::new(Box::into_raw(Box::new(producer))),
+            producer,
         }
     }
 
-    fn with_producer<Fun>(&self, fun: Fun) -> Result<(), ChannelError>
-    where
-        Fun: FnOnce(&mut Producer<TimingMessage>) -> Result<(), PushError<TimingMessage>>
-    {
-        let producer_ptr = self.producer.swap(std::ptr::null_mut(), Ordering::AcqRel);
+    pub fn send(&mut self, msg: TimingMessage) -> Result<(), ChannelError> {
+        let result = self.producer.push(msg);
 
-        if producer_ptr.is_null() {
-            eprintln!("Producer pointer null");
-            return Err(ChannelError::PtrNull);
+        if self.shared.is_waiting.load(Ordering::Acquire) {
+            // Wake up the timing thread
+            self.shared.condvar.notify_one();
         }
-
-        let producer = unsafe { &mut *producer_ptr as &mut Producer<_> };
-
-        let result = fun(producer);
-
-        self.producer.swap(producer_ptr, Ordering::Release);
 
         result.map_err(|e| ChannelError::PushError(e))
     }
-
-    pub fn send(&self, msg: TimingMessage) -> Result<(), ChannelError> {
-        // let counter = self.common.counter.fetch_add(1, Ordering::Release);
-
-        // if counter >= 3 {
-        //     println!("NOTIFY {:?} !", counter);
-        //     self.common.condvar.notify_one();
-        // } else {
-
-        // }
-
-        if self.common.is_waiting.load(Ordering::Acquire) {
-            println!("NOTIFY !");
-            self.common.condvar.notify_one();
-        }
-
-        self.with_producer(|producer| {
-            producer.push(msg)
-        })
-    }
 }
 
-
-#[derive(Fail, Debug)]
-pub enum BufferedTimingChannelSendError {
-    #[fail(
-        display = "Failure when locking the timings channel buffer: {}",
-        reason
-    )]
-    LockError { reason: String },
-    #[fail(
-        display = "Failure when sending timming messages to channel: {}",
-        reason
-    )]
-    SendError {
-        reason: SendError<Vec<TimingMessage>>,
-    },
+thread_local! {
+    /// We put TIMING_CHANNEL in a thread local variable so that
+    /// we can access `TimingChannel` mutably.
+    /// `Producer::push` requires mutability.
+    pub static TIMING_CHANNEL: RefCell<TimingChannel> = init_timing();
 }
 
-impl From<SendError<Vec<TimingMessage>>> for BufferedTimingChannelSendError {
-    fn from(reason: SendError<Vec<TimingMessage>>) -> Self {
-        Self::SendError { reason }
-    }
-}
+static TIMING_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-impl<T> From<PoisonError<T>> for BufferedTimingChannelSendError {
-    fn from(reason: PoisonError<T>) -> Self {
-        Self::LockError {
-            reason: format!("{}", reason),
-        }
-    }
-}
-
-/// Buffered channel for sending timings that delays the sending until
-/// enough messages have been obtained or a commit message is received.
-/// The purpose is to send less messages through the channel to decrease
-/// the overhead.
-pub struct BufferedTimingChannel {
-    buffer: Mutex<Cell<Vec<TimingMessage>>>,
-    sender: SyncSender<Vec<TimingMessage>>,
-}
-
-impl BufferedTimingChannel {
-    const DELAYED_MESSAGES_LIMIT: usize = 100;
-
-    fn new(sender: SyncSender<Vec<TimingMessage>>) -> Self {
-        Self {
-            buffer: Mutex::new(Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT))),
-            sender,
-        }
-    }
-
-    /// True if the message must be sent immediately, false if it can be buffered.
-    fn is_immediate_message(&self, msg: &TimingMessage) -> bool {
-        match msg {
-            TimingMessage::Commit { .. } => true,
-            TimingMessage::InitTiming { .. } => false,
-            _ => false,
-        }
-    }
-
-    /// Sends messages, delayed and combined into a single bigger message.
-    ///
-    /// Reaching the delayed messages limit or receiving a commit message will trigger the send
-    /// to the underlying channel, otherwise the messages will be kept in the buffer.
-    pub fn send(&self, msg: TimingMessage) -> Result<(), BufferedTimingChannelSendError> {
-        let must_not_delay = self.is_immediate_message(&msg);
-        let limit = Self::DELAYED_MESSAGES_LIMIT - 1;
-        let mut buffer = self.buffer.lock()?;
-
-        buffer.get_mut().push(msg);
-
-        if must_not_delay || buffer.get_mut().len() == limit {
-            let swap_buffer = Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT));
-
-            buffer.swap(&swap_buffer);
-
-            let pack = swap_buffer.into_inner();
-
-            Ok(self.sender.send(pack)?)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-pub static TIMING_CHANNEL: Lazy<TimingChannel> = Lazy::new(|| {
+fn init_timing() -> RefCell<TimingChannel> {
     let (producer, consumer) = bounded(20_000);
-
-    // let channel = Arc::new(TimingChannel::default());
 
     let channel = TimingChannel::new(producer);
 
-    // let (sender, receiver) = sync_channel(10_000);
+    // `init_timing` is called once per thread.
+    // We want the timing thread to be started only once (per 1 thread).
+    // If `init_timing` is called a second time by another thread, this is an error.
+    if TIMING_INITIALIZED.swap(true, Ordering::SeqCst) {
+        eprintln!("Error: Timing thread initialized more than once");
+        return RefCell::new(channel);
+    }
 
-    let common = channel.common.clone();
+    let common = channel.shared.clone();
 
     if let Err(e) = std::thread::Builder::new()
         .name("ctx-timings-thread".to_string())
@@ -559,18 +464,13 @@ pub static TIMING_CHANNEL: Lazy<TimingChannel> = Lazy::new(|| {
         eprintln!("Fail to create timing channel: {:?}", e);
     }
 
-    channel
+    RefCell::new(channel)
+}
 
-    // todo!()
-
-    // producer
-    // BufferedTimingChannel::new(sender)
-});
-
-fn start_timing(mut recv: Consumer<TimingMessage>, channel: Arc<TimingChannelCommon>) {
+fn start_timing(mut consumer: Consumer<TimingMessage>, shared: Arc<TimingChannelShared>) {
     let mut db_path: Option<PathBuf> = None;
 
-    while let Ok(msg) = recv.pop() {
+    while let Ok(msg) = consumer.pop() {
         if let TimingMessage::InitTiming { db_path: path } = msg {
             db_path = path;
             break;
@@ -588,62 +488,48 @@ fn start_timing(mut recv: Consumer<TimingMessage>, channel: Arc<TimingChannelCom
     let mut timing = Timing::new();
     let mut transaction = None;
 
-    let mut nempty = 0;
+    let mut ntimes_empty = 0;
 
     loop {
-        match recv.pop() {
+        match consumer.pop() {
             Ok(msg) => {
-                nempty = 0;
-                channel.counter.store(0, Ordering::Release);
+                ntimes_empty = 0;
                 if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
                     eprintln!("Timing error={:?}", err);
                 }
-            },
+            }
             Err(Empty) => {
-                if nempty < 5 {
-                    // println!("WAITING {:?}", nempty);
-                    std::thread::sleep_ms(10 * (nempty + 1));
-                    nempty += 1;
+                if ntimes_empty < 5 {
+                    // Sleep between 10 and 50 ms
+                    std::thread::sleep(Duration::from_millis(10 * (ntimes_empty + 1)));
+                    ntimes_empty += 1;
                     continue;
                 }
-                nempty = 0;
+                ntimes_empty = 0;
 
-                channel.is_waiting.store(true, Ordering::Release);
+                // Let the main thread knows that we are waiting
+                // Only this thread (timing) writes on `TimingChannelShared::is_waiting`
+                // so no data race is possible: see below.
+                shared.is_waiting.store(true, Ordering::Release);
 
-                // println!("LOCK");
-                let lock = channel.mutex.lock().unwrap();
-                let lock = channel.condvar.wait(lock).unwrap();
-                // println!("UNLOCK");
+                // If the main thread reads `TimingChannelShared::is_waiting` as `true`
+                // at this point (before we called `CondVar::wait`), it won't
+                // cause any harm because the main thread would call `notify_one` without
+                // notifying anyone, but `is_waiting` will remains `true`.
+                // So when the main thread reads a second time `is_waiting` (in another call),
+                // it will notify again, and this time we will already have reached
+                // the `CondVar::wait`.
 
-                channel.is_waiting.store(false, Ordering::Release);
-            },
+                let guard = shared.mutex.lock().unwrap();
+                let _guard = shared.condvar.wait(guard).unwrap();
+
+                shared.is_waiting.store(false, Ordering::Release);
+            }
             Err(Closed) => {
                 return;
             }
         }
     }
-
-    // while let Ok(msg) = recv.pop() {
-    //     if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-    //         eprintln!("Timing error={:?}", err);
-    //     }
-    // }
-
-    // for msgpack in recv {
-    //     for msg in msgpack {
-    //         if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-    //             eprintln!("Timing error={:?}", err);
-    //         }
-    //     }
-    // }
-
-    // for msgpack in recv {
-    //     for msg in msgpack {
-    //         if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-    //             eprintln!("Timing error={:?}", err);
-    //         }
-    //     }
-    // }
 }
 
 pub fn hash_to_string(hash: &[u8]) -> String {

@@ -5,17 +5,15 @@ const INLINED_HASH_LENGTH: usize = 32;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum InlinedHash {
-    Inlined {
-        array: [u8; INLINED_HASH_LENGTH],
-    },
-    Heap(Box<[u8]>)
+    Inlined { array: [u8; INLINED_HASH_LENGTH] },
+    Heap(Box<[u8]>),
 }
 
 impl InlinedHash {
     pub fn new(hash: &[u8]) -> Self {
         if hash.len() == INLINED_HASH_LENGTH {
             Self::Inlined {
-                array: hash.try_into().unwrap()
+                array: hash.try_into().unwrap(),
             }
         } else {
             Self::Heap(Box::from(hash))
@@ -42,7 +40,7 @@ pub struct InlinedOperationHash(InlinedHash);
 pub struct InlinedBlockHash(InlinedHash);
 
 macro_rules! deref_inlined {
-	($hash:ident) => {
+    ($hash:ident) => {
         impl Deref for $hash {
             type Target = [u8];
 
@@ -62,7 +60,7 @@ macro_rules! deref_inlined {
                 Self(InlinedHash::new(slice))
             }
         }
-	};
+    };
 }
 
 deref_inlined!(InlinedContextHash);
@@ -75,7 +73,7 @@ pub enum InlinedString {
         length: usize,
         array: [u8; INLINED_STRING_THRESHOLD],
     },
-    Heap(Vec<u8>)
+    Heap(Vec<u8>),
 }
 
 impl Default for InlinedString {
@@ -106,10 +104,8 @@ impl InlinedString {
                     array[*length..new_length].copy_from_slice(s.as_bytes());
                     *length = new_length;
                 }
-            },
-            InlinedString::Heap(heap) => {
-                heap.extend_from_slice(s.as_bytes())
-            },
+            }
+            InlinedString::Heap(heap) => heap.extend_from_slice(s.as_bytes()),
         }
     }
 

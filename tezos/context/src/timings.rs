@@ -4,13 +4,23 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ocaml_interop::*;
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash, from_ocaml::hash_as_bytes};
-use tezos_timing::{Query, QueryKind, BlockMemoryUsage, TIMING_CHANNEL, TimingMessage, container::{InlinedString, InlinedBlockHash, InlinedContextHash, InlinedOperationHash}};
+use tezos_api::ocaml_conv::{
+    from_ocaml::hash_as_bytes, OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+};
+use tezos_timing::{
+    container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString},
+    BlockMemoryUsage, ChannelError, Query, QueryKind, TimingMessage, TIMING_CHANNEL,
+};
+
+fn send_msg(msg: TimingMessage) -> Result<(), ChannelError> {
+    TIMING_CHANNEL.with(|channel| {
+        let mut channel = channel.borrow_mut();
+        channel.send(msg)
+    })
+}
 
 pub fn send_statistics(stats: BlockMemoryUsage) {
-    // return;
-
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::BlockMemoryUsage { stats }) {
+    if let Err(e) = send_msg(TimingMessage::BlockMemoryUsage { stats }) {
         eprintln!("send_statistics error = {:?}", e);
     }
 }
@@ -24,7 +34,6 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
     });
 
     let instant = Instant::now();
-    // let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
     let timestamp = if block_hash.is_some() {
         let timestamp = SystemTime::now()
@@ -35,7 +44,7 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
         None
     };
 
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::SetBlock {
+    if let Err(e) = send_msg(TimingMessage::SetBlock {
         block_hash,
         timestamp,
         instant,
@@ -52,9 +61,7 @@ pub fn set_operation(rt: &OCamlRuntime, operation_hash: OCamlRef<Option<OCamlOpe
         InlinedOperationHash::from(bytes)
     });
 
-    // let operation_hash: Option<OperationHash> = operation_hash.to_rust(rt);
-
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::SetOperation(operation_hash)) {
+    if let Err(e) = send_msg(TimingMessage::SetOperation(operation_hash)) {
         eprintln!("Timing set_operation hook error = {:?}", e);
     }
 }
@@ -69,15 +76,10 @@ pub fn checkout(
     let bytes = hash_as_bytes(hash);
     let context_hash = InlinedContextHash::from(bytes);
 
-    // println!("CHECKOUT LEN={:?}", bytes.len());
-
-    // return;
-
-    // let context_hash: ContextHash = context_hash.to_rust(rt);
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Checkout {
+    if let Err(e) = send_msg(TimingMessage::Checkout {
         context_hash,
         irmin_time,
         tezedge_time,
@@ -92,12 +94,10 @@ pub fn commit(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    // return;
-
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Commit {
+    if let Err(e) = send_msg(TimingMessage::Commit {
         irmin_time,
         tezedge_time,
     }) {
@@ -107,32 +107,33 @@ pub fn commit(
 
 fn get_query_kind(name: &[u8]) -> Option<QueryKind> {
     let first = name.get(0)?;
-    let length = name.len();
 
+    // It's one of "mem", "mem_tree", "find", "find_tree"
+    // "add", "add_tree" and "remove"
     match first {
         b'm' => {
-            if length == 3 {
+            if name.len() == 3 {
                 Some(QueryKind::Mem)
             } else {
                 Some(QueryKind::MemTree)
             }
         }
         b'f' => {
-            if length == 3 {
+            if name.len() == 3 {
                 Some(QueryKind::Find)
             } else {
                 Some(QueryKind::FindTree)
             }
         }
         b'a' => {
-            if length == 3 {
+            if name.len() == 3 {
                 Some(QueryKind::Add)
             } else {
                 Some(QueryKind::AddTree)
             }
         }
         b'r' => Some(QueryKind::Remove),
-        _ => None
+        _ => None,
     }
 }
 
@@ -143,32 +144,15 @@ pub fn context_query(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    // return;
-
     let query_name = rt.get(query_name);
-    // let query_name = match query_name.as_bytes() {
-    //     b"mem" => QueryKind::Mem,
-    //     b"mem_tree" => QueryKind::MemTree,
-    //     b"find" => QueryKind::Find,
-    //     b"find_tree" => QueryKind::FindTree,
-    //     b"add" => QueryKind::Add,
-    //     b"add_tree" => QueryKind::AddTree,
-    //     b"remove" => QueryKind::Remove,
-    //     _ => return,
-    // };
 
     let query_name = match get_query_kind(query_name.as_bytes()) {
         Some(name) => name,
         None => return,
     };
 
-    // let query_name = QueryKind::Remove;
-
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
-
-
-    // let vector = String::new();
 
     let mut key = rt.get(key);
     let mut string: InlinedString = Default::default();
@@ -185,12 +169,6 @@ pub fn context_query(
         key = tail;
     }
 
-    // println!("LEN={:?}", string.len());
-
-    // vector
-
-    // let key: Vec<String> = key.to_rust(rt);
-
     let query = Query {
         query_name,
         key: string,
@@ -198,13 +176,13 @@ pub fn context_query(
         tezedge_time,
     };
 
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Query(query)) {
+    if let Err(e) = send_msg(TimingMessage::Query(query)) {
         eprintln!("Timing context_query hook error = {:?}", e);
     }
 }
 
 pub fn init_timing(db_path: String) {
-    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::InitTiming {
+    if let Err(e) = send_msg(TimingMessage::InitTiming {
         db_path: Some(db_path.into()),
     }) {
         eprintln!("Timing init_timing hook error = {:?}", e);

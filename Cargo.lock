@@ -3689,8 +3689,6 @@ name = "tezos_timing"
 version = "1.8.0"
 dependencies = [
  "crypto",
- "failure",
- "once_cell",
  "rusqlite",
  "serde 1.0.123",
  "static_assertions",
