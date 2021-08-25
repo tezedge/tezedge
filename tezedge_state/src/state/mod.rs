@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::prelude::{
 pub use tla_sm::{Acceptor, GetRequests, Proposal};
 
 use crate::peer_address::{DebugVecItemsAsStr, PeerListenerAddress};
-use crate::{Effects, PeerAddress, Port, ShellCompatibilityVersion};
+use crate::{Effects, PeerAddress, Port, RandomnessEffects, ShellCompatibilityVersion};
 
 mod assert_state;
 
@@ -562,26 +562,6 @@ impl TezedgeState {
         }
 
         self.adjust_p2p_state(effects);
-    }
-
-    pub(crate) fn periodic_react<'a, Efs>(&mut self, effects: &'a mut Efs)
-    where
-        Efs: Effects,
-    {
-        let interval_passed = self
-            .time
-            .duration_since(self.last_periodic_react)
-            .map(|passed| passed > self.config.periodic_react_interval)
-            .unwrap_or(false);
-
-        if interval_passed {
-            self.last_periodic_react = self.time;
-            self.check_timeouts(effects);
-            self.check_blacklisted_peers();
-            self.initiate_handshakes(effects);
-        }
-
-        self.connected_peers.periodic_react(self.time);
     }
 }
 

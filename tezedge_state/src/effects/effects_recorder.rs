@@ -8,7 +8,7 @@ use std::fmt::{self, Debug};
 use crypto::nonce::Nonce;
 
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
-use crate::Effects;
+use crate::RandomnessEffects;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Default, Clone)]
 pub struct RecordedEffects {
@@ -18,13 +18,7 @@ pub struct RecordedEffects {
     chosen_potential_peers_for_nack: VecDeque<Vec<PeerListenerAddress>>,
 }
 
-impl RecordedEffects {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl Effects for RecordedEffects {
+impl RandomnessEffects for RecordedEffects {
     fn get_nonce(&mut self, _: &PeerAddress) -> Nonce {
         self.nonces
             .pop_front()
@@ -69,7 +63,7 @@ impl<'a, Efs> EffectsRecorder<'a, Efs> {
     pub fn new(effects: &'a mut Efs) -> Self {
         Self {
             effects,
-            recorded: RecordedEffects::new(),
+            recorded: Default::default(),
         }
     }
 
@@ -94,9 +88,9 @@ where
     }
 }
 
-impl<'a, Efs> Effects for EffectsRecorder<'a, Efs>
+impl<'a, Efs> RandomnessEffects for EffectsRecorder<'a, Efs>
 where
-    Efs: Effects + Debug,
+    Efs: RandomnessEffects + Debug,
 {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
         let nonce = self.effects.get_nonce(peer);

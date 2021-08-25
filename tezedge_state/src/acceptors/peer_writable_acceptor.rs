@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 
 use crate::chunking::WriteMessageError;
 use crate::proposals::{PeerReadableProposal, PeerWritableProposal};
-use crate::{Effects, HandshakeMessageType, P2pState, TezedgeState};
+use crate::{Effects, HandshakeMessageType, P2pState, RandomnessEffects, TezedgeState};
 use tezos_messages::p2p::encoding::ack::NackMotive;
 use tla_sm::Acceptor;
 

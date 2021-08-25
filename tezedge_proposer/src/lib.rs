@@ -21,6 +21,12 @@ use tezedge_state::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
+mod event;
+pub use event::*;
+
+mod internal_clock;
+pub use internal_clock::*;
+
 pub mod mio_manager;
 pub mod proposal_loader;
 use proposal_loader::{NoopProposalLoader, ProposalLoader};
@@ -64,60 +70,6 @@ pub enum Notification {
         metadata: MetadataMessage,
         network_version: NetworkVersion,
     },
-}
-
-#[derive(Debug, Clone)]
-pub enum Event<NetE> {
-    Tick(Instant),
-    Network(NetE),
-}
-
-impl<NetE> Event<NetE> {
-    pub fn as_event_ref<'a>(&'a self) -> EventRef<'a, NetE> {
-        match self {
-            Self::Tick(e) => EventRef::Tick(*e),
-            Self::Network(e) => EventRef::Network(e),
-        }
-    }
-}
-
-impl<NetE: NetworkEvent> Event<NetE> {
-    pub fn time(&self) -> Instant {
-        match self {
-            Self::Tick(t) => t.clone(),
-            Self::Network(e) => e.time(),
-        }
-    }
-}
-
-impl<NetE> From<NetE> for Event<NetE>
-where
-    NetE: NetworkEvent,
-{
-    fn from(event: NetE) -> Self {
-        Self::Network(event)
-    }
-}
-
-pub type EventRef<'a, NetE> = Event<&'a NetE>;
-
-pub trait NetworkEvent {
-    fn is_server_event(&self) -> bool;
-    fn is_waker_event(&self) -> bool;
-
-    fn is_readable(&self) -> bool;
-    fn is_writable(&self) -> bool;
-
-    fn is_read_closed(&self) -> bool;
-    fn is_write_closed(&self) -> bool;
-
-    fn time(&self) -> Instant {
-        Instant::now()
-    }
-}
-
-pub trait Events {
-    fn set_limit(&mut self, limit: usize);
 }
 
 pub struct Peer<S> {
@@ -185,39 +137,6 @@ pub trait Manager {
     ) -> Option<&mut Peer<Self::Stream>>;
 
     fn disconnect_peer(&mut self, peer: &PeerAddress);
-}
-
-/// Internal clock of proposer.
-#[derive(Clone)]
-struct InternalClock {
-    time: Instant,
-    elapsed: Duration,
-}
-
-impl InternalClock {
-    fn new(initial_time: Instant) -> Self {
-        Self {
-            time: initial_time,
-            elapsed: Duration::new(0, 0),
-        }
-    }
-
-    fn update(&mut self, new_time: Instant) -> &mut Self {
-        if self.time >= new_time {
-            // just to guard against panic.
-            return self;
-        }
-        self.elapsed += new_time.duration_since(self.time);
-        self.time = new_time;
-        self
-    }
-
-    /// Result of every call of this method MUST be passed to state machine
-    /// `TezedgeState` through proposal, otherwise internal clock will mess up.
-    #[inline]
-    fn take_elapsed(&mut self) -> Duration {
-        std::mem::replace(&mut self.elapsed, Duration::new(0, 0))
-    }
 }
 
 #[derive(Clone)]

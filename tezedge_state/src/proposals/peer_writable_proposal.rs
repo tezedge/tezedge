@@ -10,14 +10,6 @@ use crate::{EffectsRecorder, PeerAddress, RecordedEffects};
 
 use super::{MaybeRecordedProposal, PeerReadableProposal};
 
-// TODO: there should be difference between 2 kinds of proposals. 1 is
-// normal one, which is meant to be recorded and if replayed will give
-// us exact same state. and 2nd is like this one, which is purely just
-// for performance reasons. Since we invoke read on reader which makes a
-// syscall to read certain bytes means that those bytes aren't available
-// and are consumed on read, hence hard to debug. So these types of proposals
-// should simply invoke another proposal like in this case that the chunk
-// is ready so that proposal can be recorded and replayed.
 pub struct PeerWritableProposal<'a, Efs, S> {
     pub effects: &'a mut Efs,
     pub peer: PeerAddress,

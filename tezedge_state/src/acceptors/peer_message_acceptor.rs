@@ -8,7 +8,7 @@ use tezos_messages::p2p::encoding::prelude::{AdvertiseMessage, PeerMessage};
 use tla_sm::Acceptor;
 
 use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
-use crate::{Effects, PendingRequest, TezedgeState};
+use crate::{Effects, PendingRequest, RandomnessEffects, TezedgeState};
 
 impl<'a, Efs> Acceptor<PeerMessageProposal<'a, Efs>> for TezedgeState
 where

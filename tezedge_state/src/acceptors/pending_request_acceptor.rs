@@ -6,7 +6,8 @@ use tla_sm::Acceptor;
 
 use crate::proposals::{PendingRequestMsg, PendingRequestProposal};
 use crate::{
-    Effects, HandshakeStep, PendingRequest, RequestState, RetriableRequestState, TezedgeState,
+    Effects, HandshakeStep, PendingRequest, RandomnessEffects, RequestState, RetriableRequestState,
+    TezedgeState,
 };
 
 impl<'a, Efs> Acceptor<PendingRequestProposal<'a, Efs>> for TezedgeState

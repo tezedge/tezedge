@@ -22,7 +22,10 @@ use crate::chunking::{
 use crate::peer_address::PeerListenerAddress;
 use crate::proposals::{PeerHandshakeMessage, PeerHandshakeMessageError};
 use crate::state::RequestState;
-use crate::{Effects, PeerAddress, PeerCrypto, Port, ShellCompatibilityVersion, TezedgeConfig};
+use crate::{
+    Effects, PeerAddress, PeerCrypto, Port, RandomnessEffects, ShellCompatibilityVersion,
+    TezedgeConfig,
+};
 
 #[derive(Clone)]
 pub struct ReceivedConnectionMessageData {
