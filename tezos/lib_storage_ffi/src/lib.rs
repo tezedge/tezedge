@@ -407,17 +407,13 @@ fn test_context_inodes(
     assert_eq!(tezedge_commit_hash_init, tezedge_commit_hash_end);
 }
 
-#[test]
-fn test_context_calls() {
+#[cfg(test)]
+fn test_context_calls(cr: &mut OCamlRuntime) {
     use std::time::SystemTime;
     use tempfile::tempdir;
 
     // Initialize the persistent OCaml runtime and initialize callbacks
-    ocaml_interop::OCamlRuntime::init_persistent();
     tezos_context::ffi::initialize_callbacks();
-
-    // OCaml runtime handle for FFI calls
-    let cr = unsafe { ocaml_interop::OCamlRuntime::recover_handle() };
 
     let irmin_dir = tempdir().unwrap();
     let genesis = (
@@ -592,4 +588,12 @@ fn test_context_calls() {
         context::hash(cr, 1, None, &tezedge_ctxt),
         context::hash(cr, 1, None, &irmin_ctxt)
     );
+}
+
+#[test]
+fn test_context_calls_with_runtime() {
+    tezos_interop::runtime::execute(move |rt: &mut OCamlRuntime| {
+        test_context_calls(rt);
+    })
+    .unwrap();
 }
