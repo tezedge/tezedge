@@ -145,6 +145,9 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
     );
     assert_eq!(2, apply_block_result.max_operations_ttl);
 
+    // Second block should not change the constants, so there shouldn't be any here
+    assert!(apply_block_result.new_protocol_constants_json.is_none());
+
     // apply third block - level 3
     let apply_block_result = client::apply_block(ApplyBlockRequest {
         chain_id,
@@ -217,11 +220,15 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     });
-    let apply_block_result_2 = apply_block_result_2.unwrap();
+    let mut apply_block_result_2 = apply_block_result_2.unwrap();
     assert_eq!(
         test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH),
         apply_block_result_2.context_hash
     );
+
+    // Commit time will differ, make it be the same so that the assert
+    // doesn't fail because of this.
+    apply_block_result_2.commit_time = apply_block_result_1.commit_time;
 
     // results should be eq
     assert_eq!(apply_block_result_1, apply_block_result_2);
@@ -706,6 +713,36 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
         predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_ok());
+
+    // Ensure that we got the expected constants from the protocol change
+    let apply_block_result = apply_block_result.unwrap();
+    assert!(apply_block_result.new_protocol_constants_json.is_some());
+
+    let expected_new_constants = serde_json::from_str::<serde_json::Value>(
+        r#"{
+            "proof_of_work_nonce_size": 8, "nonce_length": 32,
+            "max_revelations_per_block": 32, "max_operation_data_length": 16384,
+            "max_proposals_per_delegate": 20, "preserved_cycles": 3,
+            "blocks_per_cycle": 2048, "blocks_per_commitment": 32,
+            "blocks_per_roll_snapshot": 256, "blocks_per_voting_period": 8192,
+            "time_between_blocks": [ "30", "40" ], "endorsers_per_block": 32,
+            "hard_gas_limit_per_operation": "400000",
+            "hard_gas_limit_per_block": "4000000",
+            "proof_of_work_threshold": "70368744177663",
+            "tokens_per_roll": "10000000000", "michelson_maximum_type_size": 1000,
+            "seed_nonce_revelation_tip": "125000", "origination_size": 257,
+            "block_security_deposit": "0", "endorsement_security_deposit": "0",
+            "block_reward": "0", "endorsement_reward": "0", "cost_per_byte": "1000",
+            "hard_storage_limit_per_operation": "60000"
+        }"#,
+    )
+    .unwrap();
+    let obtained_new_constants = serde_json::from_str::<serde_json::Value>(
+        &apply_block_result.new_protocol_constants_json.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(expected_new_constants, obtained_new_constants);
 
     // begin application for second block - level 2 - now it should work on first level
     let result = client::begin_application(BeginApplicationRequest {

@@ -875,16 +875,30 @@ fn _apply_block(
     let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
 
+    if !apply_block_result.cycle_rolls_owner_snapshots.is_empty() {
+        debug!(
+            log,
+            "Block application returned {} new snapshots",
+            apply_block_result.cycle_rolls_owner_snapshots.len()
+        );
+    }
+
+    if let Some(json) = &apply_block_result.new_protocol_constants_json {
+        debug!(log, "Block application returned new constants: {}", json,);
+    }
+
     debug!(log, "Block was applied";
            "block_header_hash" => block_hash.to_base58_check(),
            "context_hash" => apply_block_result.context_hash.to_base58_check(),
            "validation_result_message" => &apply_block_result.validation_result_message);
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
+        let commit_time_duration = Duration::from_secs_f64(apply_block_result.commit_time);
         info!(log, "Block was validated with protocol with long processing";
-                           "block_header_hash" => block_hash.to_base58_check(),
-                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
+              "commit_time" => format!("{:?}", commit_time_duration),
+              "block_header_hash" => block_hash.to_base58_check(),
+              "context_hash" => apply_block_result.context_hash.to_base58_check(),
+              "protocol_call_elapsed" => format!("{:?}", protocol_call_elapsed));
     }
 
     // Lets mark header as applied and store result

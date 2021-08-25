@@ -330,13 +330,17 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     });
-    let apply_block_result_2 = apply_block_result_2.unwrap();
+    let mut apply_block_result_2 = apply_block_result_2.unwrap();
     assert_eq!(
         test_data_protocol_v1::context_hash(
             test_data_protocol_v1::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH
         ),
         apply_block_result_2.context_hash
     );
+
+    // Commit time will differ, make it be the same so that the assert
+    // doesn't fail because of this.
+    apply_block_result_2.commit_time = apply_block_result_1.commit_time;
 
     // results should be eq
     assert_eq!(apply_block_result_1, apply_block_result_2);
@@ -863,6 +867,41 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
         predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_ok());
+
+    // Ensure that we got the expected constants from the protocol change
+    let apply_block_result = apply_block_result.unwrap();
+    assert!(apply_block_result.new_protocol_constants_json.is_some());
+
+    let expected_new_constants = serde_json::from_str::<serde_json::Value>(
+        r#"{
+            "proof_of_work_nonce_size": 8, "nonce_length": 32,
+            "max_anon_ops_per_block": 132, "max_operation_data_length": 16384,
+            "max_proposals_per_delegate": 20, "preserved_cycles": 3,
+            "blocks_per_cycle": 2048, "blocks_per_commitment": 16,
+            "blocks_per_roll_snapshot": 128, "blocks_per_voting_period": 2048,
+            "time_between_blocks": [ "30", "20" ], "endorsers_per_block": 32,
+            "hard_gas_limit_per_operation": "1040000",
+            "hard_gas_limit_per_block": "10400000",
+            "proof_of_work_threshold": "70368744177663",
+            "tokens_per_roll": "8000000000", "michelson_maximum_type_size": 1000,
+            "seed_nonce_revelation_tip": "125000", "origination_size": 257,
+            "block_security_deposit": "512000000",
+            "endorsement_security_deposit": "64000000",
+            "baking_reward_per_endorsement": [ "1250000", "187500" ],
+            "endorsement_reward": [ "1250000", "833333" ], "cost_per_byte": "250",
+            "hard_storage_limit_per_operation": "60000",
+            "test_chain_duration": "61440", "quorum_min": 2000, "quorum_max": 7000,
+            "min_proposal_quorum": 500, "initial_endorsers": 24,
+            "delay_per_missing_endorsement": "4"
+        }"#,
+    )
+    .unwrap();
+    let obtained_new_constants = serde_json::from_str::<serde_json::Value>(
+        &apply_block_result.new_protocol_constants_json.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(expected_new_constants, obtained_new_constants);
 
     // begin application for second block - level 2 - now it should work on first level
     let result = client::begin_application(BeginApplicationRequest {
