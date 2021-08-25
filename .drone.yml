@@ -1989,7 +1989,8 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 volumes:
   - name: sandbox-data
@@ -2600,7 +2601,8 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
@@ -2612,6 +2614,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 1
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -2620,7 +2623,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
@@ -2632,6 +2635,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 2
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -2640,7 +2644,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 volumes:
   - name: sandbox-data
@@ -2912,10 +2916,11 @@ steps:
     FROM_BLOCK_HEADER: 0
     TO_BLOCK_HEADER: 2
   commands:
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
@@ -2927,6 +2932,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 1
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -2935,7 +2941,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
@@ -2947,6 +2953,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 2
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -2955,7 +2962,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 volumes:
   - name: sandbox-data
@@ -3224,10 +3231,11 @@ steps:
     FROM_BLOCK_HEADER: 0
     TO_BLOCK_HEADER: 2
   commands:
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
@@ -3239,6 +3247,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 1
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -3247,7 +3256,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
@@ -3259,6 +3268,7 @@ steps:
     FROM_BLOCK_HEADER: 0
   commands:
     - sleep 2
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
@@ -3267,7 +3277,7 @@ steps:
     - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
     - echo "Tezedge current head level - $tezedge_current_head_level"
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 volumes:
   - name: sandbox-data
@@ -3490,9 +3500,10 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
@@ -3720,8 +3731,9 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
@@ -3947,7 +3959,8 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
@@ -4173,7 +4186,8 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=/context/raw/bytes,/live_blocks
     - export IGNORE_JSON_PROPERTIES=max_operations_ttl
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
@@ -4400,10 +4414,11 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     # mainnet rpcs of protocol 001 are too slow
     - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test

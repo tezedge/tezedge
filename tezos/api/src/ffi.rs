@@ -218,6 +218,14 @@ impl ApplyBlockRequest {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct CycleRollsOwnerSnapshot {
+    pub cycle: i32,
+    pub seed_bytes: Vec<u8>,
+    pub rolls_data: Vec<(Vec<u8>, Vec<i32>)>,
+    pub last_roll: i32,
+}
+
 /// Application block result
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResponse {
@@ -238,6 +246,10 @@ pub struct ApplyBlockResponse {
     /// Note: This is calculated from ops_metadata_hashes - we need this in request
     ///       This is calculated as merkle tree hash, like operation paths
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub cycle_rolls_owner_snapshots: Vec<CycleRollsOwnerSnapshot>,
+    pub new_protocol_constants_json: Option<String>,
+    pub new_cycle_eras_json: Option<String>,
+    pub commit_time: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

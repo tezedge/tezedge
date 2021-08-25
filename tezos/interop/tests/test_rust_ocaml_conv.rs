@@ -15,9 +15,9 @@ use tezos_api::{
     ffi::ProtocolRpcRequest,
     ffi::RpcMethod,
     ffi::RpcRequest,
-    ffi::RustBytes,
     ffi::ValidateOperationRequest,
     ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData},
+    ffi::{CycleRollsOwnerSnapshot, RustBytes},
     ocaml_conv::FfiBlockHeader,
     ocaml_conv::FfiOperation,
 };
@@ -37,7 +37,9 @@ const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b685
 const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
+    use ocaml_interop::{
+        ocaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
+    };
 
     use tezos_api::{
         ffi::ApplyBlockRequest,
@@ -46,7 +48,10 @@ mod tezos_ffi {
         ffi::ProtocolRpcRequest,
         ffi::RpcMethod,
         ffi::RpcRequest,
-        ffi::{ApplyBlockResponse, ForkingTestchainData, ValidateOperationRequest},
+        ffi::{
+            ApplyBlockResponse, CycleRollsOwnerSnapshot, ForkingTestchainData,
+            ValidateOperationRequest,
+        },
         ocaml_conv::OCamlBlockHash,
         ocaml_conv::OCamlChainId,
         ocaml_conv::OCamlContextHash,
@@ -81,6 +86,13 @@ mod tezos_ffi {
             max_operations_ttl: OCamlInt,
             operations: OCamlList<OCamlList<Operation>>,
         ) -> bool;
+        pub fn construct_and_compare_cycle_rolls_owner_snapshot(
+            cycle_rolls_owner_snapshot: CycleRollsOwnerSnapshot,
+            cycle: OCamlInt,
+            seed_bytes: OCamlBytes,
+            rolls_data: OCamlList<(OCamlBytes, OCamlList<OCamlInt>)>,
+            last_roll: OCamlInt32,
+        ) -> bool;
         pub fn construct_and_compare_apply_block_response(
             apply_block_response: ApplyBlockResponse,
             validation_result_message: OCamlBytes,
@@ -88,8 +100,8 @@ mod tezos_ffi {
             protocol_hash: OCamlProtocolHash,
             next_protocol_hash: OCamlProtocolHash,
             block_header_proto_json: OCamlBytes,
-            block_header_proto_metadata_json: OCamlBytes,
-            operations_proto_metadata_json: OCamlList<OCamlList<OCamlBytes>>,
+            block_header_proto_metadata_bytes: OCamlBytes,
+            operations_proto_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
             max_operations_ttl: OCamlInt,
             last_allowed_fork_level: OCamlInt32,
             forking_testchain: bool,
@@ -97,7 +109,10 @@ mod tezos_ffi {
             block_metadata_hash: Option<OCamlBlockMetadataHash>,
             ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
             ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
-
+            cycle_rolls_owner_snapshots: OCamlList<CycleRollsOwnerSnapshot>,
+            new_protocol_constants_json: Option<String>,
+            new_cycle_eras_json: Option<String>,
+            commit_time: OCamlFloat,
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
             begin_construction_request: BeginConstructionRequest,
@@ -272,6 +287,38 @@ fn test_apply_block_request_conv() {
 
 #[test]
 #[serial]
+fn test_cycle_rolls_owner_snapshot_conv() {
+    let data = CycleRollsOwnerSnapshot {
+        cycle: 1,
+        seed_bytes: vec![1, 2, 3, 4],
+        rolls_data: vec![],
+        last_roll: 200,
+    };
+
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        let cycle_rolls_owner_snapshot = data.to_boxroot(rt);
+        let cycle = data.cycle.to_boxroot(rt);
+        let seed_bytes = data.seed_bytes.to_boxroot(rt);
+        let rolls_data = data.rolls_data.to_boxroot(rt);
+        let last_roll = data.last_roll.to_boxroot(rt);
+
+        tezos_ffi::construct_and_compare_cycle_rolls_owner_snapshot(
+            rt,
+            &cycle_rolls_owner_snapshot,
+            &cycle,
+            &seed_bytes,
+            &rolls_data,
+            &last_roll,
+        )
+        .to_rust(rt)
+    })
+    .unwrap();
+
+    assert!(result, "ApplyBlockRequest conversion failed")
+}
+
+#[test]
+#[serial]
 fn test_apply_block_response_conv() {
     let response = ApplyBlockResponse {
         validation_result_message: "validation_result_message".to_string(),
@@ -303,6 +350,10 @@ fn test_apply_block_response_conv() {
         block_metadata_hash: None,
         ops_metadata_hashes: None,
         ops_metadata_hash: None,
+        cycle_rolls_owner_snapshots: vec![],
+        new_protocol_constants_json: None,
+        new_cycle_eras_json: None,
+        commit_time: 1.0,
     };
 
     let (into, from): (bool, bool) = runtime::execute(move |rt: &mut OCamlRuntime| {
@@ -323,6 +374,10 @@ fn test_apply_block_response_conv() {
         let block_metadata_hash = response.block_metadata_hash.to_boxroot(rt);
         let ops_metadata_hashes = response.ops_metadata_hashes.to_boxroot(rt);
         let ops_metadata_hash = response.ops_metadata_hash.to_boxroot(rt);
+        let cycle_rolls_owner_snapshots = response.cycle_rolls_owner_snapshots.to_boxroot(rt);
+        let new_protocol_constants_json = response.new_protocol_constants_json.to_boxroot(rt);
+        let new_cycle_eras_json = response.new_cycle_eras_json.to_boxroot(rt);
+        let commit_time = response.commit_time.to_boxroot(rt);
 
         let into_result: bool = tezos_ffi::construct_and_compare_apply_block_response(
             rt,
@@ -341,6 +396,10 @@ fn test_apply_block_response_conv() {
             &block_metadata_hash,
             &ops_metadata_hashes,
             &ops_metadata_hash,
+            &cycle_rolls_owner_snapshots,
+            &new_protocol_constants_json,
+            &new_cycle_eras_json,
+            &commit_time,
         )
         .to_rust(rt);
 

@@ -9,10 +9,11 @@ use super::{
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    ContextKvStoreConfiguration, ForkingTestchainData, HelpersPreapplyBlockRequest,
-    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosContextConfiguration,
-    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration, ValidateOperationRequest,
+    ContextKvStoreConfiguration, CycleRollsOwnerSnapshot, ForkingTestchainData,
+    HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest,
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    ValidateOperationRequest,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
@@ -20,7 +21,7 @@ use crypto::hash::{
 };
 use ocaml_interop::{
     impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant, OCaml,
-    OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, OCamlRuntime, ToOCaml,
+    OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, OCamlRuntime, ToOCaml,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
@@ -198,6 +199,15 @@ impl_to_ocaml_record! {
 }
 
 impl_to_ocaml_record! {
+    CycleRollsOwnerSnapshot {
+        cycle: OCamlInt,
+        seed_bytes: OCamlBytes,
+        rolls_data: OCamlList<(OCamlBytes, OCamlList<OCamlInt>)>,
+        last_roll: OCamlInt32,
+    }
+}
+
+impl_to_ocaml_record! {
     ApplyBlockResponse {
         validation_result_message: OCamlBytes,
         context_hash: OCamlContextHash,
@@ -213,6 +223,10 @@ impl_to_ocaml_record! {
         block_metadata_hash: Option<OCamlBlockMetadataHash>,
         ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
         ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+        cycle_rolls_owner_snapshots: OCamlList<CycleRollsOwnerSnapshot>,
+        new_protocol_constants_json: Option<String>,
+        new_cycle_eras_json: Option<String>,
+        commit_time: OCamlFloat,
     }
 }
 

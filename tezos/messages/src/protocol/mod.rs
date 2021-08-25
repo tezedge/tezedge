@@ -27,6 +27,8 @@ pub mod proto_006;
 pub mod proto_007;
 pub mod proto_008;
 pub mod proto_008_2;
+pub mod proto_009;
+pub mod proto_010;
 
 lazy_static! {
     pub static ref SUPPORTED_PROTOCOLS: HashMap<String, SupportedProtocol> = init();
@@ -52,6 +54,8 @@ pub enum SupportedProtocol {
     Proto007,
     Proto008,
     Proto008_2,
+    Proto009,
+    Proto010,
 }
 
 impl SupportedProtocol {
@@ -67,6 +71,8 @@ impl SupportedProtocol {
             SupportedProtocol::Proto007 => proto_007::PROTOCOL_HASH.to_string(),
             SupportedProtocol::Proto008 => proto_008::PROTOCOL_HASH.to_string(),
             SupportedProtocol::Proto008_2 => proto_008_2::PROTOCOL_HASH.to_string(),
+            SupportedProtocol::Proto009 => proto_009::PROTOCOL_HASH.to_string(),
+            SupportedProtocol::Proto010 => proto_010::PROTOCOL_HASH.to_string(),
         }
     }
 }
@@ -186,6 +192,18 @@ pub fn get_constants_for_rpc(
         }
         SupportedProtocol::Proto008_2 => {
             use crate::protocol::proto_008_2::constants::{ParametricConstants, FIXED};
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
+            param.extend(FIXED.clone().as_map());
+            Ok(Some(param))
+        }
+        SupportedProtocol::Proto009 => {
+            use crate::protocol::proto_009::constants::{ParametricConstants, FIXED};
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
+            param.extend(FIXED.clone().as_map());
+            Ok(Some(param))
+        }
+        SupportedProtocol::Proto010 => {
+            use crate::protocol::proto_010::constants::{ParametricConstants, FIXED};
             let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
