@@ -18,7 +18,8 @@ use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
-    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
+    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, ConstantsStorage, CycleMetaStorage,
 };
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_context::context_key_owned;
@@ -26,7 +27,7 @@ use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
-use crate::helpers::RpcServiceError;
+use crate::helpers::{BlockMetadata, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
 use crate::services::base_services::{get_context_hash, get_raw_block_header_with_hash};
 use tezos_wrapper::TezedgeContextClientError;
@@ -40,6 +41,8 @@ mod proto_006;
 mod proto_007;
 mod proto_008;
 mod proto_008_2;
+mod proto_009;
+mod proto_010;
 
 use cached::proc_macro::cached;
 use cached::TimedSizedCache;
@@ -87,7 +90,9 @@ impl From<anyhow::Error> for RightsError {
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_baking_rights(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn check_and_get_baking_rights(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -97,7 +102,9 @@ pub(crate) fn check_and_get_baking_rights(
     env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
+
     let context_proto_params = get_context_protocol_params(block_hash, env)?;
+    let cycle_meta_storage = CycleMetaStorage::new(env.persistent_storage());
 
     // split impl by protocol
     match context_proto_params.protocol_hash {
@@ -108,8 +115,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto002 => proto_002::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -118,8 +128,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto003 => proto_003::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -128,8 +141,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto004 => proto_004::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -138,8 +154,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto005 => panic!("not yet implemented!"),
         SupportedProtocol::Proto005_2 => proto_005_2::rights_service::check_and_get_baking_rights(
@@ -149,8 +168,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto006 => proto_006::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -159,8 +181,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto007 => proto_007::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -169,8 +194,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto008 => proto_008::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -179,8 +207,11 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto008_2 => proto_008_2::rights_service::check_and_get_baking_rights(
             context_proto_params,
@@ -189,8 +220,36 @@ pub(crate) fn check_and_get_baking_rights(
             cycle,
             max_priority,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto009 => proto_009::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            &cycle_meta_storage,
+            chain_id,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto010 => proto_010::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
         .map_err(RightsError::from),
     }
 }
@@ -210,7 +269,9 @@ pub(crate) fn check_and_get_baking_rights(
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_endorsing_rights(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn check_and_get_endorsing_rights(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -220,6 +281,7 @@ pub(crate) fn check_and_get_endorsing_rights(
 ) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
     let context_proto_params = get_context_protocol_params(block_hash, env)?;
+    let cycle_meta_storage = CycleMetaStorage::new(env.persistent_storage());
 
     // split impl by protocol
     match context_proto_params.protocol_hash {
@@ -229,8 +291,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto002 => proto_002::rights_service::check_and_get_endorsing_rights(
             context_proto_params,
@@ -238,8 +303,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto003 => proto_003::rights_service::check_and_get_endorsing_rights(
             context_proto_params,
@@ -247,8 +315,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto004 => proto_004::rights_service::check_and_get_endorsing_rights(
             context_proto_params,
@@ -256,8 +327,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto005 => panic!("not yet implemented!"),
         SupportedProtocol::Proto005_2 => {
@@ -267,8 +341,11 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                env.tezedge_context(),
+                &cycle_meta_storage,
+                chain_id,
+                env,
             )
+            .await
             .map_err(RightsError::from)
         }
         SupportedProtocol::Proto006 => proto_006::rights_service::check_and_get_endorsing_rights(
@@ -277,8 +354,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto007 => proto_007::rights_service::check_and_get_endorsing_rights(
             context_proto_params,
@@ -286,8 +366,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto008 => proto_008::rights_service::check_and_get_endorsing_rights(
             context_proto_params,
@@ -295,8 +378,11 @@ pub(crate) fn check_and_get_endorsing_rights(
             delegate,
             cycle,
             has_all,
-            env.tezedge_context(),
+            &cycle_meta_storage,
+            chain_id,
+            env,
         )
+        .await
         .map_err(RightsError::from),
         SupportedProtocol::Proto008_2 => {
             proto_008_2::rights_service::check_and_get_endorsing_rights(
@@ -305,10 +391,36 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                env.tezedge_context(),
+                &cycle_meta_storage,
+                chain_id,
+                env,
             )
+            .await
             .map_err(RightsError::from)
         }
+        SupportedProtocol::Proto009 => proto_009::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            &cycle_meta_storage,
+            chain_id,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto010 => proto_010::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
     }
 }
 
@@ -437,6 +549,12 @@ pub(crate) fn get_votes_listings(
         SupportedProtocol::Proto008_2 => {
             proto_008_2::votes_service::get_votes_listings(env, &context_hash)
         }
+        SupportedProtocol::Proto009 => {
+            proto_009::votes_service::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto010 => {
+            proto_010::votes_service::get_votes_listings(env, &context_hash)
+        }
     }
 }
 
@@ -453,12 +571,11 @@ pub(crate) fn get_votes_listings(
 pub(crate) fn get_context_constants_just_for_rpc(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<Option<RpcJsonMap>, ContextParamsError> {
+) -> Result<Option<String>, ContextParamsError> {
+    // TODO: just get constants from the constants storage
     let context_proto_params = get_context_protocol_params(block_hash, env)?;
-    Ok(tezos_messages::protocol::get_constants_for_rpc(
-        &context_proto_params.constants_data,
-        &context_proto_params.protocol_hash,
-    )?)
+    // TODO: TEST THIS
+    Ok(Some(context_proto_params.constants_data))
 }
 
 // We want error responses to be errors in `call_protocol_rpc_with_cache`
@@ -718,16 +835,18 @@ fn create_protocol_rpc_request(
 
 pub(crate) struct ContextProtocolParam {
     pub protocol_hash: SupportedProtocol,
-    pub constants_data: Vec<u8>,
+    pub constants_data: String,
     pub block_header: BlockHeaderWithHash,
+    // pub block_cycle: i32,
+    // pub block_cycle_position: i32,
 }
 
 #[derive(Debug, Error)]
 pub enum ContextParamsError {
-    #[error("Protocol not found in context for block: {0}")]
-    NoProtocolForBlock(String),
-    #[error("Protocol constants not found in context for block: {0}")]
-    NoConstantsForBlock(String),
+    // #[error("Protocol not found in context for block: {0}")]
+    // NoProtocolForBlock(String),
+    // #[error("Protocol constants not found in context for block: {0}")]
+    // NoConstantsForBlock(String),
     #[error("Storage error occurred, reason: {reason}")]
     StorageError { reason: storage::StorageError },
     #[error("Context error occurred, reason: {reason}")]
@@ -820,36 +939,98 @@ pub(crate) fn get_context_protocol_params(
         }
     };
 
-    let protocol_hash: ProtocolHash;
-    let constants: Vec<u8>;
-    {
-        let context = env.tezedge_context();
-        let context_hash = block_header.header.context();
+    slog::crit!(env.log(), "Getting block meta from storage");
 
-        if let Some(data) =
-            context.get_key_from_history(context_hash, context_key_owned!("protocol"))?
-        {
-            protocol_hash = ProtocolHash::try_from(data)?;
-        } else {
-            return Err(ContextParamsError::NoProtocolForBlock(
-                block_hash.to_base58_check(),
-            ));
-        }
+    // TODO: maybe get the protocol hash from the metadata as well
+    let protocol_hash =
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(block) => block.next_protocol_hash,
+            None => {
+                return Err(storage::StorageError::MissingKey {
+                    when: "get_context_protocol_params".into(),
+                }
+                .into())
+            }
+        };
 
-        if let Some(data) =
-            context.get_key_from_history(context_hash, context_key_owned!("data/v1/constants"))?
-        {
-            constants = data;
-        } else {
-            return Err(ContextParamsError::NoConstantsForBlock(
-                block_hash.to_base58_check(),
-            ));
+    slog::crit!(
+        env.log(),
+        "Getting constants from storage - proto: {}",
+        protocol_hash.to_base58_check()
+    );
+
+    let constants = match ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+        Some(constants) => constants,
+        None => {
+            return Err(storage::StorageError::MissingKey {
+                when: "get_context_protocol_params".into(),
+            }
+            .into())
         }
     };
+
+    slog::crit!(env.log(), "CONSTANTS: {}", constants);
 
     Ok(ContextProtocolParam {
         protocol_hash: protocol_hash.try_into()?,
         constants_data: constants,
         block_header,
     })
+}
+
+#[derive(Debug, Fail)]
+#[allow(clippy::enum_variant_names)]
+pub enum MetadataParsingError {
+    #[fail(display = "Cannot parse block metadata, key: {}", key)]
+    ParsingError { key: &'static str },
+    #[fail(display = "Key not found in block metadata, key: {}", key)]
+    KeyNotFoundError { key: &'static str },
+}
+
+pub fn parse_block_metadata_level(
+    metadata: &BlockMetadata,
+    key: &'static str,
+) -> Result<(i32, i32), MetadataParsingError> {
+    if let Some(level_info) = metadata.get(key) {
+        if let Some(level_info_object) = level_info.as_object() {
+            let block_cycle = if let Some(cycle) = level_info_object.get("cycle") {
+                if let Some(value) = cycle.as_i64() {
+                    match value.try_into() {
+                        Ok(v) => v,
+                        Err(_) => return Err(MetadataParsingError::ParsingError { key: "cycle" }),
+                    }
+                } else {
+                    return Err(MetadataParsingError::ParsingError { key: "cycle" });
+                }
+            } else {
+                return Err(MetadataParsingError::ParsingError { key: "cycle" });
+            };
+            let block_cycle_position: i32 =
+                if let Some(cycle_position) = level_info_object.get("cycle_position") {
+                    if let Some(value) = cycle_position.as_i64() {
+                        match value.try_into() {
+                            Ok(v) => v,
+                            Err(_) => {
+                                return Err(MetadataParsingError::ParsingError {
+                                    key: "cycle_position",
+                                })
+                            }
+                        }
+                    } else {
+                        return Err(MetadataParsingError::ParsingError {
+                            key: "cycle_position",
+                        });
+                    }
+                } else {
+                    return Err(MetadataParsingError::ParsingError {
+                        key: "cycle_position",
+                    });
+                };
+            Ok((block_cycle, block_cycle_position))
+        } else {
+            Err(MetadataParsingError::ParsingError { key })
+        }
+    } else {
+        Err(MetadataParsingError::KeyNotFoundError { key })
+    }
 }

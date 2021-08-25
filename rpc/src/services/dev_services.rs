@@ -7,6 +7,7 @@
 // to reproduce the same functionality.
 
 use std::convert::TryFrom;
+use std::vec;
 
 use anyhow::bail;
 use crypto::hash::ContractKt1Hash;
@@ -15,12 +16,14 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
+use storage::cycle_eras_storage::CycleEra;
 //use tezos_context::actions::context_action_storage::{
 //    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
 //    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 //};
 use storage::{
-    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
+    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
+    CycleErasStorage, PersistentStorage,
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
@@ -28,7 +31,6 @@ use tezos_messages::base::ConversionError;
 
 use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
-use crate::services::protocol::get_context_protocol_params;
 
 pub type ContractAddress = Vec<u8>;
 
@@ -164,25 +166,57 @@ pub(crate) fn get_cycle_length_for_block(
     env: &RpcServiceEnvironment,
     log: &Logger,
 ) -> Result<i32, RpcServiceError> {
-    if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
-        Ok(tezos_messages::protocol::get_constants_for_rpc(
-            &context_proto_params.constants_data,
-            &context_proto_params.protocol_hash,
-        ).map_err(|e| RpcServiceError::UnexpectedError {
-            reason: format!("{}", e)
-        })?
-            .map(|constants| constants.get("blocks_per_cycle")
-                .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-                    slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-                    4096
-                })
-            ).flatten().unwrap_or_else(|| {
-            slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-            4096
-        }))
+    // TODO @adonagy: FIX THIS
+    // let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&ProtocolHash::from_base58_check(&context_proto_param.protocol_hash.protocol_hash())?)? {
+    //     eras
+    //     // return the constant from eras
+    // } else {
+    //     bail!("No cycle eras found!!")
+    // };
+    // if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
+    //     Ok(tezos_messages::protocol::get_constants_for_rpc(
+    //         &context_proto_params.constants_data,
+    //         &context_proto_params.protocol_hash,
+    //     ).map_err(|e| RpcServiceError::UnexpectedError {
+    //         reason: format!("{}", e)
+    //     })?
+    //         .map(|constants| constants.get("blocks_per_cycle")
+    //             .map(|value| if let UniversalValue::Number(value) = value { *value } else {
+    //                 slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
+    //                 4096
+    //             })
+    //         ).flatten().unwrap_or_else(|| {
+    //         slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
+    //         4096
+    //     }))
+    // } else {
+    //     slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
+    //     Ok(4096)
+    // }
+    Ok(4096)
+}
+
+pub(crate) fn get_cycle_eras(
+    block_hash: &BlockHash,
+    env: &RpcServiceEnvironment,
+    _: &Logger,
+) -> Result<Option<Vec<CycleEra>>, RpcServiceError> {
+    let protocol_hash =
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(block) => block.protocol_hash,
+            None => {
+                return Err(storage::StorageError::MissingKey {
+                    when: "get_cycle_eras".into(),
+                }
+                .into())
+            }
+        };
+
+    if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+        Ok(Some(eras))
+        // return the constant from eras
     } else {
-        slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-        Ok(4096)
+        Ok(Some(vec![]))
     }
 }
 

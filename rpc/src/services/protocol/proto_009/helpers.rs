@@ -4,10 +4,10 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use crypto::hash::ChainId;
-use anyhow::bail;
+use failure::{bail, Fail};
 use getset::Getters;
 
+use crypto::hash::ChainId;
 use crypto::{
     blake2b::{self, Blake2bError},
     crypto_box::PublicKeyError,
@@ -37,13 +37,13 @@ pub struct RightsConstants {
     endorsers_per_block: u16,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Fail)]
 pub enum RightsConstantError {
-    #[error("The value is illegal, key: {key}")]
+    #[fail(display = "The value is illegal, key: {}", key)]
     WrongValue { key: &'static str },
-    #[error("Key cannot be parsed, key: {key}")]
+    #[fail(display = "Key cannot be parsed, key: {}", key)]
     Parsing { key: &'static str },
-    #[error("Key cannot be found in constants, key: {key}")]
+    #[fail(display = "Key cannot be found in constants, key: {}", key)]
     KeyNotFound { key: &'static str },
 }
 
@@ -56,7 +56,10 @@ impl RightsConstants {
     #[inline]
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> Result<Self, failure::Error> {
+        // let constatns_deserialized = context_proto_param.constants_data;
+
+        // TODO: fix unwraps
         if let Some(constatns_deserialized) =
             serde_json::from_str::<serde_json::Value>(&context_proto_param.constants_data)?
                 .as_object()
@@ -139,7 +142,7 @@ pub(crate) fn get_cycle_data(
     parameters: RightsParams,
     block_cycle: i32,
     cycle_meta_storage: &CycleMetaStorage,
-) -> Result<CycleData, anyhow::Error> {
+) -> Result<CycleData, failure::Error> {
     // prepare cycle for which rollers are selected
     let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
         cycle
@@ -156,7 +159,6 @@ pub(crate) fn get_cycle_data(
         )
     }
 }
-
 /// Set of parameters used to complete baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
 pub struct RightsParams {
@@ -257,12 +259,13 @@ impl RightsParams {
         chain_id: &ChainId,
         env: &RpcServiceEnvironment,
         is_baking_rights: bool,
-    ) -> Result<Self, anyhow::Error> {
-        let block_level = block_header.header.level();
+    ) -> Result<Self, failure::Error> {
+        let block_level: i32 = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
         // this is the cycle of block_id level
+        // let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i32 = block_level;
@@ -336,7 +339,13 @@ impl RightsParams {
         // set max_priority from param value or default
         let max_priority = match param_max_priority {
             Some(val) => val.parse()?,
-            None => 64,
+            None => {
+                if requested_cycle.is_some() {
+                    8
+                } else {
+                    64
+                }
+            }
         };
 
         Ok(Self::new(
@@ -387,8 +396,8 @@ impl RightsParams {
         requested_cycle: i32,
         current_cycle: i32,
         preserved_cycles: u8,
-    ) -> Result<i32, anyhow::Error> {
-        if (requested_cycle - current_cycle).abs() <= preserved_cycles.into() {
+    ) -> Result<i32, failure::Error> {
+        if (requested_cycle - current_cycle).abs() <= (preserved_cycles as i32) {
             Ok(requested_cycle)
         } else {
             // TODO: proper json response is needed for this
@@ -425,11 +434,11 @@ impl EndorserSlots {
 }
 
 /// Enum defining Tezos PRNG possible error
-#[derive(Debug, Error)]
+#[derive(Debug, Fail)]
 pub enum TezosPRNGError {
-    #[error("Value of bound(last_roll) not correct: {bound} bytes")]
+    #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
     BoundNotCorrect { bound: i32 },
-    #[error("Public key error: {0}")]
+    #[fail(display = "Public key error: {}", _0)]
     PublicKeyError(PublicKeyError),
 }
 
@@ -467,14 +476,11 @@ pub fn init_prng(
     use_string_bytes: &[u8],
     cycle_position: i32,
     offset: i32,
-) -> Result<RandomSeedState, anyhow::Error> {
+) -> Result<RandomSeedState, failure::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let state = cycle_meta_data.seed_bytes();
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
-
-    // the position of the block in its cycle; has to be i32
-    // let cycle_position: i32 = level_position(level, blocks_per_cycle)?;
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(

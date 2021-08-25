@@ -1,44 +1,32 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO: (anagy) - check TODO's
-// TODO: refactor errors so this will be removed
-// Enum defining possible response structures for RPC calls
-// there is reason to have this structure because of format of error responses from ocaml node:
-// [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
-// [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":9,"requested":20,"latest":15}]
-// if there have to be same response format then RpcErrorMsg is covering it
-// this enum can be removed if errors are generated from error context directly in result_to_json_response function
-
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-use anyhow::format_err;
+use crypto::hash::ChainId;
+use failure::format_err;
 use itertools::Itertools;
 
-use crypto::hash::ChainId;
+use crate::server::RpcServiceEnvironment;
+use crate::services::dev_services::contract_id_to_contract_address_for_index;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::protocol::proto_007::rights::{BakingRights, EndorsingRight};
+use tezos_messages::protocol::proto_009::rights::{BakingRights, EndorsingRight};
 
 use storage::cycle_storage::CycleData;
 use storage::CycleMetaStorage;
 
-use crate::server::RpcServiceEnvironment;
-use crate::services::dev_services::contract_id_to_contract_address_for_index;
-use crate::services::protocol::proto_007::helpers::{
+use crate::services::protocol::proto_009::helpers::{
     get_cycle_data, get_prng_number, init_prng, level_position, EndorserSlots, RightsConstants,
-    RightsParams,
+    RightsMetadata, RightsParams,
 };
 use crate::services::protocol::ContextProtocolParam;
-
-use super::helpers::RightsMetadata;
 
 /// Return generated baking rights.
 ///
 /// # Arguments
 ///
-/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
 /// * `level` - Url query parameter 'level'.
 /// * `delegate` - Url query parameter 'delegate'.
 /// * `cycle` - Url query parameter 'cycle'.
@@ -60,7 +48,7 @@ pub(crate) async fn check_and_get_baking_rights(
     cycle_meta_storage: &CycleMetaStorage,
     chain_id: &ChainId,
     env: &RpcServiceEnvironment,
-) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
 
@@ -96,7 +84,7 @@ pub(crate) async fn check_and_get_baking_rights(
 ///
 /// # Arguments
 ///
-/// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `cycle_meta_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
 #[inline]
@@ -105,10 +93,10 @@ pub(crate) fn get_baking_rights(
     parameters: &RightsParams,
     constants: &RightsConstants,
     rights_metadata: &RightsMetadata,
-) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let mut baking_rights = Vec::<BakingRights>::new();
 
-    let blocks_per_cycle = *constants.blocks_per_cycle();
+    let blocks_per_cycle: i32 = *constants.blocks_per_cycle();
     let time_between_blocks = constants.time_between_blocks();
 
     let timestamp = parameters.block_timestamp();
@@ -116,7 +104,6 @@ pub(crate) fn get_baking_rights(
     let cycle_position = *rights_metadata.block_cycle_position();
 
     // build a reverse map of rols so we have access in O(1)
-    // let rolls_map: HashMap<i32, String> = HashMap::new();
     let rolls_map: HashMap<i32, String> = cycle_meta_data
         .rolls_data()
         .iter()
@@ -138,7 +125,7 @@ pub(crate) fn get_baking_rights(
 
     // iterate through the whole cycle if necessery
     if let Some(cycle) = parameters.requested_cycle() {
-        let first_block_level: i32 = cycle * blocks_per_cycle + 1;
+        let first_block_level = cycle * blocks_per_cycle + 1;
         let last_block_level = first_block_level + blocks_per_cycle;
 
         for level in first_block_level..last_block_level {
@@ -207,7 +194,8 @@ pub(crate) fn get_baking_rights(
 ///
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
-/// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `cycle_meta_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `rolls_map` - Inverted mapping of the rolls, where each delegate is mapped to the roll number.
 /// * `level` - Level to feed Tezos PRNG.
 /// * `estimated_head_timestamp` - Estimated time of baking, is set to None if in past relative to block_id.
 ///
@@ -224,7 +212,7 @@ fn baking_rights_assign_rolls(
     estimated_head_timestamp: i64,
     is_cycle: bool,
     baking_rights: &mut Vec<BakingRights>,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), failure::Error> {
     const BAKING_USE_STRING: &[u8] = b"level baking:";
 
     // hashset is defined to keep track of the delegates with priorities already assigned
@@ -296,7 +284,6 @@ fn baking_rights_assign_rolls(
 ///
 /// # Arguments
 ///
-/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
 /// * `level` - Url query parameter 'level'.
 /// * `delegate` - Url query parameter 'delegate'.
 /// * `cycle` - Url query parameter 'cycle'.
@@ -316,7 +303,7 @@ pub(crate) async fn check_and_get_endorsing_rights(
     cycle_meta_storage: &CycleMetaStorage,
     chain_id: &ChainId,
     env: &RpcServiceEnvironment,
-) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
 
@@ -347,14 +334,14 @@ pub(crate) async fn check_and_get_endorsing_rights(
 ///
 /// # Arguments
 ///
-/// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `cycle_meta_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
 fn get_endorsing_rights(
     cycle_meta_data: &CycleData,
     parameters: &RightsParams,
     constants: &RightsConstants,
-) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     // define helper and output variables
     let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
@@ -429,9 +416,10 @@ fn get_endorsing_rights(
 ///
 /// # Arguments
 ///
-/// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `cycle_meta_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
+/// * `rolls_map` - Inverted mapping of the rolls, where each delegate is mapped to the roll number.
 /// * `level` - Level to feed Tezos PRNG.
 /// * `display_level` - Level to be displayed in output.
 /// * `estimated_time` - Estimated time of endorsement, is set to None if in past relative to block_id.
@@ -446,7 +434,7 @@ fn complete_endorsing_rights_for_level(
     estimated_time: Option<i64>,
     cycle_position: i32,
     endorsing_rights: &mut Vec<EndorsingRight>,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), failure::Error> {
     // endorsers_slots is needed to group all slots by delegate
     let endorsers_slots =
         get_endorsers_slots(constants, cycle_meta_data, rolls_map, cycle_position)?;
@@ -494,7 +482,7 @@ fn complete_endorsing_rights_for_level(
 /// # Arguments
 ///
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
-/// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+/// * `cycle_meta_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `level` - Level to feed Tezos PRNG.
 #[inline]
 fn get_endorsers_slots(
@@ -502,13 +490,13 @@ fn get_endorsers_slots(
     cycle_meta_data: &CycleData,
     rolls_map: &HashMap<i32, String>,
     cycle_position: i32,
-) -> Result<HashMap<String, EndorserSlots>, anyhow::Error> {
+) -> Result<HashMap<String, EndorserSlots>, failure::Error> {
     // special byte string used in Tezos PRNG
     const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
     // prepare helper variable
     let mut endorsers_slots: HashMap<String, EndorserSlots> = HashMap::new();
 
-    for endorser_slot in (0..*constants.endorsers_per_block()).rev() {
+    for endorser_slot in 0..*constants.endorsers_per_block() {
         // generate PRNG per endorsement slot and take delegates by roll number from context_rolls
         // if roll number is not found then reroll with new state till roll nuber is found in context_rolls
         let mut state = init_prng(

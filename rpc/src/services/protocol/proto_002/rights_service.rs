@@ -16,16 +16,23 @@ use std::convert::TryInto;
 use anyhow::format_err;
 use itertools::Itertools;
 
-use crate::services::dev_services::contract_id_to_contract_address_for_index;
+use crypto::hash::ChainId;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_002::rights::{BakingRights, EndorsingRight};
-use tezos_wrapper::TezedgeContextClient;
 
+use storage::cycle_storage::CycleData;
+use storage::CycleMetaStorage;
+
+use crate::server::RpcServiceEnvironment;
+use crate::services::dev_services::contract_id_to_contract_address_for_index;
 use crate::services::protocol::proto_002::helpers::{
-    get_prng_number, init_prng, EndorserSlots, RightsConstants, RightsContextData, RightsParams,
+    get_cycle_data, get_prng_number, init_prng, level_position, EndorserSlots, RightsConstants,
+    RightsParams,
 };
 use crate::services::protocol::ContextProtocolParam;
+
+use super::helpers::RightsMetadata;
 
 /// Return generated baking rights.
 ///
@@ -42,14 +49,17 @@ use crate::services::protocol::ContextProtocolParam;
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_baking_rights(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn check_and_get_baking_rights(
     context_proto_params: ContextProtocolParam,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    context: &TezedgeContextClient,
+    cycle_meta_storage: &CycleMetaStorage,
+    chain_id: &ChainId,
+    env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -62,16 +72,24 @@ pub(crate) fn check_and_get_baking_rights(
         has_all,
         &constants,
         &context_proto_params.block_header,
+        chain_id,
+        env,
         true,
-    )?;
+    )
+    .await?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
+    let cycle_meta_data = get_cycle_data(
         params.clone(),
-        constants.clone(),
-        (&context_proto_params.block_header.header.context(), context),
+        *params.rights_metadata().block_cycle(),
+        cycle_meta_storage,
     )?;
 
-    get_baking_rights(&context_data, &params, &constants)
+    get_baking_rights(
+        &cycle_meta_data,
+        &params,
+        &constants,
+        params.rights_metadata(),
+    )
 }
 
 /// Use prepared data to generate baking rights
@@ -83,9 +101,10 @@ pub(crate) fn check_and_get_baking_rights(
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
 #[inline]
 pub(crate) fn get_baking_rights(
-    context_data: &RightsContextData,
+    cycle_meta_data: &CycleData,
     parameters: &RightsParams,
     constants: &RightsConstants,
+    rights_metadata: &RightsMetadata,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     let mut baking_rights = Vec::<BakingRights>::new();
 
@@ -94,22 +113,48 @@ pub(crate) fn get_baking_rights(
 
     let timestamp = parameters.block_timestamp();
     let block_level = parameters.block_level();
+    let cycle_position = *rights_metadata.block_cycle_position();
+
+    // build a reverse map of rols so we have access in O(1)
+    // let rolls_map: HashMap<i32, String> = HashMap::new();
+    let rolls_map: HashMap<i32, String> = cycle_meta_data
+        .rolls_data()
+        .iter()
+        .map(|(delegate, rolls)| {
+            rolls
+                .iter()
+                .map(|roll| {
+                    (
+                        *roll,
+                        SignaturePublicKeyHash::from_tagged_bytes(delegate.clone())
+                            .unwrap()
+                            .to_string_representation(),
+                    )
+                })
+                .collect::<HashMap<i32, String>>()
+        })
+        .flatten()
+        .collect();
 
     // iterate through the whole cycle if necessery
     if let Some(cycle) = parameters.requested_cycle() {
-        let first_block_level = cycle * (blocks_per_cycle as i64) + 1;
-        let last_block_level = first_block_level + (blocks_per_cycle as i64);
+        let first_block_level: i32 = cycle * blocks_per_cycle + 1;
+        let last_block_level = first_block_level + blocks_per_cycle;
 
         for level in first_block_level..last_block_level {
-            let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
+            let block_level_diff: i64 = (level - block_level).abs().into();
+            let seconds_to_add: i64 = block_level_diff * time_between_blocks[0];
             let estimated_timestamp = timestamp + seconds_to_add;
+            let cycle_position = level_position(level, blocks_per_cycle)?;
 
             // assign rolls goes here
             baking_rights_assign_rolls(
-                &parameters,
-                &constants,
-                &context_data,
-                level.try_into()?,
+                parameters,
+                constants,
+                cycle_meta_data,
+                &rolls_map,
+                level,
+                cycle_position,
                 estimated_timestamp,
                 true,
                 &mut baking_rights,
@@ -119,14 +164,17 @@ pub(crate) fn get_baking_rights(
         }
     } else {
         let level = *parameters.requested_level();
-        let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
+        let block_level_diff: i64 = (level - block_level).abs().into();
+        let seconds_to_add: i64 = block_level_diff * time_between_blocks[0];
         let estimated_timestamp = timestamp + seconds_to_add;
         // assign rolls goes here
         baking_rights_assign_rolls(
-            &parameters,
-            &constants,
-            &context_data,
-            level.try_into()?,
+            parameters,
+            constants,
+            cycle_meta_data,
+            &rolls_map,
+            level,
+            cycle_position,
             estimated_timestamp,
             false,
             &mut baking_rights,
@@ -165,11 +213,14 @@ pub(crate) fn get_baking_rights(
 ///
 /// Baking priorities are are assigned to Roles, the default behavior is to include only the top priority for the delegate
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn baking_rights_assign_rolls(
     parameters: &RightsParams,
     constants: &RightsConstants,
-    context_data: &RightsContextData,
+    cycle_meta_data: &CycleData,
+    rolls_map: &HashMap<i32, String>,
     level: i32,
+    cycle_position: i32,
     estimated_head_timestamp: i64,
     is_cycle: bool,
     baking_rights: &mut Vec<BakingRights>,
@@ -184,20 +235,19 @@ fn baking_rights_assign_rolls(
     let max_priority = *parameters.max_priority();
     let has_all = parameters.has_all();
     let block_level = *parameters.block_level();
-    let last_roll = *context_data.last_roll();
-    let rolls_map = context_data.rolls();
-    let display_level: i32 = (*parameters.display_level()).try_into()?;
+    let last_roll = *cycle_meta_data.last_roll();
+    let display_level: i32 = *parameters.display_level();
 
     for priority in 0..max_priority {
         // draw the rolls for the requested parameters
         let delegate_to_assign;
         // TODO: priority can overflow in the ocaml code, do a priority % i32::max_value()
         let mut state = init_prng(
-            &context_data,
-            &constants,
+            cycle_meta_data,
+            constants,
             BAKING_USE_STRING,
-            level,
-            priority.try_into()?,
+            cycle_position,
+            priority,
         )?;
 
         loop {
@@ -217,7 +267,7 @@ fn baking_rights_assign_rolls(
         }
 
         // we omit the estimated_time field if the block on the requested level is already baked
-        let priority_timestamp = if block_level < (level as i64) {
+        let priority_timestamp = if block_level < level {
             let time = if time_between_blocks.len() == 1 {
                 time_between_blocks[0]
             } else {
@@ -233,7 +283,7 @@ fn baking_rights_assign_rolls(
 
         baking_rights.push(BakingRights::new(
             rights_level,
-            SignaturePublicKeyHash::from_b58_hash(&delegate_to_assign)?,
+            SignaturePublicKeyHash::from_b58_hash(delegate_to_assign)?,
             priority as u16,
             priority_timestamp,
         ));
@@ -256,13 +306,16 @@ fn baking_rights_assign_rolls(
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_endorsing_rights(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn check_and_get_endorsing_rights(
     context_proto_params: ContextProtocolParam,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    context: &TezedgeContextClient,
+    cycle_meta_storage: &CycleMetaStorage,
+    chain_id: &ChainId,
+    env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -275,16 +328,19 @@ pub(crate) fn check_and_get_endorsing_rights(
         has_all,
         &constants,
         &context_proto_params.block_header,
+        chain_id,
+        env,
         false,
-    )?;
+    )
+    .await?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
+    let cycle_meta_data = get_cycle_data(
         params.clone(),
-        constants.clone(),
-        (&context_proto_params.block_header.header.context(), context),
+        *params.rights_metadata().block_cycle(),
+        cycle_meta_storage,
     )?;
 
-    get_endorsing_rights(&context_data, &params, &constants)
+    get_endorsing_rights(&cycle_meta_data, &params, &constants)
 }
 
 /// Use prepared data to generate endosring rights
@@ -295,31 +351,52 @@ pub(crate) fn check_and_get_endorsing_rights(
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [RightsConstants](RightsConstants::parse_rights_constants).
 fn get_endorsing_rights(
-    context_data: &RightsContextData,
+    cycle_meta_data: &CycleData,
     parameters: &RightsParams,
     constants: &RightsConstants,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     // define helper and output variables
     let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
+    let rolls_map: HashMap<i32, String> = cycle_meta_data
+        .rolls_data()
+        .iter()
+        .map(|(delegate, rolls)| {
+            rolls
+                .iter()
+                .map(|roll| {
+                    (
+                        *roll,
+                        SignaturePublicKeyHash::from_tagged_bytes(delegate.clone())
+                            .unwrap()
+                            .to_string_representation(),
+                    )
+                })
+                .collect::<HashMap<i32, String>>()
+        })
+        .flatten()
+        .collect();
+
     // when query param cycle is specified then iterate over all cycle levels, else only given level
     if let Some(cycle) = parameters.requested_cycle() {
         let blocks_per_cycle = *constants.blocks_per_cycle();
-        let first_cycle_level = cycle * (blocks_per_cycle as i64) + 1;
-        let last_cycle_level = first_cycle_level + (blocks_per_cycle as i64);
+        let first_cycle_level = cycle * blocks_per_cycle + 1;
+        let last_cycle_level = first_cycle_level + blocks_per_cycle;
         for level in first_cycle_level..last_cycle_level {
             // get estimated time first because is equal for all endorsers in given level
             // the base level for estimated time computation is level of previous block
             let estimated_time: Option<i64> =
                 parameters.get_estimated_time(constants, Some(level - 1));
+            let cycle_position = level_position(level, blocks_per_cycle)?;
 
             complete_endorsing_rights_for_level(
-                context_data,
+                cycle_meta_data,
                 parameters,
                 constants,
-                level,
+                &rolls_map,
                 level,
                 estimated_time,
+                cycle_position,
                 &mut endorsing_rights,
             )?;
             // endorsing_rights = merge_slices!(&endorsing_rights, &level_endorsing_rights);
@@ -329,12 +406,13 @@ fn get_endorsing_rights(
         let estimated_time: Option<i64> = parameters.get_estimated_time(constants, None);
 
         complete_endorsing_rights_for_level(
-            context_data,
+            cycle_meta_data,
             parameters,
             constants,
-            *parameters.requested_level(),
+            &rolls_map,
             *parameters.display_level(),
             estimated_time,
+            *parameters.rights_metadata().block_cycle_position(),
             &mut endorsing_rights,
         )?;
     };
@@ -358,17 +436,20 @@ fn get_endorsing_rights(
 /// * `display_level` - Level to be displayed in output.
 /// * `estimated_time` - Estimated time of endorsement, is set to None if in past relative to block_id.
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn complete_endorsing_rights_for_level(
-    context_data: &RightsContextData,
+    cycle_meta_data: &CycleData,
     parameters: &RightsParams,
     constants: &RightsConstants,
-    level: i64,
-    display_level: i64,
+    rolls_map: &HashMap<i32, String>,
+    display_level: i32,
     estimated_time: Option<i64>,
+    cycle_position: i32,
     endorsing_rights: &mut Vec<EndorsingRight>,
 ) -> Result<(), anyhow::Error> {
     // endorsers_slots is needed to group all slots by delegate
-    let endorsers_slots = get_endorsers_slots(constants, context_data, level)?;
+    let endorsers_slots =
+        get_endorsers_slots(constants, cycle_meta_data, rolls_map, cycle_position)?;
 
     // convert contract id to hash contract address hex byte string (needed for ordering)
     let mut endorers_slots_keys_for_order: HashMap<String, String> = HashMap::new();
@@ -399,8 +480,8 @@ fn complete_endorsing_rights_for_level(
         }
 
         endorsing_rights.push(EndorsingRight::new(
-            display_level.try_into()?,
-            SignaturePublicKeyHash::from_b58_hash(&delegate_contract_id)?,
+            display_level,
+            SignaturePublicKeyHash::from_b58_hash(delegate_contract_id)?,
             delegate_data.slots().clone(),
             estimated_time,
         ))
@@ -418,28 +499,29 @@ fn complete_endorsing_rights_for_level(
 #[inline]
 fn get_endorsers_slots(
     constants: &RightsConstants,
-    context_data: &RightsContextData,
-    level: i64,
+    cycle_meta_data: &CycleData,
+    rolls_map: &HashMap<i32, String>,
+    cycle_position: i32,
 ) -> Result<HashMap<String, EndorserSlots>, anyhow::Error> {
     // special byte string used in Tezos PRNG
     const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
     // prepare helper variable
     let mut endorsers_slots: HashMap<String, EndorserSlots> = HashMap::new();
 
-    for endorser_slot in (0..*constants.endorsers_per_block() as u8).rev() {
+    for endorser_slot in (0..*constants.endorsers_per_block()).rev() {
         // generate PRNG per endorsement slot and take delegates by roll number from context_rolls
         // if roll number is not found then reroll with new state till roll nuber is found in context_rolls
         let mut state = init_prng(
-            &context_data,
-            &constants,
+            cycle_meta_data,
+            constants,
             ENDORSEMENT_USE_STRING,
-            level.try_into()?,
+            cycle_position,
             endorser_slot.try_into()?,
         )?;
         loop {
-            let (random_num, sequence) = get_prng_number(state, *context_data.last_roll())?;
+            let (random_num, sequence) = get_prng_number(state, *cycle_meta_data.last_roll())?;
 
-            if let Some(delegate) = context_data.rolls().get(&random_num) {
+            if let Some(delegate) = rolls_map.get(&random_num) {
                 // collect all slots for each delegate
                 let endorsers_slots_entry = endorsers_slots
                     .entry(delegate.clone())

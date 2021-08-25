@@ -2,25 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
-use std::sync::Arc;
 
-use crypto::hash::ChainId;
-use anyhow::bail;
+use crypto::hash::ProtocolHash;
+use failure::{bail, Fail};
 use getset::Getters;
 
 use crypto::{
     blake2b::{self, Blake2bError},
     crypto_box::PublicKeyError,
 };
-use storage::cycle_storage::CycleData;
+use storage::{
+    cycle_eras_storage::{CycleEra, CycleErasData},
+    cycle_storage::CycleData,
+    CycleErasStorage,
+};
 use storage::{num_from_slice, BlockHeaderWithHash, CycleMetaStorage};
 
-use crate::helpers::{parse_block_hash, BlockMetadata};
 use crate::merge_slices;
 use crate::server::RpcServiceEnvironment;
-use crate::services::protocol::{
-    parse_block_metadata_level, ContextProtocolParam, MetadataParsingError,
-};
+use crate::services::protocol::ContextProtocolParam;
 
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
@@ -35,15 +35,21 @@ pub struct RightsConstants {
     time_between_blocks: Vec<i64>,
     #[get = "pub(crate)"]
     endorsers_per_block: u16,
+    #[get = "pub(crate)"]
+    minimal_block_delay: i64,
+
+    // include the cycle eras in the constants
+    #[get = "pub(crate)"]
+    cycle_eras: CycleErasData,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Fail)]
 pub enum RightsConstantError {
-    #[error("The value is illegal, key: {key}")]
+    #[fail(display = "The value is illegal, key: {}", key)]
     WrongValue { key: &'static str },
-    #[error("Key cannot be parsed, key: {key}")]
+    #[fail(display = "Key cannot be parsed, key: {}", key)]
     Parsing { key: &'static str },
-    #[error("Key cannot be found in constants, key: {key}")]
+    #[fail(display = "Key cannot be found in constants, key: {}", key)]
     KeyNotFound { key: &'static str },
 }
 
@@ -56,24 +62,39 @@ impl RightsConstants {
     #[inline]
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
-    ) -> Result<Self, anyhow::Error> {
+        env: &RpcServiceEnvironment,
+    ) -> Result<Self, failure::Error> {
         if let Some(constatns_deserialized) =
             serde_json::from_str::<serde_json::Value>(&context_proto_param.constants_data)?
                 .as_object()
         {
             let blocks_per_cycle = get_constant_i64(constatns_deserialized, "blocks_per_cycle")?;
             let preserved_cycles = get_constant_i64(constatns_deserialized, "preserved_cycles")?;
-            let nonce_length = get_constant_i64(constatns_deserialized, "nonce_length")?;
+            // let nonce_length = constatns_deserialized.get("nonce_length").unwrap().as_i64().unwrap();
             let time_between_blocks = get_time_between_blocks(constatns_deserialized)?;
             let endorsers_per_block =
                 get_constant_i64(constatns_deserialized, "endorsers_per_block")?;
+            let minimal_block_delay =
+                get_constant_i64(constatns_deserialized, "minimal_block_delay")?;
+
+            let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage())
+                .get(&ProtocolHash::from_base58_check(
+                    &context_proto_param.protocol_hash.protocol_hash(),
+                )?)? {
+                eras
+            } else {
+                bail!("No cycle eras found!!")
+            };
 
             Ok(Self {
                 blocks_per_cycle: blocks_per_cycle as i32,
                 preserved_cycles: preserved_cycles as u8,
-                nonce_length: nonce_length as u8,
+                // TODO: this should also be in constants
+                nonce_length: 32,
                 time_between_blocks,
                 endorsers_per_block: endorsers_per_block as u16,
+                minimal_block_delay,
+                cycle_eras,
             })
         } else {
             bail!("Constants not an object")
@@ -139,9 +160,9 @@ pub(crate) fn get_cycle_data(
     parameters: RightsParams,
     block_cycle: i32,
     cycle_meta_storage: &CycleMetaStorage,
-) -> Result<CycleData, anyhow::Error> {
+) -> Result<CycleData, failure::Error> {
     // prepare cycle for which rollers are selected
-    let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
+    let requested_cycle = if let Some((cycle, _)) = *parameters.requested_cycle() {
         cycle
     } else {
         block_cycle
@@ -172,9 +193,9 @@ pub struct RightsParams {
     #[get = "pub(crate)"]
     requested_delegate: Option<String>,
 
-    /// Cycle for whitch all rights will be listed. Url query parameter 'cycle'.
+    // Cycle for whitch all rights will be listed with the blocks_per_cycle for that specific cycle Url query parameter 'cycle'./
     #[get = "pub(crate)"]
-    requested_cycle: Option<i32>,
+    requested_cycle: Option<(i32, CycleEra)>,
 
     /// Level (height) of block for whitch all rights will be listed. Url query parameter 'level'.
     #[get = "pub(crate)"]
@@ -207,7 +228,7 @@ impl RightsParams {
         block_level: i32,
         block_timestamp: i64,
         requested_delegate: Option<String>,
-        requested_cycle: Option<i32>,
+        requested_cycle: Option<(i32, CycleEra)>,
         requested_level: i32,
         display_level: i32,
         timestamp_level: i32,
@@ -254,15 +275,14 @@ impl RightsParams {
         param_has_all: bool,
         rights_constants: &RightsConstants,
         block_header: &BlockHeaderWithHash,
-        chain_id: &ChainId,
-        env: &RpcServiceEnvironment,
         is_baking_rights: bool,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> Result<Self, failure::Error> {
         let block_level = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
-        let blocks_per_cycle = *rights_constants.blocks_per_cycle();
+        // let mut blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
         // this is the cycle of block_id level
+        // let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i32 = block_level;
@@ -273,6 +293,7 @@ impl RightsParams {
         let requested_level: i32 = match param_level {
             Some(level) => {
                 let level = level.parse()?;
+                // check the bounds for the requested level (if it is in the previous/next preserved cycles)
                 // display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
@@ -297,47 +318,51 @@ impl RightsParams {
             }
         };
 
-        let block_metadata = match crate::services::base_services::get_block_metadata(
-            chain_id,
-            &parse_block_hash(chain_id, &requested_level.to_string(), env)?,
-            env,
-        )
-        .await
-        {
-            Ok(metadata) => Some(metadata),
-            Err(_) => None,
-        };
+        // cycle era for the block entered as block_id (/chains/main/blocks/:block_id/...)
+        let block_cycle_era = get_cycle_era_from_level(block_level, &rights_constants.cycle_eras)?;
 
-        let rights_metadata = if let Some(metadata) = block_metadata {
-            RightsMetadata::extract_from_block_metadata(metadata)?
-        } else if param_level.is_some() {
-            RightsMetadata::calculate(blocks_per_cycle, requested_level)?
-        } else {
-            // this should never happen. When block_metadata is not available it means we requested a future level (thus level is always Some())
-            bail!("No level parameter in url")
-        };
+        // cycle era for the requested_level
+        let requested_cycle_era =
+            get_cycle_era_from_level(requested_level, &rights_constants.cycle_eras)?;
+
+        let rights_metadata = RightsMetadata::calculate(&requested_cycle_era, requested_level)?;
 
         Self::validate_cycle(
-            cycle_from_level(requested_level, blocks_per_cycle)?,
-            rights_metadata.block_cycle,
+            cycle_from_level(requested_level, &requested_cycle_era)?,
+            cycle_from_level(block_level, &block_cycle_era)?,
             preserved_cycles,
         )?;
 
         // validate requested cycle
         let requested_cycle = match param_cycle {
-            Some(val) => Some(Self::validate_cycle(
-                val.parse()?,
-                rights_metadata.block_cycle,
-                preserved_cycles,
-            )?),
+            Some(val) => {
+                let parsed_cycle = Self::validate_cycle(
+                    val.parse()?,
+                    cycle_from_level(block_level, &block_cycle_era)?,
+                    preserved_cycles,
+                )?;
+
+                let cycle_era =
+                    get_cycle_era_from_cycle(parsed_cycle, &rights_constants.cycle_eras)?;
+
+                Some((parsed_cycle, cycle_era))
+            }
             None => None,
         };
 
         // set max_priority from param value or default
         let max_priority = match param_max_priority {
             Some(val) => val.parse()?,
-            None => 64,
+            None => {
+                if requested_cycle.is_some() {
+                    8
+                } else {
+                    64
+                }
+            }
         };
+
+        // calculate the cycle_position of the level or set it from metadata
 
         Ok(Self::new(
             block_level,
@@ -373,7 +398,7 @@ impl RightsParams {
         //check if estimated time is computed and convert from raw epoch time to rfc3339 format
         if self.block_level <= timestamp_level {
             let est_timestamp = ((timestamp_level - self.block_level).abs() as i64
-                * constants.time_between_blocks()[0])
+                * constants.minimal_block_delay())
                 + self.block_timestamp;
             Some(est_timestamp)
         } else {
@@ -387,7 +412,7 @@ impl RightsParams {
         requested_cycle: i32,
         current_cycle: i32,
         preserved_cycles: u8,
-    ) -> Result<i32, anyhow::Error> {
+    ) -> Result<i32, failure::Error> {
         if (requested_cycle - current_cycle).abs() <= preserved_cycles.into() {
             Ok(requested_cycle)
         } else {
@@ -425,11 +450,11 @@ impl EndorserSlots {
 }
 
 /// Enum defining Tezos PRNG possible error
-#[derive(Debug, Error)]
+#[derive(Debug, Fail)]
 pub enum TezosPRNGError {
-    #[error("Value of bound(last_roll) not correct: {bound} bytes")]
+    #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
     BoundNotCorrect { bound: i32 },
-    #[error("Public key error: {0}")]
+    #[fail(display = "Public key error: {}", _0)]
     PublicKeyError(PublicKeyError),
 }
 
@@ -467,7 +492,7 @@ pub fn init_prng(
     use_string_bytes: &[u8],
     cycle_position: i32,
     offset: i32,
-) -> Result<RandomSeedState, anyhow::Error> {
+) -> Result<RandomSeedState, failure::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let state = cycle_meta_data.seed_bytes();
@@ -543,32 +568,11 @@ pub struct RightsMetadata {
 }
 
 impl RightsMetadata {
-    pub fn extract_from_block_metadata(
-        block_metadata: Arc<BlockMetadata>,
-    ) -> Result<Self, MetadataParsingError> {
-        let (block_cycle, block_cycle_position) =
-            match parse_block_metadata_level(&block_metadata, "level_info") {
-                Ok(cycle_data) => cycle_data,
-                Err(MetadataParsingError::KeyNotFoundError { key: _ }) => {
-                    // No level info found, trying the older scheme
-                    parse_block_metadata_level(&block_metadata, "level")?
-                }
-                Err(e) => return Err(e),
-            };
-        Ok(Self {
-            block_cycle,
-            block_cycle_position,
-        })
-    }
-
-    pub fn calculate(
-        blocks_per_cycle: i32,
-        requested_level: i32,
-    ) -> Result<Self, RightsConstantError> {
+    pub fn calculate(era: &CycleEra, requested_level: i32) -> Result<Self, RightsConstantError> {
         Ok(Self {
             // (cycle_from_level(requested_level, blocks_per_cycle)?, level_position(requested_level, blocks_per_cycle)?)
-            block_cycle: cycle_from_level(requested_level, blocks_per_cycle)?,
-            block_cycle_position: level_position(requested_level, blocks_per_cycle)?,
+            block_cycle: cycle_from_level(requested_level, era)?,
+            block_cycle_position: level_position(requested_level, era)?,
         })
     }
 }
@@ -582,10 +586,11 @@ impl RightsMetadata {
 ///
 /// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
 /// hence the blocks_per_cycle - 1 for last cycle block.
-pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> Result<i32, RightsConstantError> {
+pub fn cycle_from_level(level: i32, era: &CycleEra) -> Result<i32, RightsConstantError> {
     // check if blocks_per_cycle is not 0 to prevent panic
-    if blocks_per_cycle > 0 {
-        Ok((level - 1) / blocks_per_cycle)
+    if *era.blocks_per_cycle() > 0 {
+        // Ok((level - 1) / blocks_per_cycle)
+        Ok((level - *era.first_level()) / *era.blocks_per_cycle() + *era.first_cycle())
     } else {
         Err(RightsConstantError::WrongValue {
             key: "blocks_per_cycle",
@@ -602,18 +607,42 @@ pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> Result<i32, Rights
 ///
 /// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
 /// hence the blocks_per_cycle - 1 for last cycle block.
-pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, RightsConstantError> {
+pub fn level_position(level: i32, era: &CycleEra) -> Result<i32, RightsConstantError> {
     // check if blocks_per_cycle is not 0 to prevent panic
-    if blocks_per_cycle <= 0 {
+    if *era.blocks_per_cycle() <= 0 {
         return Err(RightsConstantError::WrongValue {
             key: "blocks_per_cycle",
         });
     }
-    let cycle_position = (level % blocks_per_cycle) - 1;
+    let cycle_position = (level - era.first_level()) % era.blocks_per_cycle();
     if cycle_position < 0 {
         //for last block
-        Ok(blocks_per_cycle - 1)
+        Ok(era.blocks_per_cycle() - 1)
     } else {
         Ok(cycle_position)
     }
+}
+
+fn get_cycle_era_from_level(level: i32, eras: &[CycleEra]) -> Result<CycleEra, failure::Error> {
+    for era in eras {
+        if *era.first_level() > level {
+            continue;
+        } else {
+            return Ok(era.clone());
+        }
+    }
+
+    bail!("Cycle eras")
+}
+
+fn get_cycle_era_from_cycle(cycle: i32, eras: &[CycleEra]) -> Result<CycleEra, failure::Error> {
+    for era in eras {
+        if *era.first_cycle() > cycle {
+            continue;
+        } else {
+            return Ok(era.clone());
+        }
+    }
+
+    bail!("No matching cycle Era found!")
 }

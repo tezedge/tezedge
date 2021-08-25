@@ -1,26 +1,27 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
-use anyhow::{bail, format_err};
+use crypto::hash::ChainId;
+use anyhow::bail;
 use getset::Getters;
-use tezos_context::context_key_owned;
 use thiserror::Error;
 
-use crypto::hash::ContextHash;
 use crypto::{
     blake2b::{self, Blake2bError},
     crypto_box::PublicKeyError,
 };
-use storage::{num_from_slice, BlockHeaderWithHash};
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::p2p::binary_message::BinaryRead;
-use tezos_wrapper::TezedgeContextClient;
+use storage::cycle_storage::CycleData;
+use storage::{num_from_slice, BlockHeaderWithHash, CycleMetaStorage};
 
+use crate::helpers::{parse_block_hash, BlockMetadata};
 use crate::merge_slices;
-use crate::services::protocol::ContextProtocolParam;
+use crate::server::RpcServiceEnvironment;
+use crate::services::protocol::{
+    parse_block_metadata_level, ContextProtocolParam, MetadataParsingError,
+};
 
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
@@ -34,31 +35,20 @@ pub struct RightsConstants {
     #[get = "pub(crate)"]
     time_between_blocks: Vec<i64>,
     #[get = "pub(crate)"]
-    blocks_per_roll_snapshot: i32,
-    #[get = "pub(crate)"]
     endorsers_per_block: u16,
 }
 
-impl RightsConstants {
-    /// simple constructor to create RightsConstants
-    pub fn new(
-        blocks_per_cycle: i32,
-        preserved_cycles: u8,
-        nonce_length: u8,
-        time_between_blocks: Vec<i64>,
-        blocks_per_roll_snapshot: i32,
-        endorsers_per_block: u16,
-    ) -> Self {
-        Self {
-            blocks_per_cycle,
-            preserved_cycles,
-            nonce_length,
-            time_between_blocks,
-            blocks_per_roll_snapshot,
-            endorsers_per_block,
-        }
-    }
+#[derive(Debug, Error)]
+pub enum RightsConstantError {
+    #[error("The value is illegal, key: {key}")]
+    WrongValue { key: &'static str },
+    #[error("Key cannot be parsed, key: {key}")]
+    Parsing { key: &'static str },
+    #[error("Key cannot be found in constants, key: {key}")]
+    KeyNotFound { key: &'static str },
+}
 
+impl RightsConstants {
     /// Get all context constants which are used in endorsing and baking rights generation
     ///
     /// # Arguments
@@ -68,168 +58,103 @@ impl RightsConstants {
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
     ) -> Result<Self, anyhow::Error> {
-        let dynamic =
-            tezos_messages::protocol::proto_004::constants::ParametricConstants::from_bytes(
-                &context_proto_param.constants_data,
-            )?;
-        // in proto 001, the constants are hard coded but a few exceptions modifiable in the context
-        let dynamic_all = tezos_messages::protocol::proto_004::constants::ParametricConstants::create_with_default_and_merge(dynamic);
-        let fixed = tezos_messages::protocol::proto_004::constants::FIXED;
-
-        // TODO: fix unwraps()
-        Ok(RightsConstants::new(
-            dynamic_all.blocks_per_cycle().unwrap(),
-            dynamic_all.preserved_cycles().unwrap(),
-            fixed.nonce_length(),
-            dynamic_all.time_between_blocks().as_ref().unwrap().clone(),
-            dynamic_all.blocks_per_roll_snapshot().unwrap(),
-            dynamic_all.endorsers_per_block().unwrap(),
-        ))
-    }
-}
-
-/// Data from context DB for completing baking and endorsing rights
-#[derive(Debug, Clone, Getters)]
-pub struct RightsContextData {
-    /// Random seed for Tezos PRNG
-    #[get = "pub(crate)"]
-    random_seed: Vec<u8>,
-
-    /// Number of last roll so Tezos PRNG will not overflow
-    #[get = "pub(crate)"]
-    last_roll: i32,
-
-    /// List of rolls mapped to rollers contract id
-    #[get = "pub(crate)"]
-    rolls: HashMap<i32, String>,
-}
-
-impl RightsContextData {
-    /// Simple constructor to create RightsContextData
-    pub fn new(random_seed: Vec<u8>, last_roll: i32, rolls: HashMap<i32, String>) -> Self {
-        Self {
-            random_seed,
-            last_roll,
-            rolls,
-        }
-    }
-
-    /// Get context data roll_snapshot, random_seed, last_roll and rolls from context list
-    ///
-    /// # Arguments
-    ///
-    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
-    /// * `constants` - Context constants used in baking and endorsing rights.
-    /// * `list` - Context list handler.
-    ///
-    /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(
-        parameters: RightsParams,
-        constants: RightsConstants,
-        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
-    ) -> Result<Self, anyhow::Error> {
-        // prepare constants that are used
-        let blocks_per_cycle = *constants.blocks_per_cycle();
-
-        // prepare parameters that are used
-        let requested_level = *parameters.requested_level();
-
-        // prepare cycle for which rollers are selected
-        let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
-            cycle
-        } else {
-            cycle_from_level(requested_level, blocks_per_cycle)?
-        };
-
-        // get index of roll snapshot
-        let roll_snapshot: i16 = {
-            if let Some(data) = context.get_key_from_history(
-                &ctx_hash,
-                context_key_owned!("data/cycle/{}/roll_snapshot", requested_cycle),
-            )? {
-                num_from_slice!(data, 0, i16)
-            } else {
-                // key not found - prepare error for later processing
-                return Err(format_err!("roll_snapshot"));
-            }
-        };
-
-        let random_seed = {
-            if let Some(data) = context.get_key_from_history(
-                &ctx_hash,
-                context_key_owned!("data/cycle/{}/random_seed", requested_cycle),
-            )? {
-                data
-            } else {
-                // key not found - prepare error for later processing
-                return Err(format_err!("random_seed"));
-            }
-        };
-
-        // Snapshots of last_roll are listed from 0 same as roll_snapshot.
-        let last_roll = {
-            if let Some(data) = context.get_key_from_history(
-                &ctx_hash,
-                context_key_owned!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
-            )? {
-                num_from_slice!(data, 0, i32)
-            } else {
-                // key not found - prepare error for later processing
-                return Err(format_err!("last_roll"));
-            }
-        };
-
-        // get list of rolls from context list
-        let context_rolls = if let Some(rolls) =
-            Self::get_context_rolls((&ctx_hash, &context), requested_cycle, roll_snapshot)?
+        if let Some(constatns_deserialized) =
+            serde_json::from_str::<serde_json::Value>(&context_proto_param.constants_data)?
+                .as_object()
         {
-            rolls
-        } else {
-            return Err(format_err!("rolls"));
-        };
+            let blocks_per_cycle = get_constant_i64(constatns_deserialized, "blocks_per_cycle")?;
+            let preserved_cycles = get_constant_i64(constatns_deserialized, "preserved_cycles")?;
+            let nonce_length = get_constant_i64(constatns_deserialized, "nonce_length")?;
+            let time_between_blocks = get_time_between_blocks(constatns_deserialized)?;
+            let endorsers_per_block =
+                get_constant_i64(constatns_deserialized, "endorsers_per_block")?;
 
-        Ok(Self::new(random_seed.to_vec(), last_roll, context_rolls))
+            Ok(Self {
+                blocks_per_cycle: blocks_per_cycle as i32,
+                preserved_cycles: preserved_cycles as u8,
+                nonce_length: nonce_length as u8,
+                time_between_blocks,
+                endorsers_per_block: endorsers_per_block as u16,
+            })
+        } else {
+            bail!("Constants not an object")
+        }
     }
+}
 
-    /// get list of rollers from context list selected by snapshot level
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
-    ///
-    /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(
-        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
-        cycle: i64,
-        snapshot: i16,
-    ) -> Result<Option<HashMap<i32, String>>, anyhow::Error> {
-        let rolls = if let Some(val) = context.get_key_values_by_prefix(
-            &ctx_hash,
-            context_key_owned!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
-        )? {
-            val
+fn get_constant_i64(
+    constants: &serde_json::Map<String, serde_json::Value>,
+    key: &'static str,
+) -> Result<i64, RightsConstantError> {
+    if let Some(value) = constants.get(key) {
+        if let Some(i64_value) = value.as_i64() {
+            Ok(i64_value)
         } else {
-            bail!("No rolls found in context")
-        };
-
-        let mut roll_owners: HashMap<i32, String> = HashMap::new();
-
-        // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
-        for (key, value) in rolls.into_iter() {
-            if key.last().is_none() {
-                continue;
+            if let Some(str_num) = value.as_str() {
+                return str_num
+                    .parse()
+                    .map_err(|_| RightsConstantError::Parsing { key });
             }
-            let roll_num = key.last().unwrap();
+            Err(RightsConstantError::Parsing { key })
+        }
+    } else {
+        Err(RightsConstantError::KeyNotFound { key })
+    }
+}
 
-            // the values are public keys
-            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?
-                .to_string_representation();
-            roll_owners.insert(roll_num.parse()?, delegate);
+fn get_time_between_blocks(
+    constants: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<i64>, RightsConstantError> {
+    let mut ret: Vec<i64> = Vec::new();
+    if let Some(value) = constants.get("time_between_blocks") {
+        if let Some(array) = value.as_array() {
+            for e in array {
+                if let Some(str_element) = e.as_str() {
+                    let parsed =
+                        str_element
+                            .parse::<i64>()
+                            .map_err(|_| RightsConstantError::Parsing {
+                                key: "time_between_blocks",
+                            })?;
+                    ret.push(parsed);
+                } else {
+                    return Err(RightsConstantError::Parsing {
+                        key: "time_between_blocks",
+                    });
+                }
+            }
+            Ok(ret)
+        } else {
+            Err(RightsConstantError::Parsing {
+                key: "time_between_blocks",
+            })
         }
-        if roll_owners.is_empty() {
-            bail!("No rolls assigned, all rolls happened to be DELETED")
-        }
-        Ok(Some(roll_owners))
+    } else {
+        Err(RightsConstantError::KeyNotFound {
+            key: "time_between_blocks",
+        })
+    }
+}
+
+pub(crate) fn get_cycle_data(
+    parameters: RightsParams,
+    block_cycle: i32,
+    cycle_meta_storage: &CycleMetaStorage,
+) -> Result<CycleData, anyhow::Error> {
+    // prepare cycle for which rollers are selected
+    let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
+        cycle
+    } else {
+        block_cycle
+    };
+
+    if let Some(cycle_meta_data) = cycle_meta_storage.get(&requested_cycle)? {
+        Ok(cycle_meta_data)
+    } else {
+        bail!(
+            "No cycle data found for requested_cycle: {}",
+            requested_cycle
+        )
     }
 }
 
@@ -238,7 +163,7 @@ impl RightsContextData {
 pub struct RightsParams {
     /// Level (height) of block. Parsed from url path parameter 'block_id'.
     #[get = "pub(crate)"]
-    block_level: i64,
+    block_level: i32,
 
     /// Header timestamp of block. Parsed from url path parameter 'block_id'.
     #[get = "pub(crate)"]
@@ -250,41 +175,46 @@ pub struct RightsParams {
 
     /// Cycle for whitch all rights will be listed. Url query parameter 'cycle'.
     #[get = "pub(crate)"]
-    requested_cycle: Option<i64>,
+    requested_cycle: Option<i32>,
 
     /// Level (height) of block for whitch all rights will be listed. Url query parameter 'level'.
     #[get = "pub(crate)"]
-    requested_level: i64,
+    requested_level: i32,
 
     /// Level to be displayed in output.
     #[get = "pub(crate)"]
-    display_level: i64,
+    display_level: i32,
 
     /// Level for estimated_time computation. Endorsing rights only.
     #[get = "pub(crate)"]
-    timestamp_level: i64,
+    timestamp_level: i32,
 
     /// Max priority to which baking rights are listed. Url query parameter 'max_priority'.
     #[get = "pub(crate)"]
-    max_priority: i64,
+    max_priority: i32,
 
     /// Indicate that baking rights for maximum priority should be listed. Url query parameter 'all'.
     #[get = "pub(crate)"]
     has_all: bool,
+
+    #[get = "pub(crate)"]
+    rights_metadata: RightsMetadata,
 }
 
 impl RightsParams {
     /// Simple constructor to create RightsParams
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        block_level: i64,
+        block_level: i32,
         block_timestamp: i64,
         requested_delegate: Option<String>,
-        requested_cycle: Option<i64>,
-        requested_level: i64,
-        display_level: i64,
-        timestamp_level: i64,
-        max_priority: i64,
+        requested_cycle: Option<i32>,
+        requested_level: i32,
+        display_level: i32,
+        timestamp_level: i32,
+        max_priority: i32,
         has_all: bool,
+        rights_metadata: RightsMetadata,
     ) -> Self {
         Self {
             block_level,
@@ -296,6 +226,7 @@ impl RightsParams {
             timestamp_level,
             max_priority,
             has_all,
+            rights_metadata,
         }
     }
 
@@ -315,7 +246,8 @@ impl RightsParams {
     /// * `is_baking_rights` - flag to identify if are parsed baking or endorsing rights
     ///
     /// Return RightsParams
-    pub(crate) fn parse_rights_parameters(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn parse_rights_parameters(
         param_level: Option<&str>,
         param_delegate: Option<&str>,
         param_cycle: Option<&str>,
@@ -323,30 +255,25 @@ impl RightsParams {
         param_has_all: bool,
         rights_constants: &RightsConstants,
         block_header: &BlockHeaderWithHash,
+        chain_id: &ChainId,
+        env: &RpcServiceEnvironment,
         is_baking_rights: bool,
     ) -> Result<Self, anyhow::Error> {
-        let block_level: i64 = block_header.header.level().into();
+        let block_level = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
         // this is the cycle of block_id level
-        let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
-        let mut display_level: i64 = block_level;
+        let mut display_level: i32 = block_level;
         // endorsing rights only: timestamp_level is the base level for timestamp computation is taken from last known block (block_id) timestamp + time_between_blocks[0]
-        let mut timestamp_level: i64 = block_level;
+        let mut timestamp_level: i32 = block_level;
         // Check the param_level, if there is a level specified validate it, if no set it to the block_level
         // requested_level is used to get data from context list
-        let requested_level: i64 = match param_level {
+        let requested_level: i32 = match param_level {
             Some(level) => {
                 let level = level.parse()?;
-                // check the bounds for the requested level (if it is in the previous/next preserved cycles)
-                Self::validate_cycle(
-                    cycle_from_level(level, blocks_per_cycle)?,
-                    current_cycle,
-                    preserved_cycles,
-                )?;
                 // display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
@@ -371,11 +298,37 @@ impl RightsParams {
             }
         };
 
+        let block_metadata = match crate::services::base_services::get_block_metadata(
+            chain_id,
+            &parse_block_hash(chain_id, &requested_level.to_string(), env)?,
+            env,
+        )
+        .await
+        {
+            Ok(metadata) => Some(metadata),
+            Err(_) => None,
+        };
+
+        let rights_metadata = if let Some(metadata) = block_metadata {
+            RightsMetadata::extract_from_block_metadata(metadata)?
+        } else if param_level.is_some() {
+            RightsMetadata::calculate(blocks_per_cycle, requested_level)?
+        } else {
+            // this should never happen. When block_metadata is not available it means we requested a future level (thus level is always Some())
+            bail!("No level parameter in url")
+        };
+
+        Self::validate_cycle(
+            cycle_from_level(requested_level, blocks_per_cycle)?,
+            rights_metadata.block_cycle,
+            preserved_cycles,
+        )?;
+
         // validate requested cycle
         let requested_cycle = match param_cycle {
             Some(val) => Some(Self::validate_cycle(
                 val.parse()?,
-                current_cycle,
+                rights_metadata.block_cycle,
                 preserved_cycles,
             )?),
             None => None,
@@ -397,6 +350,7 @@ impl RightsParams {
             timestamp_level, // endorsing rights only
             max_priority,
             param_has_all,
+            rights_metadata,
         ))
     }
 
@@ -412,7 +366,7 @@ impl RightsParams {
     pub fn get_estimated_time(
         &self,
         constants: &RightsConstants,
-        level: Option<i64>,
+        level: Option<i32>,
     ) -> Option<i64> {
         // if is cycle then level is provided as parameter else use prepared timestamp_level
         let timestamp_level = level.unwrap_or(self.timestamp_level);
@@ -431,13 +385,17 @@ impl RightsParams {
     /// Validate if cycle requested as url query parameter (cycle or level) is available in context list by checking preserved_cycles constant
     #[inline]
     fn validate_cycle(
-        requested_cycle: i64,
-        current_cycle: i64,
+        requested_cycle: i32,
+        current_cycle: i32,
         preserved_cycles: u8,
-    ) -> Result<i64, anyhow::Error> {
-        if (requested_cycle - current_cycle).abs() <= (preserved_cycles as i64) {
+    ) -> Result<i32, anyhow::Error> {
+        if (requested_cycle - current_cycle).abs() <= preserved_cycles.into() {
             Ok(requested_cycle)
         } else {
+            // TODO: proper json response is needed for this
+            // Octez is:
+            //    [{ "kind": "permanent", "id": "proto.008-PtEdo2Zk.seed.unknown_seed",
+            //        "oldest": 330, "requested": 200, "latest": 340 }]
             bail!("Requested cycle out of bounds") //TODO: prepare cycle error
         }
     }
@@ -464,47 +422,6 @@ impl EndorserSlots {
     /// Push endorsing slot to slots
     pub fn push_to_slot(&mut self, slot: u16) {
         self.slots.push(slot);
-    }
-}
-
-/// Return cycle in which is given level
-///
-/// # Arguments
-///
-/// * `level` - level to specify cycle for
-/// * `blocks_per_cycle` - context constant
-///
-/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
-/// hence the blocks_per_cycle - 1 for last cycle block.
-pub fn cycle_from_level(level: i64, blocks_per_cycle: i32) -> Result<i64, anyhow::Error> {
-    // check if blocks_per_cycle is not 0 to prevent panic
-    if blocks_per_cycle > 0 {
-        Ok((level - 1) / (blocks_per_cycle as i64))
-    } else {
-        bail!("wrong value blocks_per_cycle={}", blocks_per_cycle)
-    }
-}
-
-/// Return the position of the block in its cycle
-///
-/// # Arguments
-///
-/// * `level` - level to specify cycle for
-/// * `blocks_per_cycle` - context constant
-///
-/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
-/// hence the blocks_per_cycle - 1 for last cycle block.
-pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, anyhow::Error> {
-    // check if blocks_per_cycle is not 0 to prevent panic
-    if blocks_per_cycle <= 0 {
-        bail!("wrong value blocks_per_cycle={}", blocks_per_cycle);
-    }
-    let cycle_position = (level % blocks_per_cycle) - 1;
-    if cycle_position < 0 {
-        //for last block
-        Ok(blocks_per_cycle - 1)
-    } else {
-        Ok(cycle_position)
     }
 }
 
@@ -546,24 +463,23 @@ pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 /// Return first random sequence state to use in [get_prng_number](`get_prng_number`)
 #[inline]
 pub fn init_prng(
-    cycle_data: &RightsContextData,
+    cycle_meta_data: &CycleData,
     constants: &RightsConstants,
     use_string_bytes: &[u8],
-    level: i32,
+    cycle_position: i32,
     offset: i32,
 ) -> Result<RandomSeedState, anyhow::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
-    let blocks_per_cycle = *constants.blocks_per_cycle();
-    let state = cycle_data.random_seed();
+    let state = cycle_meta_data.seed_bytes();
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
     // the position of the block in its cycle; has to be i32
-    let cycle_position: i32 = level_position(level, blocks_per_cycle)?;
+    // let cycle_position: i32 = level_position(level, blocks_per_cycle)?;
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(
-        &state,
+        state,
         &zero_bytes,
         use_string_bytes,
         &cycle_position.to_be_bytes()
@@ -616,4 +532,89 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
         };
     }
     Ok((v, sequence))
+}
+
+#[derive(Debug, Clone, Getters)]
+pub struct RightsMetadata {
+    #[get = "pub(crate)"]
+    block_cycle: i32,
+
+    #[get = "pub(crate)"]
+    block_cycle_position: i32,
+}
+
+impl RightsMetadata {
+    pub fn extract_from_block_metadata(
+        block_metadata: Arc<BlockMetadata>,
+    ) -> Result<Self, MetadataParsingError> {
+        let (block_cycle, block_cycle_position) =
+            match parse_block_metadata_level(&block_metadata, "level_info") {
+                Ok(cycle_data) => cycle_data,
+                Err(MetadataParsingError::KeyNotFoundError { key: _ }) => {
+                    // No level info found, trying the older scheme
+                    parse_block_metadata_level(&block_metadata, "level")?
+                }
+                Err(e) => return Err(e),
+            };
+        Ok(Self {
+            block_cycle,
+            block_cycle_position,
+        })
+    }
+
+    pub fn calculate(
+        blocks_per_cycle: i32,
+        requested_level: i32,
+    ) -> Result<Self, RightsConstantError> {
+        Ok(Self {
+            // (cycle_from_level(requested_level, blocks_per_cycle)?, level_position(requested_level, blocks_per_cycle)?)
+            block_cycle: cycle_from_level(requested_level, blocks_per_cycle)?,
+            block_cycle_position: level_position(requested_level, blocks_per_cycle)?,
+        })
+    }
+}
+
+/// Return cycle in which is given level
+///
+/// # Arguments
+///
+/// * `level` - level to specify cycle for
+/// * `blocks_per_cycle` - context constant
+///
+/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
+/// hence the blocks_per_cycle - 1 for last cycle block.
+pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> Result<i32, RightsConstantError> {
+    // check if blocks_per_cycle is not 0 to prevent panic
+    if blocks_per_cycle > 0 {
+        Ok((level - 1) / blocks_per_cycle)
+    } else {
+        Err(RightsConstantError::WrongValue {
+            key: "blocks_per_cycle",
+        })
+    }
+}
+
+/// Return the position of the block in its cycle
+///
+/// # Arguments
+///
+/// * `level` - level to specify cycle for
+/// * `blocks_per_cycle` - context constant
+///
+/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
+/// hence the blocks_per_cycle - 1 for last cycle block.
+pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, RightsConstantError> {
+    // check if blocks_per_cycle is not 0 to prevent panic
+    if blocks_per_cycle <= 0 {
+        return Err(RightsConstantError::WrongValue {
+            key: "blocks_per_cycle",
+        });
+    }
+    let cycle_position = (level % blocks_per_cycle) - 1;
+    if cycle_position < 0 {
+        //for last block
+        Ok(blocks_per_cycle - 1)
+    } else {
+        Ok(cycle_position)
+    }
 }

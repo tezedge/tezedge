@@ -63,14 +63,18 @@ pub async fn baking_rights(
     let has_all = query.contains_key("all");
 
     match services::protocol::check_and_get_baking_rights(
+        &chain_id,
         &block_hash,
         level,
         delegate,
         cycle,
         max_priority,
         has_all,
+        // block_metadata,
         &env,
-    ) {
+    )
+    .await
+    {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Ok(None) => {
             let res: Result<Option<String>, RpcServiceError> = Ok(None);
@@ -116,13 +120,16 @@ pub async fn endorsing_rights(
 
     // get RPC response and unpack it from RpcResponseData enum
     match services::protocol::check_and_get_endorsing_rights(
+        &chain_id,
         &block_hash,
         level,
         delegate,
         cycle,
         has_all,
         &env,
-    ) {
+    )
+    .await
+    {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Ok(None) => {
             let res: Result<Option<String>, RpcServiceError> = Ok(None);

@@ -1,14 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use anyhow::format_err;
 use crypto::hash::ContextHash;
+use failure::format_err;
 use itertools::Itertools;
 
 use storage::num_from_slice;
 use tezos_context::context_key_owned;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::protocol::proto_006::votes::VoteListings;
+use tezos_messages::protocol::proto_009::votes::VoteListings;
 
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::VotesError;
@@ -18,7 +18,7 @@ pub fn get_votes_listings(
     context_hash: &ContextHash,
 ) -> Result<Option<serde_json::Value>, VotesError> {
     // filter out the listings data
-    let listings_data = if let Some(val) = env
+    let mut listings_data = if let Some(val) = env
         .tezedge_context()
         .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))?
     {
@@ -28,6 +28,10 @@ pub fn get_votes_listings(
             reason: format_err!("No votes listings found in context"),
         });
     };
+
+    // sort the raw data from the context
+    listings_data.sort();
+    listings_data.reverse();
 
     // convert the raw context data to VoteListings
     let mut listings = Vec::with_capacity(listings_data.len());
@@ -45,8 +49,5 @@ pub fn get_votes_listings(
         ));
     }
 
-    // sort the vector in reverse ordering (as in ocaml node)
-    listings.sort();
-    listings.reverse();
     Ok(Some(serde_json::to_value(listings)?))
 }
