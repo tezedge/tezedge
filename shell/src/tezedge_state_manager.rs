@@ -16,10 +16,10 @@ use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::network_channel::{
+use networking::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
-use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
+use networking::{PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 
 use crate::PeerConnectionThreshold;
@@ -320,20 +320,12 @@ impl TezedgeStateManager {
         if !p2p_config.disable_bootstrap_lookup {
             bootstrap_addresses.extend(p2p_config.bootstrap_lookup_addresses.iter().cloned());
         };
-        let listener_port = p2p_config.listener_port;
-
-        let local_node_info = Arc::new(LocalPeerInfo::new(
-            listener_port,
-            identity,
-            shell_compatibility_version,
-            pow_target,
-        ));
 
         let (proposer_tx, proposer_rx) = mpsc::sync_channel(Self::PROPOSER_QUEUE_MAX_CAPACITY);
 
         // override port passed listener address
         let mut listener_addr = p2p_config.listener_address;
-        listener_addr.set_port(listener_port);
+        listener_addr.set_port(p2p_config.listener_port);
 
         let mio_manager = MioManager::new(listener_addr);
         let proposer_handle = ProposerHandle::new(mio_manager.waker(), proposer_tx);
@@ -362,10 +354,10 @@ impl TezedgeStateManager {
                 reset_quotas_interval: Duration::from_secs(5),
                 peer_blacklist_duration: Duration::from_secs(8 * 60),
                 peer_timeout: Duration::from_secs(8),
-                pow_target: local_node_info.pow_target(),
+                pow_target,
             },
-            (*local_node_info.identity()).clone(),
-            (*local_node_info.version()).clone(),
+            (*identity).clone(),
+            (*shell_compatibility_version).clone(),
             &mut effects,
             // TODO: this is temporary until snapshot of initial state
             // is available. Should be `SystemTime::now()` to set

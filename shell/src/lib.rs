@@ -87,7 +87,7 @@ impl PeerConnectionThreshold {
 pub mod subscription {
     use riker::actors::*;
 
-    use networking::p2p::network_channel::NetworkChannelTopic;
+    use networking::network_channel::NetworkChannelTopic;
 
     use crate::shell_channel::ShellChannelTopic;
 

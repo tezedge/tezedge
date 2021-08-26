@@ -14,7 +14,7 @@ use riker::actors::*;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::p2p::network_channel::NetworkChannelMsg;
+use networking::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use shell_integration::InjectBlockOneshotResultCallback;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
@@ -532,7 +532,7 @@ pub fn tell_peer(
 //     use serial_test::serial;
 //     use slog::Level;
 
-//     use networking::p2p::network_channel::NetworkChannel;
+//     use networking::network_channel::NetworkChannel;
 //     use storage::tests_common::TmpStorage;
 //     use storage::{
 //         block_meta_storage, operations_meta_storage, BlockMetaStorage, OperationsMetaStorage,

@@ -9,7 +9,7 @@ use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
+use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
     subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,

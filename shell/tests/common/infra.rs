@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
 use crypto::hash::{BlockHash, OperationHash};
-use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
+use networking::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
@@ -438,7 +438,7 @@ pub mod test_actor {
     use riker::actors::*;
 
     use crypto::hash::CryptoboxPublicKeyHash;
-    use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
+    use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef};
     use shell::subscription::subscribe_to_network_events;
 
     use crate::common::test_node_peer::TestNodePeer;

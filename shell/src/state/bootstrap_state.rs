@@ -1530,7 +1530,7 @@ impl BlockStateDb {
 // mod tests {
 // use serial_test::serial;
 
-// use networking::p2p::network_channel::NetworkChannel;
+// use networking::network_channel::NetworkChannel;
 
 // use crate::shell_channel::ShellChannel;
 // use crate::state::peer_state::DataQueuesLimits;

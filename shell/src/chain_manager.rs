@@ -22,7 +22,7 @@ use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
+use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::{PeerAddress, PeerId};
 use shell_integration::{
     dispatch_oneshot_result, InjectBlock, InjectBlockError, InjectBlockOneshotResultCallback,

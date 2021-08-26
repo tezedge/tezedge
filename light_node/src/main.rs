@@ -11,7 +11,7 @@ use slog::{debug, error, info, warn, Logger};
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
-use networking::p2p::network_channel::NetworkChannel;
+use networking::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ApplyBlock;

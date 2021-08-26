@@ -202,7 +202,7 @@ impl SynchronizationBootstrapState {
 
 //     use slog::Level;
 
-//     use networking::p2p::network_channel::NetworkChannel;
+//     use networking::network_channel::NetworkChannel;
 
 //     use crate::state::peer_state::PeerState;
 //     use crate::state::tests::prerequisites::{
