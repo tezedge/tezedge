@@ -31,6 +31,10 @@ harness = false
 name = "decoders_benchmark"
 harness = false
 
+[[bench]]
+name = "encoders_benchmark"
+harness = false
+
 [dev-dependencies]
 assert-json-diff = "2"
 criterion = { version = "0.3", features = ["html_reports"]}
