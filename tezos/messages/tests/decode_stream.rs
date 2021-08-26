@@ -13,7 +13,9 @@ use crypto::{
     CryptoError,
 };
 use tezos_messages::p2p::{
-    binary_message::{BinaryChunk, BinaryChunkError, BinaryRead, CONTENT_LENGTH_FIELD_BYTES},
+    binary_message::{
+        BinaryChunk, BinaryChunkError, BinaryRead, BinaryWrite, CONTENT_LENGTH_FIELD_BYTES,
+    },
     encoding::metadata::MetadataMessage,
     encoding::peer::PeerMessageResponse,
     encoding::prelude::ConnectionMessage,
@@ -149,7 +151,10 @@ pub fn decode_stream() {
 
         match decrypted_message {
             Ok(dm) => match PeerMessageResponse::from_bytes(dm.to_owned()) {
-                Ok(_) => decrypted_messages.push(dm),
+                Ok(decoded) => match decoded.as_bytes() {
+                    Ok(_) => decrypted_messages.push(dm),
+                    _ => (),
+                },
                 _ => (),
             },
             _ => (),
