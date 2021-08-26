@@ -8,15 +8,12 @@ use nom::{
     combinator::{all_consuming, complete},
     Finish,
 };
-use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::nom::{error::convert_error, NomError, NomInput, NomResult};
-use tezos_encoding::{
-    binary_reader::BinaryReaderError,
-    binary_writer::{self, BinaryWriterError},
-};
+use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
 
@@ -44,11 +41,13 @@ impl<T: BinaryRead + BinaryWrite> BinaryMessage for T {}
 
 impl<T> BinaryWrite for T
 where
-    T: tezos_encoding::encoding::HasEncoding + Serialize,
+    T: BinWriter,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
-        binary_writer::write(self, &Self::encoding())
+        let mut res = Vec::new();
+        self.bin_write(&mut res)?;
+        Ok(res)
     }
 }
 

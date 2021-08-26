@@ -12,12 +12,24 @@ use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, OperationHash},
 };
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct OperationMessage {
     #[get = "pub"]
     operation: Operation,
@@ -36,7 +48,17 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
+#[derive(
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Debug,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct Operation {
     branch: BlockHash,
     #[encoding(list = "OPERATION_MAX_SIZE")]
@@ -100,7 +122,17 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct GetOperationsMessage {
     #[get = "pub"]
     #[encoding(dynamic, list = "GET_OPERATIONS_MAX_LENGTH")]

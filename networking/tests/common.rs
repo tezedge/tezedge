@@ -15,12 +15,14 @@ use networking::p2p::stream::{Crypto, CONTENT_LENGTH_MAX};
 use slog::{o, Drain};
 use tezos_messages::p2p::{
     binary_message::BinaryChunk,
-    encoding::peer::{PeerMessage, PeerMessageResponse},
+    encoding::{
+        limits::BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE,
+        peer::{PeerMessage, PeerMessageResponse},
+    },
 };
 use tokio_test::io::{Builder, Mock};
 
 use tezos_messages::p2p::binary_message::BinaryRead;
-use tezos_messages::p2p::encoding::limits::BLOCK_HEADER_MAX_SIZE;
 
 pub struct BinaryChunks<'a> {
     chunks: Chunks<'a, u8>,
@@ -165,7 +167,7 @@ pub fn block_header_message_encoded(data_size: usize) -> Vec<u8> {
             .as_ref(),
     ); // context
 
-    let data_size = std::cmp::min(data_size, BLOCK_HEADER_MAX_SIZE - res.len());
+    let data_size = std::cmp::min(data_size, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE);
     res.extend(std::iter::repeat(0xff).take(data_size));
 
     let mut res1: Vec<u8> = vec![];

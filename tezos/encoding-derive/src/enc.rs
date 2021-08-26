@@ -27,7 +27,7 @@ pub fn generate_encoding_for_data(data: &DataWithEncoding) -> TokenStream {
     }
 }
 
-fn generate_encoding(encoding: &Encoding) -> TokenStream {
+pub(crate) fn generate_encoding(encoding: &Encoding) -> TokenStream {
     match encoding {
         Encoding::Unit => quote!(tezos_encoding::encoding::Encoding::Unit),
         Encoding::Primitive(primitive, span) => generage_primitive_encoding(*primitive, *span),

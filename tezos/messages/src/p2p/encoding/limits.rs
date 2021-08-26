@@ -176,7 +176,7 @@ pub const MEMPOOL_MAX_OPERATIONS: usize = 4000;
 ///        (8 + (max_operations * Operation_hash.size))
 ///        encoding
 /// ```
-pub const MEMPOOL_MAX_SIZE: usize = 8 + MEMPOOL_MAX_OPERATIONS * HashType::OperationHash.size();
+pub const MEMPOOL_MAX_SIZE: usize = 12 + MEMPOOL_MAX_OPERATIONS * HashType::OperationHash.size();
 
 /// Get block headers max length
 ///
@@ -205,8 +205,8 @@ pub const GET_OPERATIONS_MAX_LENGTH: usize = 10;
 /// ```
 pub const GET_PROTOCOLS_MAX_LENGTH: usize = 10;
 
-/// Max size of Protocol::components encoding, two bytes less than Protocol
-pub const PROTOCOL_COMPONENT_MAX_SIZE: usize = PROTOCOL_MAX_SIZE - 2;
+/// Max size of Protocol::components encoding, six bytes less than Protocol
+pub const PROTOCOL_COMPONENT_MAX_SIZE: usize = PROTOCOL_MAX_SIZE - 6;
 
 /// Get operations for block max length
 ///
@@ -240,3 +240,43 @@ pub const OPERATION_LIST_MAX_SIZE: usize = 1024 * 1024;
 /// It should be pretty safe to have the length greater than that.
 ///
 pub const CHAIN_NAME_MAX_LENGTH: usize = 128;
+
+/// Maximal length of the component name.
+///
+/// TODO: actual limit. TE-692
+pub const COMPONENT_NAME_MAX_LENGTH: usize = 1024;
+
+/// Maximal length of the component interface.
+///
+/// TODO: actual limit. TE-692
+pub const COMPONENT_INTERFACE_MAX_LENGTH: usize = 1024 * 100;
+
+/// Maximal length of the component implementation.
+///
+/// TODO: actual limit. TE-692
+pub const COMPONENT_IMPLEMENTATION_MAX_LENGTH: usize = 1024 * 100;
+
+/// Maximal number of element in `fitness`.
+pub const BLOCK_HEADER_FITNESS_ELEMENTS: usize = 2;
+
+/// Maximal length of a `fitness` element.
+pub const BLOCK_HEADER_FITNESS_ELEMENT_LENGTH: usize = 8;
+
+/// Maximal size of fitness.
+///
+/// TODO: actual limit. TE-692. Currently this is a one-byte list and 8-bytes list.
+/// We can safely limit it to a two-element list of 8-byte lists.
+pub const BLOCK_HEADER_FITNESS_MAX_SIZE: usize =
+    BLOCK_HEADER_FITNESS_ELEMENTS * (4 + BLOCK_HEADER_FITNESS_ELEMENT_LENGTH); // total size + 2 elements of (size + bytes)
+
+/// Maximal size of [BlockHeader::protocol_data].
+///
+pub const BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE: usize = BLOCK_HEADER_MAX_SIZE
+    - (4 + 1
+        + HashType::BlockHash.size()
+        + 8
+        + 1
+        + HashType::OperationListListHash.size()
+        + 4
+        + BLOCK_HEADER_FITNESS_MAX_SIZE
+        + HashType::ContextHash.size());
