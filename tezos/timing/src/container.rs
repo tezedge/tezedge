@@ -39,7 +39,7 @@ pub struct InlinedOperationHash(InlinedHash);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlinedBlockHash(InlinedHash);
 
-macro_rules! deref_inlined {
+macro_rules! inlined_hash_impl {
     ($hash:ident) => {
         impl Deref for $hash {
             type Target = [u8];
@@ -63,9 +63,9 @@ macro_rules! deref_inlined {
     };
 }
 
-deref_inlined!(InlinedContextHash);
-deref_inlined!(InlinedOperationHash);
-deref_inlined!(InlinedBlockHash);
+inlined_hash_impl!(InlinedContextHash);
+inlined_hash_impl!(InlinedOperationHash);
+inlined_hash_impl!(InlinedBlockHash);
 
 #[derive(Debug)]
 pub enum InlinedString {
@@ -147,13 +147,9 @@ mod tests {
 
         for i in 0..INLINED_STRING_THRESHOLD + 10 {
             s.push_str("a");
-
             let bytes = &*s;
 
             assert_eq!(bytes.len(), i + 1);
-
-            // let bytes = *s;
-            println!("RES={:?}", &*s);
         }
     }
 }

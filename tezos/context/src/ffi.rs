@@ -110,7 +110,6 @@ impl<'a> InlinedKeys<'a> {
             length: 0,
             array: [""; 128],
         }
-        // Self::Heap(Vec::with_capacity(128))
     }
 
     fn push(&mut self, str_ref: &'a str) {
@@ -156,18 +155,6 @@ fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Inlin
 
     vector
 }
-
-// fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&'a str> {
-//     let mut key = rt.get(key);
-//     let mut vector: Vec<&str> = Vec::with_capacity(128);
-
-//     while let Some((head, tail)) = key.uncons() {
-//         vector.push(unsafe { head.as_str_unchecked() });
-//         key = tail;
-//     }
-
-//     vector
-// }
 
 // TODO: move this static and its accessors to a better place
 lazy_static! {

@@ -162,7 +162,6 @@ pub enum TimingMessage {
     SetOperation(Option<InlinedOperationHash>),
     Checkout {
         context_hash: InlinedContextHash,
-        // context_hash: ContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     },
@@ -904,10 +903,6 @@ impl Timing {
                 None => key,
             };
 
-            // let key = &action.key;
-            // let root = action.key[0].as_str();
-            //let key = action.key.join("/");
-
             let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
 
             stmt.execute([key])?;
@@ -1353,7 +1348,6 @@ mod tests {
 
         assert!(timing.current_block.is_none());
 
-        // let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
         let block_hash = InlinedBlockHash::from(&[1; 32][..]);
         timing
             .set_current_block(
