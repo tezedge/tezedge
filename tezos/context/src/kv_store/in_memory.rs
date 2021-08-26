@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Implementation of an in-memory repository.
+
 use std::{
     borrow::Cow,
     collections::{hash_map::DefaultHasher, BTreeMap, VecDeque},

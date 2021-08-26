@@ -1,6 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module contains the implementation of the Working Tree. The Working Tree is the reification
+//! of a specific version of the context tree. It can be manipulated to produce a new version that can
+//! then be serialized and committed to the context repository.
+//!
+//! The working tree is a persistent data structure (immutable, and with each manipulation producing a new copy
+//! that shares most of its structure with the original version). Earlier versions of the tree are still available
+//! after it is manipulated.
+
 use std::{borrow::Cow, cell::Cell};
 
 use crate::hash::{hash_object, HashingError, ObjectHash};
@@ -39,6 +47,10 @@ pub struct NodeInner {
     object_id: B61,
 }
 
+/// Wrapper over the children objects of a directory, containing
+/// extra metadata (leaf/non-leaf, it is an already commited object or new, etc).
+/// Nodes wrap either directories of values/blobs, never commits, because commits
+/// cannot be part of a tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Node {
     pub(crate) inner: Cell<NodeInner>,
@@ -46,6 +58,7 @@ pub struct Node {
 
 assert_eq_size!([u8; 12], Node);
 
+/// Commit objects are the entry points to different versions of the context tree.
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Commit {
     pub(crate) parent_commit_hash: Option<HashId>,
@@ -55,6 +68,7 @@ pub struct Commit {
     pub(crate) message: String,
 }
 
+/// An object in the context repository
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Object {
     Directory(DirectoryId),
@@ -149,6 +163,9 @@ impl Node {
         }
     }
 
+    /// Constructor for Nodes wrapping objects that are new, and have not been saved
+    /// to the repository yet. These objects must be saved to the repository at
+    /// commit time if still reachable from the root of the working tree.
     pub fn new(node_kind: NodeKind, object: Object) -> Self {
         Node {
             inner: Cell::new(
@@ -166,6 +183,8 @@ impl Node {
         }
     }
 
+    /// Constructor for Nodes wrapping objects that are already in the repository and must
+    /// not be saved again at commit time even if still reachable from the root of the working tree.
     pub fn new_commited(
         node_kind: NodeKind,
         hash_id: Option<HashId>,

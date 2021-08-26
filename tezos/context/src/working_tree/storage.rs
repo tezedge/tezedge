@@ -1,6 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! The "storage" is where all data used in the working tree is allocated and stored.
+//! Data is represented in a flat form and kept in a contiguous memory area, which is more compact
+//! and avoids memory fragmentation. Instead of pointers, special IDs encoding extra information
+//! are used as references to different types of values.
+
 use std::{
     cell::Cell,
     cmp::Ordering,

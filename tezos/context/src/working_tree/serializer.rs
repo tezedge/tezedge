@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Serialization/deserialization for objects in the Working Tree so that they can be
+//! saved/loaded to/from the repository.
+
 use std::{
     array::TryFromSliceError, convert::TryInto, io::Write, num::TryFromIntError, str::Utf8Error,
     string::FromUtf8Error, sync::Arc,
