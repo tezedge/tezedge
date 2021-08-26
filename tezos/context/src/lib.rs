@@ -4,9 +4,58 @@
 #![feature(hash_set_entry)]
 // #![forbid(unsafe_code)]
 
-//! Implementation of the TezEdge context for the Tezos economic protocol
-
-// TODO: docs
+//! TezEdge implementation of the context API and storage for the Tezos economic protocol
+//!
+//! ```
+//!                                                +----------+
+//!                                                |  Commit  |
+//!                                                +----+-----+
+//!                                                     |
+//!                                                     |
+//!        +-                                           |
+//!        |                                   +--------v---------+
+//!        |                                   |    Directory     |
+//!        |                                   +--------+---------+
+//!        |                                   | rolls  |  votes  |
+//!        |                   +---------------+--------+---------+----------+
+//!        |                   |                                             |
+//!        |                   |                                             |
+//!        |                   |                  +-                         |
+//!        |                   |                  |                          |
+//!    T   |             +-----v-------+          |           +--------------v------------+
+//!    R   |             |  Directory  |       S  |           |         Directory         |
+//!    E   |             +-------------+       U  |           +-----------------+---------+
+//!    E   |             |    next     |       B  |           |current_proposal | ballots |
+//!        |             +--+----------+       T  |           +---+-------------+----+----+
+//!        |                |                  R  |               |                  |
+//!        |                |                  E  |               |                  |
+//!        |                |                  E  |               |                  |
+//!        |                |                     |               |                  |
+//!        |                |                     |               |                  |
+//!        |      +---------v-----+               |    +----------v----+       +-----v---------+
+//!        |      |   Value (A)   |               |    |   Value (B)   |       |   Value (C)   |
+//!        |      +---------------+               |    +---------------+       +---------------+
+//!        +-                                     +-
+//! ```
+//!
+//! ## Concepts
+//!
+//! ### Directories, values/blobs, commits and trees
+//!
+//! *TODO*
+//!
+//! ### Working tree
+//!
+//! *TODO*
+//!
+//! ### Working tree storage
+//!
+//! *TODO* (btw "storage" is not a great name, we need to come up with something better)
+//!
+//! ### Repository
+//!
+//! *TODO*
+//!
 
 pub mod gc;
 pub mod hash;
