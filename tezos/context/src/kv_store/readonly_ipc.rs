@@ -1,6 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Implementation of a repository that is accessed through IPC calls.
+//! It is used by read-only protocol runners to be able to access the in-memory context
+//! owned by the writable protocol runner.
+
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use crypto::hash::ContextHash;

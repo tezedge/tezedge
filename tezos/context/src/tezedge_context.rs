@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module implements the Tezos context API.
+
 use std::{
     cell::RefCell,
     convert::TryInto,
@@ -41,9 +43,11 @@ use crate::{
 // because it is not used on Rust, but we need a type to represent it.
 pub struct PatchContextFunction {}
 
+/// The index is how we interact with the actual storage used to store the
+/// context data. All reading and writing to the storage is done through the index.
 #[derive(Clone)]
 pub struct TezedgeIndex {
-    /// `repository` contains objects that were commited and serialized.
+    /// `repository` contains objects that were committed and serialized.
     /// This can be view as a map of `Hash -> object`.
     /// The `repository` contains objects from previous applied blocks, while `Self::storage`
     /// contains objects from the block being currently processed.
@@ -693,13 +697,18 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
     }
 }
 
-// context implementation using merkle-tree-like storage
+/// Handle that represents a specific context (obtained from a checkout).
+/// It is a persistent data structure, with each modification producing a new copy.
 #[derive(Clone)]
 pub struct TezedgeContext {
+    /// Index used for fetching and saving objects from/to the repository.
     pub index: TezedgeIndex,
     pub parent_commit_hash: Option<HashId>,
+    // NOTE: tree ids are not being used right now, but were used before to
+    // identify specific versions of the tree in the context actions replayer.
     pub tree_id: TreeId,
     tree_id_generator: Rc<RefCell<TreeIdGenerator>>,
+    /// Root tree for this context handle
     pub tree: Rc<WorkingTree>,
 }
 
@@ -855,11 +864,13 @@ impl ShellContextApi for TezedgeContext {
     }
 }
 
+// NOTE: right now tree IDs are not used.
+
 /// Generator of Tree IDs which are used to simulate pointers when they are not available.
 ///
 /// During a regular use of the context API, contexts that are still in use are kept
 /// alive by pointers to them. This is not available when for example, running the context
-/// actions replayer tool. To solve that, we generate a tree id for each versionf of the
+/// actions re-player tool. To solve that, we generate a tree id for each version of the
 /// working tree that is produced while applying a block, so that actions can be associated
 /// to the tree to which they are applied.
 pub struct TreeIdGenerator(TreeId);

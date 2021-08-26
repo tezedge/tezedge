@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-//! This sub module provides different KV alternatives for context persistence
+//! Implementation of the garbage collector for the in-memory repository.
 
 use std::array::TryFromSliceError;
 use std::sync::PoisonError;

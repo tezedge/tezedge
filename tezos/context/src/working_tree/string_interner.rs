@@ -1,3 +1,9 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Implementation of string interning used to implement hash-consing for context path fragments.
+//! This avoids un-necessary duplication of strings, saving memory.
+
 use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
 use static_assertions::const_assert;
