@@ -6,7 +6,7 @@
 
 //! TezEdge implementation of the context API and storage for the Tezos economic protocol
 //!
-//! ```
+//! ```no_compile
 //!                                                +----------+
 //!                                                |  Commit  |
 //!                                                +----+-----+
