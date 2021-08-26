@@ -5,9 +5,10 @@
 //! of a specific version of the context tree. It can be manipulated to produce a new version that can
 //! then be serialized and committed to the context repository.
 //!
-//! The working tree is a persistent data structure (immutable, and with each manipulation producing a new copy
-//! that shares most of its structure with the original version). Earlier versions of the tree are still available
-//! after it is manipulated.
+//! The working tree is a persistent/non-ephemeral data structure. It is immutable, and each modification
+//! modifications produces a new copy of the tree (but it shares most of it's structure with the original copy).
+//! As long as a reference is kept to it, older versions are still available. Discarding a new version of the tree
+//! to continue working with an older version is effectively a "rollback" of the modifications.
 
 use std::{borrow::Cow, cell::Cell};
 
