@@ -21,6 +21,7 @@ use self::{
 };
 
 pub mod serializer;
+pub mod shape;
 pub mod storage;
 pub mod string_interner;
 #[allow(clippy::module_inception)]

@@ -415,7 +415,7 @@ mod tests {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct NoHash(u64);
 
 impl std::hash::BuildHasher for NoHash {

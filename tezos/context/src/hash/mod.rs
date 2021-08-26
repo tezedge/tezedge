@@ -398,7 +398,7 @@ mod tests {
     use crate::{
         kv_store::in_memory::InMemory,
         working_tree::{
-            serializer::{deserialize, serialize_object},
+            serializer::{deserialize_object, serialize_object},
             DirEntry, DirEntryKind,
         },
     };
@@ -718,12 +718,13 @@ mod tests {
                     &mut stats,
                     &mut batch,
                     &mut older_objects,
+                    &mut repo,
                 )
                 .unwrap();
                 repo.write_batch(batch).unwrap();
 
                 let data = repo.get_value(computed_hash_id).unwrap().unwrap();
-                let object = deserialize(data, &mut storage, &repo).unwrap();
+                let object = deserialize_object(data, &mut storage, &repo).unwrap();
 
                 match object {
                     Object::Directory(new_dir) => {

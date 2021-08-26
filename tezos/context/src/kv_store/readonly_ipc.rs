@@ -13,6 +13,9 @@ use tezos_timing::RepositoryMemoryUsage;
 use thiserror::Error;
 
 use crate::persistent::{DBError, Flushable, Persistable};
+use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
+use crate::working_tree::storage::DirEntryId;
+use crate::working_tree::string_interner::{StringId, StringInterner};
 use crate::ContextValue;
 use crate::{
     ffi::TezedgeIndexError, gc::NotGarbageCollected, persistent::KeyValueStoreBackend, ObjectHash,
@@ -105,6 +108,31 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     fn memory_usage(&self) -> RepositoryMemoryUsage {
         self.hashes.get_memory_usage()
     }
+
+    fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError> {
+        self.client
+            .get_shape(shape_id)
+            .map(ShapeStrings::Owned)
+            .map_err(|reason| DBError::IpcAccessError { reason })
+    }
+
+    fn make_shape(
+        &mut self,
+        _dir: &[(StringId, DirEntryId)],
+    ) -> Result<Option<DirectoryShapeId>, DBError> {
+        // Readonly protocol runner doesn't make shapes.
+        Ok(None)
+    }
+
+    fn get_str(&self, _: StringId) -> Option<&str> {
+        // Readonly protocol runner doesn't have the `StringInterner`.
+        None
+    }
+
+    fn synchronize_strings(&mut self, _string_interner: &StringInterner) -> Result<(), DBError> {
+        // Readonly protocol runner doesn't update strings.
+        Ok(())
+    }
 }
 
 impl Flushable for ReadonlyIpcBackend {
@@ -136,6 +164,7 @@ enum ContextRequest {
     GetContextHashId(ContextHash),
     GetHash(HashId),
     GetValue(HashId),
+    GetShape(DirectoryShapeId),
     ContainsObject(HashId),
     ShutdownCall, // TODO: is this required?
 }
@@ -146,6 +175,7 @@ enum ContextResponse {
     GetContextHashResponse(Result<Option<ObjectHash>, String>),
     GetContextHashIdResponse(Result<Option<HashId>, String>),
     GetValueResponse(Result<Option<ContextValue>, String>),
+    GetShapeResponse(Result<Vec<String>, String>),
     ContainsObjectResponse(Result<bool, String>),
     ShutdownResult,
 }
@@ -154,6 +184,8 @@ enum ContextResponse {
 pub enum ContextError {
     #[error("Context get object error: {reason}")]
     GetValueError { reason: String },
+    #[error("Context get shape error: {reason}")]
+    GetShapeError { reason: String },
     #[error("Context contains object error: {reason}")]
     ContainsObjectError { reason: String },
     #[error("Context get hash id error: {reason}")]
@@ -356,6 +388,28 @@ impl IpcContextClient {
             }),
         }
     }
+
+    /// Get object by hash id
+    pub fn get_shape(
+        &self,
+        shape_id: DirectoryShapeId,
+    ) -> Result<Vec<String>, ContextServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ContextRequest::GetShape(shape_id))?;
+
+        // this might take a while, so we will use unusually long timeout
+        match io
+            .rx
+            .try_receive(Some(Self::TIMEOUT), Some(IpcContextListener::IO_TIMEOUT))?
+        {
+            ContextResponse::GetShapeResponse(result) => {
+                result.map_err(|err| ContextError::GetShapeError { reason: err }.into())
+            }
+            message => Err(ContextServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
 }
 
 impl<'a> Iterator for ContextIncoming<'a> {
@@ -439,6 +493,7 @@ impl IpcContextServer {
         let mut io = self.io.borrow_mut();
         loop {
             let cmd = io.rx.receive()?;
+
             match cmd {
                 ContextRequest::GetValue(hash) => match crate::ffi::get_context_index()? {
                     None => io.tx.send(&ContextResponse::GetValueResponse(Err(
@@ -449,6 +504,48 @@ impl IpcContextServer {
                             .fetch_object_bytes(hash)
                             .map_err(|err| format!("Context error: {:?}", err));
                         io.tx.send(&ContextResponse::GetValueResponse(res))?;
+                    }
+                },
+                ContextRequest::GetShape(shape_id) => match crate::ffi::get_context_index()? {
+                    None => io.tx.send(&ContextResponse::GetShapeResponse(Err(
+                        "Context index unavailable".to_owned(),
+                    )))?,
+                    Some(index) => {
+                        let res = index
+                            .repository
+                            .read()
+                            .map_err(|_| ContextError::GetShapeError {
+                                reason: "Fail to get repo".to_string(),
+                            })
+                            .and_then(|repo| {
+                                let shape = repo.get_shape(shape_id).map_err(|_| {
+                                    ContextError::GetShapeError {
+                                        reason: "Fail to get shape".to_string(),
+                                    }
+                                })?;
+
+                                // We send the owned `String` to the read only protocol runner.
+                                // We do not send the `StringId`s because the read only protocol
+                                // runner doesn't have access to the same `StringInterner`.
+                                match shape {
+                                    ShapeStrings::SliceIds(slice_ids) => slice_ids
+                                        .iter()
+                                        .map(|s| {
+                                            repo.get_str(*s)
+                                                .ok_or_else(|| ContextError::GetShapeError {
+                                                    reason: format!("String not found"),
+                                                })
+                                                .map(|s| s.to_string())
+                                        })
+                                        .collect(),
+                                    ShapeStrings::Owned(_) => Err(ContextError::GetShapeError {
+                                        reason: "Should receive a slice of StringId".to_string(),
+                                    }),
+                                }
+                            })
+                            .map_err(|err| format!("Context error: {:?}", err));
+
+                        io.tx.send(&ContextResponse::GetShapeResponse(res))?;
                     }
                 },
                 ContextRequest::ContainsObject(hash) => match crate::ffi::get_context_index()? {

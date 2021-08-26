@@ -20,7 +20,7 @@ use crate::{
     persistent::DBError,
     timings::send_statistics,
     working_tree::{
-        serializer::deserialize,
+        serializer::deserialize_object,
         storage::{BlobId, DirEntryId, DirectoryId, Storage},
         working_tree::{MerkleError, PostCommitData},
         Commit, Object,
@@ -97,7 +97,11 @@ impl TezedgeIndex {
 
         match repo.get_value(hash_id)? {
             None => Ok(None),
-            Some(object_bytes) => Ok(Some(deserialize(object_bytes.as_ref(), storage, &*repo)?)),
+            Some(object_bytes) => Ok(Some(deserialize_object(
+                object_bytes.as_ref(),
+                storage,
+                &*repo,
+            )?)),
         }
     }
 
@@ -450,14 +454,17 @@ impl TezedgeIndex {
             None => {
                 return Err(MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
-                })
+                });
             }
         };
 
         // get blob
         match self.dir_entry_object(dir_entry_id, storage)? {
             Object::Blob(blob) => Ok(blob),
-            _ => Err(MerkleError::ValueIsNotABlob {
+            Object::Directory(_) => Err(MerkleError::ValueIsNotABlob {
+                key: self.key_to_string(key),
+            }),
+            Object::Commit(_) => Err(MerkleError::ValueIsNotABlob {
                 key: self.key_to_string(key),
             }),
         }
@@ -557,6 +564,20 @@ impl TezedgeIndex {
                 }
             },
         }
+    }
+
+    /// The repository sometimes needs to have access to the interned strings in `StringInterner`.
+    ///
+    /// - This method synchronizes the `StringInterner` from the `Storage` into the repository
+    ///   when they are differents.
+    /// - The repository needs those interned strings when it sends the directory shapes to the
+    ///   read only protocol runner.
+    fn synchronize_interned_strings_to_repository(&self) -> Result<(), MerkleError> {
+        let storage = self.storage.borrow();
+        let mut repository = self.repository.write()?;
+        repository.synchronize_strings(&storage.strings)?;
+
+        Ok(())
     }
 }
 
@@ -777,6 +798,8 @@ impl ShellContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
+        self.index.synchronize_interned_strings_to_repository()?;
+
         // Objects to be inserted are obtained from the commit call and written here
         let date: u64 = date.try_into()?;
         let mut repository = self.index.repository.write()?;

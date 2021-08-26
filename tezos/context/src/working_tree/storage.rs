@@ -17,6 +17,7 @@ use std::{
 use modular_bitfield::prelude::*;
 use static_assertions::assert_eq_size;
 use tezos_timing::StorageMemoryUsage;
+use thiserror::Error;
 
 use crate::hash::index as index_of_key;
 use crate::kv_store::{index_map::IndexMap, HashId};
@@ -184,23 +185,39 @@ impl From<InodeId> for DirectoryId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum StorageError {
+    #[error("BlobSliceTooBig: The slice received is too big to be inlined")]
     BlobSliceTooBig,
+    #[error("BlobStartTooBig: The start index of a Blob must fit in 32 bits")]
     BlobStartTooBig,
+    #[error("BlobLengthTooBig: The length of a Blob must fit in 28 bits")]
     BlobLengthTooBig,
+    #[error("DirInvalidStartEnd: The start index of a Dir must not be higher than the end")]
     DirInvalidStartEnd,
+    #[error("DirStartTooBig: The start index of a Dir must fit in 32 bits")]
     DirStartTooBig,
+    #[error("DirLengthTooBig: The length of a Blob must fit in 28 bits")]
     DirLengthTooBig,
+    #[error("InodeIndexTooBig: The Inode index must fit in 31 bits")]
     InodeIndexTooBig,
+    #[error("DirEntryIdError: Conversion from/to usize of a DirEntryId failed")]
     DirEntryIdError,
+    #[error("StringNotFound: String has not been found")]
     StringNotFound,
+    #[error("DirNotFound: Dir has not been found")]
     DirNotFound,
+    #[error("BlobNotFound: Blob has not been found")]
     BlobNotFound,
+    #[error("DirEntryNotFound: DirEntry has not been found")]
     DirEntryNotFound,
+    #[error("InodeNotFound: Inode has not been found")]
     InodeNotFound,
+    #[error("ExpectedDirGotInode: Expected a Dir but got an Inode")]
     ExpectedDirGotInode,
+    #[error("IterationError: Iteration on an Inode failed")]
     IterationError,
+    #[error("RootOfInodeNotAPointer: The root of an Inode must be a pointer")]
     RootOfInodeNotAPointer,
 }
 
@@ -328,7 +345,8 @@ impl BlobId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DirEntryId(u32);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("Fail to convert the dir entry id to/from usize")]
 pub struct DirEntryIdError;
 
 impl TryInto<usize> for DirEntryId {
@@ -467,7 +485,7 @@ pub struct Storage {
     blobs: Vec<u8>,
     /// Concatenation of all strings in the working tree.
     /// The working tree has `StringId` which refers to a data inside `StringInterner`.
-    strings: StringInterner,
+    pub strings: StringInterner,
     /// Concatenation of all inodes.
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
@@ -560,6 +578,13 @@ impl Storage {
         self.strings
             .get(string_id)
             .ok_or(StorageError::StringNotFound)
+    }
+
+    pub fn string_to_owned(&self, slice: &[StringId]) -> Result<Vec<String>, StorageError> {
+        slice
+            .iter()
+            .map(|s| self.get_str(*s).map_err(Into::into).map(|s| s.to_string()))
+            .collect()
     }
 
     pub fn add_blob_by_ref(&mut self, blob: &[u8]) -> Result<BlobId, StorageError> {
