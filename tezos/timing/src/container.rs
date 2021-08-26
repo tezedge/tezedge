@@ -3,7 +3,7 @@ use std::{convert::TryInto, ops::Deref};
 const INLINED_STRING_THRESHOLD: usize = 512;
 const INLINED_HASH_LENGTH: usize = 32;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InlinedHash {
     Inlined { array: [u8; INLINED_HASH_LENGTH] },
     Heap(Box<[u8]>),
@@ -32,11 +32,11 @@ impl Deref for InlinedHash {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlinedContextHash(InlinedHash);
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlinedOperationHash(InlinedHash);
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlinedBlockHash(InlinedHash);
 
 macro_rules! deref_inlined {
@@ -111,6 +111,18 @@ impl InlinedString {
 
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(&*self).unwrap()
+    }
+}
+
+impl From<&[&str]> for InlinedString {
+    fn from(list: &[&str]) -> Self {
+        let mut inlined = Self::new();
+
+        for s in list {
+            inlined.push_str(s);
+        }
+
+        inlined
     }
 }
 

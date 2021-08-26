@@ -1334,11 +1334,16 @@ impl Timing {
 
 #[cfg(test)]
 mod tests {
-    use crypto::hash::HashTrait;
-
     use crate::container::{InlinedBlockHash, InlinedContextHash};
 
     use super::*;
+
+    fn send_msg(msg: TimingMessage) -> Result<(), ChannelError> {
+        TIMING_CHANNEL.with(|channel| {
+            let mut channel = channel.borrow_mut();
+            channel.send(msg)
+        })
+    }
 
     #[test]
     fn test_timing_db() {
@@ -1349,7 +1354,7 @@ mod tests {
         assert!(timing.current_block.is_none());
 
         // let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
-        let block_hash = InlinedBlockHash::from([1; 32]);
+        let block_hash = InlinedBlockHash::from(&[1; 32][..]);
         timing
             .set_current_block(
                 &sql,
@@ -1377,7 +1382,7 @@ mod tests {
         timing
             .set_current_block(
                 &sql,
-                Some(InlinedBlockHash::from([2; 32])),
+                Some(InlinedBlockHash::from(&[2; 32][..])),
                 None,
                 Instant::now(),
                 &mut transaction,
@@ -1393,10 +1398,7 @@ mod tests {
                 &mut transaction,
                 &Query {
                     query_name: QueryKind::Mem,
-                    key: vec!["a", "b", "c"]
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect(),
+                    key: InlinedString::from(&["a", "b", "c"][..]),
                     irmin_time: Some(1.0),
                     tezedge_time: Some(2.0),
                 },
@@ -1411,98 +1413,69 @@ mod tests {
 
     #[test]
     fn test_actions_db() {
-        let block_hash = InlinedBlockHash::from([1; 32]);
-        let context_hash = InlinedContextHash::from([2; 32]);
+        let block_hash = InlinedBlockHash::from(&[1; 32][..]);
+        let context_hash = InlinedContextHash::from(&[2; 32][..]);
 
-        TIMING_CHANNEL
-            .send(TimingMessage::InitTiming { db_path: None })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::SetBlock {
-                block_hash: Some(block_hash),
-                timestamp: None,
-                instant: Instant::now(),
-            })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Checkout {
-                context_hash,
-                irmin_time: Some(1.0),
-                tezedge_time: Some(2.0),
-            })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(1.0),
-                tezedge_time: Some(2.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Find,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(5.0),
-                tezedge_time: Some(6.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Find,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(50.0),
-                tezedge_time: Some(60.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Mem,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(10.0),
-                tezedge_time: Some(20.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(15.0),
-                tezedge_time: Some(26.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(150.0),
-                tezedge_time: Some(260.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Commit {
-                irmin_time: Some(15.0),
-                tezedge_time: Some(20.0),
-            })
-            .unwrap();
+        send_msg(TimingMessage::InitTiming { db_path: None }).unwrap();
+        send_msg(TimingMessage::SetBlock {
+            block_hash: Some(block_hash),
+            timestamp: None,
+            instant: Instant::now(),
+        })
+        .unwrap();
+        send_msg(TimingMessage::Checkout {
+            context_hash,
+            irmin_time: Some(1.0),
+            tezedge_time: Some(2.0),
+        })
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Add,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(1.0),
+            tezedge_time: Some(2.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Find,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(5.0),
+            tezedge_time: Some(6.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Find,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(50.0),
+            tezedge_time: Some(60.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Mem,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(10.0),
+            tezedge_time: Some(20.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Add,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(15.0),
+            tezedge_time: Some(26.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_name: QueryKind::Add,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(150.0),
+            tezedge_time: Some(260.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Commit {
+            irmin_time: Some(15.0),
+            tezedge_time: Some(20.0),
+        })
+        .unwrap();
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
