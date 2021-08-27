@@ -19,7 +19,7 @@ use static_assertions::assert_eq_size;
 use tezos_timing::StorageMemoryUsage;
 
 use crate::hash::index as index_of_key;
-use crate::kv_store::{entries::Entries, HashId};
+use crate::kv_store::{index_map::IndexMap, HashId};
 
 use super::{
     string_interner::{StringId, StringInterner},
@@ -448,8 +448,8 @@ type TempDirRange = Range<usize>;
 /// Because `Storage` is for the working tree only, it is cleared before
 /// every checkout.
 pub struct Storage {
-    /// An efficient map `DirEntryId -> DirEntry`
-    nodes: Entries<DirEntryId, DirEntry>,
+    /// An map `DirEntryId -> DirEntry`
+    nodes: IndexMap<DirEntryId, DirEntry>,
     /// Concatenation of all directories in the working tree.
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
@@ -518,7 +518,7 @@ impl Storage {
             temp_dir: Vec::with_capacity(128),
             blobs: Vec::with_capacity(2048),
             strings: Default::default(),
-            nodes: Entries::with_capacity(2048),
+            nodes: IndexMap::with_capacity(2048),
             inodes: Vec::with_capacity(256),
         }
     }
@@ -1335,7 +1335,7 @@ impl Storage {
         }
 
         if self.nodes.capacity() > 4096 {
-            self.nodes = Entries::with_capacity(4096);
+            self.nodes = IndexMap::with_capacity(4096);
         } else {
             self.nodes.clear();
         }

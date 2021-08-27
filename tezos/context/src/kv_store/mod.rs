@@ -12,8 +12,8 @@ use strum_macros::EnumIter;
 
 use crate::ObjectHash;
 
-pub mod entries;
 pub mod in_memory;
+pub mod index_map;
 pub mod readonly_ipc;
 
 pub const INMEM: &str = "inmem";
