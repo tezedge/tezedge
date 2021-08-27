@@ -1,31 +1,22 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, sync::Arc};
-
-use crypto::{
-    base58::FromBase58CheckError,
-    hash::{ContextHash, FromBytesError},
+use std::{
+    borrow::Cow,
+    io,
+    sync::{Arc, PoisonError},
 };
+
+use crypto::hash::ContextHash;
 use failure::Fail;
 
-pub use codec::{Codec, Decoder, Encoder, SchemaError};
-pub use database::DBError;
 use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
-    kv_store::{HashId, VacantObjectHash},
+    kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash},
+    working_tree::serializer::DeserializationError,
     ObjectHash,
 };
-
-pub mod codec;
-pub mod database;
-
-/// This trait extends basic column family by introducing Codec types safety and enforcement
-pub trait KeyValueSchema {
-    type Key: Codec;
-    type Value: Codec;
-}
 
 pub trait Flushable {
     fn flush(&self) -> Result<(), failure::Error>;
@@ -76,50 +67,60 @@ pub trait KeyValueStoreBackend {
     fn memory_usage(&self) -> RepositoryMemoryUsage;
 }
 
-/// Possible errors for storage
+/// Possible errors for schema
 #[derive(Debug, Fail)]
-pub enum StorageError {
-    #[fail(display = "Database error: {}", error)]
-    DBError { error: DBError },
-    #[fail(display = "Error constructing hash: {}", error)]
-    HashError { error: FromBytesError },
-    #[fail(display = "Error decoding hash: {}", error)]
-    HashDecodeError { error: FromBase58CheckError },
+pub enum DBError {
+    #[fail(display = "Column family {} is missing", name)]
+    MissingColumnFamily { name: &'static str },
+    #[fail(display = "Database incompatibility {}", name)]
+    DatabaseIncompatibility { name: String },
+    #[fail(display = "Value already exists {}", key)]
+    ValueExists { key: String },
+    #[fail(
+        display = "Found wrong structure. Was looking for {}, but found {}",
+        sought, found
+    )]
+    FoundUnexpectedStructure { sought: String, found: String },
+    #[fail(display = "Guard Poison {} ", error)]
+    GuardPoison { error: String },
+    #[fail(display = "Mutex/lock lock error! Reason: {}", reason)]
+    LockError { reason: String },
+    #[fail(display = "I/O error {}", error)]
+    IOError { error: io::Error },
+    #[fail(display = "MemoryStatisticsOverflow")]
+    MemoryStatisticsOverflow,
+    #[fail(display = "IPC Context access error: {:?}", reason)]
+    IpcAccessError { reason: ContextServiceError },
+    #[fail(display = "Missing object: {:?}", hash_id)]
+    MissingObject { hash_id: HashId },
+    #[fail(display = "Conversion from/to HashId failed")]
+    HashIdFailed,
+    #[fail(display = "Deserialization error: {:?}", error)]
+    DeserializationError { error: DeserializationError },
 }
 
-impl From<DBError> for StorageError {
-    fn from(error: DBError) -> Self {
-        StorageError::DBError { error }
+impl From<HashIdError> for DBError {
+    fn from(_: HashIdError) -> Self {
+        DBError::HashIdFailed
     }
 }
 
-impl From<SchemaError> for StorageError {
-    fn from(error: SchemaError) -> Self {
-        StorageError::DBError {
-            error: error.into(),
+impl From<DeserializationError> for DBError {
+    fn from(error: DeserializationError) -> Self {
+        Self::DeserializationError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for DBError {
+    fn from(pe: PoisonError<T>) -> Self {
+        DBError::LockError {
+            reason: format!("{}", pe),
         }
     }
 }
 
-impl From<FromBytesError> for StorageError {
-    fn from(error: FromBytesError) -> Self {
-        StorageError::HashError { error }
-    }
-}
-
-impl From<FromBase58CheckError> for StorageError {
-    fn from(error: FromBase58CheckError) -> Self {
-        StorageError::HashDecodeError { error }
-    }
-}
-
-impl slog::Value for StorageError {
-    fn serialize(
-        &self,
-        _record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
+impl From<io::Error> for DBError {
+    fn from(error: io::Error) -> Self {
+        DBError::IOError { error }
     }
 }

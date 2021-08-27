@@ -7,6 +7,9 @@ use std::{
     slice::SliceIndex,
 };
 
+/// A container mapping an typed ID to a value.
+///
+/// The underlying container is a `Vec` and the id is its index.
 #[derive(Debug)]
 pub struct Entries<K, V> {
     entries: Vec<V>,

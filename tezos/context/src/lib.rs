@@ -148,7 +148,6 @@ use working_tree::working_tree::{FoldDepth, TreeWalker, WorkingTree};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
-use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crypto::hash::{ContextHash, FromBytesError};
 
 mod persistent;
@@ -258,8 +257,6 @@ where
 
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError>;
-    // get stats from merkle storage
-    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError>;
 }

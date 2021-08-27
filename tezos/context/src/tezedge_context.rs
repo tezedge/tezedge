@@ -23,7 +23,6 @@ use crate::{
         serializer::deserialize,
         storage::{BlobId, DirEntryId, DirectoryId, Storage},
         working_tree::{MerkleError, PostCommitData},
-        working_tree_stats::MerkleStoragePerfReport,
         Commit, Object,
     },
     ContextKeyValueStore, StringDirectoryMap,
@@ -845,10 +844,6 @@ impl ShellContextApi for TezedgeContext {
         };
 
         Ok(value.map(|v| v.to_vec()))
-    }
-
-    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
-        Ok(MerkleStoragePerfReport::default())
     }
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {

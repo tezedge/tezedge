@@ -12,8 +12,7 @@ use failure::Error;
 use slog::{error, info};
 use tezos_timing::RepositoryMemoryUsage;
 
-use crate::persistent::database::DBError;
-use crate::persistent::{Flushable, Persistable};
+use crate::persistent::{DBError, Flushable, Persistable};
 use crate::ContextValue;
 use crate::{
     ffi::TezedgeIndexError, gc::NotGarbageCollected, persistent::KeyValueStoreBackend, ObjectHash,

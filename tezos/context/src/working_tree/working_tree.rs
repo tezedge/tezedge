@@ -266,9 +266,7 @@ impl Iterator for TreeWalker {
 pub enum MerkleError {
     /// External libs errors
     #[fail(display = "RocksDB error: {:?}", error)]
-    DBError {
-        error: persistent::database::DBError,
-    },
+    DBError { error: persistent::DBError },
     #[fail(display = "Backend error: {:?}", error)]
     GarbageCollectionError { error: GarbageCollectionError },
 
@@ -311,8 +309,8 @@ pub enum MerkleError {
     StorageIdError { error: StorageError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
+impl From<persistent::DBError> for MerkleError {
+    fn from(error: persistent::DBError) -> Self {
         MerkleError::DBError { error }
     }
 }
