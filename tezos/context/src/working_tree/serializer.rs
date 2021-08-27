@@ -169,7 +169,7 @@ pub fn serialize_object(
     storage: &Storage,
     stats: &mut SerializeStats,
     batch: &mut Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_entries: &mut Vec<HashId>,
+    referenced_older_objects: &mut Vec<HashId>,
 ) -> Result<(), SerializationError> {
     output.clear();
 
@@ -183,7 +183,7 @@ pub fn serialize_object(
                     storage,
                     stats,
                     batch,
-                    referenced_older_entries,
+                    referenced_older_objects,
                 )?;
             } else {
                 output.write_all(&[ID_DIRECTORY])?;
@@ -352,7 +352,7 @@ fn serialize_inode(
     storage: &Storage,
     stats: &mut SerializeStats,
     batch: &mut Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_entries: &mut Vec<HashId>,
+    referenced_older_objects: &mut Vec<HashId>,
 ) -> Result<(), SerializationError> {
     use SerializationError::*;
 
@@ -393,9 +393,9 @@ fn serialize_inode(
                     // We only want to serialize new inodes.
                     // We skip inodes that were previously serialized and already
                     // in the repository.
-                    // Add their hash_id to `referenced_older_entries` so the gargage
+                    // Add their hash_id to `referenced_older_objects` so the gargage
                     // collector won't collect them.
-                    referenced_older_entries.push(hash_id);
+                    referenced_older_objects.push(hash_id);
                     continue;
                 }
 
@@ -407,7 +407,7 @@ fn serialize_inode(
                     storage,
                     stats,
                     batch,
-                    referenced_older_entries,
+                    referenced_older_objects,
                 )?;
             }
         }
@@ -827,7 +827,7 @@ mod tests {
         let mut repo = InMemory::try_new().unwrap();
         let mut stats = SerializeStats::default();
         let mut batch = Vec::new();
-        let mut older_entries = Vec::new();
+        let mut older_objects = Vec::new();
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         // Test Object::Directory
@@ -863,7 +863,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
 
@@ -894,7 +894,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
         let object = deserialize(&data, &mut storage, &repo).unwrap();
@@ -926,7 +926,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
         let object = deserialize(&data, &mut storage, &repo).unwrap();
@@ -973,7 +973,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
 
@@ -1048,7 +1048,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
 
@@ -1072,7 +1072,7 @@ mod tests {
         let mut storage = Storage::new();
         let mut stats = SerializeStats::default();
         let mut batch = Vec::new();
-        let mut older_entries = Vec::new();
+        let mut older_objects = Vec::new();
 
         let fake_hash_id = HashId::try_from(1).unwrap();
 
@@ -1100,7 +1100,7 @@ mod tests {
             &storage,
             &mut stats,
             &mut batch,
-            &mut older_entries,
+            &mut older_objects,
         )
         .unwrap();
 

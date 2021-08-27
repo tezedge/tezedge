@@ -97,7 +97,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
             .map_err(Into::into)
     }
 
-    fn clear_entries(&mut self) -> Result<(), DBError> {
+    fn clear_objects(&mut self) -> Result<(), DBError> {
         self.hashes.clear();
         Ok(())
     }

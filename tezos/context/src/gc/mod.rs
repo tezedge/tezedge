@@ -21,7 +21,7 @@ pub trait GarbageCollector {
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: Vec<HashId>,
+        referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError>;
 }
 
@@ -34,7 +34,7 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
     fn block_applied(
         &mut self,
-        _referenced_older_entries: Vec<HashId>,
+        _referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
@@ -103,16 +103,5 @@ impl From<InvalidOutputSize> for GarbageCollectionError {
 impl From<HashingError> for GarbageCollectionError {
     fn from(error: HashingError) -> Self {
         Self::HashingError { error }
-    }
-}
-
-impl slog::Value for GarbageCollectionError {
-    fn serialize(
-        &self,
-        _record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }

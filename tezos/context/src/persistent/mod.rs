@@ -60,9 +60,9 @@ pub trait KeyValueStoreBackend {
     /// Find an object to insert a new ObjectHash
     /// Return the object
     fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError>;
-    /// Manually clear the entries, this should be a no-operation if the implementation
+    /// Manually clear the objects, this should be a no-operation if the implementation
     /// has its own garbage collection
-    fn clear_entries(&mut self) -> Result<(), DBError>;
+    fn clear_objects(&mut self) -> Result<(), DBError>;
     /// Memory usage
     fn memory_usage(&self) -> RepositoryMemoryUsage;
 }

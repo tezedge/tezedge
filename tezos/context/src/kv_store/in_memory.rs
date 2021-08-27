@@ -155,9 +155,9 @@ impl GarbageCollector for InMemory {
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: Vec<HashId>,
+        referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
-        self.block_applied(referenced_older_entries);
+        self.block_applied(referenced_older_objects);
         Ok(())
     }
 }
@@ -203,7 +203,7 @@ impl KeyValueStoreBackend for InMemory {
         self.get_vacant_entry_hash()
     }
 
-    fn clear_entries(&mut self) -> Result<(), DBError> {
+    fn clear_objects(&mut self) -> Result<(), DBError> {
         // `InMemory` has its own garbage collection
         Ok(())
     }
