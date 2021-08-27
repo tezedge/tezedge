@@ -110,7 +110,7 @@ fn hash_long_inode(
     let mut hasher = VarBlake2b::new(OBJECT_HASH_LEN)?;
 
     match inode {
-        Inode::Directory(entries) => {
+        Inode::Directory(dir_id) => {
             // Inode value:
             //
             // |   1   |   1  |     n_1      |  ...  |      n_k      |
@@ -119,10 +119,10 @@ fn hash_long_inode(
             //
             // where n_i = len(prehash(e_i))
 
-            let entries = storage.get_small_dir(*entries)?;
+            let dir = storage.get_small_dir(*dir_id)?;
 
             hasher.update(&[0u8]); // type tag
-            hasher.update(&[entries.len() as u8]);
+            hasher.update(&[dir.len() as u8]);
 
             // Inode value object:
             //
@@ -130,7 +130,7 @@ fn hash_long_inode(
             // +-------------+--------------+--------+--------+
             // | \len(name)  |     name     |  kind  |  hash  |
 
-            for (name, dir_entry_id) in entries {
+            for (name, dir_entry_id) in dir {
                 let name = storage.get_str(*name)?;
 
                 leb128::write::unsigned(&mut hasher, name.len() as u64)?;
@@ -180,7 +180,7 @@ fn hash_long_inode(
             // |  index  |  hash  |
 
             for (index, pointer) in pointers.iter().enumerate() {
-                // When the pointer is `None`, it means that there is no entries/nodes
+                // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
                 // Skip pointers without entries.
@@ -615,7 +615,7 @@ mod tests {
         let mut repo = InMemory::try_new().expect("failed to create context");
         let mut storage = Storage::new();
         let mut output = Vec::new();
-        let mut older_entries = Vec::new();
+        let mut older_objects = Vec::new();
         let mut stats = SerializeStats::default();
 
         // NOTE: reading from a stream is very slow with serde, thats why
@@ -717,7 +717,7 @@ mod tests {
                     &storage,
                     &mut stats,
                     &mut batch,
-                    &mut older_entries,
+                    &mut older_objects,
                 )
                 .unwrap();
                 repo.write_batch(batch).unwrap();

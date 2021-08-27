@@ -25,7 +25,6 @@ pub mod storage;
 pub mod string_interner;
 #[allow(clippy::module_inception)]
 pub mod working_tree;
-pub mod working_tree_stats; // TODO - TE-261 remove or reimplement
 
 use modular_bitfield::prelude::*;
 use static_assertions::assert_eq_size;

@@ -266,9 +266,7 @@ impl Iterator for TreeWalker {
 pub enum MerkleError {
     /// External libs errors
     #[fail(display = "RocksDB error: {:?}", error)]
-    DBError {
-        error: persistent::database::DBError,
-    },
+    DBError { error: persistent::DBError },
     #[fail(display = "Backend error: {:?}", error)]
     GarbageCollectionError { error: GarbageCollectionError },
 
@@ -311,8 +309,8 @@ pub enum MerkleError {
     StorageIdError { error: StorageError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
+impl From<persistent::DBError> for MerkleError {
+    fn from(error: persistent::DBError) -> Self {
         MerkleError::DBError { error }
     }
 }
@@ -384,7 +382,7 @@ pub enum CheckObjectHashError {
 
 struct SerializingData<'a> {
     batch: Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_entries: Vec<HashId>,
+    referenced_older_objects: Vec<HashId>,
     store: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
     stats: Box<SerializeStats>,
@@ -394,7 +392,7 @@ impl<'a> SerializingData<'a> {
     fn new(store: &'a mut ContextKeyValueStore) -> Self {
         Self {
             batch: Vec::with_capacity(2048),
-            referenced_older_entries: Vec::with_capacity(2048),
+            referenced_older_objects: Vec::with_capacity(2048),
             store,
             serialized: Vec::with_capacity(2048),
             stats: Default::default(),
@@ -414,7 +412,7 @@ impl<'a> SerializingData<'a> {
             storage,
             &mut self.stats,
             &mut self.batch,
-            &mut self.referenced_older_entries,
+            &mut self.referenced_older_objects,
         )?;
         Ok(())
     }
@@ -427,7 +425,7 @@ impl<'a> SerializingData<'a> {
         let hash_id = dir_entry.object_hash_id(self.store, storage)?;
 
         if let Some(hash_id) = hash_id {
-            self.referenced_older_entries.push(hash_id);
+            self.referenced_older_objects.push(hash_id);
         };
 
         Ok(())
@@ -471,7 +469,7 @@ impl WorkingTree {
 
     /// Traverses this working tree and returns the tree at `key`.
     ///
-    /// Fetches entries from repository if necessary.
+    /// Fetches objects from repository if necessary.
     pub fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
         if key.is_empty() {
             // If the key is empty, we are checking self, which exists
@@ -748,11 +746,11 @@ impl WorkingTree {
         let object = Object::Commit(Box::new(new_commit.clone()));
         let commit_hash = hash_commit(&new_commit, store)?;
 
-        // produce entries to be persisted to storage
+        // produce objects to be persisted to storage
         let mut data = SerializingData::new(store);
         if commit_to_storage {
             let storage = self.index.storage.borrow();
-            self.serialize_entries_recursively(
+            self.serialize_objects_recursively(
                 &object,
                 commit_hash,
                 Some(root),
@@ -764,7 +762,7 @@ impl WorkingTree {
         Ok(PostCommitData {
             commit_hash_id: commit_hash,
             batch: data.batch,
-            reused: data.referenced_older_entries,
+            reused: data.referenced_older_objects,
             serialize_stats: data.stats,
         })
     }
@@ -897,10 +895,10 @@ impl WorkingTree {
         hash_directory(root, store, &storage).map_err(MerkleError::from)
     }
 
-    /// Serializes working tree and builds vector of entries to be persisted to DB, recursively.
+    /// Serializes working tree and builds vector of objects to be persisted to DB, recursively.
     ///
-    /// This doesn't traverse entries that were already commited.
-    fn serialize_entries_recursively(
+    /// This doesn't traverse objects that were already commited.
+    fn serialize_objects_recursively(
         &self,
         object: &Object,
         object_hash: HashId,
@@ -930,7 +928,7 @@ impl WorkingTree {
 
                     match child_dir_entry.get_object().as_ref() {
                         None => Ok(()),
-                        Some(object) => self.serialize_entries_recursively(
+                        Some(object) => self.serialize_objects_recursively(
                             object,
                             object_hash,
                             None,
@@ -945,7 +943,7 @@ impl WorkingTree {
                     Some(root) => Object::Directory(root),
                     None => self.fetch_object_from_repo(commit.root_hash, data.store)?,
                 };
-                self.serialize_entries_recursively(&object, commit.root_hash, None, data, storage)
+                self.serialize_objects_recursively(&object, commit.root_hash, None, data, storage)
             }
         }
     }

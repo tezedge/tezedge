@@ -23,7 +23,6 @@ use crate::{
         serializer::deserialize,
         storage::{BlobId, DirEntryId, DirectoryId, Storage},
         working_tree::{MerkleError, PostCommitData},
-        working_tree_stats::MerkleStoragePerfReport,
         Commit, Object,
     },
     ContextKeyValueStore, StringDirectoryMap,
@@ -614,11 +613,11 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         )))
     }
 
-    fn block_applied(&self, referenced_older_entries: Vec<HashId>) -> Result<(), ContextError> {
+    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError> {
         Ok(self
             .repository
             .write()?
-            .block_applied(referenced_older_entries)?)
+            .block_applied(referenced_older_objects)?)
     }
 
     fn cycle_started(&mut self) -> Result<(), ContextError> {
@@ -778,7 +777,7 @@ impl ShellContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
-        // Entries to be inserted are obtained from the commit call and written here
+        // Objects to be inserted are obtained from the commit call and written here
         let date: u64 = date.try_into()?;
         let mut repository = self.index.repository.write()?;
 
@@ -796,13 +795,13 @@ impl ShellContextApi for TezedgeContext {
             true,
         )?;
 
-        // FIXME: only write entries if there are any, empty commits should not produce anything
+        // FIXME: only write objects if there are any, empty commits should not produce anything
         repository.write_batch(batch)?;
         repository.put_context_hash(commit_hash_id)?;
         repository.block_applied(reused)?;
 
         let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
-        repository.clear_entries()?;
+        repository.clear_objects()?;
 
         std::mem::drop(repository);
         send_statistics(BlockMemoryUsage {
@@ -832,7 +831,7 @@ impl ShellContextApi for TezedgeContext {
         )?;
 
         let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
-        repository.clear_entries()?;
+        repository.clear_objects()?;
         Ok(commit_hash)
     }
 
@@ -845,10 +844,6 @@ impl ShellContextApi for TezedgeContext {
         };
 
         Ok(value.map(|v| v.to_vec()))
-    }
-
-    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
-        Ok(MerkleStoragePerfReport::default())
     }
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {

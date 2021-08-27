@@ -12,8 +12,7 @@ use failure::Error;
 use slog::{error, info};
 use tezos_timing::RepositoryMemoryUsage;
 
-use crate::persistent::database::DBError;
-use crate::persistent::{Flushable, Persistable};
+use crate::persistent::{DBError, Flushable, Persistable};
 use crate::ContextValue;
 use crate::{
     ffi::TezedgeIndexError, gc::NotGarbageCollected, persistent::KeyValueStoreBackend, ObjectHash,
@@ -98,7 +97,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
             .map_err(Into::into)
     }
 
-    fn clear_entries(&mut self) -> Result<(), DBError> {
+    fn clear_objects(&mut self) -> Result<(), DBError> {
         self.hashes.clear();
         Ok(())
     }

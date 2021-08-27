@@ -28,13 +28,13 @@ use crate::{
 
 use tezos_spsc::Consumer;
 
-use super::{entries::Entries, HashIdError};
+use super::{index_map::IndexMap, HashIdError};
 use super::{HashId, VacantObjectHash};
 
 #[derive(Debug)]
 pub struct HashValueStore {
-    hashes: Entries<HashId, ObjectHash>,
-    values: Entries<HashId, Option<Arc<[u8]>>>,
+    hashes: IndexMap<HashId, ObjectHash>,
+    values: IndexMap<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
     values_bytes: usize,
@@ -46,8 +46,8 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: Entries::new(),
-            values: Entries::new(),
+            hashes: IndexMap::new(),
+            values: IndexMap::new(),
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
             values_bytes: 0,
@@ -75,8 +75,8 @@ impl HashValueStore {
 
     pub(crate) fn clear(&mut self) {
         *self = Self {
-            hashes: Entries::new(),
-            values: Entries::new(),
+            hashes: IndexMap::new(),
+            values: IndexMap::new(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
             values_bytes: 0,
@@ -155,9 +155,9 @@ impl GarbageCollector for InMemory {
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: Vec<HashId>,
+        referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
-        self.block_applied(referenced_older_entries);
+        self.block_applied(referenced_older_objects);
         Ok(())
     }
 }
@@ -203,7 +203,7 @@ impl KeyValueStoreBackend for InMemory {
         self.get_vacant_entry_hash()
     }
 
-    fn clear_entries(&mut self) -> Result<(), DBError> {
+    fn clear_objects(&mut self) -> Result<(), DBError> {
         // `InMemory` has its own garbage collection
         Ok(())
     }

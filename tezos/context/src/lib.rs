@@ -148,7 +148,6 @@ use working_tree::working_tree::{FoldDepth, TreeWalker, WorkingTree};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
-use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crypto::hash::{ContextHash, FromBytesError};
 
 mod persistent;
@@ -217,7 +216,7 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
     // called after a block is applied
-    fn block_applied(&self, referenced_older_entries: Vec<HashId>) -> Result<(), ContextError>;
+    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError>;
     // called when a new cycle starts
     fn cycle_started(&mut self) -> Result<(), ContextError>;
     // get value for key from a point in history indicated by context hash
@@ -258,8 +257,6 @@ where
 
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError>;
-    // get stats from merkle storage
-    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError>;
 }
