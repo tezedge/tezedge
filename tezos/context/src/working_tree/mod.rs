@@ -33,15 +33,15 @@ use static_assertions::assert_eq_size;
 #[derive(BitfieldSpecifier)]
 #[bits = 1]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub enum NodeKind {
-    Leaf,
-    NonLeaf,
+pub enum DirEntryKind {
+    Blob,
+    Directory,
 }
 
 #[bitfield]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub struct NodeInner {
-    node_kind: NodeKind,
+pub struct DirEntryInner {
+    dir_entry_kind: DirEntryKind,
     commited: bool,
     object_hash_id: B32,
     object_available: bool,
@@ -49,15 +49,15 @@ pub struct NodeInner {
 }
 
 /// Wrapper over the children objects of a directory, containing
-/// extra metadata (leaf/non-leaf, it is an already commited object or new, etc).
-/// Nodes wrap either directories of values/blobs, never commits, because commits
+/// extra metadata (object kind, if it is an already commited object or a new one, etc).
+/// A `DirEntry` wraps either a directory or a value/blob, never a commit, because commits
 /// cannot be part of a tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Node {
-    pub(crate) inner: Cell<NodeInner>,
+pub struct DirEntry {
+    pub(crate) inner: Cell<DirEntryInner>,
 }
 
-assert_eq_size!([u8; 12], Node);
+assert_eq_size!([u8; 12], DirEntry);
 
 /// Commit objects are the entry points to different versions of the context tree.
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
@@ -77,7 +77,7 @@ pub enum Object {
     Commit(Box<Commit>),
 }
 
-impl Node {
+impl DirEntry {
     pub fn is_commited(&self) -> bool {
         self.inner.get().commited()
     }
@@ -87,11 +87,11 @@ impl Node {
         self.inner.set(inner);
     }
 
-    pub fn node_kind(&self) -> NodeKind {
-        self.inner.get().node_kind()
+    pub fn dir_entry_kind(&self) -> DirEntryKind {
+        self.inner.get().dir_entry_kind()
     }
 
-    /// Returns the `HashId` of this node, _without_ computing it if it doesn't exist yet.
+    /// Returns the `HashId` of this dir_entry, _without_ computing it if it doesn't exist yet.
     ///
     /// Returns `None` if the `HashId` doesn't exist.
     /// Use `Self::object_hash_id` to compute the hash.
@@ -100,12 +100,12 @@ impl Node {
         HashId::new(id)
     }
 
-    /// Returns the object of this `Node`.
+    /// Returns the object of this `DirEntry`.
     ///
     /// It returns `None` when the object has not been fetched from the repository.
     /// In that case, `TezedgeIndex::get_object` must be used with the `HashId` of this
-    /// `Node` to get the object.
-    /// Alternative method: `TezedgeIndex::node_object`.
+    /// `DirEntry` to get the object.
+    /// Alternative method: `TezedgeIndex::dir_entry_object`.
     pub fn get_object(&self) -> Option<Object> {
         let inner = self.inner.get();
 
@@ -114,15 +114,15 @@ impl Node {
         }
 
         let object_id: u64 = inner.object_id();
-        match self.node_kind() {
-            NodeKind::NonLeaf => Some(Object::Directory(DirectoryId::from(object_id))),
-            NodeKind::Leaf => Some(Object::Blob(BlobId::from(object_id))),
+        match self.dir_entry_kind() {
+            DirEntryKind::Directory => Some(Object::Directory(DirectoryId::from(object_id))),
+            DirEntryKind::Blob => Some(Object::Blob(BlobId::from(object_id))),
         }
     }
 
-    /// Returns the `ObjectHash` of this node, computing it necessary.
+    /// Returns the `ObjectHash` of this dir_entry, computing it necessary.
     ///
-    /// If this node is an inlined blob, this will return an error.
+    /// If this dir_entry is an inlined blob, this will return an error.
     pub fn object_hash<'a>(
         &self,
         store: &'a mut ContextKeyValueStore,
@@ -136,9 +136,9 @@ impl Node {
             .ok_or(HashingError::HashIdNotFound { hash_id })
     }
 
-    /// Returns the `HashId` of this node, it will compute the hash if necessary.
+    /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
     ///
-    /// If this node is an inlined blob, this will return `None`.
+    /// If this dir_entry is an inlined blob, this will return `None`.
     pub fn object_hash_id(
         &self,
         store: &mut ContextKeyValueStore,
@@ -164,59 +164,61 @@ impl Node {
         }
     }
 
-    /// Constructor for Nodes wrapping objects that are new, and have not been saved
-    /// to the repository yet. These objects must be saved to the repository at
+    /// Constructs a `DirEntry`s wrapping an object that is new, and has not been saved
+    /// to the repository yet. This objects must be saved to the repository at
     /// commit time if still reachable from the root of the working tree.
-    pub fn new(node_kind: NodeKind, object: Object) -> Self {
-        Node {
+    pub fn new(dir_entry_kind: DirEntryKind, object: Object) -> Self {
+        DirEntry {
             inner: Cell::new(
-                NodeInner::new()
+                DirEntryInner::new()
                     .with_commited(false)
-                    .with_node_kind(node_kind)
+                    .with_dir_entry_kind(dir_entry_kind)
                     .with_object_hash_id(0)
                     .with_object_available(true)
                     .with_object_id(match object {
                         Object::Directory(dir_id) => dir_id.into(),
                         Object::Blob(blob_id) => blob_id.into(),
-                        Object::Commit(_) => unreachable!("A Node never contains a commit"),
+                        Object::Commit(_) => unreachable!("A DirEntry never contains a commit"),
                     }),
             ),
         }
     }
 
-    /// Constructor for Nodes wrapping objects that are already in the repository and must
+    /// Constructs a `DirEntry`s wrapping an object that is already in the repository and must
     /// not be saved again at commit time even if still reachable from the root of the working tree.
     pub fn new_commited(
-        node_kind: NodeKind,
+        dir_entry_kind: DirEntryKind,
         hash_id: Option<HashId>,
         object: Option<Object>,
     ) -> Self {
-        Node {
+        DirEntry {
             inner: Cell::new(
-                NodeInner::new()
+                DirEntryInner::new()
                     .with_commited(true)
-                    .with_node_kind(node_kind)
+                    .with_dir_entry_kind(dir_entry_kind)
                     .with_object_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
                     .with_object_available(object.is_some())
                     .with_object_id(match object {
                         Some(Object::Directory(dir_id)) => dir_id.into(),
                         Some(Object::Blob(blob_id)) => blob_id.into(),
-                        Some(Object::Commit(_)) => unreachable!("A Node never contains a commit"),
+                        Some(Object::Commit(_)) => {
+                            unreachable!("A DirEntry never contains a commit")
+                        }
                         None => 0,
                     }),
             ),
         }
     }
 
-    pub fn new_non_leaf(object: Object) -> Self {
-        Node::new(NodeKind::NonLeaf, object)
+    pub fn new_directory(object: Object) -> Self {
+        DirEntry::new(DirEntryKind::Directory, object)
     }
 
-    pub fn new_leaf(object: Object) -> Self {
-        Node::new(NodeKind::Leaf, object)
+    pub fn new_blob(object: Object) -> Self {
+        DirEntry::new(DirEntryKind::Blob, object)
     }
 
-    /// Returns the `HashId` of this node, _without_ computing it if it doesn't exist yet.
+    /// Returns the `HashId` of this dir_entry, _without_ computing it if it doesn't exist yet.
     ///
     /// Returns an error if the `HashId` doesn't exist.
     /// Use `Self::object_hash_id` to compute the hash.
@@ -225,7 +227,7 @@ impl Node {
             .ok_or(MerkleError::InvalidState("Missing object hash"))
     }
 
-    /// Set the object of this node.
+    /// Set the object of this dir_entry.
     pub fn set_object(&self, object: &Object) -> Result<(), MerkleError> {
         let mut inner = self.inner.get();
 
@@ -234,7 +236,7 @@ impl Node {
                 let dir_id: u64 = (*dir_id).into();
                 if dir_id != inner.object_id() || !inner.object_available() {
                     inner.set_object_available(true);
-                    inner.set_node_kind(NodeKind::NonLeaf);
+                    inner.set_dir_entry_kind(DirEntryKind::Directory);
                     inner.set_object_id(dir_id);
                 }
             }
@@ -242,12 +244,12 @@ impl Node {
                 let blob_id: u64 = (*blob_id).into();
                 if blob_id != inner.object_id() || !inner.object_available() {
                     inner.set_object_available(true);
-                    inner.set_node_kind(NodeKind::Leaf);
+                    inner.set_dir_entry_kind(DirEntryKind::Blob);
                     inner.set_object_id(blob_id);
                 }
             }
             Object::Commit(_) => {
-                unreachable!("A Node never contains a commit")
+                unreachable!("A DirEntry never contains a commit")
             }
         };
 
@@ -258,15 +260,15 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    use crate::working_tree::storage::NodeId;
+    use crate::working_tree::storage::DirEntryId;
     use crate::working_tree::string_interner::StringId;
 
     use super::*;
 
     #[test]
-    fn test_node() {
-        assert!(!std::mem::needs_drop::<Node>());
-        assert!(!std::mem::needs_drop::<NodeId>());
-        assert!(!std::mem::needs_drop::<(StringId, NodeId)>());
+    fn test_dir_entry() {
+        assert!(!std::mem::needs_drop::<DirEntry>());
+        assert!(!std::mem::needs_drop::<DirEntryId>());
+        assert!(!std::mem::needs_drop::<(StringId, DirEntryId)>());
     }
 }

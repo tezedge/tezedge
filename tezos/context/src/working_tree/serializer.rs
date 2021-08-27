@@ -17,15 +17,15 @@ use crate::{
     kv_store::HashId,
     working_tree::{
         storage::{DirectoryId, Inode, PointerToInode},
-        Commit, NodeKind,
+        Commit, DirEntryKind,
     },
     ContextKeyValueStore,
 };
 
 use super::{
-    storage::{Blob, InodeId, NodeId, NodeIdError, Storage, StorageError},
+    storage::{Blob, DirEntryId, DirEntryIdError, InodeId, Storage, StorageError},
     string_interner::StringId,
-    Node, Object,
+    DirEntry, Object,
 };
 
 const ID_DIRECTORY: u8 = 0;
@@ -43,7 +43,7 @@ const FULL_23_BITS: u32 = 0x7FFFFF;
 pub enum SerializationError {
     IOError,
     DirNotFound,
-    NodeNotFound,
+    DirEntryNotFound,
     BlobNotFound,
     TryFromIntError,
     StorageIdError { error: StorageError },
@@ -69,8 +69,8 @@ impl From<StorageError> for SerializationError {
     }
 }
 
-fn get_inline_blob<'a>(storage: &'a Storage, node: &Node) -> Option<Blob<'a>> {
-    if let Some(Object::Blob(blob_id)) = node.get_object() {
+fn get_inline_blob<'a>(storage: &'a Storage, dir_entry: &DirEntry) -> Option<Blob<'a>> {
+    if let Some(Object::Blob(blob_id)) = dir_entry.get_object() {
         if blob_id.is_inline() {
             return storage.get_blob(blob_id).ok();
         }
@@ -80,17 +80,17 @@ fn get_inline_blob<'a>(storage: &'a Storage, node: &Node) -> Option<Blob<'a>> {
 
 #[bitfield(bits = 8)]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub struct KeyNodeDescriptor {
-    kind: NodeKind,
+pub struct KeyDirEntryDescriptor {
+    kind: DirEntryKind,
     blob_inline_length: B3,
     key_inline_length: B4,
 }
 
 // Must fit in 1 byte
-assert_eq_size!(KeyNodeDescriptor, u8);
+assert_eq_size!(KeyDirEntryDescriptor, u8);
 
 fn serialize_directory(
-    dir: &[(StringId, NodeId)],
+    dir: &[(StringId, DirEntryId)],
     output: &mut Vec<u8>,
     storage: &Storage,
     stats: &mut SerializeStats,
@@ -101,20 +101,20 @@ fn serialize_directory(
     let mut nblobs_inlined: usize = 0;
     let mut blobs_length: usize = 0;
 
-    for (key_id, node_id) in dir {
+    for (key_id, dir_entry_id) in dir {
         let key = storage.get_str(*key_id)?;
 
-        let node = storage.get_node(*node_id)?;
+        let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
 
-        let hash_id: u32 = node.hash_id().map(|h| h.as_u32()).unwrap_or(0);
-        let kind = node.node_kind();
+        let hash_id: u32 = dir_entry.hash_id().map(|h| h.as_u32()).unwrap_or(0);
+        let kind = dir_entry.dir_entry_kind();
 
-        let blob_inline = get_inline_blob(storage, &node);
+        let blob_inline = get_inline_blob(storage, &dir_entry);
         let blob_inline_length = blob_inline.as_ref().map(|b| b.len()).unwrap_or(0);
 
         match key.len() {
             len if len != 0 && len < 16 => {
-                let byte: [u8; 1] = KeyNodeDescriptor::new()
+                let byte: [u8; 1] = KeyDirEntryDescriptor::new()
                     .with_kind(kind)
                     .with_key_inline_length(len as u8)
                     .with_blob_inline_length(blob_inline_length as u8)
@@ -124,7 +124,7 @@ fn serialize_directory(
                 keys_length += len;
             }
             len => {
-                let byte: [u8; 1] = KeyNodeDescriptor::new()
+                let byte: [u8; 1] = KeyDirEntryDescriptor::new()
                     .with_kind(kind)
                     .with_key_inline_length(0)
                     .with_blob_inline_length(blob_inline_length as u8)
@@ -435,7 +435,7 @@ pub enum DeserializationError {
     FromUtf8Error,
     MissingRootHash,
     MissingHash,
-    NodeIdError,
+    DirEntryIdError,
     StorageIdError { error: StorageError },
     InodeNotFoundInRepository,
     InodeEmptyInRepository,
@@ -459,9 +459,9 @@ impl From<FromUtf8Error> for DeserializationError {
     }
 }
 
-impl From<NodeIdError> for DeserializationError {
-    fn from(_: NodeIdError) -> Self {
-        Self::NodeIdError
+impl From<DirEntryIdError> for DeserializationError {
+    fn from(_: DirEntryIdError) -> Self {
+        Self::DirEntryIdError
     }
 }
 
@@ -510,7 +510,7 @@ fn deserialize_directory(
     let dir_id = storage.with_new_dir::<_, Result<_, Error>>(|storage, new_dir| {
         while pos < data_length {
             let descriptor = data.get(pos..pos + 1).ok_or(UnexpectedEOF)?;
-            let descriptor = KeyNodeDescriptor::from_bytes([descriptor[0]; 1]);
+            let descriptor = KeyDirEntryDescriptor::from_bytes([descriptor[0]; 1]);
 
             pos += 1;
 
@@ -540,7 +540,7 @@ fn deserialize_directory(
             let kind = descriptor.kind();
             let blob_inline_length = descriptor.blob_inline_length() as usize;
 
-            let node = if blob_inline_length > 0 {
+            let dir_entry = if blob_inline_length > 0 {
                 // The blob is inlined
 
                 let blob = data
@@ -550,19 +550,19 @@ fn deserialize_directory(
 
                 pos += blob_inline_length;
 
-                Node::new_commited(kind, None, Some(Object::Blob(blob_id)))
+                DirEntry::new_commited(kind, None, Some(Object::Blob(blob_id)))
             } else {
                 let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
                 let (hash_id, nbytes) = deserialize_hash_id(bytes)?;
 
                 pos += nbytes;
 
-                Node::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None)
+                DirEntry::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None)
             };
 
-            let node_id = storage.add_node(node)?;
+            let dir_entry_id = storage.add_dir_entry(dir_entry)?;
 
-            new_dir.push((key_id, node_id));
+            new_dir.push((key_id, dir_entry_id));
         }
 
         Ok(storage.append_to_directories(new_dir))
@@ -775,7 +775,7 @@ impl<'a> Iterator for HashIdIterator<'a> {
                 // ID_DIRECTORY or ID_INODE_DIRECTORY
 
                 let descriptor = self.data.get(pos..pos + 1)?;
-                let descriptor = KeyNodeDescriptor::from_bytes([descriptor[0]; 1]);
+                let descriptor = KeyDirEntryDescriptor::from_bytes([descriptor[0]; 1]);
 
                 pos += 1;
 
@@ -837,21 +837,21 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                Node::new_commited(NodeKind::Leaf, HashId::new(1), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(1), None),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "bab",
-                Node::new_commited(NodeKind::Leaf, HashId::new(2), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(2), None),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                Node::new_commited(NodeKind::Leaf, HashId::new(3), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(3), None),
             )
             .unwrap();
 
@@ -1019,21 +1019,21 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                Node::new_commited(NodeKind::Leaf, HashId::new(1), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(1), None),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "bab",
-                Node::new_commited(NodeKind::Leaf, HashId::new(2), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(2), None),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                Node::new_commited(NodeKind::Leaf, HashId::new(3), None),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(3), None),
             )
             .unwrap();
 
@@ -1087,7 +1087,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                Node::new_commited(NodeKind::Leaf, blob_hash_id, None),
+                DirEntry::new_commited(DirEntryKind::Blob, blob_hash_id, None),
             )
             .unwrap();
 

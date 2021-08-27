@@ -58,7 +58,7 @@ use failure::Fail;
 use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
 
-use crate::working_tree::{Commit, Node, NodeKind, Object};
+use crate::working_tree::{Commit, DirEntry, DirEntryKind, Object};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::ObjectHash, ContextKeyOwned};
 use crate::{
@@ -70,7 +70,7 @@ use crate::{ContextKey, ContextValue};
 
 use super::{
     serializer::{deserialize, serialize_object, DeserializationError, SerializationError},
-    storage::{BlobId, DirectoryId, NodeId, Storage, StorageError},
+    storage::{BlobId, DirEntryId, DirectoryId, Storage, StorageError},
 };
 
 pub struct PostCommitData {
@@ -131,7 +131,7 @@ struct TreeWalkerLevel {
     root: WorkingTree,
     current_depth: i64,
     yield_self: bool,
-    children_iter: Option<IntoIter<(String, NodeId)>>,
+    children_iter: Option<IntoIter<(String, DirEntryId)>>,
 }
 
 impl TreeWalkerLevel {
@@ -160,7 +160,7 @@ impl TreeWalkerLevel {
                 let mut dir_vec = Vec::with_capacity(dir_len);
 
                 storage
-                    .dir_iterate_unsorted(*dir_id, |&(key_id, node_id)| {
+                    .dir_iterate_unsorted(*dir_id, |&(key_id, dir_entry_id)| {
                         let key = match storage.get_str(key_id) {
                             Ok(key) => key.to_string(),
                             Err(e) => {
@@ -169,7 +169,7 @@ impl TreeWalkerLevel {
                                 return Ok(());
                             }
                         };
-                        dir_vec.push((key, node_id));
+                        dir_vec.push((key, dir_entry_id));
                         Ok(())
                     })
                     .ok();
@@ -227,8 +227,8 @@ impl Iterator for TreeWalker {
                 if let Some(iter) = &mut current_level.children_iter {
                     let current_depth = current_level.current_depth + 1;
 
-                    if let Some((k, node)) = iter.next() {
-                        match current_level.root.node_tree(node) {
+                    if let Some((k, dir_entry)) = iter.next() {
+                        match current_level.root.dir_entry_tree(dir_entry) {
                             Ok(root) => {
                                 // TODO: this is not very efficient, maybe we need to improve the key representation
                                 let mut key = current_level.key.clone();
@@ -419,8 +419,12 @@ impl<'a> SerializingData<'a> {
         Ok(())
     }
 
-    fn add_older_object(&mut self, node: &Node, storage: &Storage) -> Result<(), MerkleError> {
-        let hash_id = node.object_hash_id(self.store, storage)?;
+    fn add_older_object(
+        &mut self,
+        dir_entry: &DirEntry,
+        storage: &Storage,
+    ) -> Result<(), MerkleError> {
+        let hash_id = dir_entry.object_hash_id(self.store, storage)?;
 
         if let Some(hash_id) = hash_id {
             self.referenced_older_entries.push(hash_id);
@@ -477,12 +481,12 @@ impl WorkingTree {
         let mut storage = self.index.storage.borrow_mut();
         let root = self.get_working_tree_root();
 
-        let node_id = match self.index.find_node(root, key, &mut storage) {
-            Ok(Some(node_id)) => node_id,
+        let dir_entry_id = match self.index.find_dir_entry(root, key, &mut storage) {
+            Ok(Some(dir_entry_id)) => dir_entry_id,
             _ => return Ok(None),
         };
 
-        match self.index.node_object(node_id, &mut storage) {
+        match self.index.dir_entry_object(dir_entry_id, &mut storage) {
             Err(MerkleError::ObjectNotFound { .. }) => Ok(None),
             Err(err) => Err(err),
             Ok(Object::Directory(dir_id)) => {
@@ -506,14 +510,14 @@ impl WorkingTree {
         } else {
             let mut storage = self.index.storage.borrow_mut();
 
-            let node = match tree.value {
+            let dir_entry = match tree.value {
                 WorkingTreeValue::Directory(dir_id) => {
-                    Node::new_non_leaf(Object::Directory(dir_id))
+                    DirEntry::new_directory(Object::Directory(dir_id))
                 }
-                WorkingTreeValue::Value(blob_id) => Node::new_leaf(Object::Blob(blob_id)),
+                WorkingTreeValue::Value(blob_id) => DirEntry::new_blob(Object::Blob(blob_id)),
             };
 
-            let object = &self._add(key, node, &mut storage)?;
+            let object = &self._add(key, dir_entry, &mut storage)?;
             let dir_id = self.object_directory(object)?;
 
             Ok(self.with_new_root(dir_id))
@@ -537,10 +541,10 @@ impl WorkingTree {
     }
 
     /// Checks if the root of this working tree is a directory or a value.
-    pub fn kind(&self) -> NodeKind {
+    pub fn kind(&self) -> DirEntryKind {
         match &self.value {
-            WorkingTreeValue::Directory(_) => NodeKind::NonLeaf,
-            WorkingTreeValue::Value(_) => NodeKind::Leaf,
+            WorkingTreeValue::Directory(_) => DirEntryKind::Directory,
+            WorkingTreeValue::Value(_) => DirEntryKind::Blob,
         }
     }
 
@@ -570,16 +574,16 @@ impl WorkingTree {
         let dir_id = self.find_or_create_directory(root, key, &mut storage)?;
 
         // It's important to get the directory sorted here
-        let node = storage.dir_to_vec_sorted(dir_id)?;
+        let dir_entry = storage.dir_to_vec_sorted(dir_id)?;
 
-        let node_length = node.len();
-        let length = length.unwrap_or(node_length).min(node_length);
+        let dir_entry_length = dir_entry.len();
+        let length = length.unwrap_or(dir_entry_length).min(dir_entry_length);
         let offset = offset.unwrap_or(0);
 
         let mut children = Vec::with_capacity(length);
 
-        for (key, value) in node.iter().skip(offset).take(length) {
-            let value = match self.node_object(*value, &mut storage)? {
+        for (key, value) in dir_entry.iter().skip(offset).take(length) {
+            let value = match self.dir_entry_object(*value, &mut storage)? {
                 Object::Directory(dir_id) => Self::new_with_directory(self.index.clone(), dir_id),
                 Object::Blob(blob_id) => Self::new_with_value(self.index.clone(), blob_id),
                 Object::Commit(_) => continue,
@@ -592,20 +596,20 @@ impl WorkingTree {
         Ok(children)
     }
 
-    /// Returns `node_id` as root of a new working tree.
+    /// Returns `dir_entry_id` as root of a new working tree.
     ///
-    /// Fetches the node from repository if necessary.
-    fn node_tree(&self, node_id: NodeId) -> Result<Self, MerkleError> {
+    /// Fetches the dir_entry from repository if necessary.
+    fn dir_entry_tree(&self, dir_entry_id: DirEntryId) -> Result<Self, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();
 
-        let object = self.index.node_object(node_id, &mut storage)?;
-        let node = storage.get_node(node_id)?;
-        let tree = match node.node_kind() {
-            NodeKind::NonLeaf => WorkingTree {
+        let object = self.index.dir_entry_object(dir_entry_id, &mut storage)?;
+        let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+        let tree = match dir_entry.dir_entry_kind() {
+            DirEntryKind::Directory => WorkingTree {
                 index: self.index.clone(),
                 value: WorkingTreeValue::Directory(self.object_directory(&object)?),
             },
-            NodeKind::Leaf => WorkingTree {
+            DirEntryKind::Blob => WorkingTree {
                 index: self.index.clone(),
                 value: WorkingTreeValue::Value(self.object_value(&object)?),
             },
@@ -679,7 +683,7 @@ impl WorkingTree {
     /// Returns false when path `key` doesn't exist.
     pub fn mem_tree(&self, key: &ContextKey) -> bool {
         let root = self.get_working_tree_root();
-        self.node_exists(root, key)
+        self.dir_entry_exists(root, key)
     }
 
     /// Checks if a value (blob) at `key` exists in `dir_id`.
@@ -692,19 +696,19 @@ impl WorkingTree {
 
         let mut storage = self.index.storage.borrow_mut();
 
-        let node_id = match self.index.find_node(dir_id, key, &mut storage) {
-            Ok(Some(node_id)) => node_id,
+        let dir_entry_id = match self.index.find_dir_entry(dir_id, key, &mut storage) {
+            Ok(Some(dir_entry_id)) => dir_entry_id,
             _ => return Ok(false),
         };
 
-        let node = storage.get_node(node_id)?;
-        Ok(node.node_kind() == NodeKind::Leaf)
+        let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+        Ok(dir_entry.dir_entry_kind() == DirEntryKind::Blob)
     }
 
     /// Checks if a value (blob) or directory at `key` exists in `dir_id`.
     ///
     /// Returns false when path `key` doesn't exist.
-    fn node_exists(&self, dir_id: DirectoryId, key: &ContextKey) -> bool {
+    fn dir_entry_exists(&self, dir_id: DirectoryId, key: &ContextKey) -> bool {
         if key.is_empty() {
             // If the key is empty, we are checking self, which exists
             return true;
@@ -712,8 +716,8 @@ impl WorkingTree {
 
         let mut storage = self.index.storage.borrow_mut();
 
-        match self.index.find_node(dir_id, key, &mut storage) {
-            Ok(node_id) => node_id.is_some(),
+        match self.index.find_dir_entry(dir_id, key, &mut storage) {
+            Ok(dir_entry_id) => dir_entry_id.is_some(),
             Err(_) => false,
         }
     }
@@ -775,8 +779,8 @@ impl WorkingTree {
         let mut storage = self.index.storage.borrow_mut();
         let blob_id = storage.add_blob_by_ref(value)?;
 
-        let node = Node::new_leaf(Object::Blob(blob_id));
-        let object = &self._add(key, node, &mut storage)?;
+        let dir_entry = DirEntry::new_blob(Object::Blob(blob_id));
+        let object = &self._add(key, dir_entry, &mut storage)?;
         let dir_id = self.object_directory(object)?;
 
         Ok(self.with_new_root(dir_id))
@@ -785,10 +789,10 @@ impl WorkingTree {
     fn _add(
         &self,
         key: &ContextKey,
-        node: Node,
+        dir_entry: DirEntry,
         storage: &mut Storage,
     ) -> Result<Object, MerkleError> {
-        self.compute_new_root_with_change(&key, Some(node), storage)
+        self.compute_new_root_with_change(&key, Some(dir_entry), storage)
     }
 
     /// Delete an item from the staging area.
@@ -808,23 +812,23 @@ impl WorkingTree {
         self.compute_new_root_with_change(&key, None, &mut storage)
     }
 
-    /// Get a new directory with `new_node` put under given `key`.
+    /// Get a new directory with `new_dir_entry` put under given `key`.
     /// Walk down the directory to find key, set new value and walk back up recreating the tree
     ///
     /// # Arguments
     ///
     /// * `root` - DirectoryId to modify
     /// * `key` - path under which the changes takes place
-    /// * `new_node` - None for deletion, Some for inserting a hash under the key.
+    /// * `new_dir_entry` - None for deletion, Some for inserting a hash under the key.
     fn compute_new_root_with_change(
         &self,
         key: &[&str],
-        new_node: Option<Node>,
+        new_dir_entry: Option<DirEntry>,
         storage: &mut Storage,
     ) -> Result<Object, MerkleError> {
         let last = match key.last() {
             Some(last) => *last,
-            None => match new_node {
+            None => match new_dir_entry {
                 Some(n) => {
                     // if there is a value we want to assigin - just
                     // assigin it
@@ -833,7 +837,7 @@ impl WorkingTree {
                         .ok_or(MerkleError::InvalidState("Missing object value"));
                 }
                 None => {
-                    // if key is empty and there is new_node == None
+                    // if key is empty and there is new_dir_entry == None
                     // that means that we just removed whole tree
                     // so set merkle storage root to empty dir and place
                     // it in staging area
@@ -848,13 +852,13 @@ impl WorkingTree {
 
         // If this was a deletion, and the path doesn't contain anything
         // there is nothing to do. We don't want to recurse in this case.
-        if dir_id.is_empty() && new_node.is_none() {
+        if dir_id.is_empty() && new_dir_entry.is_none() {
             return Ok(Object::Directory(self.get_working_tree_root()));
         }
 
-        let dir_id = match new_node {
+        let dir_id = match new_dir_entry {
             None => storage.dir_remove(dir_id, last)?,
-            Some(new_node) => storage.dir_insert(dir_id, last, new_node)?,
+            Some(new_dir_entry) => storage.dir_insert(dir_id, last, new_dir_entry)?,
         };
 
         if dir_id.is_empty() {
@@ -862,7 +866,7 @@ impl WorkingTree {
         } else {
             self.compute_new_root_with_change(
                 path,
-                Some(Node::new_non_leaf(Object::Directory(dir_id))),
+                Some(DirEntry::new_directory(Object::Directory(dir_id))),
                 storage,
             )
         }
@@ -909,27 +913,33 @@ impl WorkingTree {
 
         match object {
             Object::Blob(_blob_id) => Ok(()),
-            Object::Directory(dir_id) => storage.dir_iterate_unsorted(*dir_id, |&(_, node_id)| {
-                let child_node = storage.get_node(node_id)?;
+            Object::Directory(dir_id) => {
+                storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
+                    let child_dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
-                let object_hash = match child_node.object_hash_id(data.store, storage)? {
-                    Some(hash_id) => hash_id,
-                    None => return Ok(()), // Object is an inlined blob, we don't serialize them.
-                };
+                    let object_hash = match child_dir_entry.object_hash_id(data.store, storage)? {
+                        Some(hash_id) => hash_id,
+                        None => return Ok(()), // Object is an inlined blob, we don't serialize them.
+                    };
 
-                if child_node.is_commited() {
-                    data.add_older_object(child_node, storage)?;
-                    return Ok(());
-                }
-                child_node.set_commited(true);
-
-                match child_node.get_object().as_ref() {
-                    None => Ok(()),
-                    Some(object) => {
-                        self.serialize_entries_recursively(object, object_hash, None, data, storage)
+                    if child_dir_entry.is_commited() {
+                        data.add_older_object(child_dir_entry, storage)?;
+                        return Ok(());
                     }
-                }
-            }),
+                    child_dir_entry.set_commited(true);
+
+                    match child_dir_entry.get_object().as_ref() {
+                        None => Ok(()),
+                        Some(object) => self.serialize_entries_recursively(
+                            object,
+                            object_hash,
+                            None,
+                            data,
+                            storage,
+                        ),
+                    }
+                })
+            }
             Object::Commit(commit) => {
                 let object = match root {
                     Some(root) => Object::Directory(root),
@@ -989,11 +999,15 @@ impl WorkingTree {
         }
     }
 
-    /// Returns the object of this `node_id`.
+    /// Returns the object of this `dir_entry_id`.
     ///
     /// Fetch it from the repository when not available in `Self::storage`.
-    fn node_object(&self, node_id: NodeId, storage: &mut Storage) -> Result<Object, MerkleError> {
-        self.index.node_object(node_id, storage)
+    fn dir_entry_object(
+        &self,
+        dir_entry_id: DirEntryId,
+        storage: &mut Storage,
+    ) -> Result<Object, MerkleError> {
+        self.index.dir_entry_object(dir_entry_id, storage)
     }
 
     /// Returns the root of this working tree.
@@ -1023,10 +1037,10 @@ impl WorkingTree {
     //                    result += &format!("{}: Tree {{", hex::encode(tree_hash));
     //
     //                    for (path, val) in tree {
-    //                        let kind = if let NodeKind::NonLeaf = val.node_kind {
+    //                        let kind = if let DirEntryKind::Directory = val.dir_entry_kind {
     //                            "Tree"
     //                        } else {
-    //                            "Value/Leaf"
+    //                            "Value/Blob"
     //                        };
     //                        result += &format!(
     //                            "{}: {}({:?}), ",
