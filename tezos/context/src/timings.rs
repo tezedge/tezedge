@@ -105,6 +105,7 @@ pub fn commit(
     }
 }
 
+// TODO - TE-694: use enum for actions
 fn get_query_kind(name: &[u8]) -> Option<QueryKind> {
     let first = name.get(0)?;
 

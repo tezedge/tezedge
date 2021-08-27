@@ -1,3 +1,9 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Implementation of containers where we try to avoid the cost of an allocation
+//! when we receive hashes and strings in the rust timing hooks.
+
 use std::{convert::TryInto, ops::Deref};
 
 const INLINED_STRING_THRESHOLD: usize = 512;
