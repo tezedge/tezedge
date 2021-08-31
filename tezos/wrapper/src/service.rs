@@ -582,7 +582,7 @@ impl IpcIO {
         read_timeout: Option<Duration>,
         reset_read_timeout: Option<Duration>,
     ) -> Result<(), ipc::IpcError> {
-        while self.communication_balance > 1 {
+        while self.communication_balance >= 1 {
             // If there is another timeout, bailout, because we are probably stuck.
             // Otherwise keep discarding
             match self.rx.try_receive(read_timeout, reset_read_timeout) {
