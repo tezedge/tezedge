@@ -553,6 +553,7 @@ impl IpcIO {
         self.discard_pending_messages(
             Some(ProtocolController::DISCARD_UNRECEIVED_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
+            0,
         )?;
         self.tx.send(value)?;
         self.communication_balance += 1;
@@ -581,8 +582,10 @@ impl IpcIO {
         &mut self,
         read_timeout: Option<Duration>,
         reset_read_timeout: Option<Duration>,
+        keep_count: u16,
     ) -> Result<(), ipc::IpcError> {
-        while self.communication_balance >= 1 {
+        let keep_count = keep_count.into();
+        while self.communication_balance > keep_count {
             // If there is another timeout, bailout, because we are probably stuck.
             // Otherwise keep discarding
             match self.rx.try_receive(read_timeout, reset_read_timeout) {
@@ -1028,6 +1031,7 @@ impl ProtocolController {
         io.discard_pending_messages(
             Some(ProtocolController::DISCARD_UNRECEIVED_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
+            1,
         )?;
 
         match io.try_receive(
