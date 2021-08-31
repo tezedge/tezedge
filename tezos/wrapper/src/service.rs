@@ -617,7 +617,8 @@ impl ProtocolController {
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
     const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
-    const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Duration::from_secs(600);
+    // const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Duration::from_secs(600);
+    const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Duration::from_millis(200);
     const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
     const JSON_ENCODE_DATA_TIMEOUT: Duration = Duration::from_secs(30);
     const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Duration::from_secs(15);
