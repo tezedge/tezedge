@@ -530,7 +530,24 @@ impl WorkingTree {
     /// Returns the root hash of this working tree.
     pub fn hash(&self) -> Result<ObjectHash, MerkleError> {
         let mut repo = self.index.repository.write()?;
-        let hash_id = self.get_working_tree_root_hash(&mut *repo)?;
+
+        let hash_id = match self.value {
+            WorkingTreeValue::Directory(_) => {
+                self.get_working_tree_root_hash(&mut *repo)?
+            },
+            WorkingTreeValue::Value(blob_id) => {
+                match hash_blob(blob_id, &mut *repo, &storage)? {
+                    Some(hash_id) => {
+                        hash_id
+                    },
+                    None => {
+                        let blob = storage.get_blob(blob_id)?;
+                        let hash = hash_inlined_blob(blob)?;
+                        return Ok(hash)
+                    },
+                }
+            },
+        };
 
         match repo.get_hash(hash_id)? {
             Some(hash) => Ok(hash.into_owned()),
