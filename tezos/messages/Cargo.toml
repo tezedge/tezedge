@@ -1,6 +1,6 @@
 [package]
 name = "tezos_messages"
-version = "1.8.0"
+version = "1.7.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -18,7 +18,6 @@ strum_macros = "0.20"
 num-bigint = "0.3"
 num-traits = "0.2.8"
 nom = "6.1"
-anyhow = "1.0"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
@@ -26,10 +25,6 @@ tezos_encoding_derive = { path = "../encoding-derive" }
 
 [[bench]]
 name = "message_benchmark"
-harness = false
-
-[[bench]]
-name = "encoders_benchmark"
 harness = false
 
 [[bench]]

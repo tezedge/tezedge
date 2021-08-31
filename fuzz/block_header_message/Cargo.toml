@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_block_header_message"
-version = "1.8.0"
+version = "1.7.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 publish = false
