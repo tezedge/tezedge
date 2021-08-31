@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "v1.8.0"
+version = "1.8.0"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "deploy-monitoring"
