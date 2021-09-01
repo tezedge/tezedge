@@ -3458,7 +3458,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=521"]
+  command: ["tzindex", "run", "--stop=521", "--notls"]
 
 - name: tz-indexer-delphinet-octez
   image: blockwatch/tzindex:latest
@@ -3476,7 +3476,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=521"]
+  command: ["tzindex", "run", "--stop=521", "--notls"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -3690,7 +3690,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=257"]
+  command: ["tzindex", "run", "--stop=257", "--notls"]
 
 - name: tz-indexer-edo2net-octez
   image: blockwatch/tzindex:latest
@@ -3708,7 +3708,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=257"]
+  command: ["tzindex", "run", "--stop=257", "--notls"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -3916,7 +3916,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=601"]
+  command: ["tzindex", "run", "--stop=601", "--notls"]
 
 - name: tz-indexer-florencenet-octez
   image: blockwatch/tzindex:latest
@@ -3934,7 +3934,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=601"]
+  command: ["tzindex", "run", "--stop=601", "--notls"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -4141,7 +4141,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=5001"]
+  command: ["tzindex", "run", "--stop=5001", "--notls"]
 
 - name: tz-indexer-granadanet-octez
   image: blockwatch/tzindex:latest
@@ -4159,7 +4159,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=5001"]
+  command: ["tzindex", "run", "--stop=5001", "--notls"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -4370,7 +4370,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=131"]
+  command: ["tzindex", "run", "--stop=131", "--notls"]
 
 - name: tz-indexer-mainnet-octez
   image: blockwatch/tzindex:latest
@@ -4388,7 +4388,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=131"]
+  command: ["tzindex", "run", "--stop=131", "--notls"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -4493,7 +4493,7 @@ steps:
       TZ_RPC_HOST: octez-node
       TZ_RPC_PORT: 8732
     commands:
-      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000 --notls
       - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
@@ -4618,7 +4618,7 @@ steps:
       TZ_RPC_HOST: tezedge-node
       TZ_RPC_PORT: 18732
     commands:
-      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000 --notls
       - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
