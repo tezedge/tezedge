@@ -58,9 +58,12 @@ use failure::Fail;
 use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
 
-use crate::working_tree::{Commit, DirEntry, DirEntryKind, Object};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::ObjectHash, ContextKeyOwned};
+use crate::{
+    hash::{hash_blob, hash_inlined_blob},
+    working_tree::{Commit, DirEntry, DirEntryKind, Object},
+};
 use crate::{
     hash::{hash_commit, hash_directory, HashingError},
     kv_store::HashId,
@@ -477,7 +480,7 @@ impl WorkingTree {
         }
 
         let mut storage = self.index.storage.borrow_mut();
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
 
         let dir_entry_id = match self.index.find_dir_entry(root, key, &mut storage) {
             Ok(Some(dir_entry_id)) => dir_entry_id,
@@ -529,22 +532,17 @@ impl WorkingTree {
 
     /// Returns the root hash of this working tree.
     pub fn hash(&self) -> Result<ObjectHash, MerkleError> {
+        let storage = self.index.storage.borrow();
         let mut repo = self.index.repository.write()?;
 
         let hash_id = match self.value {
-            WorkingTreeValue::Directory(_) => {
-                self.get_working_tree_root_hash(&mut *repo)?
-            },
-            WorkingTreeValue::Value(blob_id) => {
-                match hash_blob(blob_id, &mut *repo, &storage)? {
-                    Some(hash_id) => {
-                        hash_id
-                    },
-                    None => {
-                        let blob = storage.get_blob(blob_id)?;
-                        let hash = hash_inlined_blob(blob)?;
-                        return Ok(hash)
-                    },
+            WorkingTreeValue::Directory(_) => self.get_root_directory_hash(&mut *repo)?,
+            WorkingTreeValue::Value(blob_id) => match hash_blob(blob_id, &mut *repo, &storage)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    let blob = storage.get_blob(blob_id)?;
+                    let hash = hash_inlined_blob(blob)?;
+                    return Ok(hash);
                 }
             },
         };
@@ -584,7 +582,7 @@ impl WorkingTree {
         length: Option<usize>,
         key: &ContextKey,
     ) -> Result<Vec<(String, WorkingTree)>, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
         let dir_id = self.find_or_create_directory(root, key, &mut storage)?;
 
@@ -671,7 +669,7 @@ impl WorkingTree {
     /// If object at `key` is missing or is a directory, this returns `None`.
     /// Fetches data from repository if necessary.
     pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
 
         match self.index.try_find_blob(root, key, &mut storage) {
@@ -689,7 +687,7 @@ impl WorkingTree {
     ///
     /// Returns false if object at `key` is not a blob.
     pub fn mem(&self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         self.value_exists(root, key)
     }
 
@@ -697,7 +695,7 @@ impl WorkingTree {
     ///
     /// Returns false when path `key` doesn't exist.
     pub fn mem_tree(&self, key: &ContextKey) -> bool {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         self.dir_entry_exists(root, key)
     }
 
@@ -750,8 +748,8 @@ impl WorkingTree {
         store: &mut ContextKeyValueStore,
         commit_to_storage: bool,
     ) -> Result<PostCommitData, MerkleError> {
-        let root_hash = self.get_working_tree_root_hash(store)?;
-        let root = self.get_working_tree_root();
+        let root_hash = self.get_root_directory_hash(store)?;
+        let root = self.get_root_directory();
 
         let new_commit = Commit {
             parent_commit_hash,
@@ -818,7 +816,7 @@ impl WorkingTree {
     }
 
     fn _delete(&self, key: &ContextKey) -> Result<Object, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
 
         if key.is_empty() {
             return Ok(Object::Directory(root));
@@ -862,13 +860,13 @@ impl WorkingTree {
         };
 
         let path = &key[..key.len() - 1];
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let dir_id = self.find_or_create_directory(root, path, storage)?;
 
         // If this was a deletion, and the path doesn't contain anything
         // there is nothing to do. We don't want to recurse in this case.
         if dir_id.is_empty() && new_dir_entry.is_none() {
-            return Ok(Object::Directory(self.get_working_tree_root()));
+            return Ok(Object::Directory(self.get_root_directory()));
         }
 
         let dir_id = match new_dir_entry {
@@ -902,12 +900,12 @@ impl WorkingTree {
     }
 
     /// Returns the root hash of this working tree.
-    pub fn get_working_tree_root_hash(
+    pub fn get_root_directory_hash(
         &self,
         store: &mut ContextKeyValueStore,
     ) -> Result<HashId, MerkleError> {
         // TOOD: unnecessery recalculation, should be one when set_staged_root
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let storage = self.index.storage.borrow();
         hash_directory(root, store, &storage).map_err(MerkleError::from)
     }
@@ -1028,7 +1026,7 @@ impl WorkingTree {
     /// Returns the root of this working tree.
     ///
     /// Returns an empty directory when the root is a value (blob).
-    fn get_working_tree_root(&self) -> DirectoryId {
+    fn get_root_directory(&self) -> DirectoryId {
         match self.value {
             WorkingTreeValue::Directory(dir_id) => dir_id,
             WorkingTreeValue::Value(_) => DirectoryId::empty(),
