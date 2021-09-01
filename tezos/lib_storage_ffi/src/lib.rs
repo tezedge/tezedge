@@ -446,6 +446,22 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
     );
 
     let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_genesis_hash).unwrap();
+    let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &vec![], "123".as_bytes());
+    let tezedge_tree = context::find_tree(cr, &tezedge_ctxt, &vec![]).unwrap();
+    let tezedge_tree_hash = tree::hash(cr, &tezedge_tree);
+    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+
+    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
+    let irmin_ctxt = context::add(cr, &irmin_ctxt, &vec![], "123".as_bytes());
+    let irmin_tree = context::find_tree(cr, &irmin_ctxt, &vec![]).unwrap();
+    let irmin_tree_hash = tree::hash(cr, &irmin_tree);
+    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+    // Make sure that the hash is correct when the root of the tree is a value (blob)
+    assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    assert_eq!(tezedge_tree_hash, irmin_tree_hash);
+
+    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_genesis_hash).unwrap();
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("empty/value"), "".as_bytes());
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path"), "value".as_bytes());
     let tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key!("some/path/nested"));

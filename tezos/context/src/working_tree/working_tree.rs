@@ -58,9 +58,12 @@ use failure::Fail;
 use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
 
-use crate::working_tree::{Commit, DirEntry, DirEntryKind, Object};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::ObjectHash, ContextKeyOwned};
+use crate::{
+    hash::{hash_blob, hash_inlined_blob},
+    working_tree::{Commit, DirEntry, DirEntryKind, Object},
+};
 use crate::{
     hash::{hash_commit, hash_directory, HashingError},
     kv_store::HashId,
@@ -80,16 +83,16 @@ pub struct PostCommitData {
     pub serialize_stats: Box<SerializeStats>,
 }
 
-// The 'working tree' can be either a Directory or a Value
+// The root of the 'working tree' can be either a Directory or a Value
 #[derive(Clone)]
-enum WorkingTreeValue {
+enum WorkingTreeRoot {
     Directory(DirectoryId),
     Value(BlobId),
 }
 
 #[derive(Clone)]
 pub struct WorkingTree {
-    value: WorkingTreeValue,
+    root: WorkingTreeRoot,
     pub index: TezedgeIndex,
 }
 
@@ -146,7 +149,7 @@ impl TreeWalkerLevel {
             .unwrap_or(true);
 
         let children_iter = if should_continue {
-            if let WorkingTreeValue::Directory(dir_id) = &root.value {
+            if let WorkingTreeRoot::Directory(dir_id) = &root.root {
                 let storage = root.index.storage.borrow();
 
                 let dir_len = match storage.dir_len(*dir_id) {
@@ -442,7 +445,7 @@ impl WorkingTree {
     pub fn new_with_directory(index: TezedgeIndex, dir_id: DirectoryId) -> Self {
         WorkingTree {
             index,
-            value: WorkingTreeValue::Directory(dir_id),
+            root: WorkingTreeRoot::Directory(dir_id),
         }
     }
 
@@ -450,7 +453,7 @@ impl WorkingTree {
     pub fn new_with_value(index: TezedgeIndex, blob_id: BlobId) -> Self {
         WorkingTree {
             index,
-            value: WorkingTreeValue::Value(blob_id),
+            root: WorkingTreeRoot::Value(blob_id),
         }
     }
 
@@ -458,9 +461,9 @@ impl WorkingTree {
     ///
     /// If the root is not a value (blob), this returns `None`
     pub fn get_value(&self) -> Option<ContextValue> {
-        match self.value {
-            WorkingTreeValue::Directory(_) => None,
-            WorkingTreeValue::Value(blob_id) => {
+        match self.root {
+            WorkingTreeRoot::Directory(_) => None,
+            WorkingTreeRoot::Value(blob_id) => {
                 let storage = self.index.storage.borrow();
                 storage.get_blob(blob_id).map(|v| v.to_vec()).ok()
             }
@@ -477,7 +480,7 @@ impl WorkingTree {
         }
 
         let mut storage = self.index.storage.borrow_mut();
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
 
         let dir_entry_id = match self.index.find_dir_entry(root, key, &mut storage) {
             Ok(Some(dir_entry_id)) => dir_entry_id,
@@ -508,11 +511,11 @@ impl WorkingTree {
         } else {
             let mut storage = self.index.storage.borrow_mut();
 
-            let dir_entry = match tree.value {
-                WorkingTreeValue::Directory(dir_id) => {
+            let dir_entry = match tree.root {
+                WorkingTreeRoot::Directory(dir_id) => {
                     DirEntry::new_directory(Object::Directory(dir_id))
                 }
-                WorkingTreeValue::Value(blob_id) => DirEntry::new_blob(Object::Blob(blob_id)),
+                WorkingTreeRoot::Value(blob_id) => DirEntry::new_blob(Object::Blob(blob_id)),
             };
 
             let object = &self._add(key, dir_entry, &mut storage)?;
@@ -529,8 +532,20 @@ impl WorkingTree {
 
     /// Returns the root hash of this working tree.
     pub fn hash(&self) -> Result<ObjectHash, MerkleError> {
+        let storage = self.index.storage.borrow();
         let mut repo = self.index.repository.write()?;
-        let hash_id = self.get_working_tree_root_hash(&mut *repo)?;
+
+        let hash_id = match self.root {
+            WorkingTreeRoot::Directory(_) => self.get_root_directory_hash(&mut *repo)?,
+            WorkingTreeRoot::Value(blob_id) => match hash_blob(blob_id, &mut *repo, &storage)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    let blob = storage.get_blob(blob_id)?;
+                    let hash = hash_inlined_blob(blob)?;
+                    return Ok(hash);
+                }
+            },
+        };
 
         match repo.get_hash(hash_id)? {
             Some(hash) => Ok(hash.into_owned()),
@@ -540,9 +555,9 @@ impl WorkingTree {
 
     /// Checks if the root of this working tree is a directory or a value.
     pub fn kind(&self) -> DirEntryKind {
-        match &self.value {
-            WorkingTreeValue::Directory(_) => DirEntryKind::Directory,
-            WorkingTreeValue::Value(_) => DirEntryKind::Blob,
+        match &self.root {
+            WorkingTreeRoot::Directory(_) => DirEntryKind::Directory,
+            WorkingTreeRoot::Value(_) => DirEntryKind::Blob,
         }
     }
 
@@ -555,9 +570,9 @@ impl WorkingTree {
     ///
     /// If the root is a value, it is not empty.
     pub fn is_empty(&self) -> bool {
-        match &self.value {
-            WorkingTreeValue::Directory(dir_id) => dir_id.is_empty(),
-            WorkingTreeValue::Value(_) => false,
+        match &self.root {
+            WorkingTreeRoot::Directory(dir_id) => dir_id.is_empty(),
+            WorkingTreeRoot::Value(_) => false,
         }
     }
 
@@ -567,7 +582,7 @@ impl WorkingTree {
         length: Option<usize>,
         key: &ContextKey,
     ) -> Result<Vec<(String, WorkingTree)>, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
         let dir_id = self.find_or_create_directory(root, key, &mut storage)?;
 
@@ -605,11 +620,11 @@ impl WorkingTree {
         let tree = match dir_entry.dir_entry_kind() {
             DirEntryKind::Directory => WorkingTree {
                 index: self.index.clone(),
-                value: WorkingTreeValue::Directory(self.object_directory(&object)?),
+                root: WorkingTreeRoot::Directory(self.object_directory(&object)?),
             },
             DirEntryKind::Blob => WorkingTree {
                 index: self.index.clone(),
-                value: WorkingTreeValue::Value(self.object_value(&object)?),
+                root: WorkingTreeRoot::Value(self.object_value(&object)?),
             },
         };
         Ok(tree)
@@ -654,7 +669,7 @@ impl WorkingTree {
     /// If object at `key` is missing or is a directory, this returns `None`.
     /// Fetches data from repository if necessary.
     pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
 
         match self.index.try_find_blob(root, key, &mut storage) {
@@ -672,7 +687,7 @@ impl WorkingTree {
     ///
     /// Returns false if object at `key` is not a blob.
     pub fn mem(&self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         self.value_exists(root, key)
     }
 
@@ -680,7 +695,7 @@ impl WorkingTree {
     ///
     /// Returns false when path `key` doesn't exist.
     pub fn mem_tree(&self, key: &ContextKey) -> bool {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         self.dir_entry_exists(root, key)
     }
 
@@ -733,8 +748,8 @@ impl WorkingTree {
         store: &mut ContextKeyValueStore,
         commit_to_storage: bool,
     ) -> Result<PostCommitData, MerkleError> {
-        let root_hash = self.get_working_tree_root_hash(store)?;
-        let root = self.get_working_tree_root();
+        let root_hash = self.get_root_directory_hash(store)?;
+        let root = self.get_root_directory();
 
         let new_commit = Commit {
             parent_commit_hash,
@@ -801,7 +816,7 @@ impl WorkingTree {
     }
 
     fn _delete(&self, key: &ContextKey) -> Result<Object, MerkleError> {
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
 
         if key.is_empty() {
             return Ok(Object::Directory(root));
@@ -845,13 +860,13 @@ impl WorkingTree {
         };
 
         let path = &key[..key.len() - 1];
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let dir_id = self.find_or_create_directory(root, path, storage)?;
 
         // If this was a deletion, and the path doesn't contain anything
         // there is nothing to do. We don't want to recurse in this case.
         if dir_id.is_empty() && new_dir_entry.is_none() {
-            return Ok(Object::Directory(self.get_working_tree_root()));
+            return Ok(Object::Directory(self.get_root_directory()));
         }
 
         let dir_id = match new_dir_entry {
@@ -885,12 +900,16 @@ impl WorkingTree {
     }
 
     /// Returns the root hash of this working tree.
-    pub fn get_working_tree_root_hash(
+    ///
+    /// Note that this methods considers root value (blob) as an empty directory.
+    /// Use `Self::hash` to get the correct hash in all cases (when the root is
+    /// a value or directory).
+    pub fn get_root_directory_hash(
         &self,
         store: &mut ContextKeyValueStore,
     ) -> Result<HashId, MerkleError> {
         // TOOD: unnecessery recalculation, should be one when set_staged_root
-        let root = self.get_working_tree_root();
+        let root = self.get_root_directory();
         let storage = self.index.storage.borrow();
         hash_directory(root, store, &storage).map_err(MerkleError::from)
     }
@@ -1011,10 +1030,10 @@ impl WorkingTree {
     /// Returns the root of this working tree.
     ///
     /// Returns an empty directory when the root is a value (blob).
-    fn get_working_tree_root(&self) -> DirectoryId {
-        match self.value {
-            WorkingTreeValue::Directory(dir_id) => dir_id,
-            WorkingTreeValue::Value(_) => DirectoryId::empty(),
+    fn get_root_directory(&self) -> DirectoryId {
+        match self.root {
+            WorkingTreeRoot::Directory(dir_id) => dir_id,
+            WorkingTreeRoot::Value(_) => DirectoryId::empty(),
         }
     }
 
