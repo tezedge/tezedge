@@ -191,7 +191,12 @@ pub fn spawn_server(
                                         let handler = handler.clone();
                                         let fut = handler(req, params, query, env);
                                         match Pin::from(fut).await {
-                                            Ok(response) => Ok(response),
+                                            Ok(response) => {
+                                                if response.status() == 500 {
+                                                    error!(log, "RPC: {} failed, response: {:?}", normalized_path, response.body());
+                                                }
+                                                Ok(response)
+                                            },
                                             Err(e) => {
                                                 error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
                                                 error_with_message(format!("{:?}", e))
