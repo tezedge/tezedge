@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-use failure::Fail;
+use thiserror::Error;
 
 #[macro_use]
 pub mod blake2b;
@@ -14,20 +14,14 @@ pub mod seeded_step;
 #[macro_use]
 pub mod hash;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum CryptoError {
-    #[fail(display = "Invalid crypto key, reason: {}", reason)]
+    #[error("Invalid crypto key, reason: {reason}")]
     InvalidKey { reason: String },
-    #[fail(
-        display = "Invalid crypto key size - expected: {}, actual: {}",
-        expected, actual
-    )]
+    #[error("Invalid crypto key size - expected: {expected}, actual: {actual}")]
     InvalidKeySize { expected: usize, actual: usize },
-    #[fail(
-        display = "Invalid nonce size - expected: {}, actual: {}",
-        expected, actual
-    )]
+    #[error("Invalid nonce size - expected: {expected}, actual: {actual}")]
     InvalidNonceSize { expected: usize, actual: usize },
-    #[fail(display = "Failed to decrypt")]
+    #[error("Failed to decrypt")]
     FailedToDecrypt,
 }

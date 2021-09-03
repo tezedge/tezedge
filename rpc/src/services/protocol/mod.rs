@@ -13,7 +13,8 @@
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
-use failure::{format_err, Error, Fail};
+use anyhow::{format_err, Error};
+use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
@@ -43,11 +44,11 @@ mod proto_008_2;
 use cached::proc_macro::cached;
 use cached::TimedSizedCache;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum RightsError {
-    #[fail(display = "Rights error, reason: {}", reason)]
+    #[error("Rights error, reason: {reason}")]
     ServiceError { reason: Error },
-    #[fail(display = "Unsupported protocol {}", protocol)]
+    #[error("Unsupported protocol {protocol}")]
     UnsupportedProtocolError { protocol: String },
 }
 
@@ -64,8 +65,8 @@ impl From<ContextParamsError> for RightsError {
     }
 }
 
-impl From<failure::Error> for RightsError {
-    fn from(error: failure::Error) -> Self {
+impl From<anyhow::Error> for RightsError {
+    fn from(error: anyhow::Error) -> Self {
         RightsError::ServiceError { reason: error }
     }
 }
@@ -311,20 +312,20 @@ pub(crate) fn check_and_get_endorsing_rights(
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum VotesError {
-    #[fail(display = "Rpc service error, reason: {}", reason)]
+    #[error("Rpc service error, reason: {reason}")]
     RpcServiceError { reason: RpcServiceError },
-    #[fail(display = "Votes error, reason: {}", reason)]
+    #[error("Votes error, reason: {reason}")]
     ServiceError { reason: Error },
-    #[fail(display = "Unsupported protocol {}", protocol)]
+    #[error("Unsupported protocol {protocol}")]
     UnsupportedProtocolError { protocol: String },
-    #[fail(display = "This rpc is not suported in this protocol {}", protocol)]
+    #[error("This rpc is not suported in this protocol {protocol}")]
     UnsupportedProtocolRpc { protocol: String },
 }
 
-impl From<failure::Error> for VotesError {
-    fn from(error: failure::Error) -> Self {
+impl From<anyhow::Error> for VotesError {
+    fn from(error: anyhow::Error) -> Self {
         VotesError::ServiceError { reason: error }
     }
 }
@@ -464,14 +465,14 @@ pub(crate) fn get_context_constants_just_for_rpc(
 // so that they don't get cached, we do so with this enum to separate
 // error responses from ok responses.
 pub enum RpcCallError {
-    Failure(failure::Error),
+    Failure(anyhow::Error),
     NoDataFound(String),
     ErrorResponse(Arc<(u16, String)>),
 }
 
 impl<F> From<F> for RpcCallError
 where
-    F: Into<failure::Error>,
+    F: Into<anyhow::Error>,
 {
     fn from(error: F) -> Self {
         Self::Failure(error.into())
@@ -721,23 +722,23 @@ pub(crate) struct ContextProtocolParam {
     pub block_header: BlockHeaderWithHash,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum ContextParamsError {
-    #[fail(display = "Protocol not found in context for block: {}", _0)]
+    #[error("Protocol not found in context for block: {0}")]
     NoProtocolForBlock(String),
-    #[fail(display = "Protocol constants not found in context for block: {}", _0)]
+    #[error("Protocol constants not found in context for block: {0}")]
     NoConstantsForBlock(String),
-    #[fail(display = "Storage error occurred, reason: {}", reason)]
+    #[error("Storage error occurred, reason: {reason}")]
     StorageError { reason: storage::StorageError },
-    #[fail(display = "Context error occurred, reason: {}", reason)]
+    #[error("Context error occurred, reason: {reason}")]
     ContextError { reason: TezedgeContextClientError },
-    #[fail(display = "Context constants, reason: {}", reason)]
+    #[error("Context constants, reason: {reason}")]
     ContextConstantsDecodeError {
         reason: tezos_messages::protocol::ContextConstantsDecodeError,
     },
-    #[fail(display = "Unsupported protocol {}", protocol)]
+    #[error("Unsupported protocol {protocol}")]
     UnsupportedProtocolError { protocol: String },
-    #[fail(display = "Hash error {}", error)]
+    #[error("Hash error {error}")]
     HashError { error: FromBytesError },
 }
 

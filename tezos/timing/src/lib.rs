@@ -14,10 +14,10 @@ use std::{
 };
 
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
-use failure::Fail;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
+use thiserror::Error;
 
 pub const FILENAME_DB: &str = "context_stats.db";
 
@@ -379,17 +379,11 @@ pub struct Query {
     pub tezedge_time: Option<f64>,
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum BufferedTimingChannelSendError {
-    #[fail(
-        display = "Failure when locking the timings channel buffer: {}",
-        reason
-    )]
+    #[error("Failure when locking the timings channel buffer: {reason}")]
     LockError { reason: String },
-    #[fail(
-        display = "Failure when sending timming messages to channel: {}",
-        reason
-    )]
+    #[error("Failure when sending timming messages to channel: {reason}")]
     SendError {
         reason: SendError<Vec<TimingMessage>>,
     },

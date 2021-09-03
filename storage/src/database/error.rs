@@ -1,34 +1,37 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::persistent::SchemaError;
 use crypto::hash::FromBytesError;
-use failure::Fail;
 use std::io;
+use thiserror::Error;
 
 /// Possible errors for schema
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[fail(display = "Guard Poison {} ", error)]
+    #[error("Guard Poison {error}")]
     GuardPoison { error: String },
-    #[fail(display = "Value Missing {} ", error)]
+    #[error("Value Missing {error}")]
     NutosError { error: String },
-    #[fail(display = "Missing sub tree {} ", error)]
+    #[error("Missing sub tree {error}")]
     MissingSubTree { error: String },
-    #[fail(display = "SledDB error: {}", error)]
+    #[error("SledDB error: {error}")]
     SledDBError { error: sled::Error },
-    #[fail(display = "I/O error {}", error)]
+    #[error("I/O error {error}")]
     IOError { error: io::Error },
-    #[fail(display = "Schema error: {}", error)]
+    #[error("Schema error: {error}")]
     SchemaError { error: SchemaError },
-    #[fail(display = "Column name required")]
+    #[error("Column name required")]
     ColumnRequired,
-    #[fail(display = "Database failed to open")]
+    #[error("Database failed to open")]
     FailedToOpenDatabase,
-    #[fail(display = "Hash encode error : {}", error)]
+    #[error("Hash encode error : {error}")]
     HashEncodeError { error: FromBytesError },
-    #[fail(display = "Database incompatibility {}", name)]
+    #[error("Database incompatibility {name}")]
     DatabaseIncompatibility { name: String },
-    #[fail(display = "RocksDB error: {}", error)]
+    #[error("RocksDB error: {error}")]
     RocksDBError { error: rocksdb::Error },
-    #[fail(display = "Column family {} is missing", name)]
+    #[error("Column family {name} is missing")]
     MissingColumnFamily { name: &'static str },
 }
 

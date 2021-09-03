@@ -8,8 +8,8 @@
 
 use std::convert::TryFrom;
 
+use anyhow::bail;
 use crypto::hash::ContractKt1Hash;
-use failure::bail;
 use serde::Serialize;
 use slog::Logger;
 

@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use anyhow::Error;
 use crypto::hash::HashType;
-use failure::Error;
 use std::{borrow::Cow, collections::HashMap, fmt, path::PathBuf, rc::Rc};
 use tezos_encoding::encoding::{Encoding, Field};
 use tezos_messages::p2p::encoding::{

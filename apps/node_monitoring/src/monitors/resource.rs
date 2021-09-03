@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use chrono::Utc;
-use failure::Fail;
+use thiserror::Error;
 use getset::Getters;
 use merge::Merge;
 use netinfo::Netinfo;
@@ -24,43 +24,25 @@ use crate::node::{Node, NodeStatus, NodeType};
 use crate::slack::SlackServer;
 use crate::MEASUREMENTS_MAX_CAPACITY;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum ResourceMonitorError {
     /// Node is unreachable
-    #[fail(
-        display = "Error while getting node head information, reason: {}",
-        reason
-    )]
+    #[error("Error while getting node head information, reason: {reason}")]
     NodeHeadError { reason: String },
 
-    #[fail(
-        display = "An error occured while monitoring node memory usage, reason: {}",
-        reason
-    )]
+    #[error("An error occured while monitoring node memory usage, reason: {reason}")]
     MemoryInfoError { reason: String },
 
-    #[fail(
-        display = "An error occured while monitoring node cpu usage, reason: {}",
-        reason
-    )]
+    #[error("An error occured while monitoring node cpu usage, reason: {reason}")]
     CpuInfoError { reason: String },
 
-    #[fail(
-        display = "An error occured while monitoring node io usage, reason: {}",
-        reason
-    )]
+    #[error("An error occured while monitoring node io usage, reason: {reason}")]
     IoInfoError { reason: String },
 
-    #[fail(
-        display = "An error occured while monitoring node network usage, reason: {}",
-        reason
-    )]
+    #[error("An error occured while monitoring node network usage, reason: {reason}")]
     NetworkInfoError { reason: String },
 
-    #[fail(
-        display = "An error occured while monitoring node disk usage, reason: {}",
-        reason
-    )]
+    #[error("An error occured while monitoring node disk usage, reason: {reason}")]
     DiskInfoError { reason: String },
 }
 

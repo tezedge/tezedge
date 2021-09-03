@@ -3,13 +3,13 @@
 
 use std::sync::Arc;
 
-use failure::Fail;
+use thiserror::Error;
 
 pub type OneshotResultCallback<T> = Arc<std::sync::mpsc::SyncSender<T>>;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum DispatchOneshotResultCallbackError {
-    #[fail(display = "Failed to dispatch result, reason: {}", reason)]
+    #[error("Failed to dispatch result, reason: {reason}")]
     UnexpectedError { reason: String },
 }
 
@@ -40,7 +40,7 @@ mod tests {
     use crate::utils::dispatch_oneshot_result;
 
     #[test]
-    fn test_wait_and_dispatch() -> Result<(), failure::Error> {
+    fn test_wait_and_dispatch() -> Result<(), anyhow::Error> {
         let (result_callback_sender, result_callback_receiver) =
             std::sync::mpsc::sync_channel::<Result<(), ()>>(1);
 

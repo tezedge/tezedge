@@ -138,7 +138,7 @@ pub async fn shutdown_and_cleanup(
     slack: Option<SlackServer>,
     log: &Logger,
     cleanup_data: bool,
-) -> Result<(), failure::Error> {
+) -> Result<(), anyhow::Error> {
     if let Some(slack_server) = slack {
         slack_server.send_message("Manual shuttdown ").await?;
     }
@@ -154,7 +154,7 @@ pub async fn start_stack(
     env: &DeployMonitoringEnvironment,
     slack: Option<SlackServer>,
     log: &Logger,
-) -> Result<(), failure::Error> {
+) -> Result<(), anyhow::Error> {
     info!(log, "Starting tezedge stack");
 
     let DeployMonitoringEnvironment {
@@ -198,7 +198,7 @@ pub async fn start_sandbox(
     compose_file_path: &PathBuf,
     slack: Option<SlackServer>,
     log: &Logger,
-) -> Result<(), failure::Error> {
+) -> Result<(), anyhow::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack

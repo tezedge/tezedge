@@ -5,25 +5,25 @@ use std::fmt;
 
 pub use tezos_encoding_derive::BinWriter;
 
-use failure::Fail;
+use thiserror::Error;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 /// Encoding error kind.
 pub enum BinErrorKind {
     /// I/O Error.
-    #[fail(display = "I/O error: {}", _0)]
+    #[error("I/O error: {0}")]
     IOError(std::io::Error),
     /// Boundary violation error, contains expected and actual sizes.
-    #[fail(display = "Boundary violation: expected {}, got {}", _0, _1)]
+    #[error("Boundary violation: expected {0}, got {1}")]
     SizeError(usize, usize),
     /// Field which encoding caused an error.
-    #[fail(display = "Error encoding field: {}", _0)]
+    #[error("Error encoding field: {0}")]
     FieldError(&'static str),
     /// Enum variant which encoding caused an error.
-    #[fail(display = "Error encoding enum variant: {}", _0)]
+    #[error("Error encoding enum variant: {0}")]
     VariantError(&'static str),
     /// Other error.
-    #[fail(display = "Other error: {}", _0)]
+    #[error("Other error: {0}")]
     CustomError(String),
 }
 

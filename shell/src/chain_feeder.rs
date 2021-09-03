@@ -12,9 +12,10 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use failure::{format_err, Error, Fail};
+use anyhow::{format_err, Error};
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
+use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::chain_meta_storage::ChainMetaStorageReader;
@@ -462,23 +463,20 @@ impl Receive<ShellChannelMsg> for ChainFeeder {
 }
 
 /// Possible errors for feeding chain
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum FeedChainError {
-    #[fail(display = "Cannot resolve current head, no genesis was commited")]
+    #[error("Cannot resolve current head, no genesis was commited")]
     UnknownCurrentHeadError,
-    #[fail(
-        display = "Context is not stored, context_hash: {}, reason: {}",
-        context_hash, reason
-    )]
+    #[error("Context is not stored, context_hash: {context_hash}, reason: {reason}")]
     MissingContextError {
         context_hash: String,
         reason: String,
     },
-    #[fail(display = "Storage read/write error, reason: {:?}", error)]
+    #[error("Storage read/write error, reason: {error:?}")]
     StorageError { error: StorageError },
-    #[fail(display = "Protocol service error error, reason: {:?}", error)]
+    #[error("Protocol service error error, reason: {error:?}")]
     ProtocolServiceError { error: ProtocolServiceError },
-    #[fail(display = "Block apply processing error, reason: {:?}", reason)]
+    #[error("Block apply processing error, reason: {reason:?}")]
     ProcessingError { reason: String },
 }
 
@@ -534,7 +532,7 @@ impl BlockApplierThreadSpawner {
             Arc<AtomicBool>,
             JoinHandle<Result<(), Error>>,
         ),
-        failure::Error,
+        anyhow::Error,
     > {
         // spawn thread which processes event
         let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
