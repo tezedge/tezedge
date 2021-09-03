@@ -5,13 +5,14 @@ use std::sync::PoisonError;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
+use anyhow::bail;
 use chrono::SecondsFormat;
-use failure::{bail, Fail};
 use hex::FromHexError;
 use hyper::{Body, Request};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
@@ -46,7 +47,7 @@ macro_rules! required_param {
     ($params:expr, $param_name:expr) => {{
         match $params.get_str($param_name) {
             Some(param_value) => Ok(param_value),
-            None => Err(failure::format_err!("Missing parameter '{}'", $param_name)),
+            None => Err(anyhow::format_err!("Missing parameter '{}'", $param_name)),
         }
     }};
 }
@@ -59,21 +60,21 @@ macro_rules! parse_block_hash_or_fail {
             Err(crate::helpers::RpcServiceError::NoDataFoundError { .. }) => {
                 return crate::not_found();
             }
-            Err(e) => return crate::error(failure::format_err!("{}", e)),
+            Err(e) => return crate::error(anyhow::format_err!("{}", e)),
         }
     }};
 }
 
 /// Possible errors for state processing
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum RpcServiceError {
-    #[fail(display = "Storage read error, reason: {:?}", error)]
+    #[error("Storage read error, reason: {error:?}")]
     StorageError { error: storage::StorageError },
-    #[fail(display = "No data found error, reason: {:?}", reason)]
+    #[error("No data found error, reason: {reason:?}")]
     NoDataFoundError { reason: String },
-    #[fail(display = "Invalid parameters, reason: {:?}", reason)]
+    #[error("Invalid parameters, reason: {reason:?}")]
     InvalidParameters { reason: String },
-    #[fail(display = "Unexpected/unhandled error occurred, reason: {:?}", reason)]
+    #[error("Unexpected/unhandled error occurred, reason: {reason:?}")]
     UnexpectedError { reason: String },
 }
 
@@ -416,7 +417,7 @@ pub const TEST_CHAIN_ID: &str = "test";
 pub(crate) fn parse_chain_id(
     chain_id_param: &str,
     env: &RpcServiceEnvironment,
-) -> Result<ChainId, failure::Error> {
+) -> Result<ChainId, anyhow::Error> {
     Ok(match chain_id_param {
         MAIN_CHAIN_ID => env.main_chain_id().clone(),
         TEST_CHAIN_ID => {
@@ -705,7 +706,7 @@ pub(crate) fn parse_block_hash(
     Ok(block_hash)
 }
 
-pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, failure::Error> {
+pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, anyhow::Error> {
     let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
     let meth = RpcMethod::try_from(req.method().to_string().as_str()).unwrap(); // TODO: handle correctly
     let content_type = match req.headers().get(hyper::header::CONTENT_TYPE) {

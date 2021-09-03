@@ -11,10 +11,10 @@ use std::{
     path::PathBuf,
 };
 
-use failure::Fail;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
+use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
@@ -121,27 +121,27 @@ impl Decoder for BlockHeaderWithHash {
 }
 
 /// Possible errors for storage
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum StorageError {
-    #[fail(display = "Database error: {}", error)]
+    #[error("Database error: {error}")]
     DBError { error: DBError },
-    #[fail(display = "Commit log error: {}", error)]
+    #[error("Commit log error: {error:?}")]
     CommitLogError { error: CommitLogError },
-    #[fail(display = "Key is missing in storage, when: {}", when)]
+    #[error("Key is missing in storage, when: {when}")]
     MissingKey { when: String },
-    #[fail(display = "Column is not valid")]
+    #[error("Column is not valid")]
     InvalidColumn,
-    #[fail(display = "Sequence generator failed: {}", error)]
+    #[error("Sequence generator failed: {error}")]
     SequenceError { error: SequenceError },
-    #[fail(display = "Tezos environment configuration error: {}", error)]
+    #[error("Tezos environment configuration error: {error}")]
     TezosEnvironmentError { error: TezosEnvironmentError },
-    #[fail(display = "Message hash error: {}", error)]
+    #[error("Message hash error: {error}")]
     MessageHashError { error: MessageHashError },
-    #[fail(display = "Error constructing hash: {}", error)]
+    #[error("Error constructing hash: {error}")]
     HashError { error: FromBytesError },
-    #[fail(display = "Error decoding hash: {}", error)]
+    #[error("Error decoding hash: {error}")]
     HashDecodeError { error: FromBase58CheckError },
-    #[fail(display = "Database error: {}", error)]
+    #[error("Database error: {error:?}")]
     MainDBError { error: database::error::Error },
 }
 
@@ -662,7 +662,7 @@ pub mod tests_common {
     use std::sync::Arc;
     use std::{env, fs};
 
-    use failure::Error;
+    use anyhow::Error;
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;

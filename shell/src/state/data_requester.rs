@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_requester_fetch_and_receive_block() -> Result<(), failure::Error> {
+    fn test_requester_fetch_and_receive_block() -> Result<(), anyhow::Error> {
         // prerequizities
         let log = create_logger(Level::Debug);
         let tokio_runtime = create_test_tokio_runtime();
@@ -636,7 +636,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_requester_fetch_and_receive_block_operations() -> Result<(), failure::Error> {
+    fn test_requester_fetch_and_receive_block_operations() -> Result<(), anyhow::Error> {
         // prerequizities
         let log = create_logger(Level::Debug);
         let tokio_runtime = create_test_tokio_runtime();
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_call_apply_block() -> Result<(), failure::Error> {
+    fn test_call_apply_block() -> Result<(), anyhow::Error> {
         // prerequizities
         let log = create_logger(Level::Debug);
         let actor_system = create_test_actor_system(log.clone());

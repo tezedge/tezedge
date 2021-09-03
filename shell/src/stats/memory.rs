@@ -7,9 +7,9 @@ use std::path::Path;
 use std::process::Command;
 use std::string::FromUtf8Error;
 
-use failure::Fail;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use lazy_static::lazy_static;
 
@@ -53,15 +53,15 @@ impl From<DarwinOsData> for MemoryData {
     }
 }
 
-#[derive(PartialEq, Debug, Fail)]
+#[derive(PartialEq, Debug, Error)]
 pub enum MemoryStatsError {
-    #[fail(display = "IOError: {}", _0)]
+    #[error("IOError: {0}")]
     IOError(String),
-    #[fail(display = "fail to parse data")]
+    #[error("fail to parse data")]
     ParsingData,
-    #[fail(display = "not supported OS")]
+    #[error("not supported OS")]
     NotSupportedOs,
-    #[fail(display = "Utf8 error: {}", _0)]
+    #[error("Utf8 error: {0}")]
     Uft8Error(FromUtf8Error),
 }
 

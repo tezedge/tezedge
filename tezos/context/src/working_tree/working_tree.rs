@@ -53,7 +53,7 @@ use std::{
     vec::IntoIter,
 };
 
-use failure::Fail;
+use thiserror::Error;
 
 use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
@@ -265,50 +265,44 @@ impl Iterator for TreeWalker {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum MerkleError {
     /// External libs errors
-    #[fail(display = "RocksDB error: {:?}", error)]
+    #[error("RocksDB error: {error:?}")]
     DBError { error: persistent::DBError },
-    #[fail(display = "Backend error: {:?}", error)]
+    #[error("Backend error: {error:?}")]
     GarbageCollectionError { error: GarbageCollectionError },
 
     /// Internal unrecoverable bugs that should never occur
-    #[fail(
-        display = "There is a commit or three under key {:?}, but not a value!",
-        key
-    )]
+    #[error("There is a commit or three under key {key:?}, but not a value!")]
     ValueIsNotABlob { key: String },
-    #[fail(
-        display = "Found wrong structure. Was looking for {}, but found {}",
-        sought, found
-    )]
+    #[error("Found wrong structure. Was looking for {sought}, but found {found}")]
     FoundUnexpectedStructure { sought: String, found: String },
-    #[fail(display = "Object not found! HashId={:?}", hash_id)]
+    #[error("Object not found! HashId={hash_id:?}")]
     ObjectNotFound { hash_id: HashId },
 
     /// Wrong user input errors
-    #[fail(display = "No value under key {:?}.", key)]
+    #[error("No value under key {key:?}.")]
     ValueNotFound { key: String },
-    #[fail(display = "Cannot search for an empty key.")]
+    #[error("Cannot search for an empty key.")]
     KeyEmpty,
-    #[fail(display = "Failed to convert hash into array: {}", error)]
+    #[error("Failed to convert hash into array: {error}")]
     HashToArrayError { error: TryFromSliceError },
-    #[fail(display = "Failed to convert hash into string: {}", error)]
+    #[error("Failed to convert hash into string: {error}")]
     HashToStringError { error: FromBytesError },
-    #[fail(display = "Failed to encode hash: {}", error)]
+    #[error("Failed to encode hash: {error}")]
     HashingError { error: HashingError },
-    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    #[error("Expected value instead of `None` for {0}")]
     ValueExpected(&'static str),
-    #[fail(display = "Invalid state: {}", _0)]
+    #[error("Invalid state: {0}")]
     InvalidState(&'static str),
-    #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
+    #[error("Mutex/lock error, reason: {reason:?}")]
     LockError { reason: String },
-    #[fail(display = "Serialization error, {:?}", error)]
+    #[error("Serialization error, {error:?}")]
     SerializationError { error: SerializationError },
-    #[fail(display = "Deserialization error, {:?}", error)]
+    #[error("Deserialization error, {error:?}")]
     DeserializationError { error: DeserializationError },
-    #[fail(display = "Storage ID error, {:?}", error)]
+    #[error("Storage ID error, {error:?}")]
     StorageIdError { error: StorageError },
 }
 
@@ -368,14 +362,11 @@ impl<T> From<PoisonError<T>> for MerkleError {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum CheckObjectHashError {
-    #[fail(display = "MerkleError error: {:?}", error)]
+    #[error("MerkleError error: {error:?}")]
     MerkleError { error: MerkleError },
-    #[fail(
-        display = "Calculated hash for {} not matching expected hash: expected {:?}, calculated {:?}",
-        object_type, calculated, expected
-    )]
+    #[error("Calculated hash for {object_type} not matching expected hash: expected {expected:?}, calculated {calculated:?}")]
     InvalidHashError {
         object_type: String,
         calculated: String,

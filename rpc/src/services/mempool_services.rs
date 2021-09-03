@@ -489,7 +489,7 @@ mod tests {
     use crate::services::mempool_services::{convert_applied, convert_errored};
 
     #[test]
-    fn test_convert_applied() -> Result<(), failure::Error> {
+    fn test_convert_applied() -> Result<(), anyhow::Error> {
         let data = vec![
             Applied {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
@@ -526,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_errored() -> Result<(), failure::Error> {
+    fn test_convert_errored() -> Result<(), anyhow::Error> {
         let data = vec![
             Errored {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_errored_missing_protocol_data() -> Result<(), failure::Error> {
+    fn test_convert_errored_missing_protocol_data() -> Result<(), anyhow::Error> {
         let data = vec![
             Errored {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,

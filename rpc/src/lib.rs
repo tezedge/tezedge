@@ -79,7 +79,7 @@ pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -
 
 /// Function to generate JSON response from a stream
 pub(crate) fn make_json_stream_response<
-    T: futures::Stream<Item = Result<String, failure::Error>> + Send + 'static,
+    T: futures::Stream<Item = Result<String, anyhow::Error>> + Send + 'static,
 >(
     content: T,
 ) -> ServiceResult {
@@ -165,7 +165,7 @@ pub(crate) fn not_found() -> ServiceResult {
 }
 
 /// Generate 500 error
-pub(crate) fn error(error: failure::Error) -> ServiceResult {
+pub(crate) fn error(error: anyhow::Error) -> ServiceResult {
     error_with_message(format!("{:?}", error))
 }
 

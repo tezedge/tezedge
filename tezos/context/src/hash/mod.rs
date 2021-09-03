@@ -9,7 +9,7 @@ use std::{array::TryFromSliceError, io};
 
 use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
-use failure::Fail;
+use thiserror::Error;
 
 use ocaml::ocaml_hash_string;
 
@@ -29,35 +29,35 @@ pub const OBJECT_HASH_LEN: usize = 32;
 
 pub type ObjectHash = [u8; OBJECT_HASH_LEN];
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum HashingError {
-    #[fail(display = "Failed to encode LEB128 value: {}", error)]
+    #[error("Failed to encode LEB128 value: {error}")]
     Leb128EncodeFailure { error: io::Error },
-    #[fail(display = "Invalid output size")]
+    #[error("Invalid output size")]
     InvalidOutputSize,
-    #[fail(display = "Failed to convert hash to array: {}", error)]
+    #[error("Failed to convert hash to array: {error}")]
     ConversionError { error: TryFromSliceError },
-    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    #[error("Expected value instead of `None` for {0}")]
     ValueExpected(&'static str),
-    #[fail(display = "Invalid hash value, reason: {}", _0)]
+    #[error("Invalid hash value, reason: {0}")]
     InvalidHash(String),
-    #[fail(display = "Missing Object")]
+    #[error("Missing Object")]
     MissingObject,
-    #[fail(display = "The Object is borrowed more than once")]
+    #[error("The Object is borrowed more than once")]
     ObjectBorrow,
-    #[fail(display = "Database error error {:?}", error)]
+    #[error("Database error error {error:?}")]
     DBError { error: DBError },
-    #[fail(display = "HashId not found: {:?}", hash_id)]
+    #[error("HashId not found: {hash_id:?}")]
     HashIdNotFound { hash_id: HashId },
-    #[fail(display = "HashId empty")]
+    #[error("HashId empty")]
     HashIdEmpty,
-    #[fail(display = "DirEntry not found")]
+    #[error("DirEntry not found")]
     DirEntryNotFound,
-    #[fail(display = "Directory not found")]
+    #[error("Directory not found")]
     DirectoryNotFound,
-    #[fail(display = "Blob not found")]
+    #[error("Blob not found")]
     BlobNotFound,
-    #[fail(display = "StorageIdError: {:?}", error)]
+    #[error("StorageIdError: {error:?}")]
     StorageIdError { error: StorageError },
 }
 

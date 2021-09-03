@@ -34,7 +34,7 @@ pub async fn bootstrapped(
     let state_read = env
         .state()
         .read()
-        .map_err(|e| failure::format_err!("Failed to lock current state, reason: {}", e))?;
+        .map_err(|e| anyhow::format_err!("Failed to lock current state, reason: {}", e))?;
 
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {

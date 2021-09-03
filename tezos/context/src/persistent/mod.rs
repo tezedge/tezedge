@@ -8,7 +8,7 @@ use std::{
 };
 
 use crypto::hash::ContextHash;
-use failure::Fail;
+use thiserror::Error;
 
 use tezos_timing::RepositoryMemoryUsage;
 
@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub trait Flushable {
-    fn flush(&self) -> Result<(), failure::Error>;
+    fn flush(&self) -> Result<(), anyhow::Error>;
 }
 
 pub trait Persistable {
@@ -68,34 +68,31 @@ pub trait KeyValueStoreBackend {
 }
 
 /// Possible errors for schema
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum DBError {
-    #[fail(display = "Column family {} is missing", name)]
+    #[error("Column family {name} is missing")]
     MissingColumnFamily { name: &'static str },
-    #[fail(display = "Database incompatibility {}", name)]
+    #[error("Database incompatibility {name}")]
     DatabaseIncompatibility { name: String },
-    #[fail(display = "Value already exists {}", key)]
+    #[error("Value already exists {key}")]
     ValueExists { key: String },
-    #[fail(
-        display = "Found wrong structure. Was looking for {}, but found {}",
-        sought, found
-    )]
+    #[error("Found wrong structure. Was looking for {sought}, but found {found}")]
     FoundUnexpectedStructure { sought: String, found: String },
-    #[fail(display = "Guard Poison {} ", error)]
+    #[error("Guard Poison {error} ")]
     GuardPoison { error: String },
-    #[fail(display = "Mutex/lock lock error! Reason: {}", reason)]
+    #[error("Mutex/lock lock error! Reason: {reason}")]
     LockError { reason: String },
-    #[fail(display = "I/O error {}", error)]
+    #[error("I/O error {error}")]
     IOError { error: io::Error },
-    #[fail(display = "MemoryStatisticsOverflow")]
+    #[error("MemoryStatisticsOverflow")]
     MemoryStatisticsOverflow,
-    #[fail(display = "IPC Context access error: {:?}", reason)]
+    #[error("IPC Context access error: {reason:?}")]
     IpcAccessError { reason: ContextServiceError },
-    #[fail(display = "Missing object: {:?}", hash_id)]
+    #[error("Missing object: {hash_id:?}")]
     MissingObject { hash_id: HashId },
-    #[fail(display = "Conversion from/to HashId failed")]
+    #[error("Conversion from/to HashId failed")]
     HashIdFailed,
-    #[fail(display = "Deserialization error: {:?}", error)]
+    #[error("Deserialization error: {error:?}")]
     DeserializationError { error: DeserializationError },
 }
 

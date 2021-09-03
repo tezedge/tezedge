@@ -166,7 +166,7 @@ fn test_init_empty_context_for_custom_network() {
 }
 
 #[test]
-fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::Error> {
+fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::Error> {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
@@ -233,7 +233,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
 }
 
 #[test]
-fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failure::Error> {
+fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), anyhow::Error> {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
