@@ -18,21 +18,20 @@ pub async fn launch_stack(
     disable_debugger: bool,
 ) {
     info!(log, "Tezedge explorer is starting");
-    start_with_compose(compose_file_path, Explorer::NAME, "explorer");
+    let output = start_with_compose(compose_file_path, Explorer::NAME, "explorer");
+    println!("output explorer={:?}", output);
     wait_for_start(&format!("http://localhost:{}", EXPLORER_PORT)).await;
 
     info!(log, "Tezedge explorer is running");
 
-    if !disable_debugger {
-        info!(log, "Debugger is starting");
-        start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
-        wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
-        info!(log, "Debugger is running");
+    // info!(log, "Debugger is starting");
+    // start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    // wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
+    // info!(log, "Debugger is running");
 
-        info!(log, "Memprof is starting");
-        start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
-        info!(log, "Memprof is running");
-    }
+    // info!(log, "Memprof is starting");
+    // start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    // info!(log, "Memprof is running");
 
     info!(log, "Tezedge node is starting");
     start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
@@ -179,10 +178,11 @@ pub fn cleanup_volumes() -> Output {
 }
 
 pub fn cleanup_docker_system() -> Output {
-    Command::new("docker")
-        .args(&["system", "prune", "-a", "-f"])
-        .output()
-        .expect("failed to execute docker command")
+    unimplemented!()
+    // Command::new("docker")
+    //     .args(&["system", "prune", "-a", "-f"])
+    //     .output()
+    //     .expect("failed to execute docker command")
 }
 
 async fn wait_for_start(url: &str) {
