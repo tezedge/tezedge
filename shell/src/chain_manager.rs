@@ -60,6 +60,7 @@ use crate::state::synchronization_state::{
 use crate::state::StateError;
 use crate::subscription::*;
 use crate::validation;
+use shell_integration::notifications::NewCurrentHeadNotification;
 
 /// How often to ask all connected peers for current head
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
@@ -1312,11 +1313,13 @@ impl ChainManager {
             // notify other actors that new current head was changed
             self.shell_channel.tell(
                 Publish {
-                    msg: ShellChannelMsg::NewCurrentHead(
-                        new_head.clone(),
-                        block.clone(),
-                        is_bootstrapped,
-                    ),
+                    msg: ShellChannelMsg::NewCurrentHead(Arc::new(
+                        NewCurrentHeadNotification::new(
+                            chain_id.clone(),
+                            block.clone(),
+                            is_bootstrapped,
+                        ),
+                    )),
                     topic: ShellChannelTopic::ShellNewCurrentHead.into(),
                 },
                 None,

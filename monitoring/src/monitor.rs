@@ -22,6 +22,7 @@ use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
     monitors::*, websocket::ws_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
 };
+use tezos_messages::Head;
 
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
@@ -327,12 +328,17 @@ impl Receive<ShellChannelMsg> for Monitor {
                 // update stats for block header
                 self.chain_monitor.process_block_header(msg.level);
             }
-            ShellChannelMsg::NewCurrentHead(head, ..) => {
+            ShellChannelMsg::NewCurrentHead(notification) => {
                 // update stats for block applications
-                self.chain_monitor.process_block_application(*head.level());
+                self.chain_monitor
+                    .process_block_application(notification.block.header.level());
 
                 self.blocks_monitor.block_was_applied_by_protocol();
-                self.block_application_monitor.block_was_applied(head);
+                self.block_application_monitor.block_was_applied(Head::new(
+                    notification.block.hash.clone(),
+                    notification.block.header.level(),
+                    notification.block.header.fitness().clone(),
+                ));
             }
             ShellChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();

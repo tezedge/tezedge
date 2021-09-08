@@ -4,13 +4,13 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
 
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use slog::{error, Logger};
@@ -18,23 +18,36 @@ use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::ShellChannelRef;
 use shell_integration::ShellConnectorRef;
-use storage::PersistentStorage;
+use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
 
-use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
 mod openapi_handler;
 mod protocol_handler;
 mod router;
+pub(crate) mod rpc_server;
 mod shell_handler;
+
+/// Thread safe reference to a shared RPC state
+pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
+
+/// Thread safe reference to a shared RPC environment configuration
+pub type RpcServiceEnvironmentRef = Arc<RpcServiceEnvironment>;
+
+/// Represents various collected information about
+/// internal state of the node.
+#[derive(CopyGetters, Getters)]
+pub struct RpcCollectedState {
+    #[get = "pub(crate)"]
+    current_head: Arc<BlockHeaderWithHash>,
+}
 
 /// Server environment parameters
 #[derive(Getters)]
@@ -45,8 +58,6 @@ pub struct RpcServiceEnvironment {
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
-    #[get = "pub(crate)"]
-    shell_channel: ShellChannelRef,
     #[get = "pub(crate)"]
     shell_connector: ShellConnectorRef,
     #[get = "pub(crate)"]
@@ -77,7 +88,6 @@ pub struct RpcServiceEnvironment {
 impl RpcServiceEnvironment {
     pub fn new(
         tokio_executor: Arc<Handle>,
-        shell_channel: ShellChannelRef,
         shell_connector: ShellConnectorRef,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -95,7 +105,6 @@ impl RpcServiceEnvironment {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             tokio_executor,
-            shell_channel,
             shell_connector,
             tezos_environment,
             network_version,

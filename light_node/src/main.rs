@@ -13,7 +13,7 @@ use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
-use rpc::rpc_actor::RpcServer;
+use rpc::RpcServer;
 use shell::chain_feeder::ApplyBlock;
 use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
@@ -42,11 +42,13 @@ use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::Environment;
+use crate::notification_integration::RpcNotificationCallbackActor;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::initialize_maindb;
 
 mod configuration;
 mod identity;
+mod notification_integration;
 mod system;
 
 extern crate jemallocator;
@@ -268,6 +270,7 @@ fn block_on_actors(
         let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
         (Arc::new(result_callback_sender), result_callback_receiver)
     };
+
     let block_applier = ChainFeeder::actor(
         actor_system.as_ref(),
         shell_channel.clone(),
@@ -338,6 +341,32 @@ fn block_on_actors(
     let shell_connector =
         ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory);
 
+    // initialize rpc server
+    let mut rpc_server = RpcServer::new(
+        log.clone(),
+        Box::new(shell_connector),
+        ([0, 0, 0, 0], env.rpc.listener_port).into(),
+        tokio_runtime.handle().clone(),
+        &persistent_storage,
+        current_mempool_state_storage,
+        tezos_readonly_api_pool.clone(),
+        tezos_readonly_prevalidation_api_pool.clone(),
+        tezos_without_context_api_pool.clone(),
+        env.tezos_network_config,
+        Arc::new(shell_compatibility_version.to_network_version()),
+        &init_storage_data,
+        hydrated_current_head_block,
+        env.storage
+            .context_storage_configuration
+            .tezedge_is_enabled(),
+    );
+    let _ = RpcNotificationCallbackActor::actor(
+        actor_system.as_ref(),
+        shell_channel.clone(),
+        rpc_server.rpc_env(),
+    )
+    .expect("Failed to create rpc notification callback handler actor");
+
     // Only start Monitoring when websocket is set
     if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
         let websocket_handler = WebsocketHandler::actor(
@@ -359,28 +388,6 @@ fn block_on_actors(
         )
         .expect("Failed to create monitor actor");
     }
-
-    let _ = RpcServer::actor(
-        actor_system.clone(),
-        log.clone(),
-        shell_channel.clone(),
-        Box::new(shell_connector),
-        ([0, 0, 0, 0], env.rpc.listener_port).into(),
-        tokio_runtime.handle().clone(),
-        &persistent_storage,
-        current_mempool_state_storage,
-        tezos_readonly_api_pool.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
-        tezos_without_context_api_pool.clone(),
-        env.tezos_network_config.clone(),
-        Arc::new(shell_compatibility_version.to_network_version()),
-        &init_storage_data,
-        hydrated_current_head_block,
-        env.storage
-            .context_storage_configuration
-            .tezedge_is_enabled(),
-    )
-    .expect("Failed to create RPC server");
 
     if let Some(blocks) = blocks_replay.take() {
         return schedule_replay_blocks(
@@ -409,18 +416,32 @@ fn block_on_actors(
         .expect("Failed to create peer manager");
     }
 
+    let mut is_setup_ok = true;
+
+    // start rpc
+    if let Err(e) = rpc_server.start() {
+        error!(log, "Failed to start RPC server"; "reason" => format!("{:?}", e));
+        is_setup_ok = false;
+    };
+
     info!(log, "Actors initialized");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
         use tokio::time::timeout;
 
-        signal::ctrl_c()
-            .await
-            .expect("Failed to listen for ctrl-c event");
-        info!(log, "Ctrl-c or SIGINT received!");
+        // if everything is ok, we can run and hold this "forever"
+        if is_setup_ok {
+            signal::ctrl_c()
+                .await
+                .expect("Failed to listen for ctrl-c event");
+            info!(log, "Ctrl-c or SIGINT received!");
+        }
 
-        info!(log, "Sending shutdown notification to actors (1/5)");
+        info!(log, "Shutting down rpc server (1/6)");
+        drop(rpc_server);
+
+        info!(log, "Sending shutdown notification to actors (2/6)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -432,24 +453,24 @@ fn block_on_actors(
         // give actors some time to shut down
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors (2/5)");
+        info!(log, "Shutting down actors (3/6)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Shutting down protocol runner pools (3/5)");
+        info!(log, "Shutting down protocol runner pools (4/6)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
         drop(tezos_writeable_api_pool);
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases (4/5)");
+        info!(log, "Flushing databases (5/6)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (5/5)");
+        info!(log, "Shutdown complete (6/6)");
     });
 }
 

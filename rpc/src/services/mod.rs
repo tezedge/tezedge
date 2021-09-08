@@ -20,7 +20,7 @@ pub mod cache_warm_up {
     pub async fn warm_up_rpc_cache(
         chain_id: ChainId,
         block: Arc<BlockHeaderWithHash>,
-        env: Arc<RpcServiceEnvironment>,
+        env: &RpcServiceEnvironment,
     ) {
         // async -> sync calls: goes first because other calls re-use the cached result
         let get_additional_data = async {
@@ -53,39 +53,39 @@ pub mod cache_warm_up {
 
         // Async calls
         let get_block_metadata =
-            crate::services::base_services::get_block_metadata(&chain_id, &block.hash, &env);
-        let get_block = crate::services::base_services::get_block(&chain_id, &block.hash, &env);
+            crate::services::base_services::get_block_metadata(&chain_id, &block.hash, env);
+        let get_block = crate::services::base_services::get_block(&chain_id, &block.hash, env);
         let get_block_operations_metadata =
             crate::services::base_services::get_block_operations_metadata(
                 chain_id.clone(),
                 &block.hash,
-                &env,
+                env,
             );
         let get_block_operation_hashes = crate::services::base_services::get_block_operation_hashes(
             chain_id.clone(),
             &block.hash,
-            &env,
+            env,
         );
         let get_block_header = crate::services::base_services::get_block_header(
             chain_id.clone(),
             block.hash.clone(),
-            &env.persistent_storage(),
+            env.persistent_storage(),
         );
         let get_block_protocols = async {
             crate::services::base_services::get_block_protocols(
                 &chain_id,
                 &block.hash,
-                &env.persistent_storage(),
+                env.persistent_storage(),
             )
         };
         let live_blocks = async {
-            crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), &env)
+            crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), env)
         };
         let get_block_shell_header = async {
             crate::services::base_services::get_block_shell_header_or_fail(
                 &chain_id,
                 block.hash.clone(),
-                &env.persistent_storage(),
+                env.persistent_storage(),
             )
         };
 

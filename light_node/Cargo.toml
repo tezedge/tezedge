@@ -29,6 +29,7 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
+shell_integration = { path = "../shell-integration" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
 ipc = { path = "../ipc" }
