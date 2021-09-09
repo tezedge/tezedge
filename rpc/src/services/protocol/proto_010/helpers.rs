@@ -4,8 +4,9 @@
 use std::convert::TryFrom;
 
 use crypto::hash::ProtocolHash;
-use failure::{bail, Fail};
+use anyhow::bail;
 use getset::Getters;
+use thiserror::Error;
 
 use crypto::{
     blake2b::{self, Blake2bError},
@@ -43,13 +44,13 @@ pub struct RightsConstants {
     cycle_eras: CycleErasData,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum RightsConstantError {
-    #[fail(display = "The value is illegal, key: {}", key)]
+    #[error("The value is illegal, key: {key}")]
     WrongValue { key: &'static str },
-    #[fail(display = "Key cannot be parsed, key: {}", key)]
+    #[error("Key cannot be parsed, key: {key}")]
     Parsing { key: &'static str },
-    #[fail(display = "Key cannot be found in constants, key: {}", key)]
+    #[error("Key cannot be found in constants, key: {key}")]
     KeyNotFound { key: &'static str },
 }
 
@@ -63,7 +64,7 @@ impl RightsConstants {
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
         env: &RpcServiceEnvironment,
-    ) -> Result<Self, failure::Error> {
+    ) -> Result<Self, anyhow::Error> {
         if let Some(constatns_deserialized) =
             serde_json::from_str::<serde_json::Value>(&context_proto_param.constants_data)?
                 .as_object()
@@ -160,7 +161,7 @@ pub(crate) fn get_cycle_data(
     parameters: RightsParams,
     block_cycle: i32,
     cycle_meta_storage: &CycleMetaStorage,
-) -> Result<CycleData, failure::Error> {
+) -> Result<CycleData, anyhow::Error> {
     // prepare cycle for which rollers are selected
     let requested_cycle = if let Some((cycle, _)) = *parameters.requested_cycle() {
         cycle
@@ -276,7 +277,7 @@ impl RightsParams {
         rights_constants: &RightsConstants,
         block_header: &BlockHeaderWithHash,
         is_baking_rights: bool,
-    ) -> Result<Self, failure::Error> {
+    ) -> Result<Self, anyhow::Error> {
         let block_level = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
         // let mut blocks_per_cycle = *rights_constants.blocks_per_cycle();
@@ -412,7 +413,7 @@ impl RightsParams {
         requested_cycle: i32,
         current_cycle: i32,
         preserved_cycles: u8,
-    ) -> Result<i32, failure::Error> {
+    ) -> Result<i32, anyhow::Error> {
         if (requested_cycle - current_cycle).abs() <= preserved_cycles.into() {
             Ok(requested_cycle)
         } else {
@@ -450,11 +451,11 @@ impl EndorserSlots {
 }
 
 /// Enum defining Tezos PRNG possible error
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum TezosPRNGError {
-    #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
+    #[error("Value of bound(last_roll) not correct: {bound} bytes")]
     BoundNotCorrect { bound: i32 },
-    #[fail(display = "Public key error: {}", _0)]
+    #[error("Public key error: {0}")]
     PublicKeyError(PublicKeyError),
 }
 
@@ -492,7 +493,7 @@ pub fn init_prng(
     use_string_bytes: &[u8],
     cycle_position: i32,
     offset: i32,
-) -> Result<RandomSeedState, failure::Error> {
+) -> Result<RandomSeedState, anyhow::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let state = cycle_meta_data.seed_bytes();
@@ -623,7 +624,7 @@ pub fn level_position(level: i32, era: &CycleEra) -> Result<i32, RightsConstantE
     }
 }
 
-fn get_cycle_era_from_level(level: i32, eras: &[CycleEra]) -> Result<CycleEra, failure::Error> {
+fn get_cycle_era_from_level(level: i32, eras: &[CycleEra]) -> Result<CycleEra, anyhow::Error> {
     for era in eras {
         if *era.first_level() > level {
             continue;
@@ -635,7 +636,7 @@ fn get_cycle_era_from_level(level: i32, eras: &[CycleEra]) -> Result<CycleEra, f
     bail!("Cycle eras")
 }
 
-fn get_cycle_era_from_cycle(cycle: i32, eras: &[CycleEra]) -> Result<CycleEra, failure::Error> {
+fn get_cycle_era_from_cycle(cycle: i32, eras: &[CycleEra]) -> Result<CycleEra, anyhow::Error> {
     for era in eras {
         if *era.first_cycle() > cycle {
             continue;

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crypto::hash::ChainId;
 use anyhow::bail;
 use getset::Getters;
+use thiserror::Error;
 
 use crypto::{
     blake2b::{self, Blake2bError},

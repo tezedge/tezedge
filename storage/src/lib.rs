@@ -149,7 +149,7 @@ pub enum StorageError {
     HashDecodeError { error: FromBase58CheckError },
     #[error("Database error: {error:?}")]
     MainDBError { error: database::error::Error },
-    #[fail(display = "Deserialization: {}", error)]
+    #[error("Deserialization: {error}")]
     SerdeJsonError { error: serde_json::Error },
 }
 

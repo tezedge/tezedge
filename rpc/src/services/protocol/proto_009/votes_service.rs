@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::ContextHash;
-use failure::format_err;
+use anyhow::format_err;
 use itertools::Itertools;
 
 use storage::num_from_slice;

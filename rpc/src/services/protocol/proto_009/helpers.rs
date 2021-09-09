@@ -4,8 +4,9 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use failure::{bail, Fail};
+use anyhow::bail;
 use getset::Getters;
+use thiserror::Error;
 
 use crypto::hash::ChainId;
 use crypto::{
@@ -37,13 +38,13 @@ pub struct RightsConstants {
     endorsers_per_block: u16,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum RightsConstantError {
-    #[fail(display = "The value is illegal, key: {}", key)]
+    #[error("The value is illegal, key: {key}")]
     WrongValue { key: &'static str },
-    #[fail(display = "Key cannot be parsed, key: {}", key)]
+    #[error("Key cannot be parsed, key: {key}")]
     Parsing { key: &'static str },
-    #[fail(display = "Key cannot be found in constants, key: {}", key)]
+    #[error("Key cannot be found in constants, key: {key}")]
     KeyNotFound { key: &'static str },
 }
 
@@ -56,7 +57,7 @@ impl RightsConstants {
     #[inline]
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
-    ) -> Result<Self, failure::Error> {
+    ) -> Result<Self, anyhow::Error> {
         // let constatns_deserialized = context_proto_param.constants_data;
 
         // TODO: fix unwraps
@@ -142,7 +143,7 @@ pub(crate) fn get_cycle_data(
     parameters: RightsParams,
     block_cycle: i32,
     cycle_meta_storage: &CycleMetaStorage,
-) -> Result<CycleData, failure::Error> {
+) -> Result<CycleData, anyhow::Error> {
     // prepare cycle for which rollers are selected
     let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
         cycle
@@ -259,7 +260,7 @@ impl RightsParams {
         chain_id: &ChainId,
         env: &RpcServiceEnvironment,
         is_baking_rights: bool,
-    ) -> Result<Self, failure::Error> {
+    ) -> Result<Self, anyhow::Error> {
         let block_level: i32 = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
@@ -396,7 +397,7 @@ impl RightsParams {
         requested_cycle: i32,
         current_cycle: i32,
         preserved_cycles: u8,
-    ) -> Result<i32, failure::Error> {
+    ) -> Result<i32, anyhow::Error> {
         if (requested_cycle - current_cycle).abs() <= (preserved_cycles as i32) {
             Ok(requested_cycle)
         } else {
@@ -434,11 +435,11 @@ impl EndorserSlots {
 }
 
 /// Enum defining Tezos PRNG possible error
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum TezosPRNGError {
-    #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
+    #[error("Value of bound(last_roll) not correct: {bound} bytes")]
     BoundNotCorrect { bound: i32 },
-    #[fail(display = "Public key error: {}", _0)]
+    #[error("Public key error: {0}")]
     PublicKeyError(PublicKeyError),
 }
 
@@ -476,7 +477,7 @@ pub fn init_prng(
     use_string_bytes: &[u8],
     cycle_position: i32,
     offset: i32,
-) -> Result<RandomSeedState, failure::Error> {
+) -> Result<RandomSeedState, anyhow::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let state = cycle_meta_data.seed_bytes();

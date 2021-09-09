@@ -842,11 +842,8 @@ pub(crate) struct ContextProtocolParam {
 }
 
 #[derive(Debug, Error)]
+#[allow(clippy::enum_variant_names)]
 pub enum ContextParamsError {
-    // #[error("Protocol not found in context for block: {0}")]
-    // NoProtocolForBlock(String),
-    // #[error("Protocol constants not found in context for block: {0}")]
-    // NoConstantsForBlock(String),
     #[error("Storage error occurred, reason: {reason}")]
     StorageError { reason: storage::StorageError },
     #[error("Context error occurred, reason: {reason}")]
@@ -978,12 +975,12 @@ pub(crate) fn get_context_protocol_params(
     })
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 #[allow(clippy::enum_variant_names)]
 pub enum MetadataParsingError {
-    #[fail(display = "Cannot parse block metadata, key: {}", key)]
+    #[error("Cannot parse block metadata, key: {key}")]
     ParsingError { key: &'static str },
-    #[fail(display = "Key not found in block metadata, key: {}", key)]
+    #[error("Key not found in block metadata, key: {key}")]
     KeyNotFoundError { key: &'static str },
 }
 
