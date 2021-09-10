@@ -91,6 +91,13 @@ impl From<anyhow::Error> for RightsError {
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
 #[allow(clippy::too_many_arguments)]
+#[cached(
+    name = "BAKING_RIGHTS_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(chain_id.clone(), block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), max_priority.map(|v| v.to_string()), has_all)}",
+    result = true,
+)]
 pub(crate) async fn check_and_get_baking_rights(
     chain_id: &ChainId,
     block_hash: &BlockHash,
@@ -269,7 +276,13 @@ pub(crate) async fn check_and_get_baking_rights(
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-#[allow(clippy::too_many_arguments)]
+#[cached(
+    name = "ENDORSING_RIGHTS_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(chain_id.clone(), block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), has_all)}",
+    result = true,
+)]
 pub(crate) async fn check_and_get_endorsing_rights(
     chain_id: &ChainId,
     block_hash: &BlockHash,
