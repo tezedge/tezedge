@@ -72,7 +72,7 @@ use crate::{persistent, ContextKeyValueStore};
 use crate::{ContextKey, ContextValue};
 
 use super::{
-    serializer::{deserialize, serialize_object, DeserializationError, SerializationError},
+    serializer::{deserialize_object, serialize_object, DeserializationError, SerializationError},
     storage::{BlobId, DirEntryId, DirectoryId, Storage, StorageError},
 };
 
@@ -407,8 +407,9 @@ impl<'a> SerializingData<'a> {
             &mut self.stats,
             &mut self.batch,
             &mut self.referenced_older_objects,
-        )?;
-        Ok(())
+            self.store,
+        )
+        .map_err(Into::into)
     }
 
     fn add_older_object(
@@ -968,7 +969,7 @@ impl WorkingTree {
             None => Err(MerkleError::ObjectNotFound { hash_id }),
             Some(object_bytes) => {
                 let mut storage = self.index.storage.borrow_mut();
-                deserialize(object_bytes.as_ref(), &mut storage, store).map_err(Into::into)
+                deserialize_object(object_bytes.as_ref(), &mut storage, store).map_err(Into::into)
             }
         }
     }

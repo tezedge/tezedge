@@ -3,7 +3,10 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use crossbeam_channel::Receiver;
@@ -13,6 +16,11 @@ use crate::{kv_store::HashId, working_tree::serializer::iter_hash_ids};
 use tezos_spsc::Producer;
 
 pub(crate) const PRESERVE_CYCLE_COUNT: usize = 7;
+
+/// Used for statistics
+///
+/// Number of items in `GCThread::pending`.
+pub(crate) static GC_PENDING_HASHIDS: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) struct GCThread {
     pub(crate) cycles: Cycles,
@@ -108,6 +116,7 @@ impl GCThread {
         mut new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
         new_ids: Vec<HashId>,
     ) {
+        GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
         for hash_id in new_ids.into_iter() {
             new_cycle.entry(hash_id).or_insert(None);
         }
@@ -129,11 +138,13 @@ impl GCThread {
         if let Err(e) = self.free_ids.push_slice(&to_send) {
             eprintln!("GC: Fail to send free ids {:?}", e);
             self.pending.extend_from_slice(&unused);
+            GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
             return;
         }
 
         if !pending.is_empty() {
             self.pending.extend_from_slice(pending);
+            GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
         }
     }
 
@@ -157,9 +168,12 @@ impl GCThread {
         }
 
         self.pending.truncate(start);
+        GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
     }
 
     fn mark_reused(&mut self, mut reused: Vec<HashId>) {
+        GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
+
         while let Some(hash_id) = reused.pop() {
             let value = match self.cycles.move_to_last_cycle(hash_id) {
                 Some(v) => v,

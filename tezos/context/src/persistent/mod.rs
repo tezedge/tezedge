@@ -14,7 +14,12 @@ use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
     kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash},
-    working_tree::serializer::DeserializationError,
+    working_tree::{
+        serializer::DeserializationError,
+        shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
+        storage::DirEntryId,
+        string_interner::{StringId, StringInterner},
+    },
     ObjectHash,
 };
 
@@ -65,6 +70,23 @@ pub trait KeyValueStoreBackend {
     fn clear_objects(&mut self) -> Result<(), DBError>;
     /// Memory usage
     fn memory_usage(&self) -> RepositoryMemoryUsage;
+    /// Returns the strings of the directory shape
+    fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError>;
+    /// Returns the `ShapeId` of this `dir`
+    ///
+    /// Create a new shape when it doesn't exist.
+    /// This returns `None` when a shape cannot be made (currently if one of the
+    /// string is > 30 bytes).
+    fn make_shape(
+        &mut self,
+        dir: &[(StringId, DirEntryId)],
+    ) -> Result<Option<DirectoryShapeId>, DBError>;
+    /// Returns the string associated to this `string_id`.
+    ///
+    /// The string interner must have been updated with the `update_strings` method.
+    fn get_str(&self, string_id: StringId) -> Option<&str>;
+    /// Update the `StringInterner`.
+    fn synchronize_strings(&mut self, string_interner: &StringInterner) -> Result<(), DBError>;
 }
 
 /// Possible errors for schema
@@ -83,7 +105,10 @@ pub enum DBError {
     #[error("Mutex/lock lock error! Reason: {reason}")]
     LockError { reason: String },
     #[error("I/O error {error}")]
-    IOError { error: io::Error },
+    IOError {
+        #[from]
+        error: io::Error,
+    },
     #[error("MemoryStatisticsOverflow")]
     MemoryStatisticsOverflow,
     #[error("IPC Context access error: {reason:?}")]
@@ -93,7 +118,15 @@ pub enum DBError {
     #[error("Conversion from/to HashId failed")]
     HashIdFailed,
     #[error("Deserialization error: {error:?}")]
-    DeserializationError { error: DeserializationError },
+    DeserializationError {
+        #[from]
+        error: DeserializationError,
+    },
+    #[error("Shape error: {error:?}")]
+    ShapeError {
+        #[from]
+        error: DirectoryShapeError,
+    },
 }
 
 impl From<HashIdError> for DBError {
@@ -102,22 +135,10 @@ impl From<HashIdError> for DBError {
     }
 }
 
-impl From<DeserializationError> for DBError {
-    fn from(error: DeserializationError) -> Self {
-        Self::DeserializationError { error }
-    }
-}
-
 impl<T> From<PoisonError<T>> for DBError {
     fn from(pe: PoisonError<T>) -> Self {
         DBError::LockError {
             reason: format!("{}", pe),
         }
-    }
-}
-
-impl From<io::Error> for DBError {
-    fn from(error: io::Error) -> Self {
-        DBError::IOError { error }
     }
 }
