@@ -220,6 +220,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     .await
     .expect("test failed");
 
+    // test common call on the edge of protocol switch (on florence, requesting next granada block)
     // test common call on the edge of protocol switch (still in florence)
     println!("\n===Checking last florence block===");
     test_rpc_compare_json(&format!(
@@ -251,63 +252,55 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     ))
     .await
     .expect("test failed");
+    
+    println!("\n===Checking (from florence) first granda block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        florence_last_level,
+        "helpers/baking_rights",
+        florence_last_level + 1
+    ))
+    .await
+    .expect("test failed");
 
-    // test common call on the edge of protocol switch (on florence, requesting next granada block)
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        florence_last_level,
+        "helpers/endorsing_rights",
+        florence_last_level + 1
+    ))
+    .await
+    .expect("test failed");
 
-    // this check ensures that we reach the block in proto switch (required when using octez node on full history mode)
-    // TODO: remove when we have octez data from synced archive node
-    if furthest_level_past < florence_last_level {
-        println!("\n===Checking (from florence) first granda block===");
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}?level={}",
-            "chains/main/blocks",
-            florence_last_level,
-            "helpers/baking_rights",
-            florence_last_level + 1
-        ))
-        .await
-        .expect("test failed");
+    // test common call on the edge of protocol switch (on granada, requesting previous florence block)
+    println!("\n===Checking (from granada) last florence block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        granada_first_level,
+        "helpers/baking_rights",
+        granada_first_level - 1
+    ))
+    .await
+    .expect("test failed");
 
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}?level={}",
-            "chains/main/blocks",
-            florence_last_level,
-            "helpers/endorsing_rights",
-            florence_last_level + 1
-        ))
-        .await
-        .expect("test failed");
-
-        // test common call on the edge of protocol switch (on granada, requesting previous florence block)
-        println!("\n===Checking (from granada) last florence block===");
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}?level={}",
-            "chains/main/blocks",
-            granada_first_level,
-            "helpers/baking_rights",
-            granada_first_level - 1
-        ))
-        .await
-        .expect("test failed");
-
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}?level={}",
-            "chains/main/blocks",
-            granada_first_level,
-            "helpers/endorsing_rights",
-            granada_first_level - 1
-        ))
-        .await
-        .expect("test failed");
-    } else {
-        println!("\n===Ignoring check for protocol switch - head is too far ahead===")
-    }
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        granada_first_level,
+        "helpers/endorsing_rights",
+        granada_first_level - 1
+    ))
+    .await
+    .expect("test failed");
 
     // test the common call (future)
     let blocks_per_cycle: i64 = (*current_era.blocks_per_cycle()).into();
 
     // 8 cycles
-    let offset = (PRESERVED_CYCLES + 3) * blocks_per_cycle;
+    let offset = PRESERVED_CYCLES * blocks_per_cycle;
     let start_level = if offset >= head_level {
         1
     } else {
@@ -315,7 +308,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     };
 
     // common call for tested for preserved cycles from head level
-    for level in start_level..head_level {
+    for level in (start_level..head_level).rev() {
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "helpers/baking_rights"

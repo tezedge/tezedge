@@ -32,7 +32,6 @@ steps:
     - mkdir -p drone-cache/test_data/tests/resources
     - mkdir -p drone-cache/tests
     - mkdir -p drone-cache/sandbox_files
-    # - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
     # copy binaries
     - cp ./target/release/light-node drone-cache/build_files
     - cp ./target/release/sandbox drone-cache/build_files
@@ -100,21 +99,29 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 trigger:
-  # TODO: replace with master? when do we want to trigger this pipeline? 
-  branch: fix/rights-rpcs
+  branch: develop
   event: push
 
 ---
-
+###################################################################################################################
+# This pipeline runs a long running RPC call comparison test that compares tezedge results with octez, ensuring the 
+# data the RPC returns is correct
+###################################################################################################################
 kind: pipeline
-name: rights-rpc-test
+name: corr/baking-endorsing-rights-rpc-test
 
 environment:
-  TO_BLOCK_HEADER_FOR_RPC: 1677709
+  TO_BLOCK_HEADER_FOR_RPC: 1672200
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-mainnet-run:18732
   OCTEZ_NODE_RPC_CONTEXT_ROOT: http://octez-node-mainnet-run-1:8732
 
 steps:
+
+- name: prepare-cache-dir
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
 
 - name: restore-cache
   image: meltwater/drone-cache
@@ -148,9 +155,8 @@ steps:
   commands:
     - rm -f /home/tezos/data/lock
     - cp drone-cache/build_files/identities/identity_1.json /home/tezos/data/identity.json
-    - tezos-node config reset --data-dir /home/tezos/data --network mainnet --no-bootstrap-peers
-    # TODO: add --history-mode archive, when data is available
-    - tezos-node run --data-dir /home/tezos/data --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network mainnet --no-bootstrap-peers
+    - tezos-node config reset --data-dir /home/tezos/data --network mainnet --no-bootstrap-peers --history-mode archive
+    - tezos-node run --history-mode archive --data-dir /home/tezos/data --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network mainnet --no-bootstrap-peers
 
 - name: tezedge-updated-node-mainnet-run
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
@@ -158,16 +164,21 @@ steps:
   user: root
   detach: true
   volumes:
-    - name: cache
-      path: /data/cache
+    - name: tezedge-node-mainnet-snapshot-data
+      path: /data/tezedge-data
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
-    - cp drone-cache/build_files/protocol-runner /data/cache
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "mainnet" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "mainnet" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-data-dir /data/tezedge-data --bootstrap-db-path bootstrap_db
+
+- name: wait-for-snapshoted-nodes
+  image: tezedge/tezos-node-bootstrap:latest
+  commands:
+    - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
+    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 - name: rpc-test
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
@@ -176,22 +187,21 @@ steps:
   environment:
     RUST_BACKTRACE: 1
   commands:
-    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_1=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_2=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
     - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare_rights_mainnet
 
 volumes:
   - name: octez-node-mainnet-snapshot-data
     host:
-      path: /home/dev/octez-data/mainnet-1677709-full
+      path: /home/dev/octez-data/archive-1672200
   - name: tezedge-node-mainnet-snapshot-data
     host:
-      # TODO: properly rename
-      path: /home/dev/tezedge-data/tezedge_new_cycle_storage_data
+      path: /home/dev/tezedge-data/tezedge-1678542
 
 trigger:
-  # TODO: replace with master? when do we want to trigger this pipeline? 
-  branch: fix/rights-rpcs
+  branch: develop
   event: push
