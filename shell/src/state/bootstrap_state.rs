@@ -22,7 +22,6 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
@@ -37,6 +36,8 @@ pub enum AddBranchState {
     Ignored,
 }
 
+type PeerBranchSynchronizationDoneCallback = Box<dyn Fn(PeerBranchSynchronizationDone) + Send>;
+
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
     /// Holds peers info
@@ -48,17 +49,20 @@ pub struct BootstrapState {
     /// Data requester
     data_requester: DataRequesterRef,
 
-    /// Shell channel
-    shell_channel: ShellChannelRef,
+    /// Callback which should be triggered, when node finishes bootstrapp of any peer's branches
+    peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
 }
 
 impl BootstrapState {
-    pub fn new(data_requester: DataRequesterRef, shell_channel: ShellChannelRef) -> Self {
+    pub fn new(
+        data_requester: DataRequesterRef,
+        peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
+    ) -> Self {
         Self {
             peers: Default::default(),
             block_state_db: BlockStateDb::new(512),
             data_requester,
-            shell_channel,
+            peer_branch_synchronization_done_callback,
         }
     }
 
@@ -142,7 +146,7 @@ impl BootstrapState {
             .for_each(|PeerBootstrapState { branches, peer_id, empty_bootstrap_state, .. }| {
                 branches
                     .retain(|branch| {
-                        if branch.contains_block(&failed_block) {
+                        if branch.contains_block(failed_block) {
                             warn!(log, "Peer's branch bootstrap contains failed block, so this branch bootstrap is removed";
                                "block_hash" => failed_block.to_base58_check(),
                                "to_level" => &branch.to_level,
@@ -207,24 +211,22 @@ impl BootstrapState {
     pub fn next_lowest_missing_blocks(&self) -> Vec<(usize, &BlockRef)> {
         self.peers
             .values()
-            .filter_map(|peer_state| {
-                Some(
-                    peer_state
-                        .branches
-                        .iter()
-                        .filter_map(|branch| {
-                            // find first not downloaded interval
-                            branch
-                                .intervals
-                                .iter()
-                                .enumerate()
-                                .find(|(_, interval)| {
-                                    matches!(interval.state, BranchIntervalState::Open)
-                                })
-                                .map(|(interval_idx, interval)| (interval_idx, &interval.seek))
-                        })
-                        .collect::<Vec<_>>(),
-                )
+            .map(|peer_state| {
+                peer_state
+                    .branches
+                    .iter()
+                    .filter_map(|branch| {
+                        // find first not downloaded interval
+                        branch
+                            .intervals
+                            .iter()
+                            .enumerate()
+                            .find(|(_, interval)| {
+                                matches!(interval.state, BranchIntervalState::Open)
+                            })
+                            .map(|(interval_idx, interval)| (interval_idx, &interval.seek))
+                    })
+                    .collect::<Vec<_>>()
             })
             .flatten()
             .collect()
@@ -239,11 +241,10 @@ impl BootstrapState {
                         .branches
                         .iter()
                         .filter_map(|branch| {
-                            if let Some(last_interval) = branch.intervals.last() {
-                                Some((branch.to_level, &last_interval.end))
-                            } else {
-                                None
-                            }
+                            branch
+                                .intervals
+                                .last()
+                                .map(|last_interval| (branch.to_level, &last_interval.end))
                         })
                         .collect::<Vec<_>>(),
                 )
@@ -286,7 +287,7 @@ impl BootstrapState {
                     if peer_state
                         .branches
                         .iter()
-                        .any(|branch| branch.contains_block(&last_block_from_missing_history))
+                        .any(|branch| branch.contains_block(last_block_from_missing_history))
                     {
                         return AddBranchState::Ignored;
                     }
@@ -301,11 +302,7 @@ impl BootstrapState {
                                             .branches
                                             .iter()
                                             .filter_map(|branch| {
-                                                if let Some(last_interval) = branch.intervals.last() {
-                                                    Some(format!("{} ({})", branch.to_level, last_interval.end.to_base58_check()))
-                                                } else {
-                                                    None
-                                                }
+                                                branch.intervals.last().map(|last_interval| format!("{} ({})", branch.to_level, last_interval.end.to_base58_check()))
                                             })
                                             .collect::<Vec<_>>().join(", ")
                                     },
@@ -388,7 +385,7 @@ impl BootstrapState {
             peer_queues,
             branches,
             ..
-        }) = peers.get_mut(&filter_peer.peer_ref.uri())
+        }) = peers.get_mut(filter_peer.peer_ref.uri())
         {
             // check peers blocks queue
             let (already_queued, mut available_queue_capacity) = match peer_queues
@@ -421,8 +418,7 @@ impl BootstrapState {
             }
 
             // schedule blocks to download
-            if let Err(e) =
-                data_requester.fetch_block_headers(missing_blocks, peer_id, &peer_queues)
+            if let Err(e) = data_requester.fetch_block_headers(missing_blocks, peer_id, peer_queues)
             {
                 warn!(log, "Failed to schedule block headers for download from peer"; "reason" => e,
                         "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
@@ -437,7 +433,7 @@ impl BootstrapState {
             peer_queues,
             branches,
             ..
-        }) = self.peers.get_mut(&filter_peer.peer_ref.uri())
+        }) = self.peers.get_mut(filter_peer.peer_ref.uri())
         {
             // check peers blocks queue
             let (already_queued, mut available_queue_capacity) = match peer_queues
@@ -472,7 +468,7 @@ impl BootstrapState {
             if let Err(e) = self.data_requester.fetch_block_operations(
                 missing_blocks,
                 peer_id,
-                &peer_queues,
+                peer_queues,
                 |already_downloaded_block| {
                     let _ = already_downloaded.insert(already_downloaded_block);
                 },
@@ -506,7 +502,7 @@ impl BootstrapState {
 
         if let Some(PeerBootstrapState {
             peer_id, branches, ..
-        }) = peers.get_mut(&filter_peer.peer_ref.uri())
+        }) = peers.get_mut(filter_peer.peer_ref.uri())
         {
             // check unprocessed downloaded intervals
             let mut branches_to_remove: HashSet<Level> = HashSet::default();
@@ -557,7 +553,7 @@ impl BootstrapState {
             peer_state
                 .branches
                 .iter_mut()
-                .for_each(|branch| branch.block_operations_downloaded(&block_hash))
+                .for_each(|branch| branch.block_operations_downloaded(block_hash))
         });
     }
 
@@ -585,7 +581,7 @@ impl BootstrapState {
     pub fn check_bootstrapped_branches(&mut self, filter_peer: &Option<Arc<PeerId>>, log: &Logger) {
         let BootstrapState {
             peers,
-            shell_channel,
+            peer_branch_synchronization_done_callback,
             ..
         } = self;
 
@@ -614,15 +610,7 @@ impl BootstrapState {
                         // send for peer just once
                         if !(*is_bootstrapped) {
                             *is_bootstrapped = true;
-                            shell_channel.tell(
-                                Publish {
-                                    msg: ShellChannelMsg::PeerBranchSynchronizationDone(
-                                        PeerBranchSynchronizationDone::new(peer_id.clone(), branch.to_level),
-                                    ),
-                                    topic: ShellChannelTopic::ShellCommands.into(),
-                                },
-                                None,
-                            );
+                            peer_branch_synchronization_done_callback(PeerBranchSynchronizationDone::new(peer_id.clone(), branch.to_level));
                         }
 
                         false
@@ -849,9 +837,8 @@ impl BranchState {
             match interval.state {
                 BranchIntervalState::Open => break,
                 BranchIntervalState::Downloaded => {
-                    self.blocks_to_apply.extend(
-                        interval.collect_blocks_for_apply(&block_state_db, data_requester)?,
-                    );
+                    self.blocks_to_apply
+                        .extend(interval.collect_blocks_for_apply(block_state_db, data_requester)?);
                     interval.state = BranchIntervalState::ScheduledForApply;
                     continue;
                 }
@@ -875,7 +862,7 @@ impl BranchState {
                 }
                 None => {
                     // get actual state from db
-                    match data_requester.block_meta_storage.get(&b)? {
+                    match data_requester.block_meta_storage.get(b)? {
                         Some(block_metadata) => {
                             // check if already applied
                             if block_metadata.is_applied() {
@@ -896,7 +883,7 @@ impl BranchState {
 
                             // check missing operations
                             if !matches!(
-                                data_requester.operations_meta_storage.is_complete(&b),
+                                data_requester.operations_meta_storage.is_complete(b),
                                 Ok(true)
                             ) {
                                 // if operations not found, stop scheduling and trigger operations download, we need to wait
@@ -1336,12 +1323,12 @@ fn find_last_known_predecessor(
         return (Some((block_from.clone(), true)), None);
     }
 
-    if block_to.as_ref().eq(&block_from) {
+    if block_to.as_ref().eq(block_from) {
         return (Some((block_to.clone(), true)), None);
     }
 
     // find actual block data in database
-    let predecessor_selector = match data_requester.block_meta_storage.get(&block_from) {
+    let predecessor_selector = match data_requester.block_meta_storage.get(block_from) {
         Ok(Some(block_metadata)) => {
             if block_metadata.is_applied() {
                 // if block is already applied, we finish, there is no need to continue
@@ -1355,7 +1342,7 @@ fn find_last_known_predecessor(
                 if !matches!(
                     data_requester
                         .operations_meta_storage
-                        .is_complete(&block_from),
+                        .is_complete(block_from),
                     Ok(true)
                 ) {
                     missing_operations.insert(block_from.clone());
@@ -1364,7 +1351,7 @@ fn find_last_known_predecessor(
                 // check predecessor
                 match block_metadata.take_predecessor() {
                     Some(predecessor) => {
-                        if predecessor.eq(&block_from) {
+                        if predecessor.eq(block_from) {
                             // stop on genesis
                             return (
                                 Some((block_state_db.get_block_ref(predecessor), true)),
@@ -1581,17 +1568,20 @@ mod tests {
         let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
             .expect("failed to create tmp storage");
-        let (chain_feeder_mock, _) = chain_feeder_mock(
-            &sys,
-            "mocked_chain_feeder_bootstrap_state",
-            shell_channel.clone(),
-        )
-        .expect("failed to create chain_feeder_mock");
+        let (chain_feeder_mock, _) =
+            chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state", shell_channel)
+                .expect("failed to create chain_feeder_mock");
         let data_requester = Arc::new(DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock,
         ));
+
+        let peer_branch_synchronization_done_callback =
+            Box::new(move |_msg: PeerBranchSynchronizationDone| {
+                // doing nothing here
+                // chain_manager.tell(msg, None);
+            });
 
         // peer1
         let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
@@ -1601,7 +1591,8 @@ mod tests {
         }));
 
         // empty state
-        let mut state = BootstrapState::new(data_requester, shell_channel);
+        let mut state =
+            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
 
         // genesis
         let last_applied = block(0);

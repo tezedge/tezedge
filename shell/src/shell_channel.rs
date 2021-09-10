@@ -12,7 +12,6 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
 
-use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::StateError;
 use crate::utils::OneshotResultCallback;
 
@@ -67,7 +66,6 @@ pub enum ShellChannelMsg {
     AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
     InjectBlock(InjectBlock, Option<InjectBlockOneshotResultCallback>),
     RequestCurrentHead(RequestCurrentHead),
-    PeerBranchSynchronizationDone(PeerBranchSynchronizationDone),
     ShuttingDown(ShuttingDown),
 }
 
