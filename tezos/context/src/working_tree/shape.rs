@@ -125,9 +125,9 @@ impl DirectoryShapes {
         hasher.write_usize(dir.len());
 
         for (key_id, _) in dir {
-            if key_id.is_big() {
-                return Ok(None);
-            }
+            // if key_id.is_big() {
+            //     return Ok(None);
+            // }
 
             hasher.write_u32(key_id.as_u32());
             self.temp.push(*key_id);

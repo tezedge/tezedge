@@ -62,20 +62,39 @@ impl StringId {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct BigStrings {
+    hashes: Map<u64, u32>,
     strings: String,
     offsets: Vec<(u32, u32)>,
 }
 
+impl PartialEq for BigStrings {
+    fn eq(&self, other: &Self) -> bool {
+        self.strings.len() == other.strings.len()
+    }
+}
+
+impl Eq for BigStrings {}
+
 impl BigStrings {
     fn push_str(&mut self, s: &str) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        hasher.write(s.as_bytes());
+        let hashed = hasher.finish();
+
+        if let Some(offset) = self.hashes.get(&hashed) {
+            return *offset;
+        }
+
         let start = self.strings.len();
         self.strings.push_str(s);
         let end = self.strings.len();
 
-        let index = self.offsets.len();
+        let index = self.offsets.len() as u32;
         self.offsets.push((start as u32, end as u32));
 
-        index as u32
+        self.hashes.insert(hashed, index);
+
+        index
     }
 
     fn get_str(&self, index: usize) -> Option<&str> {
@@ -84,16 +103,34 @@ impl BigStrings {
     }
 
     fn clear(&mut self) {
-        let cap = self.strings.capacity();
+        // let cap = self.strings.capacity();
 
-        if cap > 1_000_000 {
-            let new_cap = (cap / 2).max(1_000_000);
-            self.strings = String::with_capacity(new_cap);
-        } else {
-            self.strings.clear();
+        // if cap > 1_000_000 {
+        //     let new_cap = (cap / 2).max(1_000_000);
+        //     self.strings = String::with_capacity(new_cap);
+        // } else {
+        //     self.strings.clear();
+        // }
+
+        // self.offsets.clear();
+    }
+
+    fn extend_from(&mut self, other: &Self) {
+        if self == other {
+            return;
         }
 
-        self.offsets.clear();
+        debug_assert!(self.strings.len() < other.strings.len());
+        // Append the missing chunk into Self
+        let self_len = self.strings.len();
+        self.strings.push_str(&other.strings[self_len..]);
+        debug_assert_eq!(self.strings, other.strings);
+
+        debug_assert!(self.offsets.len() < other.offsets.len());
+        // Append the missing chunk into Self
+        let self_len = self.offsets.len();
+        self.offsets.extend_from_slice(&other.offsets[self_len..]);
+        debug_assert_eq!(self.offsets, other.offsets);
     }
 }
 
@@ -137,6 +174,8 @@ impl StringInterner {
         self.all_strings.push_str(&other.all_strings[self_len..]);
 
         debug_assert_eq!(self.all_strings, other.all_strings);
+
+        self.big_strings.extend_from(&other.big_strings);
     }
 
     pub fn get_string_id(&mut self, s: &str) -> StringId {
@@ -227,7 +266,7 @@ mod tests {
 
         let a = interner.get_string_id(&long_str);
         let b = interner.get_string_id(&long_str);
-        assert_ne!(a, b);
+        assert_eq!(a, b);
         assert!(a.is_big());
         assert_eq!(interner.get(a).unwrap(), long_str);
         assert_eq!(interner.get(b).unwrap(), long_str);
