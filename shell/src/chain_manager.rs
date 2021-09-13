@@ -199,6 +199,7 @@ impl Stats {
     LogStats,
     NetworkChannelMsg,
     ShellChannelMsg,
+    PeerBranchSynchronizationDone,
     SystemEvent
 )]
 pub struct ChainManager {
@@ -384,6 +385,7 @@ impl ChainManager {
                                     // schedule to download missing branch blocks
                                     chain_state.schedule_history_bootstrap(
                                         &ctx.system,
+                                        &ctx.myself,
                                         peer,
                                         &message_current_head,
                                         message.current_branch().history().to_vec(),
@@ -601,6 +603,7 @@ impl ChainManager {
                                             // this schedule, ensure to download all operations from this peer (if not already)
                                             chain_state.schedule_history_bootstrap(
                                                 &ctx.system,
+                                                &ctx.myself,
                                                 peer,
                                                 &message_current_head,
                                                 history,
@@ -903,11 +906,6 @@ impl ChainManager {
                     peer.current_head_request_last = Instant::now();
                     tell_peer(msg.clone(), peer)
                 });
-            }
-            ShellChannelMsg::PeerBranchSynchronizationDone(msg) => {
-                if let Err(e) = self.resolve_is_bootstrapped(&msg, ctx, &ctx.system.log()) {
-                    warn!(ctx.system.log(), "Failed to resolve is_bootstrapped for chain manager"; "msg" => format!("{:?}", msg), "reason" => format!("{:?}", e))
-                }
             }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
@@ -1459,7 +1457,7 @@ impl
     ) -> Self {
         ChainManager {
             network_channel,
-            shell_channel: shell_channel.clone(),
+            shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
@@ -1467,7 +1465,6 @@ impl
             chain_state: BlockchainState::new(
                 block_applier,
                 &persistent_storage,
-                shell_channel,
                 Arc::new(init_storage_data.chain_id),
                 Arc::new(init_storage_data.genesis_block_header_hash),
             ),
@@ -1829,5 +1826,15 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
                 )
             }
         })
+    }
+}
+
+impl Receive<PeerBranchSynchronizationDone> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: PeerBranchSynchronizationDone, _: Sender) {
+        if let Err(e) = self.resolve_is_bootstrapped(&msg, ctx, &ctx.system.log()) {
+            warn!(ctx.system.log(), "Failed to resolve is_bootstrapped for chain manager"; "msg" => format!("{:?}", msg), "reason" => format!("{:?}", e))
+        }
     }
 }

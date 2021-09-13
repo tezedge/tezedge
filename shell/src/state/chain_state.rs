@@ -24,11 +24,11 @@ use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::chain_feeder::ChainFeederRef;
+use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
     StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
-use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::head_state::CurrentHeadRef;
@@ -91,9 +91,6 @@ pub struct BlockchainState {
     /// Actor resposible for bootstrapping branches of peers per one chain_id
     peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
-    /// Common shell channel
-    shell_channel: ShellChannelRef,
-
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
 }
@@ -102,14 +99,13 @@ impl BlockchainState {
     pub fn new(
         block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
-        shell_channel: ShellChannelRef,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
     ) -> Self {
         BlockchainState {
             requester: DataRequesterRef::new(DataRequester::new(
-                BlockMetaStorage::new(&persistent_storage),
-                OperationsMetaStorage::new(&persistent_storage),
+                BlockMetaStorage::new(persistent_storage),
+                OperationsMetaStorage::new(persistent_storage),
                 block_applier,
             )),
             peer_branch_bootstrapper: None,
@@ -118,7 +114,6 @@ impl BlockchainState {
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
-            shell_channel,
             chain_id,
             chain_genesis_block_hash,
         }
@@ -190,7 +185,7 @@ impl BlockchainState {
             }
 
             // (future block)
-            if validation::is_future_block(&validated_header)? {
+            if validation::is_future_block(validated_header)? {
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
@@ -201,7 +196,7 @@ impl BlockchainState {
 
             // lets try to find protocol for validated_block
             let (protocol_hash, predecessor_header, missing_predecessor) =
-                self.resolve_protocol(validated_header, &current_head)?;
+                self.resolve_protocol(validated_header, current_head)?;
 
             // if missing predecessor
             if missing_predecessor {
@@ -214,7 +209,7 @@ impl BlockchainState {
                 match validation::check_multipass_validation(
                     head.chain_id(),
                     protocol_hash,
-                    &validated_header,
+                    validated_header,
                     predecessor_header,
                     api,
                 ) {
@@ -343,6 +338,7 @@ impl BlockchainState {
     pub fn schedule_history_bootstrap(
         &mut self,
         sys: &ActorSystem,
+        chain_manager_ref: &ChainManagerRef,
         peer: &mut PeerState,
         block_header: &BlockHeaderWithHash,
         mut history: Vec<BlockHash>,
@@ -429,7 +425,7 @@ impl BlockchainState {
                         sys,
                         self.chain_id.clone(),
                         self.requester.clone(),
-                        self.shell_channel.clone(),
+                        chain_manager_ref.clone(),
                         PeerBranchBootstrapperConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,
@@ -478,7 +474,7 @@ impl BlockchainState {
         // update block metadata
         let block_metadata =
             self.block_meta_storage
-                .put_block_header(received_block, &self.chain_id, &log)?;
+                .put_block_header(received_block, &self.chain_id, log)?;
 
         // update operations metadata for block
         let (are_operations_complete, _) = self.process_block_header_operations(received_block)?;
@@ -520,7 +516,7 @@ impl BlockchainState {
         // update block metadata
         let metadata = self
             .block_meta_storage
-            .put_block_header(block_header, chain_id, &log)?;
+            .put_block_header(block_header, chain_id, log)?;
 
         // update operations metadata
         let are_operations_complete =
@@ -654,7 +650,7 @@ impl BlockchainState {
         }
 
         // init steping
-        let mut step = Step::init(seed, &head);
+        let mut step = Step::init(seed, head);
 
         // inner function, which ensures, that history is closed with caboose
         let close_history_with_caboose =
@@ -1143,7 +1139,7 @@ mod tests {
                     .put_block_header(&new_block)
                     .expect("failed to store block");
                 let meta = block_meta_storage
-                    .put_block_header(&new_block, &chain_id, &log)
+                    .put_block_header(&new_block, chain_id, log)
                     .expect("failed to store block metadata");
                 block_meta_storage
                     .store_predecessors(&new_block.hash, &meta)
@@ -1154,7 +1150,7 @@ mod tests {
                     .put_block_header(&new_block)
                     .expect("failed to store block");
                 let meta = block_meta_storage
-                    .put_block_header(&new_block, &chain_id, &log)
+                    .put_block_header(&new_block, chain_id, log)
                     .expect("failed to store block metadata");
                 block_meta_storage
                     .store_predecessors(&new_block.hash, &meta)
