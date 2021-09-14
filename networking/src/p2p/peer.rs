@@ -540,7 +540,8 @@ pub async fn bootstrap(
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
-    let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
+    let (metadata_received, _) =
+        timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata";
                 "disable_mempool" => metadata_received.disable_mempool(),
                 "private_node" => metadata_received.private_node(),
@@ -585,7 +586,7 @@ pub async fn bootstrap(
     timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Ack)).await??;
 
     // receive ack
-    let ack_received = timeout(IO_TIMEOUT, msg_rx.read_message()).await??;
+    let (ack_received, _) = timeout(IO_TIMEOUT, msg_rx.read_message()).await??;
 
     match ack_received {
         AckMessage::Ack => {
@@ -640,12 +641,19 @@ async fn begin_process_incoming(
     while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
-                Ok(msg) => match throttle_quota.lock() {
+                Ok((mut msg, msg_len)) => match throttle_quota.lock() {
                     Ok(ref mut quota) => {
                         if quota.can_receive(&msg) {
                             let should_broadcast_message = net.rx_run.load(Ordering::Acquire);
                             if should_broadcast_message {
-                                trace!(log, "Message parsed successfully"; "msg" => format!("{:?}", &msg));
+                                msg.set_size_hint(msg_len);
+                                trace!(log, "Message parsed successfully";
+                                            "msg" => format!("{:?}", &msg),
+                                            "msg_size_hint" => msg.size_hint().map_or_else(
+                                                || 0,
+                                                |size_hint| size_hint,
+                                            ),
+                                );
                                 event_channel.tell(
                                     Publish {
                                         msg: PeerMessageReceived {

@@ -296,8 +296,8 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
         }
     }
 
-    /// Consume content of inner message reader into specific message
-    pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
+    /// Consume content of inner message reader into specific message + length
+    pub async fn read_message<M>(&mut self) -> Result<(M, usize), StreamError>
     where
         M: BinaryMessage + SizeFromChunk,
     {
@@ -318,9 +318,10 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
                     }
                     input_data.append(&mut message_decrypted);
 
-                    if input_size <= input_data.len() {
+                    let input_data_len = input_data.len();
+                    if input_size <= input_data_len {
                         match M::from_bytes(&input_data) {
-                            Ok(message) => break Ok(message),
+                            Ok(message) => break Ok((message, input_data_len)),
                             Err(e) => break Err(e.into()),
                         }
                     }

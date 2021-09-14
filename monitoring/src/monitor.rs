@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
-use slog::{debug, info, warn, Logger};
+use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
@@ -17,7 +17,6 @@ use shell::subscription::{
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
-use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
@@ -102,7 +101,7 @@ impl Monitor {
             let size = if let Some(size_hint) = msg.message.size_hint() {
                 *size_hint
             } else {
-                debug!(log, "size_hint not available for received peer message"; "peer" => msg.peer_address.to_string());
+                trace!(log, "size_hint not available for received peer message"; "peer" => msg.peer.name());
                 size_of_val(&msg.message)
             };
             monitor.incoming_bytes(size);

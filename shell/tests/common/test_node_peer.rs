@@ -207,7 +207,7 @@ impl TestNodePeer {
         while connected.load(Ordering::Acquire) {
             match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
                 Ok(res) => match res {
-                    Ok(msg) => {
+                    Ok((msg, _)) => {
                         let msg_type = msg_type(&msg);
                         trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
