@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod ffi;
+pub mod ipc_message_encoding;
 
 /// This modules will allow you to call OCaml code:
 ///

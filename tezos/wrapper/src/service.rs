@@ -55,20 +55,8 @@ pub enum ProtocolMessage {
     InitProtocolContextCall(InitProtocolContextParams),
     InitProtocolContextIpcServer(TezosContextStorageConfiguration),
     GenesisResultDataCall(GenesisResultDataParams),
-    JsonEncodeApplyBlockResultMetadata {
-        context_hash: ContextHash,
-        metadata_bytes: RustBytes,
-        max_operations_ttl: i32,
-        protocol_hash: ProtocolHash,
-        next_protocol_hash: ProtocolHash,
-    },
-    JsonEncodeApplyBlockOperationsMetadata {
-        chain_id: ChainId,
-        operations: Vec<Vec<Operation>>,
-        operations_metadata_bytes: Vec<Vec<RustBytes>>,
-        protocol_hash: ProtocolHash,
-        next_protocol_hash: ProtocolHash,
-    },
+    JsonEncodeApplyBlockResultMetadata(JsonEncodeApplyBlockResultMetadataParams),
+    JsonEncodeApplyBlockOperationsMetadata(JsonEncodeApplyBlockOperationsMetadataParams),
     ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest),
     ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest),
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
@@ -114,6 +102,24 @@ pub struct GenesisResultDataParams {
     pub chain_id: ChainId,
     pub genesis_protocol_hash: ProtocolHash,
     pub genesis_max_operations_ttl: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonEncodeApplyBlockResultMetadataParams {
+    pub context_hash: ContextHash,
+    pub metadata_bytes: RustBytes,
+    pub max_operations_ttl: i32,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonEncodeApplyBlockOperationsMetadataParams {
+    pub chain_id: ChainId,
+    pub operations: Vec<Vec<Operation>>,
+    pub operations_metadata_bytes: Vec<Vec<RustBytes>>,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
 }
 
 /// This event message is generated as a response to the `ProtocolMessage` command.
@@ -557,13 +563,15 @@ impl ProtocolController {
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.send(&ProtocolMessage::JsonEncodeApplyBlockResultMetadata {
-            context_hash,
-            max_operations_ttl,
-            metadata_bytes,
-            protocol_hash,
-            next_protocol_hash,
-        })?;
+        io.send(&ProtocolMessage::JsonEncodeApplyBlockResultMetadata(
+            JsonEncodeApplyBlockResultMetadataParams {
+                context_hash,
+                max_operations_ttl,
+                metadata_bytes,
+                protocol_hash,
+                next_protocol_hash,
+            },
+        ))?;
 
         // this might take a while, so we will use unusually long timeout
         match io.try_receive(
@@ -594,13 +602,15 @@ impl ProtocolController {
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.send(&ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata {
-            chain_id,
-            operations,
-            operations_metadata_bytes,
-            protocol_hash,
-            next_protocol_hash,
-        })?;
+        io.send(&ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(
+            JsonEncodeApplyBlockOperationsMetadataParams {
+                chain_id,
+                operations,
+                operations_metadata_bytes,
+                protocol_hash,
+                next_protocol_hash,
+            },
+        ))?;
 
         // this might take a while, so we will use unusually long timeout
         match io.try_receive(

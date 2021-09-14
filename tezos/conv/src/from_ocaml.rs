@@ -3,7 +3,10 @@
 
 use std::convert::TryFrom;
 
-use crate::OCamlCycleRollsOwnerSnapshot;
+use crate::{
+    OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
+    OCamlInitProtocolContextResult, OCamlNodeMessage,
+};
 
 use super::{
     FfiPath, FfiPathLeft, FfiPathRight, OCamlApplied, OCamlApplyBlockResponse,
@@ -20,16 +23,22 @@ use crypto::hash::{
     OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
-    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlFloat,
-    OCamlInt, OCamlInt32, OCamlList,
+    impl_from_ocaml_polymorphic_variant, impl_from_ocaml_record, impl_from_ocaml_variant,
+    FromOCaml, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlList,
 };
 use tezos_api::ffi::{
-    Applied, ApplyBlockResponse, BeginApplicationResponse, CycleRollsOwnerSnapshot, Errored,
-    ForkingTestchainData, HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson,
-    PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod,
-    TezosErrorTrace, ValidateOperationResponse, ValidateOperationResult,
+    Applied, ApplyBlockError, ApplyBlockResponse, BeginApplicationError, BeginApplicationResponse,
+    BeginConstructionError, CommitGenesisResult, ComputePathError, ComputePathResponse,
+    CycleRollsOwnerSnapshot, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
+    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
+    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosErrorTrace,
+    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
+    ValidateOperationResponse, ValidateOperationResult,
 };
 use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
+use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
+use tezos_wrapper::service::NodeMessage;
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -190,6 +199,13 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
+    OCamlInitProtocolContextResult => InitProtocolContextResult {
+        supported_protocol_hashes: OCamlList<OCamlProtocolHash>,
+        genesis_commit_hash: Option<OCamlContextHash>,
+    }
+}
+
+impl_from_ocaml_record! {
     OCamlTezosErrorTrace => TezosErrorTrace {
         head_error_id: String,
         trace_json: String,
@@ -262,3 +278,113 @@ impl_from_ocaml_variant! {
         Op => FfiPath::Op,
     }
 }
+
+// TODO: move this conversion logic to FfiPath to remove duplication in tezos/interop
+unsafe impl FromOCaml<FfiPath> for Path {
+    fn from_ocaml(v: OCaml<FfiPath>) -> Self {
+        let mut path: FfiPath = v.to_rust();
+        let mut res = Vec::new();
+        loop {
+            match path {
+                FfiPath::Right(right) => {
+                    res.push(PathItem::right(right.left));
+                    path = right.path;
+                }
+                FfiPath::Left(left) => {
+                    res.push(PathItem::left(left.right));
+                    path = left.path;
+                }
+                FfiPath::Op => {
+                    return Path(res);
+                }
+            }
+        }
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlCommitGenesisResult => CommitGenesisResult {
+        block_header_proto_json: String,
+        block_header_proto_metadata_bytes: OCamlBytes,
+        operations_proto_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlComputePathResponse => ComputePathResponse {
+        operations_hashes_path: OCamlList<FfiPath>,
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    OCamlNodeMessage => NodeMessage {
+        ApplyBlockResult(result: Result<OCamlApplyBlockResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::ApplyBlockResult(result),
+        AssertEncodingForProtocolDataResult(result: Result<(), OCamlTezosErrorTrace>) =>
+            NodeMessage::AssertEncodingForProtocolDataResult(result),
+        BeginApplicationResult(result: Result<OCamlBeginApplicationResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::BeginApplicationResult(result),
+        BeginConstructionResult(result: Result<OCamlPrevalidatorWrapper, OCamlTezosErrorTrace>) =>
+            NodeMessage::BeginConstructionResult(result),
+        ValidateOperationResponse(result: Result<OCamlValidateOperationResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::ValidateOperationResponse(result),
+        RpcResponse(result: Result<OCamlProtocolRpcResponse, OCamlProtocolRpcError>) =>
+            NodeMessage::RpcResponse(result),
+        HelpersPreapplyResponse(result: Result<OCamlHelpersPreapplyResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::HelpersPreapplyResponse(result),
+        ChangeRuntimeConfigurationResult(result: Result<(), OCamlTezosErrorTrace>) =>
+            NodeMessage::ChangeRuntimeConfigurationResult(result),
+        InitProtocolContextResult(result: Result<OCamlInitProtocolContextResult, OCamlTezosErrorTrace>) =>
+            NodeMessage::InitProtocolContextResult(result),
+        InitProtocolContextIpcServerResult(result: Result<(), String>) =>
+            NodeMessage::InitProtocolContextIpcServerResult(result), // TODO - TE-261: use actual error result
+        CommitGenesisResultData(result: Result<OCamlCommitGenesisResult, OCamlTezosErrorTrace>) =>
+            NodeMessage::CommitGenesisResultData(result),
+        ComputePathResponse(result: Result<OCamlComputePathResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::ComputePathResponse(result),
+        JsonEncodeApplyBlockResultMetadataResponse(result: Result<String, OCamlTezosErrorTrace>) =>
+            NodeMessage::JsonEncodeApplyBlockResultMetadataResponse(result),
+        JsonEncodeApplyBlockOperationsMetadata(result: Result<String, OCamlTezosErrorTrace>) =>
+            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result),
+        ContextGetKeyFromHistoryResult(result: Result<Option<OCamlBytes>, String>) =>
+            NodeMessage::ContextGetKeyFromHistoryResult(result),
+        ContextGetKeyValuesByPrefixResult(result: Result<Option<OCamlList<(OCamlList<String>, OCamlBytes)>>, String>) =>
+            NodeMessage::ContextGetKeyValuesByPrefixResult(result),
+        //ContextGetTreeByPrefixResult(result: Result<OCamlStringTreeObject, String>) =>
+        //    NodeMessage::ContextGetTreeByPrefixResult(result),
+
+        ShutdownResult => NodeMessage::ShutdownResult,
+    }
+}
+
+macro_rules! from_ocaml_tezos_error_trace {
+    ($rust_name:ident, $from:ty) => {
+        unsafe impl FromOCaml<OCamlTezosErrorTrace> for $rust_name {
+            fn from_ocaml(v: OCaml<OCamlTezosErrorTrace>) -> Self {
+                let trace: TezosErrorTrace = v.to_rust();
+                <$from>::from(trace).into()
+            }
+        }
+    };
+
+    ($rust_name:ident) => {
+        unsafe impl FromOCaml<OCamlTezosErrorTrace> for $rust_name {
+            fn from_ocaml(v: OCaml<OCamlTezosErrorTrace>) -> Self {
+                let trace: TezosErrorTrace = v.to_rust();
+                trace.into()
+            }
+        }
+    };
+}
+
+from_ocaml_tezos_error_trace!(ApplyBlockError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(ProtocolDataError);
+from_ocaml_tezos_error_trace!(BeginApplicationError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(BeginConstructionError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(ValidateOperationError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(HelpersPreapplyError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(TezosStorageInitError);
+from_ocaml_tezos_error_trace!(GetDataError);
+from_ocaml_tezos_error_trace!(FfiJsonEncoderError);
+from_ocaml_tezos_error_trace!(TezosRuntimeConfigurationError);
+from_ocaml_tezos_error_trace!(ComputePathError, tezos_api::ffi::CallError);

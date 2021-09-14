@@ -11,7 +11,8 @@ use tezos_wrapper::{
     protocol::ProtocolApi,
     service::{
         ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
-        ContextGetTreeByPrefixRequest, NodeMessage, ProtocolMessage,
+        ContextGetTreeByPrefixRequest, JsonEncodeApplyBlockOperationsMetadataParams,
+        JsonEncodeApplyBlockResultMetadataParams, NodeMessage, ProtocolMessage,
     },
 };
 
@@ -119,13 +120,15 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 );
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
-            ProtocolMessage::JsonEncodeApplyBlockResultMetadata {
-                context_hash,
-                metadata_bytes,
-                max_operations_ttl,
-                protocol_hash,
-                next_protocol_hash,
-            } => {
+            ProtocolMessage::JsonEncodeApplyBlockResultMetadata(
+                JsonEncodeApplyBlockResultMetadataParams {
+                    context_hash,
+                    metadata_bytes,
+                    max_operations_ttl,
+                    protocol_hash,
+                    next_protocol_hash,
+                },
+            ) => {
                 let res = Proto::apply_block_result_metadata(
                     context_hash,
                     metadata_bytes,
@@ -137,13 +140,15 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     res,
                 ))?;
             }
-            ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata {
-                chain_id,
-                operations,
-                operations_metadata_bytes,
-                protocol_hash,
-                next_protocol_hash,
-            } => {
+            ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(
+                JsonEncodeApplyBlockOperationsMetadataParams {
+                    chain_id,
+                    operations,
+                    operations_metadata_bytes,
+                    protocol_hash,
+                    next_protocol_hash,
+                },
+            ) => {
                 let res = Proto::apply_block_operations_metadata(
                     chain_id,
                     operations,

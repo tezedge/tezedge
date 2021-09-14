@@ -3408,6 +3408,7 @@ dependencies = [
  "tezos_api",
  "tezos_context_api",
  "tezos_messages",
+ "tezos_wrapper",
 ]
 
 [[package]]
@@ -3455,6 +3456,7 @@ name = "tezos_interop"
 version = "1.10.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "criterion",
  "crypto",
  "futures",
@@ -3469,6 +3471,7 @@ dependencies = [
  "tezos_context_api",
  "tezos_conv",
  "tezos_messages",
+ "tezos_wrapper",
  "thiserror",
 ]
 

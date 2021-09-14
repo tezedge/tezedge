@@ -3,10 +3,15 @@
 
 use crate::{
     OCamlApplyBlockRequest, OCamlBeginApplicationRequest, OCamlBeginConstructionRequest,
-    OCamlBlockHeader, OCamlBlockHeaderShellHeader, OCamlCycleRollsOwnerSnapshot,
-    OCamlHelpersPreapplyBlockRequest, OCamlOperation, OCamlOperationShellHeader,
-    OCamlProtocolRpcRequest, OCamlRpcRequest, OCamlTezosContextConfiguration,
-    OCamlTezosContextIrminStorageConfiguration, OCamlTezosContextStorageConfiguration,
+    OCamlBlockHeader, OCamlBlockHeaderShellHeader, OCamlComputePathRequest,
+    OCamlContextGetKeyFromHistoryRequest, OCamlContextGetKeyValuesByPrefixRequest,
+    OCamlContextGetTreeByPrefixRequest, OCamlCycleRollsOwnerSnapshot, OCamlGenesisChain,
+    OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
+    OCamlJsonEncodeApplyBlockOperationsMetadataParams,
+    OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
+    OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
+    OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
+    OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
     OCamlValidateOperationRequest,
 };
 
@@ -23,19 +28,28 @@ use crypto::hash::{
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
-    impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant, OCaml,
-    OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, OCamlRuntime, ToOCaml,
+    impl_to_ocaml_polymorphic_variant, impl_to_ocaml_record, impl_to_ocaml_variant,
+    ocaml_alloc_record, ocaml_alloc_variant, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32,
+    OCamlInt64, OCamlList, OCamlRuntime, ToOCaml,
 };
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
-    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, ValidateOperationRequest,
+    ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
+    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosRuntimeConfiguration,
+    ValidateOperationRequest,
 };
 use tezos_context_api::{
-    ContextKvStoreConfiguration, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_wrapper::service::{
+    ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
+    ContextGetTreeByPrefixRequest, GenesisResultDataParams, InitProtocolContextParams,
+    JsonEncodeApplyBlockOperationsMetadataParams, JsonEncodeApplyBlockResultMetadataParams,
+    ProtocolMessage,
+};
 
 // Hashes
 
@@ -312,6 +326,117 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_record! {
+    ComputePathRequest => OCamlComputePathRequest {
+        operations: OCamlList<OCamlList<OCamlOperationHash>>
+    }
+}
+
+impl_to_ocaml_record! {
+    GenesisResultDataParams => OCamlGenesisResultDataParams {
+        genesis_context_hash: OCamlContextHash,
+        chain_id: OCamlChainId,
+        genesis_protocol_hash: OCamlProtocolHash,
+        genesis_max_operations_ttl: OCamlInt => *genesis_max_operations_ttl as i32,
+    }
+}
+
+impl_to_ocaml_record! {
+    GenesisChain => OCamlGenesisChain {
+        time: String,
+        block: String,
+        protocol: String,
+    }
+}
+
+impl_to_ocaml_record! {
+    ProtocolOverrides => OCamlProtocolOverrides{
+        user_activated_upgrades: OCamlList<(OCamlInt, String)>,
+        user_activated_protocol_overrides: OCamlList<(String, String)>,
+    }
+}
+
+impl_to_ocaml_record! {
+    PatchContext => OCamlPatchContext {
+        key: String,
+        json: String,
+    }
+}
+
+impl_to_ocaml_record! {
+    InitProtocolContextParams => OCamlInitProtocolContextParams {
+        storage: OCamlTezosContextStorageConfiguration,
+        genesis: OCamlGenesisChain,
+        genesis_max_operations_ttl: OCamlInt => *genesis_max_operations_ttl as i32,
+        protocol_overrides: OCamlProtocolOverrides,
+        commit_genesis: bool,
+        enable_testchain: bool,
+        readonly: bool,
+        turn_off_context_raw_inspector: bool,
+        patch_context: Option<OCamlPatchContext>,
+        context_stats_db_path: Option<String> =>
+            context_stats_db_path.clone().map(|path| path.to_string_lossy().to_string()),
+    }
+}
+
+impl_to_ocaml_record! {
+    TezosRuntimeConfiguration => OCamlTezosRuntimeConfiguration {
+        log_enabled: bool,
+        debug_mode: bool,
+        compute_context_action_tree_hashes: bool,
+    }
+}
+
+impl_to_ocaml_record! {
+    JsonEncodeApplyBlockResultMetadataParams => OCamlJsonEncodeApplyBlockResultMetadataParams {
+        context_hash: OCamlContextHash,
+        metadata_bytes: OCamlBytes,
+        max_operations_ttl: OCamlInt,
+        protocol_hash: OCamlProtocolHash,
+        next_protocol_hash: OCamlProtocolHash,
+    }
+}
+
+fn convert_operations(operations: &Vec<Vec<Operation>>) -> Vec<Vec<FfiOperation>> {
+    let converted: Vec<Vec<FfiOperation>> = operations
+        .iter()
+        .map(|ops| ops.iter().map(FfiOperation::from).collect())
+        .collect();
+    converted
+}
+
+impl_to_ocaml_record! {
+    JsonEncodeApplyBlockOperationsMetadataParams => OCamlJsonEncodeApplyBlockOperationsMetadataParams {
+        chain_id: OCamlChainId,
+        operations: OCamlList<OCamlList<OCamlOperation>> => convert_operations(operations),
+        operations_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
+        protocol_hash: OCamlProtocolHash,
+        next_protocol_hash: OCamlProtocolHash,
+    }
+}
+
+impl_to_ocaml_record! {
+    ContextGetKeyFromHistoryRequest => OCamlContextGetKeyFromHistoryRequest {
+        context_hash: OCamlContextHash,
+        key: OCamlList<String>,
+    }
+}
+
+impl_to_ocaml_record! {
+    ContextGetKeyValuesByPrefixRequest => OCamlContextGetKeyValuesByPrefixRequest {
+        context_hash: OCamlContextHash,
+        prefix: OCamlList<String>,
+    }
+}
+
+impl_to_ocaml_record! {
+    ContextGetTreeByPrefixRequest => OCamlContextGetTreeByPrefixRequest {
+        context_hash: OCamlContextHash,
+        prefix: OCamlList<String>,
+        depth: Option<OCamlInt> => depth.clone().map(|depth| depth as i32),
+    }
+}
+
 unsafe impl<'a> ToOCaml<OCamlBlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a> {
     fn to_ocaml<'gc>(&self, cr: &'gc mut OCamlRuntime) -> OCaml<'gc, OCamlBlockHeaderShellHeader> {
         ocaml_alloc_record! {
@@ -358,5 +483,29 @@ unsafe impl<'a> ToOCaml<OCamlOperation> for FfiOperation<'a> {
                 data: OCamlBytes,
             }
         }
+    }
+}
+
+impl_to_ocaml_polymorphic_variant! {
+    ProtocolMessage => OCamlProtocolMessage {
+        ProtocolMessage::ApplyBlockCall(req: OCamlApplyBlockRequest),
+        ProtocolMessage::AssertEncodingForProtocolDataCall(hash: OCamlProtocolHash, data: OCamlBytes),
+        ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
+        ProtocolMessage::BeginConstructionCall(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::ValidateOperationCall(req: OCamlValidateOperationRequest),
+        ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::HelpersPreapplyOperationsCall(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::HelpersPreapplyBlockCall(req: OCamlHelpersPreapplyBlockRequest),
+        ProtocolMessage::ComputePathCall(req: OCamlComputePathRequest),
+        ProtocolMessage::ChangeRuntimeConfigurationCall(cfg: OCamlTezosRuntimeConfiguration),
+        ProtocolMessage::InitProtocolContextCall(params: OCamlInitProtocolContextParams),
+        ProtocolMessage::InitProtocolContextIpcServer(cfg: OCamlTezosContextStorageConfiguration),
+        ProtocolMessage::GenesisResultDataCall(params: OCamlGenesisResultDataParams),
+        ProtocolMessage::JsonEncodeApplyBlockResultMetadata(params: OCamlJsonEncodeApplyBlockResultMetadataParams),
+        ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(params: OCamlJsonEncodeApplyBlockOperationsMetadataParams),
+        ProtocolMessage::ContextGetKeyFromHistory(req: OCamlContextGetKeyFromHistoryRequest),
+        ProtocolMessage::ContextGetKeyValuesByPrefix(req: OCamlContextGetKeyValuesByPrefixRequest),
+        ProtocolMessage::ContextGetTreeByPrefix(req: OCamlContextGetTreeByPrefixRequest),
+        ProtocolMessage::ShutdownCall,
     }
 }

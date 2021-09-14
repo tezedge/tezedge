@@ -68,18 +68,27 @@ pub struct OCamlOperationMetadataHash {}
 pub struct OCamlOperationMetadataListListHash {}
 pub struct OCamlChainId {}
 
-// Headers and operations
+// Headers, operations and other
 
 pub struct OCamlBlockHeaderShellHeader {}
 pub struct OCamlBlockHeader {}
 pub struct OCamlOperationShellHeader {}
 pub struct OCamlOperation {}
+pub struct OCamlGenesisChain {}
+pub struct OCamlProtocolOverrides {}
+pub struct OCamlPatchContext {}
+pub struct OCamlTezosRuntimeConfiguration {}
+pub struct OCamlJsonEncodeApplyBlockResultMetadataParams {}
+pub struct OCamlJsonEncodeApplyBlockOperationsMetadataParams {}
 
 // Context
 
 pub struct OCamlTezosContextIrminStorageConfiguration {}
 pub struct OCamlTezosContextStorageConfiguration {}
 pub struct OCamlTezosContextConfiguration {}
+pub struct OCamlContextGetKeyFromHistoryRequest {}
+pub struct OCamlContextGetKeyValuesByPrefixRequest {}
+pub struct OCamlContextGetTreeByPrefixRequest {}
 
 // Requests
 
@@ -90,6 +99,9 @@ pub struct OCamlValidateOperationRequest {}
 pub struct OCamlRpcRequest {}
 pub struct OCamlProtocolRpcRequest {}
 pub struct OCamlHelpersPreapplyBlockRequest {}
+pub struct OCamlComputePathRequest {}
+pub struct OCamlGenesisResultDataParams {}
+pub struct OCamlInitProtocolContextParams {}
 
 // Responses
 
@@ -110,10 +122,17 @@ pub struct OCamlTezosContextTezEdgeStorageConfiguration {}
 pub struct OCamlTezosErrorTrace {}
 pub struct OCamlValidateOperationResponse {}
 pub struct OCamlValidateOperationResult {}
+pub struct OCamlInitProtocolContextResult {}
+pub struct OCamlCommitGenesisResult {}
+pub struct OCamlComputePathResponse {}
 
 // Other
 
 pub struct OCamlCycleRollsOwnerSnapshot {}
+
+// IPC messages
+pub struct OCamlProtocolMessage {}
+pub struct OCamlNodeMessage {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
