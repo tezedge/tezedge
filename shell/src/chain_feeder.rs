@@ -18,6 +18,10 @@ use slog::{debug, info, trace, warn, Logger};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId};
+use shell_integration::{
+    dispatch_oneshot_result, InjectBlockError, InjectBlockOneshotResultCallback,
+    OneshotResultCallback,
+};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
@@ -36,19 +40,26 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValidatedBlock};
+use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{InjectBlockOneshotResultCallback, ShellChannelMsg, ShellChannelRef};
-use crate::state::{ApplyBlockBatch, StateError};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use crate::state::ApplyBlockBatch;
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::dispatch_oneshot_result;
 use std::collections::VecDeque;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
+
+pub type InitializeContextOneshotResultCallback =
+    OneshotResultCallback<Result<(), InitializeContextOneshotResultCallbackError>>;
+
+#[derive(Debug)]
+pub struct InitializeContextOneshotResultCallbackError {
+    reason: String,
+}
 
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
@@ -64,6 +75,7 @@ pub type ApplyBlockPermit = OwnedSemaphorePermit;
 pub struct ApplyBlock {
     batch: ApplyBlockBatch,
     chain_id: Arc<ChainId>,
+    chain_manager: Arc<ChainManagerRef>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<InjectBlockOneshotResultCallback>,
@@ -76,12 +88,14 @@ impl ApplyBlock {
     pub fn new(
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
+        chain_manager: Arc<ChainManagerRef>,
         result_callback: Option<InjectBlockOneshotResultCallback>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
         permit: Option<ApplyBlockPermit>,
     ) -> Self {
         Self {
             chain_id,
+            chain_manager,
             batch,
             result_callback,
             bootstrapper,
@@ -95,6 +109,7 @@ impl ApplyBlock {
 pub struct ScheduleApplyBlock {
     batch: ApplyBlockBatch,
     chain_id: Arc<ChainId>,
+    chain_manager: Arc<ChainManagerRef>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
 }
 
@@ -102,11 +117,13 @@ impl ScheduleApplyBlock {
     pub fn new(
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
+        chain_manager: Arc<ChainManagerRef>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
     ) -> Self {
         Self {
             chain_id,
             batch,
+            chain_manager,
             bootstrapper,
         }
     }
@@ -174,25 +191,24 @@ impl ChainFeeder {
     /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
     pub fn actor(
         sys: &impl ActorRefFactory,
-        chain_current_head_manager: ChainCurrentHeadManagerRef,
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
+        initialize_context_result_callback: InitializeContextOneshotResultCallback,
     ) -> Result<ChainFeederRef, CreateError> {
         // spawn inner thread
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
-                chain_current_head_manager,
                 persistent_storage,
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
                 tezos_writeable_api,
                 log,
             )
-            .spawn_feeder_thread("chain-feedr-ctx".into())
+            .spawn_feeder_thread("chain-feedr-ctx".into(), initialize_context_result_callback)
             .map_err(|_| CreateError::Panicked)?;
 
         sys.actor_of_props::<ChainFeeder>(
@@ -227,7 +243,7 @@ impl ChainFeeder {
         if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg, chain_feeder.clone())) {
             warn!(log, "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
             if let Err(de) = dispatch_oneshot_result(result_callback, || {
-                Err(StateError::ProcessingError {
+                Err(InjectBlockError {
                     reason: format!("{}", e),
                 })
             }) {
@@ -257,6 +273,7 @@ impl ChainFeeder {
                         ApplyBlock::new(
                             batch.chain_id,
                             batch.batch,
+                            batch.chain_manager,
                             None,
                             batch.bootstrapper,
                             Some(permit),
@@ -495,8 +512,6 @@ impl From<ProtocolServiceError> for FeedChainError {
 
 #[derive(Clone)]
 pub(crate) struct BlockApplierThreadSpawner {
-    /// actor for managing current head
-    chain_current_head_manager: ChainCurrentHeadManagerRef,
     persistent_storage: PersistentStorage,
     init_storage_data: Arc<StorageInitInfo>,
     tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -506,7 +521,6 @@ pub(crate) struct BlockApplierThreadSpawner {
 
 impl BlockApplierThreadSpawner {
     pub(crate) fn new(
-        chain_current_head_manager: ChainCurrentHeadManagerRef,
         persistent_storage: PersistentStorage,
         init_storage_data: Arc<StorageInitInfo>,
         tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -514,7 +528,6 @@ impl BlockApplierThreadSpawner {
         log: Logger,
     ) -> Self {
         Self {
-            chain_current_head_manager,
             persistent_storage,
             tezos_writeable_api,
             init_storage_data,
@@ -527,6 +540,7 @@ impl BlockApplierThreadSpawner {
     fn spawn_feeder_thread(
         &self,
         thread_name: String,
+        initialize_context_result_callback: InitializeContextOneshotResultCallback,
     ) -> Result<
         (
             QueueSender<Event>,
@@ -540,13 +554,13 @@ impl BlockApplierThreadSpawner {
         let block_applier_run = Arc::new(AtomicBool::new(false));
 
         let block_applier_thread = {
-            let chain_current_head_manager = self.chain_current_head_manager.clone();
             let persistent_storage = self.persistent_storage.clone();
             let tezos_writeable_api = self.tezos_writeable_api.clone();
             let init_storage_data = self.init_storage_data.clone();
             let tezos_env = self.tezos_env.clone();
             let log = self.log.clone();
             let block_applier_run = block_applier_run.clone();
+            let mut initialize_context_result_callback = Some(initialize_context_result_callback);
 
             thread::Builder::new().name(thread_name).spawn(move || -> Result<(), Error> {
                 let block_storage = BlockStorage::new(&persistent_storage);
@@ -567,7 +581,6 @@ impl BlockApplierThreadSpawner {
                             &tezos_env,
                             &init_storage_data,
                             &block_applier_run,
-                            &chain_current_head_manager,
                             &block_storage,
                             &block_meta_storage,
                             &chain_meta_storage,
@@ -578,6 +591,7 @@ impl BlockApplierThreadSpawner {
                             &constants_storage,
                             &protocol_controller.api,
                             &mut block_applier_event_receiver,
+                            &mut initialize_context_result_callback,
                             &log,
                         ) {
                             Ok(()) => {
@@ -613,7 +627,6 @@ fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
     apply_block_run: &AtomicBool,
-    chain_current_head_manager: &ChainCurrentHeadManagerRef,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
@@ -624,13 +637,11 @@ fn feed_chain_to_protocol(
     constants_storage: &ConstantsStorage,
     protocol_controller: &ProtocolController,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
+    initialize_context_result_callback: &mut Option<InitializeContextOneshotResultCallback>,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
     // at first we initialize protocol runtime and ffi context
-
-    initialize_protocol_context(
-        apply_block_run,
-        chain_current_head_manager,
+    if let Err(e) = initialize_protocol_context(
         block_storage,
         block_meta_storage,
         chain_meta_storage,
@@ -639,15 +650,42 @@ fn feed_chain_to_protocol(
         log,
         tezos_env,
         init_storage_data,
-    )?;
+    ) {
+        if let Some(initialize_context_result_callback) = initialize_context_result_callback.take()
+        {
+            let _ = dispatch_oneshot_result(Some(initialize_context_result_callback), || {
+                Err(InitializeContextOneshotResultCallbackError {
+                    reason: format!("{}", e),
+                })
+            });
+        }
+        return Err(e);
+    }
 
     // now just check current head (at least genesis should be there)
-    if chain_meta_storage
-        .get_current_head(&init_storage_data.chain_id)?
-        .is_none()
-    {
-        // this should not happen here, we applied at least genesis before
-        return Err(FeedChainError::UnknownCurrentHeadError);
+    match chain_meta_storage.get_current_head(&init_storage_data.chain_id) {
+        Ok(Some(_)) => {
+            // if we came here, everything is ok, and context is initialized ok
+            if let Some(initialize_context_result_callback) =
+                initialize_context_result_callback.take()
+            {
+                let _ =
+                    dispatch_oneshot_result(Some(initialize_context_result_callback), || Ok(()));
+            }
+        }
+        _ => {
+            // this should not happen here (None or Err), we applied at least genesis before
+            if let Some(initialize_context_result_callback) =
+                initialize_context_result_callback.take()
+            {
+                let _ = dispatch_oneshot_result(Some(initialize_context_result_callback), || {
+                    Err(InitializeContextOneshotResultCallbackError {
+                    reason: "Unknown current head after context initialization, at least genesis should be here".to_string(),
+                })
+                });
+            }
+            return Err(FeedChainError::UnknownCurrentHeadError);
+        }
     };
 
     // now we can start applying block
@@ -660,6 +698,7 @@ fn feed_chain_to_protocol(
                     let ApplyBlock {
                         batch,
                         bootstrapper,
+                        chain_manager,
                         chain_id,
                         result_callback,
                         permit,
@@ -667,7 +706,7 @@ fn feed_chain_to_protocol(
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
                     let mut batch_stats = Some(ApplyBlockStats::default());
-                    let mut oneshot_result: Option<Result<(), StateError>> = None;
+                    let mut oneshot_result: Option<Result<(), InjectBlockError>> = None;
                     let mut previous_block_data_cache: Option<(
                         Arc<BlockHeaderWithHash>,
                         BlockAdditionalData,
@@ -741,17 +780,16 @@ fn feed_chain_to_protocol(
                                             );
                                         }
 
-                                        // notify  chain current head manager (only for new applied block)
-                                        chain_current_head_manager.tell(validated_block, None);
+                                        // notify  chain manager (only for new applied block)
+                                        chain_manager.tell(validated_block, None);
                                     }
                                     None => {
                                         last_applied = Some(block_to_apply);
                                         if result_callback.is_some() {
-                                            oneshot_result =
-                                                Some(Err(StateError::ProcessingError {
-                                                    reason: "Block/batch is already applied"
-                                                        .to_string(),
-                                                }));
+                                            oneshot_result = Some(Err(InjectBlockError {
+                                                reason: "Block/batch is already applied"
+                                                    .to_string(),
+                                            }));
                                         }
                                         previous_block_data_cache = None;
                                     }
@@ -763,7 +801,7 @@ fn feed_chain_to_protocol(
                                 // handle condvar immediately
                                 if let Err(e) =
                                     dispatch_oneshot_result(result_callback.clone(), || {
-                                        Err(StateError::ProcessingError {
+                                        Err(InjectBlockError {
                                             reason: format!("{}", e),
                                         })
                                     })
@@ -1060,8 +1098,6 @@ fn resolve_block_data(
 /// if we start with new databazes without genesis,
 /// it ensures correct initialization of storage with genesis and his data.
 pub(crate) fn initialize_protocol_context(
-    apply_block_run: &AtomicBool,
-    chain_current_head_manager: &ChainCurrentHeadManagerRef,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
@@ -1140,18 +1176,6 @@ pub(crate) fn initialize_protocol_context(
 
             info!(log, "Genesis commit stored successfully";
                        "stats" => stats.print_formatted_average_times());
-
-            // notify listeners
-            if apply_block_run.load(Ordering::Acquire) {
-                // notify others that the block successfully applied
-                chain_current_head_manager.tell(
-                    ProcessValidatedBlock::new(
-                        Arc::new(genesis_with_hash),
-                        Arc::new(init_storage_data.chain_id.clone()),
-                    ),
-                    None,
-                );
-            }
         }
     }
 

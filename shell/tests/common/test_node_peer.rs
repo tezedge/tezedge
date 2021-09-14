@@ -44,6 +44,9 @@ pub struct TestNodePeer {
 }
 
 impl TestNodePeer {
+    const CONNECTION_MAX_RETRIES: usize = 7;
+    const CONNECTION_RETRY_IN_SECONDS: u64 = 1;
+
     pub fn connect(
         name: String,
         connect_to_node_port: u16,
@@ -64,6 +67,8 @@ impl TestNodePeer {
         let tx = Arc::new(Mutex::new(None));
         let identity = Arc::new(identity);
         let test_mempool = Arc::new(RwLock::new(Mempool::default()));
+        let shell_compatibility_version = Arc::new(shell_compatibility_version);
+
         {
             let test_mempool = test_mempool.clone();
             let identity = identity.clone();
@@ -72,46 +77,68 @@ impl TestNodePeer {
             let log = log.clone();
             let name = name.clone();
             tokio_executor.spawn(async move {
-                // init socket connection to server node
-                match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
-                    Ok(Ok(stream)) => {
-                        // authenticate
-                        let local = Arc::new(LocalPeerInfo::new(
-                            1235,
-                            identity,
-                            Arc::new(shell_compatibility_version),
-                            pow_target,
-                        ));
-                        let bootstrap = Bootstrap::outgoing(
-                            stream,
-                            server_address,
-                            false,
-                            false,
-                        );
 
-                        match peer::bootstrap(bootstrap, local, &log).await {
-                            Ok(BootstrapOutput(rx, txw, ..)) => {
-                                info!(log, "[{}] Connection successful", name; "ip" => server_address);
+                    // we try to connect 5 times with one seconds delay,
+                    // issue, is that peer_manager socket, could be not ready, and we dont know when it is ready
+                    let mut first_connection = true;
+                    let mut retry_connection = false;
+                    let mut retries = Self::CONNECTION_MAX_RETRIES;
+                    while first_connection || retry_connection && retries > 0 {
+                        first_connection = false;
 
-                                *tx.lock().await = txw.lock().await.take();
-                                connected.store(true, Ordering::Release);
+                        let test_mempool = test_mempool.clone();
+                        let identity = identity.clone();
+                        let shell_compatibility_version = shell_compatibility_version.clone();
+                        let connected = connected.clone();
+                        let tx = tx.clone();
+                        let log = log.clone();
+                        let name = name.clone();
 
-                                // process messages
-                                Self::begin_process_incoming(name, rx, tx.clone(), connected, log, server_address, test_mempool, handle_message_callback).await;
+                        // init socket connection to server node
+                        match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
+                            Ok(Ok(stream)) => {
+                                // authenticate
+                                let local = Arc::new(LocalPeerInfo::new(
+                                    1235,
+                                    identity,
+                                    shell_compatibility_version,
+                                    pow_target,
+                                ));
+                                let bootstrap = Bootstrap::outgoing(
+                                    stream,
+                                    server_address,
+                                    false,
+                                    false,
+                                );
+
+                                match peer::bootstrap(bootstrap, local, &log).await {
+                                    Ok(BootstrapOutput(rx, txw, ..)) => {
+                                        info!(log, "[{}] Connection successful", name; "ip" => server_address);
+
+                                        *tx.lock().await = txw.lock().await.take();
+                                        connected.store(true, Ordering::Release);
+
+                                        // process messages
+                                        Self::begin_process_incoming(name, rx, tx.clone(), connected, log, server_address, test_mempool, handle_message_callback).await;
+                                    }
+                                    Err(e) => {
+                                        error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
+                                    }
+                                }
                             }
-                            Err(e) => {
-                                error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
+                            Ok(Err(e)) => {
+                                error!(log, "[{}] Connection failed", name; "ip" => server_address, "reason" => format!("{:?}", e), "retries" => retries);
+                                retry_connection = true;
+                                retries -= 1;
+                                error!(log, "[{}] Connection retry in [{}] seconds", name, Self::CONNECTION_RETRY_IN_SECONDS; "retries" => retries, "retry_connection" => retry_connection);
+                                tokio::time::sleep(Duration::from_secs(Self::CONNECTION_RETRY_IN_SECONDS)).await;
+                            }
+                            Err(_) => {
+                                error!(log, "[{}] Connection timed out", name; "ip" => server_address);
                             }
                         }
                     }
-                    Ok(Err(e)) => {
-                        error!(log, "[{}] Connection failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
-                    }
-                    Err(_) => {
-                        error!(log, "[{}] Connection timed out", name; "ip" => server_address);
-                    }
-                }
-            });
+                });
         }
 
         TestNodePeer {
@@ -294,7 +321,7 @@ impl TestNodePeer {
         let tx = self.tx.clone();
         let name = self.name.to_string();
         let log = self.log.clone();
-        self.tokio_executor.spawn(async move {
+        self.tokio_executor.block_on(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
                 match timeout(Self::IO_TIMEOUT, tx.write_message(&msg)).await {

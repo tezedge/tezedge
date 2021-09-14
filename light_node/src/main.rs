@@ -14,25 +14,29 @@ use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
+use shell::chain_feeder::ApplyBlock;
+use shell::chain_feeder::ChainFeederRef;
+use shell::chain_manager::{ChainManager, ChainManagerRef};
+use shell::connector::ShellConnectorSupport;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use shell::state::head_state::init_current_head_state;
-use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
-use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
+    hydrate_current_head, resolve_storage_init_chain_data, BlockHeaderWithHash, BlockStorage,
+    PersistentStorage, StorageInitInfo,
+};
+use storage::{
     initializer::{initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache},
     BlockMetaStorage, Replay,
 };
-use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
+use tezos_messages::Head;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
@@ -174,7 +178,7 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    info!(log, "Initializing protocol runners... (4/5)");
+    info!(log, "Initializing protocol runners... (4/7)");
 
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
@@ -219,19 +223,12 @@ fn block_on_actors(
 
     info!(log, "Protocol runners initialized");
 
-    info!(log, "Initializing actors... (5/5)";
+    info!(log, "Initializing actors... (5/7)";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
     // create partial (global) states for sharing between threads/actors
-    let local_current_head_state = init_current_head_state();
-    let remote_current_head_state = init_current_head_state();
     let current_mempool_state_storage = init_mempool_state_storage();
-    let bootstrap_state = init_synchronization_bootstrap_state_storage(
-        env.p2p
-            .peer_threshold
-            .num_of_peers_for_bootstrap_threshold(),
-    );
 
     let mut actor_system_cfg = riker::load_config();
     if env.riker_threads > 0 {
@@ -242,17 +239,22 @@ fn block_on_actors(
     }
 
     // create riker's actor system
-    let actor_system = SystemBuilder::new()
-        .name("light-node")
-        .log(log.clone())
-        .cfg(actor_system_cfg)
-        .create()
-        .expect("Failed to create actor system");
+    let actor_system = Arc::new(
+        SystemBuilder::new()
+            .name("light-node")
+            .log(log.clone())
+            .cfg(actor_system_cfg)
+            .create()
+            .expect("Failed to create actor system"),
+    );
 
     let network_channel =
-        NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-    let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+        NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
+    let shell_channel =
+        ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+        actor_system.clone(),
+        log.clone(),
         shell_channel.clone(),
         persistent_storage.clone(),
         current_mempool_state_storage.clone(),
@@ -260,31 +262,62 @@ fn block_on_actors(
         env.p2p.disable_mempool,
     ));
 
-    let chain_current_head_manager = ChainCurrentHeadManager::actor(
-        &actor_system,
-        shell_channel.clone(),
-        persistent_storage.clone(),
-        init_storage_data.clone(),
-        local_current_head_state.clone(),
-        remote_current_head_state.clone(),
-        current_mempool_state_storage.clone(),
-        bootstrap_state.clone(),
-        mempool_prevalidator_factory.clone(),
-    )
-    .expect("Failed to create chain current head manager");
+    // start chain_feeder with controlled startup and wait for ok initialized context
+    info!(log, "Initializing context... (6/7)");
+    let (initialize_context_result_callback, initialize_context_result_callback_receiver) = {
+        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
+        (Arc::new(result_callback_sender), result_callback_receiver)
+    };
     let block_applier = ChainFeeder::actor(
-        &actor_system,
-        chain_current_head_manager,
+        actor_system.as_ref(),
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
         env.tezos_network_config.clone(),
         log.clone(),
+        initialize_context_result_callback,
     )
     .expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(
-        &actor_system,
+
+    match initialize_context_result_callback_receiver
+        .recv_timeout(env.storage.initialize_context_timeout)
+    {
+        Ok(result) => {
+            if let Err(e) = result {
+                panic!(
+                    "Context was not initialized successfully, so cannot continue, reason: {:?}",
+                    e
+                )
+            }
+        }
+        Err(e) => {
+            panic!("Context was not initialized within {:?} timeout, e.g. try increase [--initialize-context-timeout], reason: {}", env.storage.initialize_context_timeout, e)
+        }
+    };
+    info!(log, "Context initialized (6/7)");
+
+    // load current_head, at least genesis should be stored, if not, just finished, something is wrong
+    info!(log, "Hydrating current head... (7/7)");
+    let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
+        hydrate_current_head(&init_storage_data, &persistent_storage)
+            .expect("Failed to load current_head from database");
+    let hydrated_current_head = Head::new(
+        hydrated_current_head_block.hash.clone(),
+        hydrated_current_head_block.header.level(),
+        hydrated_current_head_block.header.fitness().clone(),
+    );
+    {
+        let (head, level, fitness) = hydrated_current_head.to_debug_info();
+        info!(log, "Current head hydrated (7/7)";
+                   "block_hash" => head,
+                   "level" => level,
+                   "fitness" => fitness);
+    }
+
+    // start chain_manager with controlled startup and wait for current_head initialization (at least genesis should be here)
+    let chain_manager = ChainManager::actor(
+        actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
         shell_channel.clone(),
@@ -292,19 +325,23 @@ fn block_on_actors(
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
         is_sandbox,
-        local_current_head_state,
-        remote_current_head_state,
+        hydrated_current_head,
         current_mempool_state_storage.clone(),
-        bootstrap_state,
-        mempool_prevalidator_factory,
+        env.p2p
+            .peer_threshold
+            .num_of_peers_for_bootstrap_threshold(),
+        mempool_prevalidator_factory.clone(),
         identity.clone(),
     )
     .expect("Failed to create chain manager");
 
+    let shell_connector =
+        ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory);
+
     // Only start Monitoring when websocket is set
     if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
         let websocket_handler = WebsocketHandler::actor(
-            &actor_system,
+            actor_system.as_ref(),
             tokio_runtime.handle().clone(),
             websocket_address,
             max_number_of_websocket_connections,
@@ -313,7 +350,7 @@ fn block_on_actors(
         .expect("Failed to start websocket actor");
 
         let _ = Monitor::actor(
-            &actor_system,
+            actor_system.as_ref(),
             network_channel.clone(),
             websocket_handler,
             shell_channel.clone(),
@@ -324,8 +361,10 @@ fn block_on_actors(
     }
 
     let _ = RpcServer::actor(
-        &actor_system,
+        actor_system.clone(),
+        log.clone(),
         shell_channel.clone(),
+        Box::new(shell_connector),
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
         &persistent_storage,
@@ -336,6 +375,7 @@ fn block_on_actors(
         env.tezos_network_config.clone(),
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
+        hydrated_current_head_block,
         env.storage
             .context_storage_configuration
             .tezedge_is_enabled(),
@@ -346,6 +386,7 @@ fn block_on_actors(
         return schedule_replay_blocks(
             blocks,
             &init_storage_data,
+            chain_manager,
             block_applier,
             shell_channel,
             log.clone(),
@@ -356,7 +397,7 @@ fn block_on_actors(
 
         // and than open p2p and others
         let _ = PeerManager::actor(
-            &actor_system,
+            actor_system.as_ref(),
             network_channel,
             shell_channel.clone(),
             tokio_runtime.handle().clone(),
@@ -421,10 +462,12 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
 fn schedule_replay_blocks(
     blocks: Vec<Arc<BlockHash>>,
     init_storage_data: &StorageInitInfo,
+    chain_manager: ChainManagerRef,
     block_applier: ChainFeederRef,
     shell_channel: ShellChannelRef,
     log: Logger,
 ) {
+    let chain_manager = Arc::new(chain_manager);
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
     let (result_callback_sender, result_callback_receiver) = {
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
@@ -440,7 +483,14 @@ fn schedule_replay_blocks(
 
         let now = std::time::Instant::now();
         block_applier.tell(
-            ApplyBlock::new(Arc::clone(&chain_id), batch, result_callback, None, None),
+            ApplyBlock::new(
+                Arc::clone(&chain_id),
+                batch,
+                chain_manager.clone(),
+                result_callback,
+                None,
+                None,
+            ),
             None,
         );
 
@@ -452,7 +502,7 @@ fn schedule_replay_blocks(
         let hash = block.to_base58_check();
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
-        if let Err(_) = result.as_ref() {
+        if result.as_ref().is_err() {
             replay_shutdown(shell_channel);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
@@ -505,7 +555,7 @@ fn collect_replayed_blocks(
     replay: &Replay,
     log: &Logger,
 ) -> Vec<Arc<BlockHash>> {
-    let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
     let from_block = replay.from_block.as_ref();
     let mut block_hash = replay.to_block.clone();
     let mut blocks = Vec::new();
@@ -614,7 +664,7 @@ fn main() {
     check_deprecated_network(&env, &log);
 
     // Validate zcash-params
-    info!(log, "Checking zcash-params for sapling... (1/5)");
+    info!(log, "Checking zcash-params for sapling... (1/7)");
     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
         let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
         error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
@@ -625,7 +675,7 @@ fn main() {
     }
 
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    info!(log, "Loading identity... (2/5)");
+    info!(log, "Loading identity... (2/7)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
             info!(log, "Identity loaded from file";
@@ -651,11 +701,11 @@ fn main() {
     };
 
     // create/initialize databases
-    info!(log, "Loading databases... (3/5)");
+    info!(log, "Loading databases... (3/7)");
 
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
-    let mut caches = GlobalRocksDbCacheHolder::with_capacity(3);
+    let mut caches = GlobalRocksDbCacheHolder::with_capacity(1);
     let main_chain = MainChain::new(
         env.tezos_network_config
             .main_chain_id()

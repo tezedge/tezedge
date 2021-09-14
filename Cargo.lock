@@ -3033,6 +3033,7 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "serial_test",
+ "shell_integration",
  "slog",
  "slog-async",
  "slog-term",
@@ -3047,6 +3048,21 @@ dependencies = [
  "thiserror",
  "tokio",
  "zip",
+]
+
+[[package]]
+name = "shell_integration"
+version = "1.9.0"
+dependencies = [
+ "anyhow",
+ "crypto",
+ "serde 1.0.130",
+ "serde_json",
+ "slog",
+ "storage",
+ "tezos_api",
+ "tezos_messages",
+ "thiserror",
 ]
 
 [[package]]

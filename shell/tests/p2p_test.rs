@@ -90,7 +90,7 @@ fn test_proof_of_work(
         TmpStorage::create(common::prepare_empty_dir(&format!("__test_{}", name)))?,
         &common::prepare_empty_dir(&format!("__test_{}_context", name)),
         "test_peer_threshold",
-        &tezos_env,
+        tezos_env,
         patch_context,
         Some(NODE_P2P_CFG.clone()),
         node_identity,
@@ -105,6 +105,9 @@ fn test_proof_of_work(
         node.tezos_env.genesis_header_hash()?,
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
+
+    // wait node's p2p started
+    node.wait_p2p_started(name, (Duration::from_secs(3), Duration::from_millis(250)))?;
 
     slog::info!(peer_log, "Generating peer identity..."; "pow_target" => peer_pow_target);
     let peer_identity = tezos_identity::Identity::generate(peer_pow_target)?;
@@ -154,7 +157,7 @@ fn test_peer_threshold() -> Result<(), anyhow::Error> {
         TmpStorage::create(common::prepare_empty_dir("__test_22"))?,
         &common::prepare_empty_dir("__test_22_context"),
         "test_peer_threshold",
-        &tezos_env,
+        tezos_env,
         patch_context,
         Some(common::p2p_cfg_with_threshold(
             NODE_P2P_CFG.clone(),
@@ -181,6 +184,12 @@ fn test_peer_threshold() -> Result<(), anyhow::Error> {
         "genesis",
         node.tezos_env.genesis_header_hash()?,
         (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+
+    // wait node's p2p started
+    node.wait_p2p_started(
+        "test_peer_threshold",
+        (Duration::from_secs(3), Duration::from_millis(250)),
     )?;
 
     // try connect several peers: <peer_threshold_high * 2>

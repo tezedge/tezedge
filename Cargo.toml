@@ -20,6 +20,7 @@ members = [
     "tezos/lib_storage_ffi",
     "networking",
     "shell",
+    "shell-integration",
     "storage",
     "sandbox",
     "light_node",

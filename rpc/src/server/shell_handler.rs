@@ -36,18 +36,13 @@ pub async fn bootstrapped(
         .read()
         .map_err(|e| anyhow::format_err!("Failed to lock current state, reason: {}", e))?;
 
-    let bootstrap_info = match state_read.current_head().as_ref() {
-        Some(current_head) => {
-            let current_head: &BlockHeaderWithHash = &current_head;
-            let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
-            Ok(BootstrapInfo::new(
-                &current_head.hash,
-                TimeStamp::Rfc(timestamp),
-            ))
-        }
-        None => Err(RpcServiceError::UnexpectedError {
-            reason: "No current head".to_string(),
-        }),
+    let bootstrap_info = {
+        let current_head: &BlockHeaderWithHash = state_read.current_head().as_ref();
+        let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
+        Ok(BootstrapInfo::new(
+            &current_head.hash,
+            TimeStamp::Rfc(timestamp),
+        ))
     };
 
     result_to_json_response(bootstrap_info, env.log())
@@ -133,14 +128,7 @@ pub async fn mempool_monitor_operations(
     let state = env.state.clone();
     let log = env.log.clone();
     let current_mempool_state_storage = env.current_mempool_state_storage.clone();
-    let last_checked_head = state
-        .read()
-        .unwrap()
-        .current_head()
-        .as_ref()
-        .unwrap()
-        .hash
-        .clone();
+    let last_checked_head = state.read().unwrap().current_head().as_ref().hash.clone();
     make_json_stream_response(stream_services::OperationMonitorStream::new(
         chain_id,
         current_mempool_state_storage,
@@ -272,10 +260,7 @@ pub async fn context_raw_bytes(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash =
         parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
-    let prefix = match params.get_str("any") {
-        Some(s) => Some(s.to_owned()),
-        None => None,
-    };
+    let prefix = params.get_str("any").map(|s| s.to_owned());
     let depth = query.get_usize("depth");
 
     result_to_json_response(
@@ -330,15 +315,12 @@ pub async fn inject_block(
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
-    let shell_channel = env.shell_channel();
-
     let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_block(is_async, chain_id, &body, &env, shell_channel)
-            .await,
+        services::mempool_services::inject_block(is_async, chain_id, &body, &env).await,
         env.log(),
     )
 }
@@ -350,10 +332,7 @@ pub async fn mempool_request_operations(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_empty_json_response(
-        {
-            services::mempool_services::request_operations(env.shell_channel.clone());
-            Ok(())
-        },
+        services::mempool_services::request_operations(&env),
         env.log(),
     )
 }

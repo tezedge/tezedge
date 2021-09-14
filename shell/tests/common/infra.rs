@@ -20,7 +20,6 @@ use common::contains_all_keys;
 use crypto::hash::{BlockHash, OperationHash};
 use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
-use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::mempool::{
@@ -28,13 +27,10 @@ use shell::mempool::{
 };
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-use shell::state::head_state::init_current_head_state;
-use shell::state::synchronization_state::{
-    init_synchronization_bootstrap_state_storage, SynchronizationBootstrapStateRef,
-};
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
+use storage::{hydrate_current_head, BlockHeaderWithHash};
 use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
@@ -42,6 +38,7 @@ use tezos_api::ffi::{
     TezosRuntimeConfiguration,
 };
 use tezos_identity::Identity;
+use tezos_messages::Head;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
@@ -55,10 +52,9 @@ pub struct NodeInfrastructure {
     pub chain_manager: ChainManagerRef,
     pub shell_channel: ShellChannelRef,
     pub network_channel: NetworkChannelRef,
-    pub actor_system: ActorSystem,
+    pub actor_system: Arc<ActorSystem>,
     pub tmp_storage: TmpStorage,
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
-    pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
 }
@@ -81,7 +77,7 @@ impl NodeInfrastructure {
         // environement
         let is_sandbox = false;
         let (p2p_threshold, p2p_disable_mempool) = match p2p.as_ref() {
-            Some((p2p, _)) => (p2p.peer_threshold.clone(), p2p.disable_mempool),
+            Some((p2p, _)) => (p2p.peer_threshold, p2p.disable_mempool),
             None => (PeerConnectionThreshold::try_new(1, 1, Some(0))?, false),
         };
         let identity = Arc::new(identity);
@@ -107,8 +103,8 @@ impl NodeInfrastructure {
         );
 
         let init_storage_data = resolve_storage_init_chain_data(
-            &tezos_env,
-            &tmp_storage.path(),
+            tezos_env,
+            tmp_storage.path(),
             &context_storage_configuration,
             &patch_context,
             &None,
@@ -171,24 +167,23 @@ impl NodeInfrastructure {
             log.clone(),
         )?);
 
-        let local_current_head_state = init_current_head_state();
-        let remote_current_head_state = init_current_head_state();
         let current_mempool_state_storage = init_mempool_state_storage();
-        let bootstrap_state = init_synchronization_bootstrap_state_storage(
-            p2p_threshold.num_of_peers_for_bootstrap_threshold(),
-        );
 
         // run actor's
-        let actor_system = SystemBuilder::new()
-            .name(name)
-            .log(log.clone())
-            .create()
-            .expect("Failed to create actor system");
+        let actor_system = Arc::new(
+            SystemBuilder::new()
+                .name(name)
+                .log(log.clone())
+                .create()
+                .expect("Failed to create actor system"),
+        );
         let shell_channel =
-            ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+            ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
         let network_channel =
-            NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+            NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
         let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+            actor_system.clone(),
+            log.clone(),
             shell_channel.clone(),
             persistent_storage.clone(),
             current_mempool_state_storage.clone(),
@@ -196,42 +191,54 @@ impl NodeInfrastructure {
             p2p_disable_mempool,
         ));
 
-        let chain_current_head_manager = ChainCurrentHeadManager::actor(
-            &actor_system,
-            shell_channel.clone(),
-            persistent_storage.clone(),
-            init_storage_data.clone(),
-            local_current_head_state.clone(),
-            remote_current_head_state.clone(),
-            current_mempool_state_storage.clone(),
-            bootstrap_state.clone(),
-            mempool_prevalidator_factory.clone(),
-        )
-        .expect("Failed to create chain current head manager");
+        let (initialize_context_result_callback, initialize_context_result_callback_receiver) = {
+            let (result_callback_sender, result_callback_receiver) =
+                std::sync::mpsc::sync_channel(1);
+            (Arc::new(result_callback_sender), result_callback_receiver)
+        };
         let block_applier = ChainFeeder::actor(
-            &actor_system,
-            chain_current_head_manager,
+            actor_system.as_ref(),
             shell_channel.clone(),
             persistent_storage.clone(),
             tezos_writeable_api,
             init_storage_data.clone(),
             tezos_env.clone(),
             log.clone(),
+            initialize_context_result_callback,
         )
         .expect("Failed to create chain feeder");
+        match initialize_context_result_callback_receiver.recv_timeout(Duration::from_secs(15)) {
+            Ok(result) => {
+                if let Err(e) = result {
+                    panic!("Context was not initialized successfully, so cannot continue, reason: {:?}", e)
+                }
+            }
+            Err(e) => {
+                panic!("Context was not initialized until 15 seconds timeout, so cannot continue, reason: {}", e)
+            }
+        };
+
+        let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
+            hydrate_current_head(&init_storage_data, persistent_storage)
+                .expect("Failed to load current_head from database");
+        let hydrated_current_head = Head::new(
+            hydrated_current_head_block.hash.clone(),
+            hydrated_current_head_block.header.level(),
+            hydrated_current_head_block.header.fitness().clone(),
+        );
+
         let chain_manager = ChainManager::actor(
             &actor_system,
             block_applier.clone(),
             network_channel.clone(),
             shell_channel.clone(),
             persistent_storage.clone(),
-            tezos_readonly_api_pool.clone(),
-            init_storage_data.clone(),
+            tezos_readonly_api_pool,
+            init_storage_data,
             is_sandbox,
-            local_current_head_state,
-            remote_current_head_state,
+            hydrated_current_head,
             current_mempool_state_storage.clone(),
-            bootstrap_state.clone(),
+            p2p_threshold.num_of_peers_for_bootstrap_threshold(),
             mempool_prevalidator_factory,
             identity.clone(),
         )
@@ -240,7 +247,7 @@ impl NodeInfrastructure {
         // and than open p2p and others - if configured
         let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
             let peer_manager = PeerManager::actor(
-                &actor_system,
+                actor_system.as_ref(),
                 network_channel.clone(),
                 shell_channel.clone(),
                 tokio_runtime.handle().clone(),
@@ -267,7 +274,6 @@ impl NodeInfrastructure {
             actor_system,
             tmp_storage,
             current_mempool_state_storage,
-            bootstrap_state,
             tezos_env: tezos_env.clone(),
         })
     }
@@ -392,33 +398,15 @@ impl NodeInfrastructure {
     }
 
     // TODO: refactor with async/condvar, not to block main thread
-    pub fn wait_for_bootstrapped(
+    pub fn wait_p2p_started(
         &self,
-        marker: &str,
-        (timeout, delay): (Duration, Duration),
+        _marker: &str,
+        (timeout, _delay): (Duration, Duration),
     ) -> Result<(), anyhow::Error> {
-        let start = Instant::now();
-
-        let result = loop {
-            let is_bootstrapped = self
-                .bootstrap_state
-                .read()
-                .expect("Failed to get lock")
-                .is_bootstrapped();
-
-            if is_bootstrapped {
-                info!(self.log, "[NODE] Expected node is bootstrapped"; "marker" => marker);
-                break Ok(());
-            }
-
-            // kind of simple retry policy
-            if start.elapsed().le(&timeout) {
-                thread::sleep(delay);
-            } else {
-                break Err(anyhow::format_err!("wait_for_bootstrapped - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
-            }
-        };
-        result
+        // TODO: hack, because actors starts with blocking waiting for context, so there is small delay when p2p layer is up and we dont have a way to check p2p port is up and ready
+        // so we just sleep here a little bit
+        std::thread::sleep(timeout);
+        Ok(())
     }
 
     pub fn whitelist_all(&self) {
@@ -524,10 +512,10 @@ pub mod test_actor {
             network_channel: NetworkChannelRef,
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
         ) -> Result<NetworkChannelListenerRef, CreateError> {
-            Ok(sys.actor_of_props::<NetworkChannelListener>(
+            sys.actor_of_props::<NetworkChannelListener>(
                 Self::name(),
                 Props::new_args((network_channel, peers_mirror)),
-            )?)
+            )
         }
 
         fn process_network_channel_message(

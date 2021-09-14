@@ -266,24 +266,39 @@ pub mod tests {
     }
 
     pub(crate) mod prerequisites {
+        use std::convert::{TryFrom, TryInto};
+        use std::env;
+        use std::fs;
         use std::net::SocketAddr;
+        use std::path::{Path, PathBuf};
         use std::sync::atomic::AtomicBool;
         use std::sync::mpsc::{channel, Receiver};
         use std::sync::{Arc, Mutex};
         use std::thread;
+        use std::time::Duration;
 
         use futures::lock::Mutex as TokioMutex;
         use riker::actors::*;
         use slog::{Drain, Level, Logger};
 
-        use crypto::hash::CryptoboxPublicKeyHash;
+        use crypto::hash::{ChainId, CryptoboxPublicKeyHash};
         use networking::p2p::network_channel::NetworkChannelRef;
         use networking::p2p::peer::{BootstrapOutput, Peer};
         use networking::PeerId;
+        use storage::{PersistentStorage, StorageInitInfo};
+        use tezos_api::environment::*;
+        use tezos_api::ffi::{
+            GenesisChain, ProtocolOverrides, TezosContextIrminStorageConfiguration,
+            TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+        };
         use tezos_identity::Identity;
         use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
+        use tezos_messages::Head;
+        use tezos_wrapper::*;
 
         use crate::chain_feeder;
+        use crate::chain_manager::{ChainManager, ChainManagerRef};
+        use crate::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
         use crate::shell_channel::ShellChannelRef;
         use crate::state::peer_state::{DataQueuesLimits, PeerState};
 
@@ -388,6 +403,129 @@ pub mod tests {
                 )
                 .map(|feeder| (feeder, block_applier_event_receiver))
                 .map_err(|e| e.into())
+        }
+
+        pub(crate) fn chain_manager_mock(
+            actor_system: Arc<ActorSystem>,
+            log: Logger,
+            shell_channel: ShellChannelRef,
+            network_channel: NetworkChannelRef,
+            block_applier: chain_feeder::ChainFeederRef,
+            persistent_storage: PersistentStorage,
+            tokio_runtime: &tokio::runtime::Runtime,
+        ) -> Result<ChainManagerRef, anyhow::Error> {
+            let init_data = StorageInitInfo {
+                chain_id: ChainId::try_from("NetXgtSLGNJvNye")?,
+                genesis_block_header_hash: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe"
+                    .try_into()?,
+                patch_context: None,
+                replay: None,
+                context_stats_db_path: None,
+            };
+
+            let tezos_readonly_api_pool =
+                Arc::new(create_tezos_readonly_api_pool(tokio_runtime, log.clone())?);
+
+            let current_mempool_state_storage = init_mempool_state_storage();
+            let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+                actor_system.clone(),
+                log,
+                shell_channel.clone(),
+                persistent_storage.clone(),
+                current_mempool_state_storage.clone(),
+                tezos_readonly_api_pool.clone(),
+                true,
+            ));
+
+            ChainManager::actor(
+                &actor_system,
+                block_applier,
+                network_channel,
+                shell_channel,
+                persistent_storage,
+                tezos_readonly_api_pool,
+                init_data,
+                false,
+                Head::new(
+                    "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
+                    1,
+                    vec![],
+                ),
+                current_mempool_state_storage,
+                0,
+                mempool_prevalidator_factory,
+                Arc::new(Identity::generate(0f64)?),
+            )
+            .map_err(|e| e.into())
+        }
+
+        fn create_tezos_readonly_api_pool(
+            tokio_runtime: &tokio::runtime::Runtime,
+            log: Logger,
+        ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
+            TezosApiConnectionPool::new_without_context(
+                String::from("create_tezos_readonly_api_pool_for_test"),
+                TezosApiConnectionPoolConfiguration {
+                    min_connections: 0,
+                    max_connections: 1,
+                    connection_timeout: Duration::from_secs(3),
+                    max_lifetime: Duration::from_secs(60),
+                    idle_timeout: Duration::from_secs(60),
+                },
+                ProtocolEndpointConfiguration::new(
+                    TezosRuntimeConfiguration {
+                        log_enabled: false,
+                        debug_mode: false,
+                        compute_context_action_tree_hashes: false,
+                    },
+                    TezosEnvironmentConfiguration {
+                        genesis: GenesisChain {
+                            time: "2019-08-06T15:18:56Z".to_string(),
+                            block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94"
+                                .to_string(),
+                            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV"
+                                .to_string(),
+                        },
+                        bootstrap_lookup_addresses: vec![
+                            "bootstrap.zeronet.fun".to_string(),
+                            "bootzero.tzbeta.net".to_string(),
+                        ],
+                        version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
+                        protocol_overrides: ProtocolOverrides {
+                            user_activated_upgrades: vec![],
+                            user_activated_protocol_overrides: vec![],
+                        },
+                        enable_testchain: true,
+                        patch_context_genesis_parameters: None,
+                    },
+                    false,
+                    TezosContextStorageConfiguration::IrminOnly(
+                        TezosContextIrminStorageConfiguration {
+                            data_dir: prepare_empty_dir("create_tezos_readonly_api_pool_for_test"),
+                        },
+                    ),
+                    "we-dont-need-protocol-runner-here",
+                    slog::Level::Debug,
+                ),
+                tokio_runtime.handle().clone(),
+                log.clone(),
+            )
+        }
+
+        pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
+            let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+            Path::new(out_dir.as_str()).join(Path::new(dir_name))
+        }
+
+        pub fn prepare_empty_dir(dir_name: &str) -> String {
+            let path = test_storage_dir_path(dir_name);
+            if path.exists() {
+                fs::remove_dir_all(&path)
+                    .unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
+            }
+            fs::create_dir_all(&path)
+                .unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
+            String::from(path.to_str().unwrap())
         }
     }
 }

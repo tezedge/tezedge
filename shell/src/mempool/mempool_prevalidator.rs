@@ -23,6 +23,10 @@ use slog::{debug, info, trace, warn, Logger};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
+use shell_integration::{
+    dispatch_oneshot_result, MempoolError, MempoolOperationReceived, OneshotResultCallback,
+    ResetMempool,
+};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::{BlockHeaderWithHash, PersistentStorage};
@@ -36,26 +40,13 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
+use crate::chain_manager::{AdvertiseToP2pNewMempool, ChainManagerRef};
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::state::StateError;
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_oneshot_result, OneshotResultCallback};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
-
-#[derive(Clone, Debug)]
-pub struct MempoolOperationReceived {
-    pub operation_hash: OperationHash,
-    pub operation_type: MempoolOperationType,
-    pub result_callback: Option<OneshotResultCallback<Result<(), StateError>>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ResetMempool {
-    pub block: Arc<BlockHeaderWithHash>,
-}
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
 #[actor(ShellChannelMsg, ResetMempool, MempoolOperationReceived)]
@@ -72,7 +63,7 @@ enum Event {
     ValidateOperation(
         OperationHash,
         MempoolOperationType,
-        Option<OneshotResultCallback<Result<(), StateError>>>,
+        Option<OneshotResultCallback<Result<(), MempoolError>>>,
     ),
     ShuttingDown,
 }
@@ -83,6 +74,7 @@ pub type MempoolPrevalidatorBasicRef = BasicActorRef;
 impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
+        chain_manager: ChainManagerRef,
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
@@ -94,7 +86,6 @@ impl MempoolPrevalidator {
         let (validator_event_sender, mut validator_event_receiver) = channel();
         let validator_run = Arc::new(AtomicBool::new(true));
         let validator_thread = {
-            let shell_channel = shell_channel.clone();
             let validator_run = validator_run.clone();
             let chain_id = chain_id.clone();
 
@@ -112,7 +103,7 @@ impl MempoolPrevalidator {
                             current_mempool_state_storage.clone(),
                             &chain_id,
                             &validator_run,
-                            &shell_channel,
+                            &chain_manager,
                             &protocol_controller.api,
                             &mut validator_event_receiver,
                             &log,
@@ -356,7 +347,7 @@ fn process_prevalidation(
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     chain_id: &ChainId,
     validator_run: &AtomicBool,
-    shell_channel: &ShellChannelRef,
+    chain_manager: &ChainManagerRef,
     api: &ProtocolController,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
@@ -365,7 +356,7 @@ fn process_prevalidation(
 
     // hydrate state
     hydrate_state(
-        shell_channel,
+        chain_manager,
         block_storage,
         chain_meta_storage,
         mempool_storage,
@@ -431,7 +422,7 @@ fn process_prevalidation(
                         if !was_added_to_pending {
                             debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
                             if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                                Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
+                                Err(MempoolError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
                             }) {
                                 warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
@@ -441,7 +432,7 @@ fn process_prevalidation(
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
                         if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                            Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check())})
+                            Err(MempoolError {reason: format!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check())})
                         }) {
                             warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
@@ -455,7 +446,7 @@ fn process_prevalidation(
 
         // 2. lets handle pending operations (if any)
         handle_pending_operations(
-            shell_channel,
+            chain_manager,
             api,
             current_mempool_state_storage.clone(),
             log,
@@ -466,7 +457,7 @@ fn process_prevalidation(
 }
 
 fn hydrate_state(
-    shell_channel: &ShellChannelRef,
+    chain_manager: &ChainManagerRef,
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
@@ -509,7 +500,7 @@ fn hydrate_state(
     drop(state);
 
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
-    handle_pending_operations(shell_channel, api, current_mempool_state_storage, log)?;
+    handle_pending_operations(chain_manager, api, current_mempool_state_storage, log)?;
 
     Ok(())
 }
@@ -540,7 +531,7 @@ fn begin_construction(
 }
 
 fn handle_pending_operations(
-    shell_channel: &ShellChannelRef,
+    chain_manager: &ChainManagerRef,
     api: &ProtocolController,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     log: &Logger,
@@ -602,7 +593,7 @@ fn handle_pending_operations(
     }
 
     advertise_new_mempool(
-        shell_channel,
+        chain_manager,
         prevalidator,
         head,
         (&validation_result.applied, pendings),
@@ -613,7 +604,7 @@ fn handle_pending_operations(
 
 /// Notify other actors that mempool state changed
 fn advertise_new_mempool(
-    shell_channel: &ShellChannelRef,
+    chain_manager: &ChainManagerRef,
     prevalidator: &PrevalidatorWrapper,
     head: &BlockHash,
     (applied, pending): (&Vec<Applied>, &HashSet<OperationHash>),
@@ -623,14 +614,11 @@ fn advertise_new_mempool(
         return;
     }
 
-    shell_channel.tell(
-        Publish {
-            msg: ShellChannelMsg::AdvertiseToP2pNewMempool(
-                Arc::new(prevalidator.chain_id.clone()),
-                Arc::new(head.clone()),
-                Arc::new(collect_mempool(applied, pending)),
-            ),
-            topic: ShellChannelTopic::ShellCommands.into(),
+    chain_manager.tell(
+        AdvertiseToP2pNewMempool {
+            chain_id: prevalidator.chain_id.clone(),
+            mempool_head: head.clone(),
+            mempool: collect_mempool(applied, pending),
         },
         None,
     );

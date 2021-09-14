@@ -294,7 +294,7 @@ impl Actor for Peer {
         // quota replenish task
 
         let throttle_quota = self.throttle_quota.clone();
-        let log = ctx.system.log().clone();
+        let log = ctx.system.log();
         let stop = self.quota_update_stop.clone();
         self.tokio_executor.spawn(async move {
             loop {
@@ -783,7 +783,7 @@ mod tests {
                     let msg = record.msg().to_string();
                     if msg == "Cannot send message because its send quota is exceeded" {
                         self.warns.fetch_add(1, Ordering::Relaxed);
-                    } else if msg == String::from("Tx quota is exceeded") {
+                    } else if msg == "Tx quota is exceeded" {
                         record
                             .kv()
                             .serialize(record, &mut *self.ser.borrow_mut())
@@ -847,7 +847,7 @@ mod tests {
                 Arc::new(Mutex::new(None)),
                 peer_public_key_hash,
                 peer_id_marker,
-                MetadataMessage::new(false, false).clone(),
+                MetadataMessage::new(false, false),
                 NetworkVersion::new("".to_owned(), 0, 0),
                 "127.0.0.1:9732".parse().unwrap(),
             ),
@@ -876,7 +876,7 @@ mod tests {
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let peer = create_test_peer(
             &actor_system,
-            network_channel.clone(),
+            network_channel,
             runtime.handle().clone(),
             log.clone(),
         );

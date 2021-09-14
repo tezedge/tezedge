@@ -35,7 +35,7 @@ pub use crate::block_meta_storage::{
     BlockAdditionalData, BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader,
 };
 pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
-pub use crate::chain_meta_storage::ChainMetaStorage;
+pub use crate::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use crate::commit_log::{CommitLogError, CommitLogs};
 pub use crate::constants_storage::ConstantsStorage;
 pub use crate::cycle_eras_storage::CycleErasStorage;
@@ -294,7 +294,7 @@ pub fn store_applied_block_result(
         block_result.block_header_proto_metadata_bytes,
         block_result.operations_proto_metadata_bytes,
     );
-    block_storage.put_block_json_data(&block_hash, block_json_data)?;
+    block_storage.put_block_json_data(block_hash, block_json_data)?;
 
     // store additional data
     let block_additional_data = BlockAdditionalData::new(
@@ -320,12 +320,12 @@ pub fn store_applied_block_result(
         },
         block_result.ops_metadata_hashes,
     );
-    block_meta_storage.put_block_additional_data(&block_hash, &block_additional_data)?;
+    block_meta_storage.put_block_additional_data(block_hash, &block_additional_data)?;
 
     // TODO: check context checksum or context_hash
 
     // populate predecessor storage
-    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
+    block_meta_storage.store_predecessors(block_hash, block_metadata)?;
 
     // populate cycle data if is present in the response
     for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {
@@ -347,7 +347,7 @@ pub fn store_applied_block_result(
     // if everything is stored and ok, we can considere this block as applied
     // mark current head as applied
     block_metadata.set_is_applied(true);
-    block_meta_storage.put(&block_hash, &block_metadata)?;
+    block_meta_storage.put(block_hash, block_metadata)?;
 
     // return additional data for later use
     Ok(block_additional_data)
@@ -371,11 +371,11 @@ pub fn store_commit_genesis_result(
     // if everything is stored and ok, we can considere genesis block as applied
     // if storage is empty, initialize with genesis
     block_meta_storage.put(
-        &genesis_block_hash,
-        &block_meta_storage::Meta::genesis_meta(&genesis_block_hash, chain_id, true),
+        genesis_block_hash,
+        &block_meta_storage::Meta::genesis_meta(genesis_block_hash, chain_id, true),
     )?;
     operations_meta_storage.put(
-        &genesis_block_hash,
+        genesis_block_hash,
         &operations_meta_storage::Meta::genesis_meta(),
     )?;
 
@@ -385,10 +385,10 @@ pub fn store_commit_genesis_result(
         bock_result.block_header_proto_metadata_bytes,
         bock_result.operations_proto_metadata_bytes,
     );
-    block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
+    block_storage.put_block_json_data(genesis_block_hash, block_json_data)?;
 
     // set genesis as current head - it is empty storage
-    match block_storage.get(&genesis_block_hash)? {
+    match block_storage.get(genesis_block_hash)? {
         Some(genesis) => {
             let head = Head::new(
                 genesis.hash,
@@ -397,9 +397,9 @@ pub fn store_commit_genesis_result(
             );
 
             // init chain data
-            chain_meta_storage.set_genesis(&chain_id, head.clone())?;
-            chain_meta_storage.set_caboose(&chain_id, head.clone())?;
-            chain_meta_storage.set_current_head(&chain_id, head)?;
+            chain_meta_storage.set_genesis(chain_id, head.clone())?;
+            chain_meta_storage.set_caboose(chain_id, head.clone())?;
+            chain_meta_storage.set_current_head(chain_id, head)?;
 
             Ok(())
         }
@@ -454,7 +454,7 @@ pub fn initialize_storage_with_genesis_block(
 
     // TODO: TE-238 - remove assign_to_context
     // context assign
-    block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
+    block_storage.assign_to_context(&genesis_with_hash.hash, context_hash)?;
 
     info!(log,
         "Storage initialized with genesis block";
@@ -462,6 +462,31 @@ pub fn initialize_storage_with_genesis_block(
         "context_hash" => context_hash.to_base58_check(),
     );
     Ok(genesis_with_hash)
+}
+
+pub fn hydrate_current_head(
+    init_storage_data: &StorageInitInfo,
+    persistent_storage: &PersistentStorage,
+) -> Result<Arc<BlockHeaderWithHash>, StorageError> {
+    // check last stored current_head
+    let current_head = match ChainMetaStorage::new(persistent_storage)
+        .get_current_head(&init_storage_data.chain_id)?
+    {
+        Some(head) => head,
+        None => {
+            return Err(StorageError::MissingKey {
+                when: "current_head".into(),
+            })
+        }
+    };
+
+    // get block_header data
+    match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
+        Some(block) => Ok(Arc::new(block)),
+        None => Err(StorageError::MissingKey {
+            when: "current_head_header".into(),
+        }),
+    }
 }
 
 /// Helper module to easily initialize databases
@@ -510,7 +535,7 @@ pub mod initializer {
                 crate::MempoolStorage::descriptor(cache),
                 crate::ChainMetaStorage::descriptor(cache),
                 crate::PredecessorStorage::descriptor(cache),
-                crate::BlockAdditionalData::descriptor(&cache),
+                crate::BlockAdditionalData::descriptor(cache),
                 crate::CycleMetaStorage::descriptor(cache),
                 crate::CycleErasStorage::descriptor(cache),
                 crate::ConstantsStorage::descriptor(cache),
@@ -572,7 +597,7 @@ pub mod initializer {
     ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
         let db = Arc::new(open_main_db(kv, config, backend_config)?);
 
-        match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
+        match check_database_compatibility(db.clone(), db_version, expected_main_chain, log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
                 name: format!("Database is incompatible with version {}", db_version),
             }),
@@ -628,8 +653,8 @@ pub mod initializer {
                     }
                 }
                 None => {
-                    system_info.set_chain_id(&tezos_env_main_chain_id)?;
-                    system_info.set_chain_name(&tezos_env_main_chain_name)?;
+                    system_info.set_chain_id(tezos_env_main_chain_id)?;
+                    system_info.set_chain_name(tezos_env_main_chain_name)?;
                     (true, "-none-".to_string(), tezos_env_main_chain_name)
                 }
             };

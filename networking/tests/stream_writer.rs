@@ -34,7 +34,7 @@ async fn can_write_chunks() -> Result<(), Error> {
 
     let mut builder = Builder::new();
     for data in &chunks {
-        let chunk = BinaryChunk::from_content(&data)?;
+        let chunk = BinaryChunk::from_content(data)?;
         builder.write(chunk.raw());
     }
     let mock = builder.build();
