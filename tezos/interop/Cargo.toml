@@ -15,8 +15,10 @@ serde_json = "1.0"
 # local dependencies
 tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
+tezos_conv = { path = "../conv" }
 tezos_messages = { path = "../messages" }
 tezos_context = { path = "../context" }
+tezos_context_api = { path = "../context-api" }
 crypto = { path = "../../crypto" }
 
 [dev-dependencies]

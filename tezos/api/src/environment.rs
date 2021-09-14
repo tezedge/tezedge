@@ -26,8 +26,8 @@ use crypto::hash::{
 use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
-use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 use crate::octez_config::OctezConfig;
+use tezos_context_api::{GenesisChain, PatchContext, ProtocolOverrides};
 
 pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &str =
     "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";

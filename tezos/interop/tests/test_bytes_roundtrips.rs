@@ -10,7 +10,7 @@ use serial_test::serial;
 
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
-use tezos_api::ocaml_conv::FfiBlockHeader;
+use tezos_conv::*;
 use tezos_interop::ffi;
 use tezos_interop::runtime;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
@@ -24,7 +24,7 @@ const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b685
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
 
-    use tezos_messages::p2p::encoding::block_header::BlockHeader;
+    use tezos_conv::*;
 
     ocaml! {
         pub fn apply_block_params_roundtrip(chain_id: OCamlBytes, block_header: OCamlBytes, operations: OCamlList<OCamlList<OCamlBytes>>) -> (OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>);
@@ -33,7 +33,7 @@ mod tezos_ffi {
         pub fn operations_list_list_roundtrip(operations_list_list: OCamlList<OCamlList<OCamlBytes>>) -> OCamlList<OCamlList<OCamlBytes>>;
         pub fn chain_id_roundtrip(chain_id: OCamlBytes) -> OCamlBytes;
         pub fn block_header_roundtrip(header: OCamlBytes) -> (OCamlBytes, OCamlBytes);
-        pub fn block_header_struct_roundtrip(header: BlockHeader) -> (OCamlBytes, OCamlBytes);
+        pub fn block_header_struct_roundtrip(header: OCamlBlockHeader) -> (OCamlBytes, OCamlBytes);
         pub fn block_header_with_hash_roundtrip(header_hash: OCamlBytes, hash: OCamlBytes) -> (OCamlBytes, OCamlBytes);
     }
 }

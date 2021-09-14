@@ -13,11 +13,13 @@ use tezos_api::environment::{
 };
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosRuntimeConfiguration,
 };
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -48,7 +50,7 @@ fn init_test_protocol_context(
             data_dir: common::prepare_empty_dir(dir_name),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -991,7 +993,7 @@ mod test_data_protocol_v1 {
 
     use crypto::hash::{ContextHash, OperationMetadataHash};
     use tezos_api::environment::TezosEnvironmentConfiguration;
-    use tezos_api::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
+    use tezos_context_api::{GenesisChain, PatchContext, ProtocolOverrides};
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 

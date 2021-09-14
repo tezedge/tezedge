@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 use slog::{info, warn, Level, Logger};
 use tezedge_actor_system::actors::*;
 use tezedge_actor_system::system::SystemBuilder;
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
@@ -34,9 +33,10 @@ use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
 use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{
+use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_context_api::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosRuntimeConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_identity::Identity;
 use tezos_messages::Head;
@@ -101,7 +101,7 @@ impl NodeInfrastructure {
                 data_dir: context_db_path,
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+                backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path,
             },
         );

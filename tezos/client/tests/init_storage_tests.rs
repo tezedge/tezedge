@@ -7,12 +7,12 @@ use strum::IntoEnumIterator;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{default_networks, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{
+use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_client::client;
+use tezos_context_api::{
     PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
-    TezosRuntimeConfiguration,
 };
-use tezos_client::client;
 
 mod common;
 
@@ -49,7 +49,7 @@ fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
                     data_dir: common::prepare_empty_dir(storage_data_dir),
                 },
                 TezosContextTezEdgeStorageConfiguration {
-                    backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+                    backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
                     ipc_socket_path: None,
                 },
             );
@@ -131,7 +131,7 @@ fn test_init_empty_context_for_custom_network() {
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -197,7 +197,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::E
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -257,7 +257,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), anyhow
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

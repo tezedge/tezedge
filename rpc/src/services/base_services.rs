@@ -9,7 +9,7 @@ use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
 };
-use tezos_context::{context_key_owned, StringTreeObject};
+use tezos_context_api::{context_key_owned, StringTreeObject};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{

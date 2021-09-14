@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
+use tezos_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 use tezos_timing::{BlockMemoryUsage, Query, QueryKind, TimingMessage, TIMING_CHANNEL};
 
 pub fn send_statistics(stats: BlockMemoryUsage) {

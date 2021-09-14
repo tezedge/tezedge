@@ -10,12 +10,12 @@ use crypto::hash::ChainId;
 use tezos_api::environment::{
     default_networks, get_empty_operation_list_list_hash, TezosEnvironmentConfiguration,
 };
-use tezos_api::ffi::{
-    ApplyBlockRequest, InitProtocolContextResult, TezosContextConfiguration,
-    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
-};
+use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
@@ -147,7 +147,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
     let storage = TezosContextStorageConfiguration::Both(
         TezosContextIrminStorageConfiguration { data_dir },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

@@ -3,17 +3,17 @@
 
 use std::convert::TryFrom;
 
+use crate::OCamlCycleRollsOwnerSnapshot;
+
 use super::{
-    FfiPath, FfiPathLeft, FfiPathRight, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId,
-    OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationMetadataHash,
-    OCamlOperationMetadataListListHash, OCamlProtocolHash,
-};
-use crate::ffi::{
-    Applied, ApplyBlockResponse, BeginApplicationResponse, ContextKvStoreConfiguration,
-    CycleRollsOwnerSnapshot, Errored, ForkingTestchainData, HelpersPreapplyResponse,
-    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolRpcError,
-    ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosContextTezEdgeStorageConfiguration,
-    TezosErrorTrace, ValidateOperationResponse, ValidateOperationResult,
+    FfiPath, FfiPathLeft, FfiPathRight, OCamlApplied, OCamlApplyBlockResponse,
+    OCamlBeginApplicationResponse, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId,
+    OCamlContextHash, OCamlContextKvStoreConfiguration, OCamlErrored, OCamlForkingTestchainData,
+    OCamlHash, OCamlHelpersPreapplyResponse, OCamlOperationHash, OCamlOperationMetadataHash,
+    OCamlOperationMetadataListListHash, OCamlOperationProtocolDataJsonWithErrorListJson,
+    OCamlPrevalidatorWrapper, OCamlProtocolHash, OCamlProtocolRpcError, OCamlProtocolRpcResponse,
+    OCamlRpcArgDesc, OCamlRpcMethod, OCamlTezosContextTezEdgeStorageConfiguration,
+    OCamlTezosErrorTrace, OCamlValidateOperationResponse, OCamlValidateOperationResult,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
@@ -23,6 +23,13 @@ use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlFloat,
     OCamlInt, OCamlInt32, OCamlList,
 };
+use tezos_api::ffi::{
+    Applied, ApplyBlockResponse, BeginApplicationResponse, CycleRollsOwnerSnapshot, Errored,
+    ForkingTestchainData, HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson,
+    PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod,
+    TezosErrorTrace, ValidateOperationResponse, ValidateOperationResult,
+};
+use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -72,28 +79,28 @@ unsafe impl FromOCaml<OCamlChainId> for ChainId {
 }
 
 impl_from_ocaml_variant! {
-    ContextKvStoreConfiguration {
+    OCamlContextKvStoreConfiguration => ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
     }
 }
 
 impl_from_ocaml_record! {
-    TezosContextTezEdgeStorageConfiguration {
-        backend: ContextKvStoreConfiguration,
+    OCamlTezosContextTezEdgeStorageConfiguration => TezosContextTezEdgeStorageConfiguration {
+        backend: OCamlContextKvStoreConfiguration,
         ipc_socket_path: Option<String>,
     }
 }
 
 impl_from_ocaml_record! {
-    ForkingTestchainData {
+    OCamlForkingTestchainData => ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
         test_chain_id: OCamlChainId,
     }
 }
 
 impl_from_ocaml_record! {
-    CycleRollsOwnerSnapshot {
+    OCamlCycleRollsOwnerSnapshot => CycleRollsOwnerSnapshot {
         cycle: OCamlInt,
         seed_bytes: OCamlBytes,
         rolls_data: OCamlList<(OCamlBytes, OCamlList<OCamlInt>)>,
@@ -102,7 +109,7 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
-    ApplyBlockResponse {
+    OCamlApplyBlockResponse => ApplyBlockResponse {
         validation_result_message: OCamlBytes,
         context_hash: OCamlContextHash,
         protocol_hash: OCamlProtocolHash,
@@ -113,11 +120,11 @@ impl_from_ocaml_record! {
         max_operations_ttl: OCamlInt,
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,
-        forking_testchain_data: Option<ForkingTestchainData>,
+        forking_testchain_data: Option<OCamlForkingTestchainData>,
         block_metadata_hash: Option<OCamlBlockMetadataHash>,
         ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
         ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
-        cycle_rolls_owner_snapshots: OCamlList<CycleRollsOwnerSnapshot>,
+        cycle_rolls_owner_snapshots: OCamlList<OCamlCycleRollsOwnerSnapshot>,
         new_protocol_constants_json: Option<String>,
         new_cycle_eras_json: Option<String>,
         commit_time: OCamlFloat,
@@ -125,13 +132,13 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
-    BeginApplicationResponse {
+    OCamlBeginApplicationResponse => BeginApplicationResponse {
         result: String,
     }
 }
 
 impl_from_ocaml_record! {
-    PrevalidatorWrapper {
+    OCamlPrevalidatorWrapper => PrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>
@@ -139,58 +146,58 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
-    Applied {
+    OCamlApplied => Applied {
         hash: OCamlOperationHash,
         protocol_data_json: OCamlBytes,
     }
 }
 
 impl_from_ocaml_record! {
-    OperationProtocolDataJsonWithErrorListJson {
+    OCamlOperationProtocolDataJsonWithErrorListJson => OperationProtocolDataJsonWithErrorListJson {
         protocol_data_json: OCamlBytes,
         error_json: OCamlBytes,
     }
 }
 
 impl_from_ocaml_record! {
-    Errored {
+    OCamlErrored => Errored {
         hash: OCamlOperationHash,
         is_endorsement: Option<bool>,
-        protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
+        protocol_data_json_with_error_json: OCamlOperationProtocolDataJsonWithErrorListJson,
     }
 }
 
 impl_from_ocaml_record! {
-    ValidateOperationResult {
-        applied: OCamlList<Applied>,
-        refused: OCamlList<Errored>,
-        branch_refused: OCamlList<Errored>,
-        branch_delayed: OCamlList<Errored>,
+    OCamlValidateOperationResult => ValidateOperationResult {
+        applied: OCamlList<OCamlApplied>,
+        refused: OCamlList<OCamlErrored>,
+        branch_refused: OCamlList<OCamlErrored>,
+        branch_delayed: OCamlList<OCamlErrored>,
     }
 }
 
 impl_from_ocaml_record! {
-    ValidateOperationResponse {
-        prevalidator: PrevalidatorWrapper,
-        result: ValidateOperationResult,
+    OCamlValidateOperationResponse => ValidateOperationResponse {
+        prevalidator: OCamlPrevalidatorWrapper,
+        result: OCamlValidateOperationResult,
     }
 }
 
 impl_from_ocaml_record! {
-    HelpersPreapplyResponse {
+    OCamlHelpersPreapplyResponse => HelpersPreapplyResponse {
         body: OCamlBytes,
     }
 }
 
 impl_from_ocaml_record! {
-    TezosErrorTrace {
+    OCamlTezosErrorTrace => TezosErrorTrace {
         head_error_id: String,
         trace_json: String,
     }
 }
 
 impl_from_ocaml_variant! {
-    ProtocolRpcResponse {
+    OCamlProtocolRpcResponse => ProtocolRpcResponse {
         ProtocolRpcResponse::RPCConflict(s: Option<OCamlBytes>),
         ProtocolRpcResponse::RPCCreated(s: Option<OCamlBytes>),
         ProtocolRpcResponse::RPCError(s: Option<OCamlBytes>),
@@ -204,25 +211,25 @@ impl_from_ocaml_variant! {
 }
 
 impl_from_ocaml_variant! {
-    ProtocolRpcError {
+    OCamlProtocolRpcError => ProtocolRpcError {
         ProtocolRpcError::RPCErrorCannotParseBody(s: OCamlBytes),
-        ProtocolRpcError::RPCErrorCannotParsePath(p: OCamlList<OCamlBytes>, d: RpcArgDesc, s: OCamlBytes),
+        ProtocolRpcError::RPCErrorCannotParsePath(p: OCamlList<OCamlBytes>, d: OCamlRpcArgDesc, s: OCamlBytes),
         ProtocolRpcError::RPCErrorCannotParseQuery(s: OCamlBytes),
         ProtocolRpcError::RPCErrorInvalidMethodString(s: OCamlBytes),
-        ProtocolRpcError::RPCErrorMethodNotAllowed(m: OCamlList<RpcMethod>),
+        ProtocolRpcError::RPCErrorMethodNotAllowed(m: OCamlList<OCamlRpcMethod>),
         ProtocolRpcError::RPCErrorServiceNotFound,
     }
 }
 
 impl_from_ocaml_record! {
-    RpcArgDesc {
+    OCamlRpcArgDesc => RpcArgDesc {
         name: OCamlBytes,
         descr: Option<OCamlBytes>,
     }
 }
 
 impl_from_ocaml_variant! {
-    RpcMethod {
+    OCamlRpcMethod => RpcMethod {
         RpcMethod::DELETE,
         RpcMethod::GET,
         RpcMethod::PATCH,

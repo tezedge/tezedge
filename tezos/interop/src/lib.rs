@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod ffi;
+
 /// This modules will allow you to call OCaml code:
 ///
 /// ```ocaml

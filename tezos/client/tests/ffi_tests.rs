@@ -5,17 +5,13 @@ use std::convert::TryFrom;
 
 use crypto::hash::ProtocolHash;
 use serial_test::serial;
-use tezos_api::ffi::{
-    InitProtocolContextResult, TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
-};
-use tezos_api::{
-    environment::{self, TezosEnvironment},
-    ffi::{
-        TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-        TezosContextStorageConfiguration,
-    },
-};
+use tezos_api::environment::{self, TezosEnvironment};
+use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
@@ -122,7 +118,7 @@ fn prepare_protocol_context(
             data_dir: common::prepare_empty_dir(dir_name),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

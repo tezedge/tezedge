@@ -3,6 +3,7 @@
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::*;
+use tezos_context_api::TezosContextConfiguration;
 use tezos_messages::p2p::encoding::operation::Operation;
 
 /// Provides trait that must be implemented by a protocol runner.

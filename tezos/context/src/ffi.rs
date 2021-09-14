@@ -30,8 +30,11 @@ use crate::{
     ContextKeyValueStore, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
 };
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
+use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
+use tezos_conv::{
+    OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+    OCamlTezosContextTezEdgeStorageConfiguration,
+};
 
 // TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
@@ -142,7 +145,7 @@ ocaml_export! {
 
     fn tezedge_index_init(
         rt,
-        configuration: OCamlRef<TezosContextTezEdgeStorageConfiguration>,
+        configuration: OCamlRef<OCamlTezosContextTezEdgeStorageConfiguration>,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
     ) -> OCaml<Result<DynBox<TezedgeIndexFFI>, String>> {
         let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);

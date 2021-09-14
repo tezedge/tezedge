@@ -22,7 +22,6 @@ use storage::{
     BlockStorageReader, ConstantsStorage, CycleMetaStorage,
 };
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
-use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
@@ -32,6 +31,7 @@ use crate::server::RpcServiceEnvironment;
 use crate::services::base_services::{
     get_additional_data_or_fail, get_context_hash, get_raw_block_header_with_hash,
 };
+use tezos_context_api::context_key_owned;
 use tezos_wrapper::TezedgeContextClientError;
 
 mod proto_001;

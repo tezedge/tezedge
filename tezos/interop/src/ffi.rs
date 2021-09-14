@@ -9,58 +9,47 @@ use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
 
 use tezos_api::ffi::*;
-use tezos_api::ocaml_conv::FfiOperation;
-use tezos_api::ocaml_conv::FfiPath;
+use tezos_context_api::TezosContextConfiguration;
+use tezos_conv::*;
 use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::runtime;
 
-type TzResult<T> = Result<T, TezosErrorTrace>;
+type TzResult<T> = Result<T, OCamlTezosErrorTrace>;
 
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
-
-    use tezos_api::{ffi::TezosContextConfiguration, ocaml_conv::FfiPath};
-    use tezos_api::{
-        ffi::{
-            ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
-            BeginApplicationResponse, BeginConstructionRequest, HelpersPreapplyBlockRequest,
-            HelpersPreapplyResponse, PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest,
-            ProtocolRpcResponse, ValidateOperationRequest, ValidateOperationResponse,
-        },
-        ocaml_conv::{OCamlOperationHash, OCamlProtocolHash},
-    };
-    use tezos_messages::p2p::encoding::operation::Operation;
+    use tezos_conv::*;
 
     use super::TzResult;
 
     ocaml! {
         pub fn apply_block(
-            apply_block_request: ApplyBlockRequest
-        ) -> TzResult<ApplyBlockResponse>;
+            apply_block_request: OCamlApplyBlockRequest
+        ) -> TzResult<OCamlApplyBlockResponse>;
         pub fn begin_application(
-            begin_application_request: BeginApplicationRequest
-        ) -> TzResult<BeginApplicationResponse>;
+            begin_application_request: OCamlBeginApplicationRequest
+        ) -> TzResult<OCamlBeginApplicationResponse>;
         pub fn begin_construction(
-            begin_construction_request: BeginConstructionRequest
-        ) -> TzResult<PrevalidatorWrapper>;
+            begin_construction_request: OCamlBeginConstructionRequest
+        ) -> TzResult<OCamlPrevalidatorWrapper>;
         pub fn validate_operation(
-            validate_operation_request: ValidateOperationRequest
-        ) -> TzResult<ValidateOperationResponse>;
+            validate_operation_request: OCamlValidateOperationRequest
+        ) -> TzResult<OCamlValidateOperationResponse>;
         pub fn call_protocol_rpc(
-            request: ProtocolRpcRequest
-        ) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
+            request: OCamlProtocolRpcRequest
+        ) -> Result<OCamlProtocolRpcResponse, OCamlProtocolRpcError>;
         pub fn helpers_preapply_operations(
-            request: ProtocolRpcRequest
-        ) -> TzResult<HelpersPreapplyResponse>;
+            request: OCamlProtocolRpcRequest
+        ) -> TzResult<OCamlHelpersPreapplyResponse>;
         pub fn helpers_preapply_block(
-            request: HelpersPreapplyBlockRequest
-        ) -> TzResult<HelpersPreapplyResponse>;
+            request: OCamlHelpersPreapplyBlockRequest
+        ) -> TzResult<OCamlHelpersPreapplyResponse>;
         pub fn change_runtime_configuration(
             log_enabled: bool, debug_mode: bool, compute_context_action_tree_hashes: bool,
         );
         pub fn init_protocol_context(
-            context_config: TezosContextConfiguration
+            context_config: OCamlTezosContextConfiguration
         ) -> TzResult<(OCamlList<OCamlBytes>, Option<OCamlBytes>)>;
         pub fn genesis_result_data(
             context_hash: OCamlBytes,
@@ -89,7 +78,7 @@ mod tezos_ffi {
         ) -> TzResult<OCamlBytes>;
         pub fn apply_block_operations_metadata(
             chain_id: OCamlBytes,
-            operations: OCamlList<OCamlList<Operation>>,
+            operations: OCamlList<OCamlList<OCamlOperation>>,
             operations_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
             protocol_hash: OCamlBytes,
             next_protocol_hash: OCamlBytes,

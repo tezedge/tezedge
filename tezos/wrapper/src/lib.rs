@@ -9,12 +9,11 @@ use std::time::Duration;
 
 use r2d2::{CustomizeConnection, Pool};
 use slog::{Level, Logger};
+use tezos_context_api::TezosContextStorageConfiguration;
 use thiserror::Error;
 
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_api::{
-    environment::TezosEnvironmentConfiguration, ffi::TezosContextStorageConfiguration,
-};
 
 use crate::pool::{
     InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer,

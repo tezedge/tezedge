@@ -12,7 +12,7 @@ use lazy_static::lazy_static;
 use slog::{info, Logger};
 
 use tezos_api::environment::{default_networks, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::PatchContext;
+use tezos_context_api::PatchContext;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, CurrentBranch, CurrentBranchMessage,
@@ -139,7 +139,7 @@ pub mod sandbox_branch_1_level3 {
     use slog::{info, Logger};
 
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::PatchContext;
+    use tezos_context_api::PatchContext;
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
     use crate::common::samples::read_data_zip;
@@ -179,7 +179,7 @@ pub mod sandbox_branch_1_no_level {
     use slog::{info, Logger};
 
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::PatchContext;
+    use tezos_context_api::PatchContext;
 
     use crate::common::samples::read_data_zip;
     use crate::common::test_data::Db;
@@ -212,7 +212,7 @@ pub mod sandbox_branch_2_level4 {
     use slog::{info, Logger};
 
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::PatchContext;
+    use tezos_context_api::PatchContext;
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
     use crate::common::test_data::Db;

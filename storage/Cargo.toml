@@ -26,6 +26,7 @@ zstd = "0.5.3+zstd.1.4.5"
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_context_api = { path = "../tezos/context-api" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"

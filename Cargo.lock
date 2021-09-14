@@ -1722,7 +1722,7 @@ dependencies = [
  "strum",
  "tezedge-actor-system",
  "tezos_api",
- "tezos_context",
+ "tezos_context_api",
  "tezos_identity",
  "tezos_messages",
  "tezos_wrapper",
@@ -2371,12 +2371,15 @@ dependencies = [
  "clap",
  "crypto",
  "ctrlc",
+ "ipc",
  "jemallocator",
  "slog",
  "slog-async",
  "slog-term",
  "tezos_api",
  "tezos_client",
+ "tezos_context",
+ "tezos_context_api",
  "tezos_interop",
  "tezos_messages",
  "tezos_wrapper",
@@ -2638,7 +2641,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_api",
- "tezos_context",
+ "tezos_context_api",
  "tezos_messages",
  "tezos_timing",
  "tezos_wrapper",
@@ -2926,9 +2929,8 @@ dependencies = [
  "slog-term",
  "storage",
  "tezedge-actor-system",
- "tezos-sys",
  "tezos_api",
- "tezos_context",
+ "tezos_context_api",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
@@ -3158,6 +3160,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_api",
+ "tezos_context_api",
  "tezos_messages",
  "thiserror",
  "zstd",
@@ -3319,13 +3322,12 @@ dependencies = [
  "derive_builder",
  "hex",
  "nom",
- "ocaml-interop",
  "serde 1.0.130",
  "serde_json",
  "slog",
  "strum",
  "strum_macros",
- "tezos-sys",
+ "tezos_context_api",
  "tezos_encoding",
  "tezos_messages",
  "thiserror",
@@ -3344,6 +3346,7 @@ dependencies = [
  "serial_test",
  "strum",
  "tezos_api",
+ "tezos_context_api",
  "tezos_interop",
  "tezos_messages",
  "thiserror",
@@ -3373,10 +3376,38 @@ dependencies = [
  "strum_macros",
  "tezos-sys",
  "tezos_api",
+ "tezos_context_api",
+ "tezos_conv",
  "tezos_messages",
  "tezos_spsc",
  "tezos_timing",
  "thiserror",
+]
+
+[[package]]
+name = "tezos_context_api"
+version = "1.8.0"
+dependencies = [
+ "chrono",
+ "crypto",
+ "derive_builder",
+ "nom",
+ "serde 1.0.130",
+ "strum",
+ "strum_macros",
+ "tezos_encoding",
+ "tezos_messages",
+]
+
+[[package]]
+name = "tezos_conv"
+version = "1.8.0"
+dependencies = [
+ "crypto",
+ "ocaml-interop",
+ "tezos_api",
+ "tezos_context_api",
+ "tezos_messages",
 ]
 
 [[package]]
@@ -3435,6 +3466,8 @@ dependencies = [
  "tezos-sys",
  "tezos_api",
  "tezos_context",
+ "tezos_context_api",
+ "tezos_conv",
  "tezos_messages",
  "thiserror",
 ]
@@ -3510,7 +3543,7 @@ dependencies = [
  "slog",
  "strum_macros",
  "tezos_api",
- "tezos_context",
+ "tezos_context_api",
  "tezos_messages",
  "thiserror",
  "tokio",

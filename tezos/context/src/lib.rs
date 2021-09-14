@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-#![feature(hash_set_entry)]
 // #![forbid(unsafe_code)]
 
 //! TezEdge implementation of the context API and storage for the Tezos economic protocol
@@ -128,15 +127,13 @@ pub fn force_libtezos_linking() {
 }
 
 use std::array::TryFromSliceError;
-use std::collections::BTreeMap;
 use std::num::TryFromIntError;
 use std::sync::PoisonError;
 
 use gc::GarbageCollectionError;
 use kv_store::HashId;
 use persistent::{DBError, KeyValueStoreBackend};
-use serde::Deserialize;
-use serde::Serialize;
+use tezos_context_api::{ContextKey, ContextKeyOwned, ContextValue, StringTreeObject};
 use thiserror::Error;
 
 pub use hash::ObjectHash;
@@ -157,24 +154,8 @@ use crate::persistent::{Flushable, Persistable};
 pub mod kv_store;
 pub mod tezedge_context;
 
-pub type ContextKey<'a> = [&'a str];
-pub type ContextKeyOwned = Vec<String>;
-pub type ContextValue = Vec<u8>;
-
 /// An unique tree identifier during a block application
 pub type TreeId = i32;
-
-/// Tree in String form needed for JSON RPCs
-pub type StringDirectoryMap = BTreeMap<String, StringTreeObject>;
-
-/// Tree in String form needed for JSON RPCs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StringTreeObject {
-    Directory(StringDirectoryMap),
-    Blob(String),
-    Null,
-}
 
 /// Context API used by the Protocol to manipulate the working tree
 pub trait ProtocolContextApi

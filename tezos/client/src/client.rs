@@ -9,10 +9,11 @@ use tezos_api::ffi::{
     ComputePathResponse, ContextDataError, FfiJsonEncoderError, GetDataError,
     HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
     InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, RustBytes, TezosContextConfiguration,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
+    ProtocolRpcRequest, ProtocolRpcResponse, RustBytes, TezosRuntimeConfiguration,
+    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
+    ValidateOperationRequest, ValidateOperationResponse,
 };
+use tezos_context_api::TezosContextConfiguration;
 use tezos_interop::ffi;
 use tezos_messages::p2p::encoding::operation::Operation;
 

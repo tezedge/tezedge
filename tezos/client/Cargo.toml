@@ -8,6 +8,7 @@ edition = "2018"
 anyhow = "1.0"
 crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
+tezos_context_api = { path = "../context-api" }
 tezos_interop = { path = "../interop" }
 tezos_messages = { path = "../messages" }
 

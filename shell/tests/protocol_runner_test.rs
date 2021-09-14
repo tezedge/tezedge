@@ -13,10 +13,10 @@ use serial_test::serial;
 use slog::{error, info, o, warn, Level, Logger};
 
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
-use tezos_api::ffi::{
-    InitProtocolContextResult, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_context_api::{
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_wrapper::runner::ExecutableProtocolRunner;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
@@ -137,7 +137,7 @@ fn create_endpoint(
                 .to_string(),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -244,7 +244,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), anyhow::Error> 
                 .to_string(),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

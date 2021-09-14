@@ -9,18 +9,12 @@ use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, Pro
 use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
-use tezos_api::{
-    ffi::BeginConstructionRequest,
-    ffi::PrevalidatorWrapper,
-    ffi::ProtocolRpcRequest,
-    ffi::RpcMethod,
-    ffi::RpcRequest,
-    ffi::ValidateOperationRequest,
-    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData},
-    ffi::{CycleRollsOwnerSnapshot, RustBytes},
-    ocaml_conv::FfiBlockHeader,
-    ocaml_conv::FfiOperation,
+use tezos_api::ffi::{
+    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, BeginConstructionRequest,
+    CycleRollsOwnerSnapshot, ForkingTestchainData, PrevalidatorWrapper, ProtocolRpcRequest,
+    RpcMethod, RpcRequest, RustBytes, ValidateOperationRequest,
 };
+use tezos_conv::*;
 use tezos_interop::runtime;
 use tezos_messages::p2p::{
     binary_message::BinaryRead, encoding::block_header::BlockHeader,
@@ -41,33 +35,12 @@ mod tezos_ffi {
         ocaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
     };
 
-    use tezos_api::{
-        ffi::ApplyBlockRequest,
-        ffi::BeginConstructionRequest,
-        ffi::PrevalidatorWrapper,
-        ffi::ProtocolRpcRequest,
-        ffi::RpcMethod,
-        ffi::RpcRequest,
-        ffi::{
-            ApplyBlockResponse, CycleRollsOwnerSnapshot, ForkingTestchainData,
-            ValidateOperationRequest,
-        },
-        ocaml_conv::OCamlBlockHash,
-        ocaml_conv::OCamlChainId,
-        ocaml_conv::OCamlContextHash,
-        ocaml_conv::OCamlOperationHash,
-        ocaml_conv::OCamlOperationListListHash,
-        ocaml_conv::{
-            OCamlBlockMetadataHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
-            OCamlProtocolHash,
-        },
-    };
-    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+    use tezos_conv::*;
 
     ocaml! {
         pub fn construct_and_compare_hash(operation_hash: OCamlOperationHash, hash_bytes: OCamlBytes) -> bool;
         pub fn construct_and_compare_block_header(
-            block_header: BlockHeader,
+            block_header: OCamlBlockHeader,
             level: OCamlInt32,
             proto_level: OCamlInt,
             validation_passes: OCamlInt,
@@ -79,22 +52,22 @@ mod tezos_ffi {
             protocol_data: OCamlBytes,
         ) -> bool;
         pub fn construct_and_compare_apply_block_request(
-            apply_block_request: ApplyBlockRequest,
+            apply_block_request: OCamlApplyBlockRequest,
             chain_id: OCamlChainId,
-            block_header: BlockHeader,
-            pred_header: BlockHeader,
+            block_header: OCamlBlockHeader,
+            pred_header: OCamlBlockHeader,
             max_operations_ttl: OCamlInt,
-            operations: OCamlList<OCamlList<Operation>>,
+            operations: OCamlList<OCamlList<OCamlOperation>>,
         ) -> bool;
         pub fn construct_and_compare_cycle_rolls_owner_snapshot(
-            cycle_rolls_owner_snapshot: CycleRollsOwnerSnapshot,
+            cycle_rolls_owner_snapshot: OCamlCycleRollsOwnerSnapshot,
             cycle: OCamlInt,
             seed_bytes: OCamlBytes,
             rolls_data: OCamlList<(OCamlBytes, OCamlList<OCamlInt>)>,
             last_roll: OCamlInt32,
         ) -> bool;
         pub fn construct_and_compare_apply_block_response(
-            apply_block_response: ApplyBlockResponse,
+            apply_block_response: OCamlApplyBlockResponse,
             validation_result_message: OCamlBytes,
             context_hash: OCamlContextHash,
             protocol_hash: OCamlProtocolHash,
@@ -105,48 +78,48 @@ mod tezos_ffi {
             max_operations_ttl: OCamlInt,
             last_allowed_fork_level: OCamlInt32,
             forking_testchain: bool,
-            forking_testchain_data: Option<ForkingTestchainData>,
+            forking_testchain_data: Option<OCamlForkingTestchainData>,
             block_metadata_hash: Option<OCamlBlockMetadataHash>,
             ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
             ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
-            cycle_rolls_owner_snapshots: OCamlList<CycleRollsOwnerSnapshot>,
+            cycle_rolls_owner_snapshots: OCamlList<OCamlCycleRollsOwnerSnapshot>,
             new_protocol_constants_json: Option<String>,
             new_cycle_eras_json: Option<String>,
             commit_time: OCamlFloat,
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
-            begin_construction_request: BeginConstructionRequest,
+            begin_construction_request: OCamlBeginConstructionRequest,
             chain_id: OCamlChainId,
-            predecessor: BlockHeader,
+            predecessor: OCamlBlockHeader,
             protocol_data: Option<OCamlBytes>,
         ) -> bool;
         pub fn construct_and_compare_validate_operation_request(
-            validate_operation_request: ValidateOperationRequest,
-            prevalidator: PrevalidatorWrapper,
-            operation: Operation,
+            validate_operation_request: OCamlValidateOperationRequest,
+            prevalidator: OCamlPrevalidatorWrapper,
+            operation: OCamlOperation,
         ) -> bool;
         pub fn construct_and_compare_rpc_request(
-            rpc_request: RpcRequest,
+            rpc_request: OCamlRpcRequest,
             body: OCamlBytes,
             context_path: OCamlBytes,
-            meth: RpcMethod,
+            meth: OCamlRpcMethod,
             content_type: Option<OCamlBytes>,
             accept: Option<OCamlBytes>,
         ) -> bool;
         pub fn construct_and_compare_protocol_rpc_request(
-            protocol_rpc_request: ProtocolRpcRequest,
-            block_header: BlockHeader,
+            protocol_rpc_request: OCamlProtocolRpcRequest,
+            block_header: OCamlBlockHeader,
             chain_id: OCamlChainId,
             chain_arg: OCamlBytes,
-            request: RpcRequest,
+            request: OCamlRpcRequest,
         ) -> bool;
         pub fn construct_and_compare_operation(
-            operation: Operation,
+            operation: OCamlOperation,
             branch: OCamlBlockHash,
             proto: OCamlBytes,
         ) -> bool;
         pub fn construct_and_compare_prevalidator_wrapper(
-            prevalidator_wrapper: PrevalidatorWrapper,
+            prevalidator_wrapper: OCamlPrevalidatorWrapper,
             chain_id: OCamlChainId,
             protocol: OCamlProtocolHash,
             context_fitness: Option<OCamlList<OCamlBytes>>,

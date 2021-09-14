@@ -6,6 +6,8 @@
 //! problems, from panics to high memory usage, for better stability, we separated protocol into
 //! self-contained process communicating through Unix Socket.
 
+mod ipc_loop;
+
 use clap::{App, Arg};
 use slog::*;
 
@@ -99,12 +101,11 @@ fn main() {
     }
 
     // Process commands from from the Rust node. Most commands are instructions for the Tezos protocol
-    if let Err(err) = tezos_wrapper::service::process_protocol_commands::<
-        crate::tezos::NativeTezosLib,
-        _,
-        _,
-    >(cmd_socket_path, &log, shutdown_callback)
-    {
+    if let Err(err) = ipc_loop::process_protocol_commands::<crate::tezos::NativeTezosLib, _, _>(
+        cmd_socket_path,
+        &log,
+        shutdown_callback,
+    ) {
         error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
         shutdown_callback(&log);
     }
@@ -121,11 +122,12 @@ mod tezos {
         ComputePathResponse, FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest,
         HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
         PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest,
-        ProtocolRpcResponse, RustBytes, TezosContextConfiguration, TezosRuntimeConfiguration,
-        TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-        ValidateOperationRequest, ValidateOperationResponse,
+        ProtocolRpcResponse, RustBytes, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+        TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+        ValidateOperationResponse,
     };
     use tezos_client::client::*;
+    use tezos_context_api::TezosContextConfiguration;
     use tezos_messages::p2p::encoding::operation::Operation;
     use tezos_wrapper::protocol::ProtocolApi;
 

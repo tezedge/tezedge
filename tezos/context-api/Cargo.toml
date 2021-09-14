@@ -1,27 +1,19 @@
 [package]
-name = "tezos_api"
-version = "1.10.0"
-authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+name = "tezos_context_api"
+version = "1.8.0"
 edition = "2018"
+authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
 derive_builder = "0.9"
-thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 strum = "0.20"
 strum_macros = "0.20"
 nom = "6.1"
-url = "2.2"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
-tezos_context_api = { path = "../context-api" }
-
-[dev-dependencies]
-assert-json-diff = "2"
-hex = "0.4"

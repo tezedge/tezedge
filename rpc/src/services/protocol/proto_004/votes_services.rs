@@ -6,7 +6,7 @@ use crypto::hash::ContextHash;
 use itertools::Itertools;
 
 use storage::num_from_slice;
-use tezos_context::context_key_owned;
+use tezos_context_api::context_key_owned;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_004::votes::VoteListings;
 

@@ -25,13 +25,13 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
     use ocaml_interop::ocaml;
-    use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+    use tezos_conv::*;
 
     ocaml! {
-        pub fn setup_benchmark_apply_block_response(response: ApplyBlockResponse);
+        pub fn setup_benchmark_apply_block_response(response: OCamlApplyBlockResponse);
         pub fn apply_block_request_decoded_roundtrip(
-            request: ApplyBlockRequest,
-        ) -> ApplyBlockResponse;
+            request: OCamlApplyBlockRequest,
+        ) -> OCamlApplyBlockResponse;
     }
 }
 

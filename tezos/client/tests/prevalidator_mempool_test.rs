@@ -9,11 +9,13 @@ use tezos_api::environment::{
 };
 use tezos_api::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosRuntimeConfiguration, ValidateOperationRequest,
 };
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -46,7 +48,7 @@ fn init_test_protocol_context(
     let storage = TezosContextStorageConfiguration::Both(
         TezosContextIrminStorageConfiguration { data_dir },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

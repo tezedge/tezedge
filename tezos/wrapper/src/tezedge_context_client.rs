@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::TezosApiConnectionPool;
 use crypto::hash::ContextHash;
-use tezos_context::{ContextError, ContextKeyOwned, ContextValue, StringTreeObject};
+use tezos_context_api::{ContextKeyOwned, ContextValue, StringTreeObject};
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -15,20 +15,12 @@ pub struct TezedgeContextClient {
 
 #[derive(Debug, Error)]
 pub enum TezedgeContextClientError {
-    #[error("Context error: {error:?}")]
-    ContextError { error: ContextError },
     #[error("Pool error: {error:?}")]
     PoolError { error: crate::InternalPoolError },
     #[error("Protocol service error: {error:?}")]
     ProtocolServiceError {
         error: crate::service::ProtocolServiceError,
     },
-}
-
-impl From<ContextError> for TezedgeContextClientError {
-    fn from(error: ContextError) -> Self {
-        TezedgeContextClientError::ContextError { error }
-    }
 }
 
 impl From<crate::InternalPoolError> for TezedgeContextClientError {

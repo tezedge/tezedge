@@ -7,11 +7,13 @@ use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration};
 use tezos_api::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosRuntimeConfiguration, ValidateOperationRequest,
 };
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -78,7 +80,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
                 data_dir: common::prepare_empty_dir("mempool_test_storage_01"),
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+                backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path: None,
             },
         ),
@@ -189,7 +191,7 @@ mod test_data_protocol_v1 {
 
     use crypto::hash::{BlockHash, ContextHash};
     use tezos_api::environment::TezosEnvironmentConfiguration;
-    use tezos_api::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
+    use tezos_context_api::{GenesisChain, PatchContext, ProtocolOverrides};
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 

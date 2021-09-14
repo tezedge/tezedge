@@ -9,19 +9,19 @@ use serial_test::serial;
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::ffi::{
     ApplyBlockRequest, ComputePathRequest, ComputePathResponse, HelpersPreapplyBlockRequest,
-    InitProtocolContextResult, ProtocolRpcRequest, RpcRequest,
-    TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
+    InitProtocolContextResult, ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
 };
 use tezos_api::{
     environment::{
         default_networks, get_empty_operation_list_list_hash, TezosEnvironmentConfiguration,
     },
-    ffi::{
-        ProtocolRpcResponse, RpcMethod, TezosContextConfiguration,
-        TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    },
+    ffi::{ProtocolRpcResponse, RpcMethod},
 };
 use tezos_client::client;
+use tezos_context_api::{
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::{
@@ -58,7 +58,7 @@ fn init_test_protocol_context(
     let storage = TezosContextStorageConfiguration::Both(
         TezosContextIrminStorageConfiguration { data_dir },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -519,7 +519,7 @@ mod test_data {
 
     use crypto::hash::ContextHash;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::PatchContext;
+    use tezos_context_api::PatchContext;
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
