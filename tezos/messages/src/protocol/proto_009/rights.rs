@@ -108,8 +108,8 @@ impl ToRpcJsonMap for BakingRights {
 
 #[cfg(test)]
 mod tests {
-    use assert_json_diff::assert_json_eq;
     use anyhow::Error;
+    use assert_json_diff::assert_json_eq;
     use serde_json::json;
 
     use crate::base::signature_public_key_hash::SignaturePublicKeyHash;

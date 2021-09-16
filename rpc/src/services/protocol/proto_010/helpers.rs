@@ -3,8 +3,8 @@
 
 use std::convert::TryFrom;
 
-use crypto::hash::ProtocolHash;
 use anyhow::bail;
+use crypto::hash::ProtocolHash;
 use getset::Getters;
 use thiserror::Error;
 
@@ -63,12 +63,12 @@ impl RightsConstants {
         context_proto_param: &ContextProtocolParam,
         env: &RpcServiceEnvironment,
     ) -> Result<Self, anyhow::Error> {
-        let protocol_constants: ProtocolConstants = serde_json::from_str(&context_proto_param.constants_data)?;
+        let protocol_constants: ProtocolConstants =
+            serde_json::from_str(&context_proto_param.constants_data)?;
 
-        let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage())
-            .get(&ProtocolHash::from_base58_check(
-                &context_proto_param.protocol_hash.protocol_hash(),
-            )?)? {
+        let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(
+            &ProtocolHash::from_base58_check(&context_proto_param.protocol_hash.protocol_hash())?,
+        )? {
             eras
         } else {
             bail!("No cycle eras found!!")
@@ -79,7 +79,7 @@ impl RightsConstants {
             preserved_cycles: protocol_constants.preserved_cycles,
             nonce_length: protocol_constants.nonce_length,
             time_between_blocks: protocol_constants.time_between_blocks,
-            endorsers_per_block: protocol_constants.endorsers_per_block ,
+            endorsers_per_block: protocol_constants.endorsers_per_block,
             minimal_block_delay: protocol_constants.minimal_block_delay,
             cycle_eras,
         })
@@ -209,10 +209,6 @@ impl RightsParams {
     ) -> Result<Self, anyhow::Error> {
         let block_level = block_header.header.level();
         let preserved_cycles = *rights_constants.preserved_cycles();
-        // let mut blocks_per_cycle = *rights_constants.blocks_per_cycle();
-
-        // this is the cycle of block_id level
-        // let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i32 = block_level;
@@ -291,8 +287,6 @@ impl RightsParams {
                 }
             }
         };
-
-        // calculate the cycle_position of the level or set it from metadata
 
         Ok(Self::new(
             block_level,
@@ -428,9 +422,6 @@ pub fn init_prng(
     let state = cycle_meta_data.seed_bytes();
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
-    // the position of the block in its cycle; has to be i32
-    // let cycle_position: i32 = level_position(level, blocks_per_cycle)?;
-
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(
         state,
@@ -500,7 +491,6 @@ pub struct RightsMetadata {
 impl RightsMetadata {
     pub fn calculate(era: &CycleEra, requested_level: i32) -> Result<Self, RightsConstantError> {
         Ok(Self {
-            // (cycle_from_level(requested_level, blocks_per_cycle)?, level_position(requested_level, blocks_per_cycle)?)
             block_cycle: cycle_from_level(requested_level, era)?,
             block_cycle_position: level_position(requested_level, era)?,
         })
@@ -519,7 +509,6 @@ impl RightsMetadata {
 pub fn cycle_from_level(level: i32, era: &CycleEra) -> Result<i32, RightsConstantError> {
     // check if blocks_per_cycle is not 0 to prevent panic
     if *era.blocks_per_cycle() > 0 {
-        // Ok((level - 1) / blocks_per_cycle)
         Ok((level - *era.first_level()) / *era.blocks_per_cycle() + *era.first_cycle())
     } else {
         Err(RightsConstantError::WrongValue {

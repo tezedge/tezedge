@@ -329,17 +329,11 @@ pub fn store_applied_block_result(
 
     // populate cycle data if is present in the response
     for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {
-        println!("Storing data for cycle: {}", cycle_data.cycle);
         cycle_meta_storage.store_cycle_data(cycle_data)?;
     }
 
     // store new constants if they are present
     if let Some(constants) = block_result.new_protocol_constants_json {
-        // cons
-        println!(
-            "Storing constants data for protocol: {}",
-            &block_result.next_protocol_hash.to_base58_check()
-        );
         constants_storage
             .store_constants_data(block_result.next_protocol_hash.clone(), constants)?;
     }

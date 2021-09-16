@@ -50,14 +50,15 @@ impl RightsConstants {
     pub(crate) fn parse_rights_constants(
         context_proto_param: &ContextProtocolParam,
     ) -> Result<Self, anyhow::Error> {
-        let protocol_constants: ProtocolConstants = serde_json::from_str(&context_proto_param.constants_data)?;
+        let protocol_constants: ProtocolConstants =
+            serde_json::from_str(&context_proto_param.constants_data)?;
 
         Ok(Self {
             blocks_per_cycle: protocol_constants.blocks_per_cycle,
             preserved_cycles: protocol_constants.preserved_cycles,
             nonce_length: protocol_constants.nonce_length,
             time_between_blocks: protocol_constants.time_between_blocks,
-            endorsers_per_block: protocol_constants.endorsers_per_block ,
+            endorsers_per_block: protocol_constants.endorsers_per_block,
         })
     }
 }
@@ -68,11 +69,7 @@ pub(crate) fn get_cycle_data(
     cycle_meta_storage: &CycleMetaStorage,
 ) -> Result<CycleData, anyhow::Error> {
     // prepare cycle for which rollers are selected
-    let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
-        cycle
-    } else {
-        block_cycle
-    };
+    let requested_cycle = parameters.requested_cycle().unwrap_or(block_cycle);
 
     if let Some(cycle_meta_data) = cycle_meta_storage.get(&requested_cycle)? {
         Ok(cycle_meta_data)
@@ -458,7 +455,6 @@ impl RightsMetadata {
         requested_level: i32,
     ) -> Result<Self, RightsConstantError> {
         Ok(Self {
-            // (cycle_from_level(requested_level, blocks_per_cycle)?, level_position(requested_level, blocks_per_cycle)?)
             block_cycle: cycle_from_level(requested_level, blocks_per_cycle)?,
             block_cycle_position: level_position(requested_level, blocks_per_cycle)?,
         })

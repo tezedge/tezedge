@@ -17,7 +17,10 @@ use anyhow::{bail, format_err, Error};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage, CycleMetaStorage};
+use storage::{
+    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, ConstantsStorage, CycleMetaStorage,
+};
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
@@ -92,7 +95,7 @@ impl From<anyhow::Error> for RightsError {
     type = "TimedSizedCache<(BlockHash, Option<String>, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), max_priority.map(|v| v.to_string()), has_all)}",
-    result = true,
+    result = true
 )]
 pub(crate) async fn check_and_get_baking_rights(
     block_hash: &BlockHash,
@@ -236,6 +239,8 @@ pub(crate) async fn check_and_get_baking_rights(
     }
 }
 
+pub const RIGHTS_TIMED_SIZED_CACHE_SIZE: usize = 10;
+
 /// Return generated endorsing rights.
 ///
 /// # Arguments
@@ -254,9 +259,9 @@ pub(crate) async fn check_and_get_baking_rights(
 #[cached(
     name = "ENDORSING_RIGHTS_CACHE",
     type = "TimedSizedCache<(BlockHash, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
-    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    create = "{TimedSizedCache::with_size_and_lifespan(RIGHTS_TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), has_all)}",
-    result = true,
+    result = true
 )]
 pub(crate) async fn check_and_get_endorsing_rights(
     block_hash: &BlockHash,
@@ -569,7 +574,7 @@ pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 #[cached(
     name = "CALL_PROTOCOL_RPC_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash, String), Arc<(u16, String)>>",
-    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    create = "{TimedSizedCache::with_size_and_lifespan(RIGHTS_TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone(), rpc_request.ffi_rpc_router_cache_key())}",
     result = true
 )]
@@ -903,8 +908,6 @@ pub(crate) fn get_context_protocol_params(
         }
     };
 
-    slog::crit!(env.log(), "Getting block meta from storage");
-
     let protocol_hash =
         match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
             Some(block) => block.next_protocol_hash,
@@ -916,12 +919,6 @@ pub(crate) fn get_context_protocol_params(
             }
         };
 
-    slog::crit!(
-        env.log(),
-        "Getting constants from storage - proto: {}",
-        protocol_hash.to_base58_check()
-    );
-
     let constants = match ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)? {
         Some(constants) => constants,
         None => {
@@ -932,8 +929,6 @@ pub(crate) fn get_context_protocol_params(
         }
     };
 
-    slog::crit!(env.log(), "CONSTANTS: {}", constants);
-
     Ok(ContextProtocolParam {
         protocol_hash: protocol_hash.try_into()?,
         constants_data: constants,
@@ -941,44 +936,58 @@ pub(crate) fn get_context_protocol_params(
     })
 }
 
-pub fn get_blocks_per_cycle(protocol_hash: &ProtocolHash, serialized_constants: &str) -> Result<i32, anyhow::Error> {
+pub fn get_blocks_per_cycle(
+    protocol_hash: &ProtocolHash,
+    serialized_constants: &str,
+) -> Result<i32, anyhow::Error> {
     let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
 
     match supported_protocol {
-        SupportedProtocol::Proto001 => {
-            Ok(serde_json::from_str::<proto_001::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto002 => {
-            Ok(serde_json::from_str::<proto_002::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto003 => {
-            Ok(serde_json::from_str::<proto_003::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto004 => {
-            Ok(serde_json::from_str::<proto_004::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
+        SupportedProtocol::Proto001 => Ok(serde_json::from_str::<proto_001::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto002 => Ok(serde_json::from_str::<proto_002::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto003 => Ok(serde_json::from_str::<proto_003::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto004 => Ok(serde_json::from_str::<proto_004::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
         SupportedProtocol::Proto005 => bail!("Not implemented"),
-        SupportedProtocol::Proto005_2 => {
-            Ok(serde_json::from_str::<proto_005_2::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto006 => {
-            Ok(serde_json::from_str::<proto_006::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto007 => {
-            Ok(serde_json::from_str::<proto_007::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto008 => {
-            Ok(serde_json::from_str::<proto_008::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto008_2 => {
-            Ok(serde_json::from_str::<proto_008_2::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto009 => {
-            Ok(serde_json::from_str::<proto_009::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
-        SupportedProtocol::Proto010 => {
-            Ok(serde_json::from_str::<proto_010::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
-        }
+        SupportedProtocol::Proto005_2 => Ok(
+            serde_json::from_str::<proto_005_2::ProtocolConstants>(serialized_constants)?
+                .blocks_per_cycle(),
+        ),
+        SupportedProtocol::Proto006 => Ok(serde_json::from_str::<proto_006::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto007 => Ok(serde_json::from_str::<proto_007::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto008 => Ok(serde_json::from_str::<proto_008::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto008_2 => Ok(
+            serde_json::from_str::<proto_008_2::ProtocolConstants>(serialized_constants)?
+                .blocks_per_cycle(),
+        ),
+        SupportedProtocol::Proto009 => Ok(serde_json::from_str::<proto_009::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto010 => Ok(serde_json::from_str::<proto_010::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
     }
 }
 
@@ -1006,6 +1015,12 @@ pub mod vec_string_to_int {
         T: std::str::FromStr,
         <T as std::str::FromStr>::Err: std::fmt::Display,
     {
-        Vec::deserialize(deserializer)?.into_iter().map(|v: String| v.parse::<T>().map_err(|e| D::Error::custom(format!("{}", e)))).collect()
+        Vec::deserialize(deserializer)?
+            .into_iter()
+            .map(|v: String| {
+                v.parse::<T>()
+                    .map_err(|e| D::Error::custom(format!("{}", e)))
+            })
+            .collect()
     }
 }

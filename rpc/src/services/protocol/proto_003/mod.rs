@@ -1,15 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::Deserialize;
 use getset::CopyGetters;
 use num::BigInt;
+use serde::Deserialize;
 
 mod helpers;
 pub(crate) mod rights_service;
 pub(crate) mod votes_services;
 
-use super::{vec_string_to_int, string_to_int};
+use super::{string_to_int, vec_string_to_int};
 
 #[derive(Debug, Deserialize, Clone, CopyGetters)]
 pub(crate) struct ProtocolConstants {
@@ -19,17 +19,17 @@ pub(crate) struct ProtocolConstants {
     max_operation_data_length: i32,
     max_proposals_per_delegate: u8,
     preserved_cycles: u8,
-    
+
     #[get_copy = "pub(crate)"]
     blocks_per_cycle: i32,
-    
+
     blocks_per_commitment: i32,
     blocks_per_roll_snapshot: i32,
     blocks_per_voting_period: i32,
 
     #[serde(with = "vec_string_to_int")]
     time_between_blocks: Vec<i64>,
-    
+
     endorsers_per_block: u16,
 
     #[serde(with = "string_to_int")]

@@ -180,14 +180,14 @@ pub(crate) fn get_cycle_length_for_block(
         };
 
     let block_level = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
-            Some(block) => block.header.level(),
-            None => {
-                return Err(storage::StorageError::MissingKey {
-                    when: "get_context_protocol_params".into(),
-                }
-                .into())
+        Some(block) => block.header.level(),
+        None => {
+            return Err(storage::StorageError::MissingKey {
+                when: "get_context_protocol_params".into(),
             }
-        };
+            .into())
+        }
+    };
 
     // proto 10 and beyond
     if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&protocol_hash)? {
@@ -198,16 +198,24 @@ pub(crate) fn get_cycle_length_for_block(
                 return Ok(*era.blocks_per_cycle());
             }
         }
-        Err(RpcServiceError::NoDataFoundError { reason: "No matching cycle era found".into() })
+        Err(RpcServiceError::NoDataFoundError {
+            reason: "No matching cycle era found".into(),
+        })
     } else {
         // if no eras are present, simply get blocks_per_cycle from constatns (proto 001-009)
-        if let Some(constants) = ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+        if let Some(constants) =
+            ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)?
+        {
             match get_blocks_per_cycle(&protocol_hash, &constants) {
                 Ok(blocks_per_cycle) => Ok(blocks_per_cycle),
-                Err(e) => Err(RpcServiceError::NoDataFoundError { reason: e.to_string() })
+                Err(e) => Err(RpcServiceError::NoDataFoundError {
+                    reason: e.to_string(),
+                }),
             }
         } else {
-            Err(RpcServiceError::NoDataFoundError { reason: "No constants found for protocol".into() })
+            Err(RpcServiceError::NoDataFoundError {
+                reason: "No constants found for protocol".into(),
+            })
         }
     }
 }
@@ -216,7 +224,7 @@ pub(crate) fn get_cycle_eras(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
     _: &Logger,
-) -> Result<Option<Vec<CycleEra>>, RpcServiceError> {
+) -> Result<Vec<CycleEra>, RpcServiceError> {
     let protocol_hash =
         match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
             Some(block) => block.protocol_hash,
@@ -229,10 +237,9 @@ pub(crate) fn get_cycle_eras(
         };
 
     if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&protocol_hash)? {
-        Ok(Some(eras))
-        // return the constant from eras
+        Ok(eras)
     } else {
-        Ok(Some(vec![]))
+        Ok(vec![])
     }
 }
 

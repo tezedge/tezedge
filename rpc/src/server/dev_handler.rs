@@ -246,7 +246,7 @@ pub async fn cycle_eras(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)
         .map_err(|e| format_err!("Failed to parse_block_hash, reason: {}", e))?;
 
-    result_option_to_json_response(
+    result_to_json_response(
         dev_services::get_cycle_eras(&block_hash, &env, env.log()),
         env.log(),
     )

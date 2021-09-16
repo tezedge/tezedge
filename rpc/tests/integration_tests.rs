@@ -174,10 +174,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     // this also covers the case when we are requesting the last block of a cycle
     println!("\n===Checking furthest future block===");
     let furthest_cycle_future = current_cycle + PRESERVED_CYCLES;
-    let furthest_level_future = get_last_level_in_cycle(
-        furthest_cycle_future,
-        &get_era_from_cycle(furthest_cycle_future, &cycle_eras),
-    );
+    let furthest_level_future = get_last_level_in_cycle(furthest_cycle_future, &current_era);
 
     test_rpc_compare_json(&format!(
         "{}/{}/{}?level={}",
@@ -252,7 +249,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     ))
     .await
     .expect("test failed");
-    
+
     println!("\n===Checking (from florence) first granda block===");
     test_rpc_compare_json(&format!(
         "{}/{}/{}?level={}",
