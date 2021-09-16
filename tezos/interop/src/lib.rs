@@ -1,9 +1,46 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
+//#![forbid(unsafe_code)]
 
-pub mod ffi;
+use std::sync::Once;
+
+use ocaml_interop::{OCamlRuntime, ToOCaml};
+
 pub mod ipc_message_encoding;
+
+mod tezos_ffi {
+    use ocaml_interop::ocaml;
+
+    ocaml! {
+        pub fn ffi_server_loop(sock_cmd_path: String);
+    }
+}
+
+pub fn start_ipc_loop(sock_cmd_path: String) {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let sock_cmd_path = sock_cmd_path.to_boxroot(rt);
+        tezos_ffi::ffi_server_loop(rt, &sock_cmd_path);
+    })
+    .unwrap()
+    // TODO: remove unwrap
+}
+
+/// Initializes the ocaml runtime and the tezos-ffi callback mechanism.
+fn setup() -> OCamlRuntime {
+    static INIT: Once = Once::new();
+    let ocaml_runtime = OCamlRuntime::init();
+
+    INIT.call_once(|| {
+        tezos_context::ffi::initialize_callbacks();
+        ipc_message_encoding::initialize_callbacks();
+    });
+
+    ocaml_runtime
+}
+
+pub fn shutdown() {
+    runtime::shutdown()
+}
 
 /// This modules will allow you to call OCaml code:
 ///

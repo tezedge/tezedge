@@ -203,6 +203,8 @@ impl ProtocolRunnerManager {
             None => Self::MIN_ACCEPT_TIMEOUT,
         };
 
+        // TODO: connect instead of accept
+
         // start IPC connection
         let api = match protocol_commands.try_accept(accept_timeout) {
             Ok(controller) => controller,

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: remove this file
+
 use std::convert::TryFrom;
 use std::sync::Once;
 
@@ -84,22 +86,6 @@ mod tezos_ffi {
             next_protocol_hash: OCamlBytes,
         ) -> TzResult<OCamlBytes>;
     }
-}
-
-/// Initializes the ocaml runtime and the tezos-ffi callback mechanism.
-pub fn setup() -> OCamlRuntime {
-    static INIT: Once = Once::new();
-    let ocaml_runtime = OCamlRuntime::init();
-
-    INIT.call_once(|| {
-        tezos_context::ffi::initialize_callbacks();
-    });
-
-    ocaml_runtime
-}
-
-pub fn shutdown() {
-    runtime::shutdown()
 }
 
 pub fn change_runtime_configuration(

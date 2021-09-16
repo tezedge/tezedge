@@ -20,7 +20,7 @@ tezos_conv = { path = "../conv" }
 tezos_messages = { path = "../messages" }
 tezos_context = { path = "../context" }
 tezos_context_api = { path = "../context-api" }
-tezos_wrapper = { path = "../wrapper" }
+tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 crypto = { path = "../../crypto" }
 
 [dev-dependencies]

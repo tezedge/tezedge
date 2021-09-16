@@ -20,12 +20,8 @@ use crate::pool::{
     PoolError, ProtocolRunnerConnection, ProtocolRunnerManager, SlogErrorHandler,
 };
 mod pool;
-pub mod protocol;
 pub mod runner;
 pub mod service;
-mod tezedge_context_client;
-
-pub use tezedge_context_client::{TezedgeContextClient, TezedgeContextClientError};
 
 /// Configuration for tezos api pool
 #[derive(Debug, Clone)]

@@ -2,4 +2,6 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+// TODO: remove this crate
+
 pub mod client;

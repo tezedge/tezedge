@@ -21,8 +21,8 @@ use shell::mempool::CurrentMempoolStateStorageRef;
 use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_context_ipc_client::TezedgeContextClient;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
 

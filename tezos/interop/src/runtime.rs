@@ -16,8 +16,6 @@ use futures::executor::LocalPool;
 use lazy_static::lazy_static;
 use ocaml_interop::OCamlRuntime;
 
-use crate::ffi;
-
 lazy_static! {
     /// Because OCaml runtime should be accessed only by a single thread
     /// we will create the `OCAML_ENV` singleton.
@@ -186,7 +184,7 @@ fn initialize_environment() -> OCamlEnvironment {
     thread::Builder::new()
         .name("ffi-ocaml-executor-thread".to_string())
         .spawn(move || {
-            let ocaml_runtime = ffi::setup();
+            let ocaml_runtime = super::setup();
             let executor = OCamlThreadExecutor {
                 ready_tasks: task_rx,
                 ocaml_runtime,

@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::TezosApiConnectionPool;
 use crypto::hash::ContextHash;
 use tezos_context_api::{ContextKeyOwned, ContextValue, StringTreeObject};
+use tezos_wrapper::TezosApiConnectionPool;
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -16,21 +16,23 @@ pub struct TezedgeContextClient {
 #[derive(Debug, Error)]
 pub enum TezedgeContextClientError {
     #[error("Pool error: {error:?}")]
-    PoolError { error: crate::InternalPoolError },
+    PoolError {
+        error: tezos_wrapper::InternalPoolError,
+    },
     #[error("Protocol service error: {error:?}")]
     ProtocolServiceError {
-        error: crate::service::ProtocolServiceError,
+        error: tezos_wrapper::service::ProtocolServiceError,
     },
 }
 
-impl From<crate::InternalPoolError> for TezedgeContextClientError {
-    fn from(error: crate::InternalPoolError) -> Self {
+impl From<tezos_wrapper::InternalPoolError> for TezedgeContextClientError {
+    fn from(error: tezos_wrapper::InternalPoolError) -> Self {
         TezedgeContextClientError::PoolError { error }
     }
 }
 
-impl From<crate::service::ProtocolServiceError> for TezedgeContextClientError {
-    fn from(error: crate::service::ProtocolServiceError) -> Self {
+impl From<tezos_wrapper::service::ProtocolServiceError> for TezedgeContextClientError {
+    fn from(error: tezos_wrapper::service::ProtocolServiceError) -> Self {
         TezedgeContextClientError::ProtocolServiceError { error }
     }
 }

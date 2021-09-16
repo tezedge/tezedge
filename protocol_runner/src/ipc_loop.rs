@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: remove this file
+
 use std::path::Path;
 
 use ipc::{IpcClient, IpcError};

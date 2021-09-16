@@ -10,5 +10,5 @@ ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state
 tezos_api = { path = "../api" }
 tezos_context_api = { path = "../context-api" }
 tezos_messages = { path = "../messages" }
-tezos_wrapper = { path = "../wrapper" }
+tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 crypto = { path = "../../crypto" }

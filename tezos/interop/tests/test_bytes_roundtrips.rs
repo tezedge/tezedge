@@ -11,7 +11,6 @@ use serial_test::serial;
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
 use tezos_conv::*;
-use tezos_interop::ffi;
 use tezos_interop::runtime;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -40,12 +39,13 @@ mod tezos_ffi {
 
 fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: is_ocaml_log_enabled(),
-    })
-    .expect("Call to change_runtime_configuration failed");
+    // TODO: still needed?
+    //ffi::change_runtime_configuration(TezosRuntimeConfiguration {
+    //    debug_mode: false,
+    //    compute_context_action_tree_hashes: false,
+    //    log_enabled: is_ocaml_log_enabled(),
+    //})
+    //.expect("Call to change_runtime_configuration failed");
 }
 
 macro_rules! roundtrip_test {

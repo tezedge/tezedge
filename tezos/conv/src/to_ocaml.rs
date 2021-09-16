@@ -44,7 +44,7 @@ use tezos_context_api::{
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-use tezos_wrapper::service::{
+use tezos_protocol_ipc_messages::{
     ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
     ContextGetTreeByPrefixRequest, GenesisResultDataParams, InitProtocolContextParams,
     JsonEncodeApplyBlockOperationsMetadataParams, JsonEncodeApplyBlockResultMetadataParams,

@@ -38,7 +38,7 @@ use tezos_api::ffi::{
 };
 use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
-use tezos_wrapper::service::NodeMessage;
+use tezos_protocol_ipc_messages::NodeMessage;
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {

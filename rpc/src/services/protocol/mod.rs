@@ -32,7 +32,7 @@ use crate::services::base_services::{
     get_additional_data_or_fail, get_context_hash, get_raw_block_header_with_hash,
 };
 use tezos_context_api::context_key_owned;
-use tezos_wrapper::TezedgeContextClientError;
+use tezos_context_ipc_client::TezedgeContextClientError;
 
 mod proto_001;
 mod proto_002;

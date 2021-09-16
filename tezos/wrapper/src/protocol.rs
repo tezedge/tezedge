@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: remove this file
+
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::*;
 use tezos_context_api::TezosContextConfiguration;
