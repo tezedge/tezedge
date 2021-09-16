@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
-use std::sync::Arc;
 
-use crypto::hash::ChainId;
 use anyhow::bail;
 use getset::Getters;
 use thiserror::Error;
@@ -16,12 +14,8 @@ use crypto::{
 use storage::cycle_storage::CycleData;
 use storage::{num_from_slice, BlockHeaderWithHash, CycleMetaStorage};
 
-use crate::helpers::{parse_block_hash, BlockMetadata};
 use crate::merge_slices;
-use crate::server::RpcServiceEnvironment;
-use crate::services::protocol::{
-    parse_block_metadata_level, ContextProtocolParam, MetadataParsingError,
-};
+use crate::services::protocol::ContextProtocolParam;
 
 use super::ProtocolConstants;
 
@@ -187,8 +181,6 @@ impl RightsParams {
         param_has_all: bool,
         rights_constants: &RightsConstants,
         block_header: &BlockHeaderWithHash,
-        chain_id: &ChainId,
-        env: &RpcServiceEnvironment,
         is_baking_rights: bool,
     ) -> Result<Self, anyhow::Error> {
         let block_level = block_header.header.level();
@@ -196,6 +188,7 @@ impl RightsParams {
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
         // this is the cycle of block_id level
+        let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i32 = block_level;
@@ -230,29 +223,11 @@ impl RightsParams {
             }
         };
 
-        let block_metadata = match crate::services::base_services::get_block_metadata(
-            chain_id,
-            &parse_block_hash(chain_id, &requested_level.to_string(), env)?,
-            env,
-        )
-        .await
-        {
-            Ok(metadata) => Some(metadata),
-            Err(_) => None,
-        };
-
-        let rights_metadata = if let Some(metadata) = block_metadata {
-            RightsMetadata::extract_from_block_metadata(metadata)?
-        } else if param_level.is_some() {
-            RightsMetadata::calculate(blocks_per_cycle, requested_level)?
-        } else {
-            // this should never happen. When block_metadata is not available it means we requested a future level (thus level is always Some())
-            bail!("No level parameter in url")
-        };
+        let rights_metadata = RightsMetadata::calculate(blocks_per_cycle, requested_level)?;
 
         Self::validate_cycle(
             cycle_from_level(requested_level, blocks_per_cycle)?,
-            rights_metadata.block_cycle,
+            current_cycle,
             preserved_cycles,
         )?;
 
@@ -260,7 +235,7 @@ impl RightsParams {
         let requested_cycle = match param_cycle {
             Some(val) => Some(Self::validate_cycle(
                 val.parse()?,
-                rights_metadata.block_cycle,
+                current_cycle,
                 preserved_cycles,
             )?),
             None => None,
@@ -476,24 +451,6 @@ pub struct RightsMetadata {
 }
 
 impl RightsMetadata {
-    pub fn extract_from_block_metadata(
-        block_metadata: Arc<BlockMetadata>,
-    ) -> Result<Self, MetadataParsingError> {
-        let (block_cycle, block_cycle_position) =
-            match parse_block_metadata_level(&block_metadata, "level_info") {
-                Ok(cycle_data) => cycle_data,
-                Err(MetadataParsingError::KeyNotFoundError { key: _ }) => {
-                    // No level info found, trying the older scheme
-                    parse_block_metadata_level(&block_metadata, "level")?
-                }
-                Err(e) => return Err(e),
-            };
-        Ok(Self {
-            block_cycle,
-            block_cycle_position,
-        })
-    }
-
     pub fn calculate(
         blocks_per_cycle: i32,
         requested_level: i32,

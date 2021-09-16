@@ -17,14 +17,14 @@ use anyhow::{bail, format_err, Error};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage, CycleMetaStorage, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage, CycleMetaStorage};
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
-use crate::helpers::{BlockMetadata, RpcServiceError};
+use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
 use crate::services::base_services::{get_context_hash, get_raw_block_header_with_hash};
 use tezos_wrapper::TezedgeContextClientError;
@@ -87,16 +87,14 @@ impl From<anyhow::Error> for RightsError {
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-#[allow(clippy::too_many_arguments)]
 #[cached(
     name = "BAKING_RIGHTS_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
+    type = "TimedSizedCache<(BlockHash, Option<String>, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(chain_id.clone(), block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), max_priority.map(|v| v.to_string()), has_all)}",
+    convert = "{(block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), max_priority.map(|v| v.to_string()), has_all)}",
     result = true,
 )]
 pub(crate) async fn check_and_get_baking_rights(
-    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -120,8 +118,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -133,8 +129,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -146,8 +140,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -159,8 +151,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -173,8 +163,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -186,8 +174,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -199,8 +185,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -212,8 +196,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -225,8 +207,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -238,8 +218,6 @@ pub(crate) async fn check_and_get_baking_rights(
             max_priority,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -275,13 +253,12 @@ pub(crate) async fn check_and_get_baking_rights(
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
 #[cached(
     name = "ENDORSING_RIGHTS_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
+    type = "TimedSizedCache<(BlockHash, Option<String>, Option<String>, Option<String>, bool), Option<Vec<RpcJsonMap>>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(chain_id.clone(), block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), has_all)}",
+    convert = "{(block_hash.clone(), level.map(|v| v.to_string()), delegate.map(|v| v.to_string()), cycle.map(|v| v.to_string()), has_all)}",
     result = true,
 )]
 pub(crate) async fn check_and_get_endorsing_rights(
-    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -302,8 +279,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -314,8 +289,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -326,8 +299,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -338,8 +309,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -352,8 +321,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
                 cycle,
                 has_all,
                 &cycle_meta_storage,
-                chain_id,
-                env,
             )
             .await
             .map_err(RightsError::from)
@@ -365,8 +332,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -377,8 +342,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -389,8 +352,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -402,8 +363,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
                 cycle,
                 has_all,
                 &cycle_meta_storage,
-                chain_id,
-                env,
             )
             .await
             .map_err(RightsError::from)
@@ -415,8 +374,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
             cycle,
             has_all,
             &cycle_meta_storage,
-            chain_id,
-            env,
         )
         .await
         .map_err(RightsError::from),
@@ -984,100 +941,43 @@ pub(crate) fn get_context_protocol_params(
     })
 }
 
-#[derive(Debug, Error)]
-#[allow(clippy::enum_variant_names)]
-pub enum MetadataParsingError {
-    #[error("Cannot parse block metadata, key: {key}")]
-    ParsingError { key: &'static str },
-    #[error("Key not found in block metadata, key: {key}")]
-    KeyNotFoundError { key: &'static str },
-}
-
-pub fn parse_block_metadata_level(
-    metadata: &BlockMetadata,
-    key: &'static str,
-) -> Result<(i32, i32), MetadataParsingError> {
-    if let Some(level_info) = metadata.get(key) {
-        if let Some(level_info_object) = level_info.as_object() {
-            let block_cycle = if let Some(cycle) = level_info_object.get("cycle") {
-                if let Some(value) = cycle.as_i64() {
-                    match value.try_into() {
-                        Ok(v) => v,
-                        Err(_) => return Err(MetadataParsingError::ParsingError { key: "cycle" }),
-                    }
-                } else {
-                    return Err(MetadataParsingError::ParsingError { key: "cycle" });
-                }
-            } else {
-                return Err(MetadataParsingError::ParsingError { key: "cycle" });
-            };
-            let block_cycle_position: i32 =
-                if let Some(cycle_position) = level_info_object.get("cycle_position") {
-                    if let Some(value) = cycle_position.as_i64() {
-                        match value.try_into() {
-                            Ok(v) => v,
-                            Err(_) => {
-                                return Err(MetadataParsingError::ParsingError {
-                                    key: "cycle_position",
-                                })
-                            }
-                        }
-                    } else {
-                        return Err(MetadataParsingError::ParsingError {
-                            key: "cycle_position",
-                        });
-                    }
-                } else {
-                    return Err(MetadataParsingError::ParsingError {
-                        key: "cycle_position",
-                    });
-                };
-            Ok((block_cycle, block_cycle_position))
-        } else {
-            Err(MetadataParsingError::ParsingError { key })
-        }
-    } else {
-        Err(MetadataParsingError::KeyNotFoundError { key })
-    }
-}
-
 pub fn get_blocks_per_cycle(protocol_hash: &ProtocolHash, serialized_constants: &str) -> Result<i32, anyhow::Error> {
     let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
 
     match supported_protocol {
         SupportedProtocol::Proto001 => {
-            Ok(serde_json::from_str::<proto_001::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_001::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto002 => {
-            Ok(serde_json::from_str::<proto_002::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_002::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto003 => {
-            Ok(serde_json::from_str::<proto_003::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_003::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto004 => {
-            Ok(serde_json::from_str::<proto_004::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_004::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto005 => bail!("Not implemented"),
         SupportedProtocol::Proto005_2 => {
-            Ok(serde_json::from_str::<proto_005_2::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_005_2::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto006 => {
-            Ok(serde_json::from_str::<proto_006::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_006::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto007 => {
-            Ok(serde_json::from_str::<proto_007::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_007::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto008 => {
-            Ok(serde_json::from_str::<proto_008::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_008::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto008_2 => {
-            Ok(serde_json::from_str::<proto_008_2::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_008_2::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto009 => {
-            Ok(serde_json::from_str::<proto_009::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_009::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
         SupportedProtocol::Proto010 => {
-            Ok(serde_json::from_str::<proto_010::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+            Ok(serde_json::from_str::<proto_010::ProtocolConstants>(serialized_constants)?.blocks_per_cycle())
         }
     }
 }

@@ -16,7 +16,6 @@ use std::convert::TryInto;
 use anyhow::format_err;
 use itertools::Itertools;
 
-use crypto::hash::ChainId;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_006::rights::{BakingRights, EndorsingRight};
@@ -24,7 +23,6 @@ use tezos_messages::protocol::proto_006::rights::{BakingRights, EndorsingRight};
 use storage::cycle_storage::CycleData;
 use storage::CycleMetaStorage;
 
-use crate::server::RpcServiceEnvironment;
 use crate::services::dev_services::contract_id_to_contract_address_for_index;
 use crate::services::protocol::proto_006::helpers::{
     get_cycle_data, get_prng_number, init_prng, level_position, EndorserSlots, RightsConstants,
@@ -58,8 +56,6 @@ pub(crate) async fn check_and_get_baking_rights(
     max_priority: Option<&str>,
     has_all: bool,
     cycle_meta_storage: &CycleMetaStorage,
-    chain_id: &ChainId,
-    env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -72,8 +68,6 @@ pub(crate) async fn check_and_get_baking_rights(
         has_all,
         &constants,
         &context_proto_params.block_header,
-        chain_id,
-        env,
         true,
     )
     .await?;
@@ -314,8 +308,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
     cycle: Option<&str>,
     has_all: bool,
     cycle_meta_storage: &CycleMetaStorage,
-    chain_id: &ChainId,
-    env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, anyhow::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -328,8 +320,6 @@ pub(crate) async fn check_and_get_endorsing_rights(
         has_all,
         &constants,
         &context_proto_params.block_header,
-        chain_id,
-        env,
         false,
     )
     .await?;
