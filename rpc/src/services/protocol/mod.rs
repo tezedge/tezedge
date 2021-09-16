@@ -13,14 +13,11 @@
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
-use anyhow::{format_err, Error};
+use anyhow::{bail, format_err, Error};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
-use storage::{
-    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ConstantsStorage, CycleMetaStorage,
-};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage, CycleMetaStorage, StorageError};
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
@@ -951,7 +948,6 @@ pub(crate) fn get_context_protocol_params(
 
     slog::crit!(env.log(), "Getting block meta from storage");
 
-    // TODO: maybe get the protocol hash from the metadata as well
     let protocol_hash =
         match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
             Some(block) => block.next_protocol_hash,
@@ -1042,5 +1038,74 @@ pub fn parse_block_metadata_level(
         }
     } else {
         Err(MetadataParsingError::KeyNotFoundError { key })
+    }
+}
+
+pub fn get_blocks_per_cycle(protocol_hash: &ProtocolHash, serialized_constants: &str) -> Result<i32, anyhow::Error> {
+    let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
+
+    match supported_protocol {
+        SupportedProtocol::Proto001 => {
+            Ok(serde_json::from_str::<proto_001::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto002 => {
+            Ok(serde_json::from_str::<proto_002::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto003 => {
+            Ok(serde_json::from_str::<proto_003::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto004 => {
+            Ok(serde_json::from_str::<proto_004::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto005 => bail!("Not implemented"),
+        SupportedProtocol::Proto005_2 => {
+            Ok(serde_json::from_str::<proto_005_2::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto006 => {
+            Ok(serde_json::from_str::<proto_006::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto007 => {
+            Ok(serde_json::from_str::<proto_007::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto008 => {
+            Ok(serde_json::from_str::<proto_008::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto008_2 => {
+            Ok(serde_json::from_str::<proto_008_2::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto009 => {
+            Ok(serde_json::from_str::<proto_009::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+        SupportedProtocol::Proto010 => {
+            Ok(serde_json::from_str::<proto_010::ProtocolConstants>(&serialized_constants)?.blocks_per_cycle())
+        }
+    }
+}
+
+pub mod string_to_int {
+    use serde::{de::Error as _, Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: std::str::FromStr,
+        <T as std::str::FromStr>::Err: std::fmt::Display,
+    {
+        String::deserialize(deserializer)?
+            .parse::<T>()
+            .map_err(|e| D::Error::custom(format!("{}", e)))
+    }
+}
+
+pub mod vec_string_to_int {
+    use serde::{de::Error as _, Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: std::str::FromStr,
+        <T as std::str::FromStr>::Err: std::fmt::Display,
+    {
+        Vec::deserialize(deserializer)?.into_iter().map(|v: String| v.parse::<T>().map_err(|e| D::Error::custom(format!("{}", e)))).collect()
     }
 }

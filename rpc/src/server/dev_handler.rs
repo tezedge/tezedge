@@ -46,7 +46,7 @@ pub async fn dev_blocks(
 
     // get cycle length
     let cycle_length = dev_services::get_cycle_length_for_block(&from_block_id, &env, env.log())
-        .map_err(|e| format_err!("Failed to get constants, reason: {}", e))?;
+        .map_err(|e| format_err!("Failed to get cycle length, reason: {}", e))?;
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),

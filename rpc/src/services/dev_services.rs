@@ -26,11 +26,12 @@ use storage::{
     CycleErasStorage, PersistentStorage,
 };
 //use tezos_context::channel::ContextAction;
-use tezos_messages::base::rpc_support::UniversalValue;
 use tezos_messages::base::ConversionError;
 
 use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
+
+use crate::services::protocol::get_blocks_per_cycle;
 
 pub type ContractAddress = Vec<u8>;
 
@@ -164,36 +165,51 @@ pub(crate) fn get_stats_memory_protocol_runners() -> MemoryStatsResult<Vec<Memor
 pub(crate) fn get_cycle_length_for_block(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-    log: &Logger,
+    _: &Logger,
 ) -> Result<i32, RpcServiceError> {
-    // TODO @adonagy: FIX THIS
-    // let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&ProtocolHash::from_base58_check(&context_proto_param.protocol_hash.protocol_hash())?)? {
-    //     eras
-    //     // return the constant from eras
-    // } else {
-    //     bail!("No cycle eras found!!")
-    // };
-    // if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
-    //     Ok(tezos_messages::protocol::get_constants_for_rpc(
-    //         &context_proto_params.constants_data,
-    //         &context_proto_params.protocol_hash,
-    //     ).map_err(|e| RpcServiceError::UnexpectedError {
-    //         reason: format!("{}", e)
-    //     })?
-    //         .map(|constants| constants.get("blocks_per_cycle")
-    //             .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-    //                 slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-    //                 4096
-    //             })
-    //         ).flatten().unwrap_or_else(|| {
-    //         slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-    //         4096
-    //     }))
-    // } else {
-    //     slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-    //     Ok(4096)
-    // }
-    Ok(4096)
+    // get the protocol hash
+    let protocol_hash =
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(block) => block.protocol_hash,
+            None => {
+                return Err(storage::StorageError::MissingKey {
+                    when: "get_context_protocol_params".into(),
+                }
+                .into())
+            }
+        };
+
+    let block_level = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
+            Some(block) => block.header.level(),
+            None => {
+                return Err(storage::StorageError::MissingKey {
+                    when: "get_context_protocol_params".into(),
+                }
+                .into())
+            }
+        };
+
+    // proto 10 and beyond
+    if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+        for era in eras {
+            if *era.first_level() > block_level {
+                continue;
+            } else {
+                return Ok(*era.blocks_per_cycle());
+            }
+        }
+        Err(RpcServiceError::NoDataFoundError { reason: "No matching cycle era found".into() })
+    } else {
+        // if no eras are present, simply get blocks_per_cycle from constatns (proto 001-009)
+        if let Some(constants) = ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+            match get_blocks_per_cycle(&protocol_hash, &constants) {
+                Ok(blocks_per_cycle) => Ok(blocks_per_cycle),
+                Err(e) => Err(RpcServiceError::NoDataFoundError { reason: e.to_string() })
+            }
+        } else {
+            Err(RpcServiceError::NoDataFoundError { reason: "No constants found for protocol".into() })
+        }
+    }
 }
 
 pub(crate) fn get_cycle_eras(

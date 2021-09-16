@@ -23,6 +23,8 @@ use crate::merge_slices;
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::ContextProtocolParam;
 
+use super::ProtocolConstants;
+
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
 pub struct RightsConstants {
@@ -48,10 +50,6 @@ pub struct RightsConstants {
 pub enum RightsConstantError {
     #[error("The value is illegal, key: {key}")]
     WrongValue { key: &'static str },
-    #[error("Key cannot be parsed, key: {key}")]
-    Parsing { key: &'static str },
-    #[error("Key cannot be found in constants, key: {key}")]
-    KeyNotFound { key: &'static str },
 }
 
 impl RightsConstants {
@@ -65,94 +63,25 @@ impl RightsConstants {
         context_proto_param: &ContextProtocolParam,
         env: &RpcServiceEnvironment,
     ) -> Result<Self, anyhow::Error> {
-        if let Some(constatns_deserialized) =
-            serde_json::from_str::<serde_json::Value>(&context_proto_param.constants_data)?
-                .as_object()
-        {
-            let blocks_per_cycle = get_constant_i64(constatns_deserialized, "blocks_per_cycle")?;
-            let preserved_cycles = get_constant_i64(constatns_deserialized, "preserved_cycles")?;
-            // let nonce_length = constatns_deserialized.get("nonce_length").unwrap().as_i64().unwrap();
-            let time_between_blocks = get_time_between_blocks(constatns_deserialized)?;
-            let endorsers_per_block =
-                get_constant_i64(constatns_deserialized, "endorsers_per_block")?;
-            let minimal_block_delay =
-                get_constant_i64(constatns_deserialized, "minimal_block_delay")?;
+        let protocol_constants: ProtocolConstants = serde_json::from_str(&context_proto_param.constants_data)?;
 
-            let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage())
-                .get(&ProtocolHash::from_base58_check(
-                    &context_proto_param.protocol_hash.protocol_hash(),
-                )?)? {
-                eras
-            } else {
-                bail!("No cycle eras found!!")
-            };
-
-            Ok(Self {
-                blocks_per_cycle: blocks_per_cycle as i32,
-                preserved_cycles: preserved_cycles as u8,
-                // TODO: this should also be in constants
-                nonce_length: 32,
-                time_between_blocks,
-                endorsers_per_block: endorsers_per_block as u16,
-                minimal_block_delay,
-                cycle_eras,
-            })
+        let cycle_eras = if let Some(eras) = CycleErasStorage::new(env.persistent_storage())
+            .get(&ProtocolHash::from_base58_check(
+                &context_proto_param.protocol_hash.protocol_hash(),
+            )?)? {
+            eras
         } else {
-            bail!("Constants not an object")
-        }
-    }
-}
+            bail!("No cycle eras found!!")
+        };
 
-fn get_constant_i64(
-    constants: &serde_json::Map<String, serde_json::Value>,
-    key: &'static str,
-) -> Result<i64, RightsConstantError> {
-    if let Some(value) = constants.get(key) {
-        if let Some(i64_value) = value.as_i64() {
-            Ok(i64_value)
-        } else {
-            if let Some(str_num) = value.as_str() {
-                return str_num
-                    .parse()
-                    .map_err(|_| RightsConstantError::Parsing { key });
-            }
-            Err(RightsConstantError::Parsing { key })
-        }
-    } else {
-        Err(RightsConstantError::KeyNotFound { key })
-    }
-}
-
-fn get_time_between_blocks(
-    constants: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Vec<i64>, RightsConstantError> {
-    let mut ret: Vec<i64> = Vec::new();
-    if let Some(value) = constants.get("time_between_blocks") {
-        if let Some(array) = value.as_array() {
-            for e in array {
-                if let Some(str_element) = e.as_str() {
-                    let parsed =
-                        str_element
-                            .parse::<i64>()
-                            .map_err(|_| RightsConstantError::Parsing {
-                                key: "time_between_blocks",
-                            })?;
-                    ret.push(parsed);
-                } else {
-                    return Err(RightsConstantError::Parsing {
-                        key: "time_between_blocks",
-                    });
-                }
-            }
-            Ok(ret)
-        } else {
-            Err(RightsConstantError::Parsing {
-                key: "time_between_blocks",
-            })
-        }
-    } else {
-        Err(RightsConstantError::KeyNotFound {
-            key: "time_between_blocks",
+        Ok(Self {
+            blocks_per_cycle: protocol_constants.blocks_per_cycle,
+            preserved_cycles: protocol_constants.preserved_cycles,
+            nonce_length: protocol_constants.nonce_length,
+            time_between_blocks: protocol_constants.time_between_blocks,
+            endorsers_per_block: protocol_constants.endorsers_per_block ,
+            minimal_block_delay: protocol_constants.minimal_block_delay,
+            cycle_eras,
         })
     }
 }
