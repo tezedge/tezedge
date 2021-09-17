@@ -124,9 +124,6 @@ pub(crate) fn get_baking_rights(
         let last_block_level = first_block_level + blocks_per_cycle_in_era;
 
         for level in first_block_level..last_block_level {
-            let block_level_diff: i64 = (level - block_level).abs().into();
-            let seconds_to_add: i64 = block_level_diff * minimal_block_delay;
-            let estimated_timestamp = timestamp + seconds_to_add;
             let cycle_position = level_position(level, cycle_era)?;
 
             // assign rolls goes here
@@ -137,7 +134,7 @@ pub(crate) fn get_baking_rights(
                 &rolls_map,
                 level,
                 cycle_position,
-                estimated_timestamp,
+                *timestamp,
                 true,
                 &mut baking_rights,
             )?;
@@ -146,9 +143,9 @@ pub(crate) fn get_baking_rights(
         }
     } else {
         let level = *parameters.requested_level();
-        let block_level_diff: i64 = (level - block_level).abs().into();
-        let seconds_to_add: i64 = block_level_diff * minimal_block_delay;
-        let estimated_timestamp = timestamp + seconds_to_add;
+        // let block_level_diff: i64 = (level - block_level).abs().into();
+        // let seconds_to_add: i64 = block_level_diff * minimal_block_delay;
+        // let estimated_timestamp = timestamp + seconds_to_add;
         // assign rolls goes here
         baking_rights_assign_rolls(
             parameters,
@@ -157,7 +154,7 @@ pub(crate) fn get_baking_rights(
             &rolls_map,
             level,
             cycle_position,
-            estimated_timestamp,
+            *timestamp,
             false,
             &mut baking_rights,
         )?;
@@ -204,7 +201,7 @@ fn baking_rights_assign_rolls(
     rolls_map: &HashMap<i32, String>,
     level: i32,
     cycle_position: i32,
-    estimated_head_timestamp: i64,
+    block_timestamp: i64,
     is_cycle: bool,
     baking_rights: &mut Vec<BakingRights>,
 ) -> Result<(), anyhow::Error> {
@@ -221,6 +218,18 @@ fn baking_rights_assign_rolls(
     let block_level = *parameters.block_level();
     let last_roll = *cycle_meta_data.last_roll();
     let display_level: i32 = *parameters.display_level();
+
+    let block_level_diff: i64 = (level - block_level).abs().into();
+    let seconds_to_add: i64 = block_level_diff * minimal_block_delay;
+    
+    let predecessor_timestamp = if block_level_diff > 1 {
+        // predecessor is off by one minimal_block_delay
+        block_timestamp + seconds_to_add - minimal_block_delay
+    } else {
+        // Note: level here is the requested_level, that is always incremented by 1 when no specific ?level= is included
+        // so it's predecessor is allways the current block
+        block_timestamp
+    };
 
     for priority in 0..max_priority + 1 {
         // draw the rolls for the requested parameters
@@ -252,15 +261,13 @@ fn baking_rights_assign_rolls(
 
         // we omit the estimated_time field if the block on the requested level is already baked
         let priority_timestamp = if block_level < level {
-            let time = if time_between_blocks.len() == 1 {
-                time_between_blocks[0]
-            } else {
-                time_between_blocks[1]
-            };
             if priority == 0 {
-                Some(estimated_head_timestamp)
+                // use fast path calculation
+                Some(predecessor_timestamp + minimal_block_delay)
             } else {
-                Some(estimated_head_timestamp + minimal_block_delay + (priority as i64 * time))
+                // use slowpath calculation
+                // let priority_diff: i64 = (max_priority - priority).into();
+                Some(predecessor_timestamp + (priority as i64 * time_between_blocks[1]) + time_between_blocks[0])
             }
         } else {
             None
