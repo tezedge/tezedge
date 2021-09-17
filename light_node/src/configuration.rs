@@ -96,7 +96,7 @@ impl Storage {
     const STORAGES_COUNT: usize = 3;
     const MINIMAL_THREAD_COUNT: usize = 1;
 
-    const DB_STORAGE_VERSION: i64 = 20;
+    const DB_STORAGE_VERSION: i64 = 21;
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
