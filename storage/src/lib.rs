@@ -37,6 +37,9 @@ pub use crate::block_meta_storage::{
 pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
 pub use crate::chain_meta_storage::ChainMetaStorage;
 use crate::commit_log::{CommitLogError, CommitLogs};
+pub use crate::constants_storage::ConstantsStorage;
+pub use crate::cycle_eras_storage::CycleErasStorage;
+pub use crate::cycle_storage::CycleMetaStorage;
 use crate::database::tezedge_database::TezedgeDatabase;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
@@ -53,6 +56,9 @@ pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod commit_log;
+pub mod constants_storage;
+pub mod cycle_eras_storage;
+pub mod cycle_storage;
 pub mod database;
 pub mod mempool_storage;
 pub mod operations_meta_storage;
@@ -143,6 +149,8 @@ pub enum StorageError {
     HashDecodeError { error: FromBase58CheckError },
     #[error("Database error: {error:?}")]
     MainDBError { error: database::error::Error },
+    #[error("Deserialization: {error}")]
+    SerdeJsonError { error: serde_json::Error },
 }
 
 impl From<DBError> for StorageError {
@@ -197,6 +205,12 @@ impl From<FromBase58CheckError> for StorageError {
 impl From<database::error::Error> for StorageError {
     fn from(error: database::error::Error) -> Self {
         StorageError::MainDBError { error }
+    }
+}
+
+impl From<serde_json::Error> for StorageError {
+    fn from(error: serde_json::Error) -> Self {
+        StorageError::SerdeJsonError { error }
     }
 }
 
@@ -270,6 +284,9 @@ pub fn store_applied_block_result(
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta,
+    cycle_meta_storage: &CycleMetaStorage,
+    cycle_eras_storage: &CycleErasStorage,
+    constants_storage: &ConstantsStorage,
 ) -> Result<BlockAdditionalData, StorageError> {
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
@@ -284,7 +301,7 @@ pub fn store_applied_block_result(
         block_result.max_operations_ttl.try_into().unwrap(),
         block_result.last_allowed_fork_level,
         block_result.protocol_hash,
-        block_result.next_protocol_hash,
+        block_result.next_protocol_hash.clone(),
         block_result.block_metadata_hash,
         {
             // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
@@ -309,6 +326,23 @@ pub fn store_applied_block_result(
 
     // populate predecessor storage
     block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
+
+    // populate cycle data if is present in the response
+    for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {
+        cycle_meta_storage.store_cycle_data(cycle_data)?;
+    }
+
+    // store new constants if they are present
+    if let Some(constants) = block_result.new_protocol_constants_json {
+        constants_storage
+            .store_constants_data(block_result.next_protocol_hash.clone(), constants)?;
+    }
+
+    // store new cycle eras if they are present
+    if let Some(new_cycle_eras) = block_result.new_cycle_eras_json {
+        cycle_eras_storage
+            .store_cycle_eras_data(block_result.next_protocol_hash.clone(), new_cycle_eras)?;
+    }
 
     // if everything is stored and ok, we can considere this block as applied
     // mark current head as applied
@@ -477,6 +511,9 @@ pub mod initializer {
                 crate::ChainMetaStorage::descriptor(cache),
                 crate::PredecessorStorage::descriptor(cache),
                 crate::BlockAdditionalData::descriptor(&cache),
+                crate::CycleMetaStorage::descriptor(cache),
+                crate::CycleErasStorage::descriptor(cache),
+                crate::ConstantsStorage::descriptor(cache),
             ]
         }
     }

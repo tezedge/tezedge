@@ -37,6 +37,9 @@ fn test_storage() -> Result<(), Error> {
     let block_meta_storage = BlockMetaStorage::new(tmp_storage.storage());
     let chain_meta_storage = ChainMetaStorage::new(tmp_storage.storage());
     let operations_meta_storage = OperationsMetaStorage::new(tmp_storage.storage());
+    let cycle_meta_storage = CycleMetaStorage::new(tmp_storage.storage());
+    let cycle_eras_storage = CycleErasStorage::new(tmp_storage.storage());
+    let constants_storage = ConstantsStorage::new(tmp_storage.storage());
 
     // tezos env - sample
     let tezos_env = TezosEnvironmentConfiguration {
@@ -225,6 +228,9 @@ fn test_storage() -> Result<(), Error> {
         &block.hash,
         apply_result.clone(),
         &mut metadata,
+        &cycle_meta_storage,
+        &cycle_eras_storage,
+        &constants_storage,
     )?;
 
     // set block as current head

@@ -1,0 +1,207 @@
+kind: pipeline
+name: build-tezedge-binaries
+
+workspace:
+  path: /drone/src
+
+steps:
+
+- name: build-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # prepare rust toolchain dir
+    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
+    # build and unit-test
+    - cargo clean
+    - cargo build --release --workspace
+    - cargo test --release --workspace --no-run
+    # collect binary artefacts
+    # directory in the workspace to cache all the binary artefacts
+    # TODO: use snake-case for directories
+    - mkdir -p drone-cache/build_files/ffi
+    - mkdir -p drone-cache/build_files/tezedge
+    - mkdir -p drone-cache/build_files/identities
+    - mkdir -p drone-cache/test_data/tests/resources
+    - mkdir -p drone-cache/tests
+    - mkdir -p drone-cache/sandbox_files
+    # copy binaries
+    - cp ./target/release/light-node drone-cache/build_files
+    - cp ./target/release/sandbox drone-cache/build_files
+    - cp ./target/release/protocol-runner drone-cache/build_files
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so drone-cache/build_files/ffi
+    - cp ./sandbox/artifacts/tezos-client drone-cache/build_files
+    # copy sapling init files
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params drone-cache/build_files/ffi
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params drone-cache/build_files/ffi
+    # copy sandbox resources
+    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sandbox_files
+    # copy other resources
+    - cp ./light_node/etc/drone/assert_equals.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_equals.sh
+    - cp ./light_node/etc/drone/assert_contains.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_contains.sh
+    - cp ./light_node/etc/drone/wait_file.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/wait_file.sh
+    - cp ./light_node/etc/drone/assert_cyclic_test_result.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_cyclic_test_result.sh
+    - cp ./light_node/etc/drone/identities/* drone-cache/build_files/identities/
+    - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
+    # copy test binaries
+    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
+    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` drone-cache/tests/shell_chain_test
+    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` drone-cache/tests/protocol_runner_test
+    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` drone-cache/tests/p2p_test
+    # copy test resources
+    - cp ./shell/tests/resources/apply_block_request_until_1326.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox-patch-context.json drone-cache/test_data/tests/resources
+    # collect modified python tests stuff
+    - mkdir -p drone-cache/python-tests/daemons
+    - mkdir -p drone-cache/python-tests/launchers
+    - mkdir -p drone-cache/python-tests/tools
+    - cp -r ./tezos/python-tests/daemons/node.py drone-cache/python-tests/daemons/node.py
+    - cp -r ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/sandbox.py
+    - cp -r ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/constants.py
+
+- name: rebuild-artifacts-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.165.82
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+trigger:
+  branch: develop
+  event: push
+
+---
+###################################################################################################################
+# This pipeline runs a long running RPC call comparison test that compares tezedge results with octez, ensuring the 
+# data the RPC returns is correct
+###################################################################################################################
+kind: pipeline
+name: corr/baking-endorsing-rights-rpc-test
+
+environment:
+  TO_BLOCK_HEADER_FOR_RPC: 1672200
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-mainnet-run:18732
+  OCTEZ_NODE_RPC_CONTEXT_ROOT: http://octez-node-mainnet-run-1:8732
+
+steps:
+
+- name: prepare-cache-dir
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.165.82
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: octez-node-mainnet-run-1
+  user: root
+  image: tezos/tezos:v10.2
+  detach: true
+  volumes:
+    - name: octez-node-mainnet-snapshot-data
+      path: /home/tezos/data
+    - name: cache
+      path: /data/cache
+  commands:
+    - rm -f /home/tezos/data/lock
+    - cp drone-cache/build_files/identities/identity_1.json /home/tezos/data/identity.json
+    - tezos-node config reset --data-dir /home/tezos/data --network mainnet --no-bootstrap-peers --history-mode archive
+    - tezos-node run --history-mode archive --data-dir /home/tezos/data --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network mainnet --no-bootstrap-peers
+
+- name: tezedge-updated-node-mainnet-run
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-node-mainnet-snapshot-data
+      path: /data/tezedge-data
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "mainnet" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-data-dir /data/tezedge-data --bootstrap-db-path bootstrap_db
+
+- name: wait-for-snapshoted-nodes
+  image: tezedge/tezos-node-bootstrap:latest
+  commands:
+    - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
+    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: rpc-test
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+  commands:
+    - export NODE_RPC_CONTEXT_ROOT_1=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_2=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
+    - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored test_rpc_compare_rights_mainnet
+
+volumes:
+  - name: octez-node-mainnet-snapshot-data
+    host:
+      path: /home/dev/octez-data/archive-1672200
+  - name: tezedge-node-mainnet-snapshot-data
+    host:
+      path: /home/dev/tezedge-data/tezedge-1678542
+
+trigger:
+  branch: develop
+  event: push

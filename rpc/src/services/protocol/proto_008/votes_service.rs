@@ -20,7 +20,7 @@ pub fn get_votes_listings(
     // filter out the listings data
     let mut listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(&context_hash, context_key_owned!("data/votes/listings"))?
+        .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))?
     {
         val
     } else {
