@@ -45,8 +45,9 @@ pub async fn dev_blocks(
     };
 
     // get cycle length
-    let cycle_length = dev_services::get_cycle_length_for_block(&from_block_id, &env, env.log())
-        .map_err(|e| format_err!("Failed to get cycle length, reason: {}", e))?;
+    let cycle_length =
+        dev_services::get_cycle_length_for_block(&chain_id, &from_block_id, &env, env.log())
+            .map_err(|e| format_err!("Failed to get cycle length, reason: {}", e))?;
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),
@@ -247,7 +248,7 @@ pub async fn cycle_eras(
         .map_err(|e| format_err!("Failed to parse_block_hash, reason: {}", e))?;
 
     result_to_json_response(
-        dev_services::get_cycle_eras(&block_hash, &env, env.log()),
+        dev_services::get_cycle_eras(&chain_id, &block_hash, &env, env.log()),
         env.log(),
     )
 }

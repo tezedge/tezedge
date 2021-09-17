@@ -98,24 +98,17 @@ pub(crate) fn get_baking_rights(
     let cycle_position = *rights_metadata.block_cycle_position();
 
     // build a reverse map of rols so we have access in O(1)
-    let rolls_map: HashMap<i32, String> = cycle_meta_data
-        .rolls_data()
-        .iter()
-        .map(|(delegate, rolls)| {
-            rolls
-                .iter()
-                .map(|roll| {
-                    (
-                        *roll,
-                        SignaturePublicKeyHash::from_tagged_bytes(delegate.clone())
-                            .unwrap()
-                            .to_string_representation(),
-                    )
-                })
-                .collect::<HashMap<i32, String>>()
-        })
-        .flatten()
-        .collect();
+    let mut rolls_map: HashMap<i32, String> = HashMap::new();
+
+    for (delegate, rolls) in cycle_meta_data.rolls_data() {
+        for roll in rolls {
+            rolls_map.insert(
+                *roll,
+                SignaturePublicKeyHash::from_tagged_bytes(delegate.to_vec())?
+                    .to_string_representation(),
+            );
+        }
+    }
 
     // iterate through the whole cycle if necessery
     if let Some(cycle) = parameters.requested_cycle() {
@@ -335,24 +328,18 @@ fn get_endorsing_rights(
     // define helper and output variables
     let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
-    let rolls_map: HashMap<i32, String> = cycle_meta_data
-        .rolls_data()
-        .iter()
-        .map(|(delegate, rolls)| {
-            rolls
-                .iter()
-                .map(|roll| {
-                    (
-                        *roll,
-                        SignaturePublicKeyHash::from_tagged_bytes(delegate.clone())
-                            .unwrap()
-                            .to_string_representation(),
-                    )
-                })
-                .collect::<HashMap<i32, String>>()
-        })
-        .flatten()
-        .collect();
+    // build a reverse map of rols so we have access in O(1)
+    let mut rolls_map: HashMap<i32, String> = HashMap::new();
+
+    for (delegate, rolls) in cycle_meta_data.rolls_data() {
+        for roll in rolls {
+            rolls_map.insert(
+                *roll,
+                SignaturePublicKeyHash::from_tagged_bytes(delegate.to_vec())?
+                    .to_string_representation(),
+            );
+        }
+    }
 
     // when query param cycle is specified then iterate over all cycle levels, else only given level
     if let Some(cycle) = parameters.requested_cycle() {

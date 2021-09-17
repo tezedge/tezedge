@@ -15,7 +15,6 @@ use crate::{PersistentStorage, StorageError};
 
 pub type ConstantsStorageKV = dyn TezedgeDatabaseWithIterator<ConstantsStorage> + Sync + Send;
 
-// TODO: double check the type
 type ConstantsKey = ProtocolHash;
 
 #[derive(Clone)]

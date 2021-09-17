@@ -340,10 +340,6 @@ pub fn store_applied_block_result(
 
     // store new cycle eras if they are present
     if let Some(new_cycle_eras) = block_result.new_cycle_eras_json {
-        println!(
-            "Storing cycle eras data for protocol: {}",
-            block_result.next_protocol_hash.to_base58_check()
-        );
         cycle_eras_storage
             .store_cycle_eras_data(block_result.next_protocol_hash.clone(), new_cycle_eras)?;
     }

@@ -558,9 +558,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         )
         .await
         .expect("Failed to get constants");
-        // let PRESERVED_CYCLES = constants_json["PRESERVED_CYCLES"]
-        //     .as_i64()
-        //     .unwrap_or_else(|| panic!("No constant 'PRESERVED_CYCLES' for block_id: {}", level));
         let blocks_per_cycle = constants_json["blocks_per_cycle"]
             .as_i64()
             .unwrap_or_else(|| panic!("No constant 'blocks_per_cycle' for block_id: {}", level));

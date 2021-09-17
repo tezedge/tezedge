@@ -29,7 +29,9 @@ use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
-use crate::services::base_services::{get_context_hash, get_raw_block_header_with_hash};
+use crate::services::base_services::{
+    get_additional_data_or_fail, get_context_hash, get_raw_block_header_with_hash,
+};
 use tezos_wrapper::TezedgeContextClientError;
 
 mod proto_001;
@@ -98,6 +100,7 @@ impl From<anyhow::Error> for RightsError {
     result = true
 )]
 pub(crate) async fn check_and_get_baking_rights(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -108,7 +111,7 @@ pub(crate) async fn check_and_get_baking_rights(
 ) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
 
-    let context_proto_params = get_context_protocol_params(block_hash, env)?;
+    let context_proto_params = get_context_protocol_params(chain_id, block_hash, env)?;
     let cycle_meta_storage = CycleMetaStorage::new(env.persistent_storage());
 
     // split impl by protocol
@@ -264,6 +267,7 @@ pub const RIGHTS_TIMED_SIZED_CACHE_SIZE: usize = 10;
     result = true
 )]
 pub(crate) async fn check_and_get_endorsing_rights(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
@@ -272,7 +276,7 @@ pub(crate) async fn check_and_get_endorsing_rights(
     env: &RpcServiceEnvironment,
 ) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
-    let context_proto_params = get_context_protocol_params(block_hash, env)?;
+    let context_proto_params = get_context_protocol_params(chain_id, block_hash, env)?;
     let cycle_meta_storage = CycleMetaStorage::new(env.persistent_storage());
 
     // split impl by protocol
@@ -541,11 +545,12 @@ pub(crate) fn get_votes_listings(
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
 pub(crate) fn get_context_constants_just_for_rpc(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Option<String>, ContextParamsError> {
     // TODO: just get constants from the constants storage
-    let context_proto_params = get_context_protocol_params(block_hash, env)?;
+    let context_proto_params = get_context_protocol_params(chain_id, block_hash, env)?;
     // TODO: TEST THIS
     Ok(Some(context_proto_params.constants_data))
 }
@@ -808,9 +813,7 @@ fn create_protocol_rpc_request(
 pub(crate) struct ContextProtocolParam {
     pub protocol_hash: SupportedProtocol,
     pub constants_data: String,
-    pub block_header: BlockHeaderWithHash,
-    // pub block_cycle: i32,
-    // pub block_cycle_position: i32,
+    pub block_header: Arc<BlockHeaderWithHash>,
 }
 
 #[derive(Debug, Error)]
@@ -828,6 +831,8 @@ pub enum ContextParamsError {
     UnsupportedProtocolError { protocol: String },
     #[error("Hash error {error}")]
     HashError { error: FromBytesError },
+    #[error("Storage error occurred, reason: {reason}")]
+    ServiceError { reason: RpcServiceError },
 }
 
 impl From<storage::StorageError> for ContextParamsError {
@@ -862,6 +867,12 @@ impl From<FromBytesError> for ContextParamsError {
     }
 }
 
+impl From<RpcServiceError> for ContextParamsError {
+    fn from(error: RpcServiceError) -> ContextParamsError {
+        ContextParamsError::ServiceError { reason: error }
+    }
+}
+
 #[allow(clippy::from_over_into)]
 impl Into<RpcServiceError> for ContextParamsError {
     fn into(self) -> RpcServiceError {
@@ -886,6 +897,7 @@ impl Into<RpcServiceError> for ContextParamsError {
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
 pub(crate) fn get_context_protocol_params(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<ContextProtocolParam, ContextParamsError> {
@@ -897,29 +909,14 @@ pub(crate) fn get_context_protocol_params(
     //     });
     // }
 
-    // get block header
-    let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
-        Some(block) => block,
-        None => {
-            return Err(storage::StorageError::MissingKey {
-                when: "get_context_protocol_params".into(),
-            }
-            .into())
-        }
-    };
+    let block_header =
+        get_raw_block_header_with_hash(chain_id, block_hash, env.persistent_storage())?;
 
     let protocol_hash =
-        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
-            Some(block) => block.next_protocol_hash,
-            None => {
-                return Err(storage::StorageError::MissingKey {
-                    when: "get_context_protocol_params".into(),
-                }
-                .into())
-            }
-        };
+        &get_additional_data_or_fail(chain_id, block_hash, env.persistent_storage())?
+            .next_protocol_hash;
 
-    let constants = match ConstantsStorage::new(env.persistent_storage()).get(&protocol_hash)? {
+    let constants = match ConstantsStorage::new(env.persistent_storage()).get(protocol_hash)? {
         Some(constants) => constants,
         None => {
             return Err(storage::StorageError::MissingKey {
