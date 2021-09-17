@@ -152,7 +152,12 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
 
     let preserved_cycles = constants_json["preserved_cycles"]
         .as_i64()
-        .unwrap_or_else(|| panic!("No constant 'preserved_cycles' for block_id: {}", head_level));
+        .unwrap_or_else(|| {
+            panic!(
+                "No constant 'preserved_cycles' for block_id: {}",
+                head_level
+            )
+        });
 
     // try to get cycle eras from tezedge, if we get Some, override the blocks_per_cycle constatn!
     // /dev/chains/:chain_id/blocks/:block_id/cycle_eras
