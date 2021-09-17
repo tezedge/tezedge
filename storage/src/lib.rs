@@ -759,6 +759,9 @@ pub mod tests_common {
                         ChainMetaStorage::descriptor(&db_cache),
                         PredecessorStorage::descriptor(&db_cache),
                         BlockAdditionalData::descriptor(&db_cache),
+                        CycleErasStorage::descriptor(&db_cache),
+                        CycleMetaStorage::descriptor(&db_cache),
+                        ConstantsStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
@@ -785,6 +788,9 @@ pub mod tests_common {
                         ChainMetaStorage::descriptor(&db_cache),
                         PredecessorStorage::descriptor(&db_cache),
                         BlockAdditionalData::descriptor(&db_cache),
+                        CycleErasStorage::descriptor(&db_cache),
+                        CycleMetaStorage::descriptor(&db_cache),
+                        ConstantsStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);

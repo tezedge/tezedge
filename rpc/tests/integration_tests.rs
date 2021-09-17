@@ -35,8 +35,6 @@ lazy_static! {
     static ref NODE_RPC_CONTEXT_ROOT_2: (String, String) = node_rpc_context_root_2();
 }
 
-const PRESERVED_CYCLES: i64 = 5;
-
 fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
     Client::new()
 }
@@ -142,7 +140,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     let granada_first_level = 1589248;
     let florence_last_level = 1589247;
 
-    let _constants_json = try_get_data_as_json(
+    let constants_json = try_get_data_as_json(
         &format!(
             "{}/{}/{}",
             "chains/main/blocks", head_level, "context/constants"
@@ -151,6 +149,10 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     )
     .await
     .expect("Failed to get constants");
+
+    let preserved_cycles = constants_json["preserved_cycles"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("No constant 'preserved_cycles' for block_id: {}", head_level));
 
     // try to get cycle eras from tezedge, if we get Some, override the blocks_per_cycle constatn!
     // /dev/chains/:chain_id/blocks/:block_id/cycle_eras
@@ -173,7 +175,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     // check the furthest block from head in future that we still have the data to calculate the rights for
     // this also covers the case when we are requesting the last block of a cycle
     println!("\n===Checking furthest future block===");
-    let furthest_cycle_future = current_cycle + PRESERVED_CYCLES;
+    let furthest_cycle_future = current_cycle + preserved_cycles;
     let furthest_level_future = get_last_level_in_cycle(furthest_cycle_future, &current_era);
 
     test_rpc_compare_json(&format!(
@@ -193,10 +195,10 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     // check the furthest block from head in past that we still have the data to calculate the rights for
     // this also covers the case when we are requesting the first block of a cycle
     println!("\n===Checking furthest past block===");
-    let furthest_cycle_past = if current_cycle < PRESERVED_CYCLES {
+    let furthest_cycle_past = if current_cycle < preserved_cycles {
         0
     } else {
-        current_cycle - PRESERVED_CYCLES
+        current_cycle - preserved_cycles
     };
     let furthest_level_past = get_first_level_in_cycle(
         furthest_cycle_past,
@@ -297,7 +299,7 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
     let blocks_per_cycle: i64 = (*current_era.blocks_per_cycle()).into();
 
     // 8 cycles
-    let offset = PRESERVED_CYCLES * blocks_per_cycle;
+    let offset = preserved_cycles * blocks_per_cycle;
     let start_level = if offset >= head_level {
         1
     } else {
@@ -321,9 +323,9 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
         .expect("test failed");
     }
 
-    // check future cycles (current_cycle + PRESERVED_CYCLES) + 1 (+1 to include the last cycle as well)
+    // check future cycles (current_cycle + preserved_cycles) + 1 (+1 to include the last cycle as well)
     println!("\n===Checking future cycles===");
-    for cycle in current_cycle..current_cycle + PRESERVED_CYCLES + 1 {
+    for cycle in current_cycle..current_cycle + preserved_cycles + 1 {
         test_rpc_compare_json(&format!(
             "{}/{}/{}?cycle={}",
             "chains/main/blocks", head_level, "helpers/baking_rights", cycle
@@ -339,9 +341,9 @@ async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: 
         .expect("test failed");
     }
 
-    // check past cycles (current_cycle - PRESERVED_CYCLES)
+    // check past cycles (current_cycle - preserved_cycles)
     println!("\n===Checking past cycles===");
-    for cycle in current_cycle - PRESERVED_CYCLES..current_cycle {
+    for cycle in current_cycle - preserved_cycles..current_cycle {
         test_rpc_compare_json(&format!(
             "{}/{}/{}?cycle={}",
             "chains/main/blocks", head_level, "helpers/baking_rights", cycle
@@ -558,6 +560,9 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         )
         .await
         .expect("Failed to get constants");
+        let preserved_cycles = constants_json["preserved_cycles"]
+            .as_i64()
+            .unwrap_or_else(|| panic!("No constant 'preserved_cycles' for block_id: {}", level));
         let blocks_per_cycle = constants_json["blocks_per_cycle"]
             .as_i64()
             .unwrap_or_else(|| panic!("No constant 'blocks_per_cycle' for block_id: {}", level));
@@ -753,7 +758,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             );
 
             let cycles_to_check: HashSet<i64> = HashSet::from_iter(
-                [cycle, cycle + PRESERVED_CYCLES, std::cmp::max(0, cycle - 2)].to_vec(),
+                [cycle, cycle + preserved_cycles, std::cmp::max(0, cycle - 2)].to_vec(),
             );
 
             for cycle_to_check in cycles_to_check {
