@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- Added new storages for storing cycle data, constants and cycle eras (used for baking/endorsing rights). 
+- Added handlers for protocol 009 and 010 baking and endorsing rights RPC.
 
 ### Changed
 
-- Nothing.
+- Changed historic protocols to use new storages for baking/endorsing rights calculation.
 
 ### Deprecated
 
