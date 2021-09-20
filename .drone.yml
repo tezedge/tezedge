@@ -1267,6 +1267,10 @@ steps:
     cache_key: 'python-test-008-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
 
 trigger:
   branch:
@@ -1509,6 +1513,10 @@ steps:
     cache_key: 'python-test-009-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
 
 trigger:
   branch:
@@ -1751,6 +1759,10 @@ steps:
     cache_key: 'python-test-alpha-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
 
 trigger:
   branch:
