@@ -7,19 +7,22 @@ use std::{
     slice::SliceIndex,
 };
 
+/// A container mapping a typed ID to a value.
+///
+/// The underlying container is a `Vec` and the id is its index.
 #[derive(Debug)]
-pub struct Entries<K, V> {
+pub struct IndexMap<K, V> {
     entries: Vec<V>,
     _phantom: PhantomData<K>,
 }
 
-impl<K, V> Default for Entries<K, V> {
+impl<K, V> Default for IndexMap<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> Entries<K, V> {
+impl<K, V> IndexMap<K, V> {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -62,7 +65,7 @@ impl<K, V> Entries<K, V> {
     }
 }
 
-impl<K, V> Entries<K, V>
+impl<K, V> IndexMap<K, V>
 where
     K: TryInto<usize>,
 {
@@ -79,7 +82,7 @@ where
     }
 }
 
-impl<K, V> Entries<K, V>
+impl<K, V> IndexMap<K, V>
 where
     K: TryFrom<usize>,
 {
@@ -90,7 +93,7 @@ where
     }
 }
 
-impl<K, V> Entries<K, V>
+impl<K, V> IndexMap<K, V>
 where
     K: TryInto<usize>,
     K: TryFrom<usize>,

@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-//! This sub module provides different KV alternatives for context persistence
+//! Implementation of the garbage collector for the in-memory repository.
 
 use std::array::TryFromSliceError;
 use std::sync::PoisonError;
 
 use blake2::digest::InvalidOutputSize;
-use failure::Fail;
+use thiserror::Error;
 
 use crypto::hash::FromBytesError;
 
@@ -21,7 +21,7 @@ pub trait GarbageCollector {
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: Vec<HashId>,
+        referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError>;
 }
 
@@ -34,37 +34,37 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
     fn block_applied(
         &mut self,
-        _referenced_older_entries: Vec<HashId>,
+        _referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum GarbageCollectionError {
-    #[fail(display = "Column family {} is missing", name)]
+    #[error("Column family {name} is missing")]
     MissingColumnFamily { name: &'static str },
-    #[fail(display = "Backend Error")]
+    #[error("Backend Error")]
     BackendError,
-    #[fail(display = "Guard Poison {} ", error)]
+    #[error("Guard Poison {error}")]
     GuardPoison { error: String },
-    #[fail(display = "DBError error: {:?}", error)]
+    #[error("DBError error: {error:?}")]
     DBError { error: DBError },
-    #[fail(display = "Failed to convert hash to array: {}", error)]
+    #[error("Failed to convert hash to array: {error}")]
     HashConversionError { error: TryFromSliceError },
-    #[fail(display = "GarbageCollector error: {}", error)]
+    #[error("GarbageCollector error: {error}")]
     GarbageCollectorError { error: String },
-    #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
+    #[error("Mutex/lock lock error! Reason: {reason:?}")]
     LockError { reason: String },
-    #[fail(display = "Object not found in store: path={:?} hash={:?}", path, hash)]
+    #[error("Object not found in store: path={path:?} hash={hash:?}")]
     ObjectNotFound { hash: String, path: String },
-    #[fail(display = "Failed to convert hash into string: {}", error)]
+    #[error("Failed to convert hash into string: {error}")]
     HashToStringError { error: FromBytesError },
-    #[fail(display = "Failed to encode hash: {}", error)]
+    #[error("Failed to encode hash: {error}")]
     HashingError { error: HashingError },
-    #[fail(display = "Invalid output size")]
+    #[error("Invalid output size")]
     InvalidOutputSize,
-    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    #[error("Expected value instead of `None` for {0}")]
     ValueExpected(&'static str),
 }
 
@@ -103,16 +103,5 @@ impl From<InvalidOutputSize> for GarbageCollectionError {
 impl From<HashingError> for GarbageCollectionError {
     fn from(error: HashingError) -> Self {
         Self::HashingError { error }
-    }
-}
-
-impl slog::Value for GarbageCollectionError {
-    fn serialize(
-        &self,
-        _record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }

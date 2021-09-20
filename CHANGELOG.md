@@ -29,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+## [1.8.0] - 2021-09-20
+
+### Added
+
+- Added new, faster implementation of binary encoding of p2p messages
+- Added encoding benchmarks
+- Added new context storage optimization that takes advantage of repeated directory structures
+- Added build file cache to CI
+- Added new, faster implementation for endorsing and baking rights RPCs that use cached snapshots data
+- Added handlers for protocol 009 and 010 baking and endorsing rights RPC.
+
+### Changed
+
+- Changed historic protocols to use new storages for baking/endorsing rights calculation.
+- Internal cleanup of the context storage implementation + documentation
+- Replaced use of the failure crate with thiserror + anyhow crates
 
 ## [1.7.1] - 2021-08-31
 
@@ -522,7 +538,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/tezedge/tezedge/releases/v1.8.0
 [1.7.1]: https://github.com/tezedge/tezedge/releases/v1.7.1
 [1.7.0]: https://github.com/tezedge/tezedge/releases/v1.7.0
 [1.6.10]: https://github.com/tezedge/tezedge/releases/v1.6.10

@@ -75,7 +75,7 @@ impl NodeInfrastructure {
         pow_target: f64,
         (log, log_level): (Logger, Level),
         (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
-    ) -> Result<Self, failure::Error> {
+    ) -> Result<Self, anyhow::Error> {
         warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
         // environement
@@ -304,7 +304,7 @@ impl NodeInfrastructure {
         marker: &str,
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
@@ -323,7 +323,7 @@ impl NodeInfrastructure {
             if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
-                break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
+                break Err(anyhow::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
             }
         };
         result
@@ -335,7 +335,7 @@ impl NodeInfrastructure {
         marker: &str,
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
@@ -355,7 +355,7 @@ impl NodeInfrastructure {
             if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
-                break Err(failure::format_err!("wait_for_mempool_on_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
+                break Err(anyhow::format_err!("wait_for_mempool_on_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
             }
         };
         result
@@ -367,7 +367,7 @@ impl NodeInfrastructure {
         marker: &str,
         expected_operations: &HashSet<OperationHash>,
         (timeout, delay): (Duration, Duration),
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         let start = Instant::now();
 
         let result = loop {
@@ -385,7 +385,7 @@ impl NodeInfrastructure {
             if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
-                break Err(failure::format_err!("wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
+                break Err(anyhow::format_err!("wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
             }
         };
         result
@@ -396,7 +396,7 @@ impl NodeInfrastructure {
         &self,
         marker: &str,
         (timeout, delay): (Duration, Duration),
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         let start = Instant::now();
 
         let result = loop {
@@ -415,7 +415,7 @@ impl NodeInfrastructure {
             if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
-                break Err(failure::format_err!("wait_for_bootstrapped - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
+                break Err(anyhow::format_err!("wait_for_bootstrapped - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
             }
         };
         result
@@ -557,7 +557,7 @@ pub mod test_actor {
         pub fn verify_connected(
             peer: &TestNodePeer,
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
-        ) -> Result<(), failure::Error> {
+        ) -> Result<(), anyhow::Error> {
             Self::verify_state(
                 PeerConnectionStatus::Connected,
                 peer,
@@ -569,7 +569,7 @@ pub mod test_actor {
         pub fn verify_blacklisted(
             peer: &TestNodePeer,
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
-        ) -> Result<(), failure::Error> {
+        ) -> Result<(), anyhow::Error> {
             Self::verify_state(
                 PeerConnectionStatus::Blacklisted,
                 peer,
@@ -584,7 +584,7 @@ pub mod test_actor {
             peer: &TestNodePeer,
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
             (timeout, delay): (Duration, Duration),
-        ) -> Result<(), failure::Error> {
+        ) -> Result<(), anyhow::Error> {
             let start = Instant::now();
             let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
@@ -601,7 +601,7 @@ pub mod test_actor {
                     std::thread::sleep(delay);
                 } else {
                     break Err(
-                        failure::format_err!(
+                        anyhow::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
                             peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
                         )

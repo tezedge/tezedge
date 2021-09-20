@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-//! This sub module provides different KV alternatives for context persistence
+//! This sub module provides different implementations of the `repository` used to store objects.
 
 use std::convert::{TryFrom, TryInto};
 use std::{num::NonZeroU32, str::FromStr};
@@ -12,10 +12,9 @@ use strum_macros::EnumIter;
 
 use crate::ObjectHash;
 
-pub mod entries;
 pub mod in_memory;
+pub mod index_map;
 pub mod readonly_ipc;
-pub mod stats;
 
 pub const INMEM: &str = "inmem";
 

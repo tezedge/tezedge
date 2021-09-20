@@ -1,19 +1,19 @@
 [package]
 name = "tezos_context"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
 blake2 = "0.9"
 crossbeam-channel = "0.5"
-failure = "0.1"
+anyhow = "1.0"
+thiserror = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
 leb128 = "0.2"
 modular-bitfield = "0.11"
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
-ocaml-sys = { version = "0.20.1" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 static_assertions = "1.1"

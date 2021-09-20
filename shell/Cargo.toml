@@ -1,19 +1,19 @@
 [package]
 name = "shell"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0"
 chrono = "0.4"
 dns-lookup = "1.0.1"
-failure = "0.1"
+thiserror = "1.0"
 futures = "0.3"
 getset = "0.1"
 hex = "0.4"
 itertools = "0.10"
 lazy_static = "1.4"
-merge = "0.1"
 nix = "0.19"
 page_size = "0.4.1"
 rand = "0.7.3"

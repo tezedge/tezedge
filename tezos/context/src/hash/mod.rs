@@ -9,7 +9,7 @@ use std::{array::TryFromSliceError, io};
 
 use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
-use failure::Fail;
+use thiserror::Error;
 
 use ocaml::ocaml_hash_string;
 
@@ -18,7 +18,7 @@ use crate::{
     persistent::DBError,
     working_tree::{
         storage::{Blob, BlobId, DirectoryId, Inode, Storage, StorageError},
-        Commit, NodeKind, Object,
+        Commit, DirEntryKind, Object,
     },
     ContextKeyValueStore,
 };
@@ -29,35 +29,35 @@ pub const OBJECT_HASH_LEN: usize = 32;
 
 pub type ObjectHash = [u8; OBJECT_HASH_LEN];
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum HashingError {
-    #[fail(display = "Failed to encode LEB128 value: {}", error)]
+    #[error("Failed to encode LEB128 value: {error}")]
     Leb128EncodeFailure { error: io::Error },
-    #[fail(display = "Invalid output size")]
+    #[error("Invalid output size")]
     InvalidOutputSize,
-    #[fail(display = "Failed to convert hash to array: {}", error)]
+    #[error("Failed to convert hash to array: {error}")]
     ConversionError { error: TryFromSliceError },
-    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    #[error("Expected value instead of `None` for {0}")]
     ValueExpected(&'static str),
-    #[fail(display = "Invalid hash value, reason: {}", _0)]
+    #[error("Invalid hash value, reason: {0}")]
     InvalidHash(String),
-    #[fail(display = "Missing Object")]
+    #[error("Missing Object")]
     MissingObject,
-    #[fail(display = "The Object is borrowed more than once")]
+    #[error("The Object is borrowed more than once")]
     ObjectBorrow,
-    #[fail(display = "Database error error {:?}", error)]
+    #[error("Database error error {error:?}")]
     DBError { error: DBError },
-    #[fail(display = "HashId not found: {:?}", hash_id)]
+    #[error("HashId not found: {hash_id:?}")]
     HashIdNotFound { hash_id: HashId },
-    #[fail(display = "HashId empty")]
+    #[error("HashId empty")]
     HashIdEmpty,
-    #[fail(display = "Node not found")]
-    NodeNotFound,
-    #[fail(display = "Directory not found")]
+    #[error("DirEntry not found")]
+    DirEntryNotFound,
+    #[error("Directory not found")]
     DirectoryNotFound,
-    #[fail(display = "Blob not found")]
+    #[error("Blob not found")]
     BlobNotFound,
-    #[fail(display = "StorageIdError: {:?}", error)]
+    #[error("StorageIdError: {error:?}")]
     StorageIdError { error: StorageError },
 }
 
@@ -91,10 +91,10 @@ impl From<StorageError> for HashingError {
     }
 }
 
-fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
+fn encode_irmin_dir_entry_kind(kind: &DirEntryKind) -> [u8; 8] {
     match kind {
-        NodeKind::NonLeaf => [0, 0, 0, 0, 0, 0, 0, 0],
-        NodeKind::Leaf => [255, 0, 0, 0, 0, 0, 0, 0],
+        DirEntryKind::Directory => [0, 0, 0, 0, 0, 0, 0, 0],
+        DirEntryKind::Blob => [255, 0, 0, 0, 0, 0, 0, 0],
     }
 }
 
@@ -110,7 +110,7 @@ fn hash_long_inode(
     let mut hasher = VarBlake2b::new(OBJECT_HASH_LEN)?;
 
     match inode {
-        Inode::Directory(entries) => {
+        Inode::Directory(dir_id) => {
             // Inode value:
             //
             // |   1   |   1  |     n_1      |  ...  |      n_k      |
@@ -119,10 +119,10 @@ fn hash_long_inode(
             //
             // where n_i = len(prehash(e_i))
 
-            let entries = storage.get_small_dir(*entries)?;
+            let dir = storage.get_small_dir(*dir_id)?;
 
             hasher.update(&[0u8]); // type tag
-            hasher.update(&[entries.len() as u8]);
+            hasher.update(&[dir.len() as u8]);
 
             // Inode value object:
             //
@@ -130,20 +130,20 @@ fn hash_long_inode(
             // +-------------+--------------+--------+--------+
             // | \len(name)  |     name     |  kind  |  hash  |
 
-            for (name, node_id) in entries {
+            for (name, dir_entry_id) in dir {
                 let name = storage.get_str(*name)?;
 
                 leb128::write::unsigned(&mut hasher, name.len() as u64)?;
                 hasher.update(name.as_bytes());
 
                 // \000 for nodes, and \001 for contents.
-                let node = storage.get_node(*node_id)?;
-                match node.node_kind() {
-                    NodeKind::Leaf => hasher.update(&[1u8]),
-                    NodeKind::NonLeaf => hasher.update(&[0u8]),
+                let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
+                match dir_entry.dir_entry_kind() {
+                    DirEntryKind::Blob => hasher.update(&[1u8]),
+                    DirEntryKind::Directory => hasher.update(&[0u8]),
                 };
 
-                let blob_inlined = node.get_object().and_then(|object| match object {
+                let blob_inlined = dir_entry.get_object().and_then(|object| match object {
                     Object::Blob(blob_id) if blob_id.is_inline() => storage.get_blob(blob_id).ok(),
                     _ => None,
                 });
@@ -151,7 +151,7 @@ fn hash_long_inode(
                 if let Some(blob) = blob_inlined {
                     hasher.update(&hash_inlined_blob(blob)?);
                 } else {
-                    hasher.update(node.object_hash(store, storage)?.as_ref());
+                    hasher.update(dir_entry.object_hash(store, storage)?.as_ref());
                 }
             }
         }
@@ -180,7 +180,7 @@ fn hash_long_inode(
             // |  index  |  hash  |
 
             for (index, pointer) in pointers.iter().enumerate() {
-                // When the pointer is `None`, it means that there is no entries/nodes
+                // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
                 // Skip pointers without entries.
@@ -221,7 +221,7 @@ fn hash_long_inode(
 // <number of child nodes (8 bytes)><CHILD NODE>
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
-// - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
+// - NODE TYPE - blob dir_entry(0xff0000000000000000) or internal dir_entry (0x0000000000000000)
 fn hash_short_inode(
     dir_id: DirectoryId,
     store: &mut ContextKeyValueStore,
@@ -229,7 +229,7 @@ fn hash_short_inode(
 ) -> Result<HashId, HashingError> {
     let mut hasher = VarBlake2b::new(OBJECT_HASH_LEN)?;
 
-    // Node list:
+    // DirEntry list:
     //
     // |    8   |     n_1      | ... |      n_k     |
     // +--------+--------------+-----+--------------+
@@ -238,15 +238,15 @@ fn hash_short_inode(
     let dir = storage.get_small_dir(dir_id)?;
     hasher.update(&(dir.len() as u64).to_be_bytes());
 
-    // Node object:
+    // DirEntry object:
     //
     // |   8   |   (LEB128)   |  len(name)  |   8   |   32   |
     // +-------+--------------+-------------+-------+--------+
     // | kind  |  \len(name)  |    name     |  \32  |  hash  |
 
     for (k, v) in dir {
-        let v = storage.get_node(*v)?;
-        hasher.update(encode_irmin_node_kind(&v.node_kind()));
+        let v = storage.get_dir_entry(*v)?;
+        hasher.update(encode_irmin_dir_entry_kind(&v.dir_entry_kind()));
         // Key length is written in LEB128 encoding
 
         let k = storage.get_str(*k)?;
@@ -398,8 +398,8 @@ mod tests {
     use crate::{
         kv_store::in_memory::InMemory,
         working_tree::{
-            serializer::{deserialize, serialize_object},
-            Node, NodeKind,
+            serializer::{deserialize_object, serialize_object},
+            DirEntry, DirEntryKind,
         },
     };
 
@@ -512,7 +512,7 @@ mod tests {
         // <number of child nodes (8 bytes)><CHILD NODE>
         // where:
         // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
-        // - NODE TYPE - leaf node(0xff00000000000000) or internal node (0x0000000000000000)
+        // - NODE TYPE - blob dir_entry(0xff00000000000000) or internal dir_entry (0x0000000000000000)
         let mut repo = InMemory::try_new().expect("failed to create context");
         let expected_dir_hash = "d49a53323107f2ae40b01eaa4e9bec4d02801daf60bab82dc2529e40d40fa917";
         let dummy_dir = DirectoryId::empty();
@@ -521,37 +521,37 @@ mod tests {
 
         let blob_id = storage.add_blob_by_ref(&[1]).unwrap();
 
-        let node = Node::new(NodeKind::Leaf, Object::Blob(blob_id));
+        let dir_entry = DirEntry::new(DirEntryKind::Blob, Object::Blob(blob_id));
 
-        let dummy_dir = storage.dir_insert(dummy_dir, "a", node).unwrap();
+        let dummy_dir = storage.dir_insert(dummy_dir, "a", dir_entry).unwrap();
 
         // hexademical representation of above directory:
         //
         // number of child nodes           ->  00 00 00 00 00 00 00 01  (1)
-        // node type                       ->  ff 00 00 00 00 00 00 00  (leaf node)
+        // dir_entry type                  ->  ff 00 00 00 00 00 00 00  (blob dir_entry)
         // length of string                ->  01                       (1)
         // string                          ->  61                       ('a')
         // length of hash                  ->  00 00 00 00 00 00 00 20  (32)
         // hash                            ->  407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
 
         let mut bytes = String::new();
-        let child_nodes = "0000000000000001";
-        let leaf_node = "ff00000000000000";
+        let child_dir_entries = "0000000000000001";
+        let blob_dir_entry = "ff00000000000000";
         let string_length = "01";
         let string_value = "61";
         let hash_length = "0000000000000020";
         let hash = "407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d";
 
         println!("calculating hash of directory: \n\t{:?}\n", dummy_dir);
-        println!("[hex] child nodes count: {}", child_nodes);
-        println!("[hex] leaf_node        : {}", leaf_node);
+        println!("[hex] child nodes count: {}", child_dir_entries);
+        println!("[hex] blob_dir_entry   : {}", blob_dir_entry);
         println!("[hex] string_length    : {}", string_length);
         println!("[hex] string_value     : {}", string_value);
         println!("[hex] hash_length      : {}", hash_length);
         println!("[hex] hash             : {}", hash);
 
-        bytes += &child_nodes;
-        bytes += &leaf_node;
+        bytes += &child_dir_entries;
+        bytes += &blob_dir_entry;
         bytes += &string_length;
         bytes += &string_value;
         bytes += &hash_length;
@@ -586,20 +586,20 @@ mod tests {
     // Tests from Tarides json dataset
 
     #[derive(serde::Deserialize)]
-    struct NodeHashTest {
+    struct DirEntryHashTest {
         hash: String,
-        bindings: Vec<NodeHashBinding>,
+        bindings: Vec<DirEntryHashBinding>,
     }
 
     #[derive(serde::Deserialize)]
-    struct NodeHashBinding {
+    struct DirEntryHashBinding {
         name: String,
         kind: String,
         hash: String,
     }
 
     #[test]
-    fn test_node_hashes() {
+    fn test_dir_entry_hashes() {
         test_type_hashes("nodes.json.gz");
     }
 
@@ -615,7 +615,7 @@ mod tests {
         let mut repo = InMemory::try_new().expect("failed to create context");
         let mut storage = Storage::new();
         let mut output = Vec::new();
-        let mut older_entries = Vec::new();
+        let mut older_objects = Vec::new();
         let mut stats = SerializeStats::default();
 
         // NOTE: reading from a stream is very slow with serde, thats why
@@ -623,7 +623,7 @@ mod tests {
         // See: https://github.com/serde-rs/json/issues/160#issuecomment-253446892
         json_file.read_to_end(&mut bytes).unwrap();
 
-        let test_cases: Vec<NodeHashTest> = serde_json::from_slice(&bytes).unwrap();
+        let test_cases: Vec<DirEntryHashTest> = serde_json::from_slice(&bytes).unwrap();
 
         for test_case in test_cases {
             let bindings_count = test_case.bindings.len();
@@ -633,9 +633,9 @@ mod tests {
             let mut names = HashSet::new();
 
             for binding in test_case.bindings {
-                let node_kind = match binding.kind.as_str() {
-                    "Tree" => NodeKind::NonLeaf,
-                    "Contents" => NodeKind::Leaf,
+                let dir_entry_kind = match binding.kind.as_str() {
+                    "Tree" => DirEntryKind::Directory,
+                    "Contents" => DirEntryKind::Blob,
                     other => panic!("Got unexpected binding kind: {}", other),
                 };
                 let object_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
@@ -643,16 +643,16 @@ mod tests {
                 let hash_id =
                     repo.put_object_hash(object_hash.as_ref().as_slice().try_into().unwrap());
 
-                let node = Node::new_commited(node_kind, Some(hash_id), None);
+                let dir_entry = DirEntry::new_commited(dir_entry_kind, Some(hash_id), None);
 
                 names.insert(binding.name.clone());
 
                 dir_id = storage
-                    .dir_insert(dir_id, binding.name.as_str(), node)
+                    .dir_insert(dir_id, binding.name.as_str(), dir_entry)
                     .unwrap();
 
                 assert!(storage
-                    .dir_find_node(dir_id, binding.name.as_str())
+                    .dir_find_dir_entry(dir_id, binding.name.as_str())
                     .is_some());
             }
 
@@ -668,7 +668,7 @@ mod tests {
                         .dir_insert(
                             dir_id,
                             &key,
-                            Node::new_commited(NodeKind::Leaf, Some(hash_id), None),
+                            DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None),
                         )
                         .unwrap();
                     let a = dir_id;
@@ -679,7 +679,7 @@ mod tests {
                         .dir_insert(
                             dir_id,
                             &key,
-                            Node::new_commited(NodeKind::Leaf, Some(hash_id), None),
+                            DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None),
                         )
                         .unwrap();
                     let b = dir_id;
@@ -717,13 +717,14 @@ mod tests {
                     &storage,
                     &mut stats,
                     &mut batch,
-                    &mut older_entries,
+                    &mut older_objects,
+                    &mut repo,
                 )
                 .unwrap();
                 repo.write_batch(batch).unwrap();
 
                 let data = repo.get_value(computed_hash_id).unwrap().unwrap();
-                let object = deserialize(data, &mut storage, &repo).unwrap();
+                let object = deserialize_object(data, &mut storage, &repo).unwrap();
 
                 match object {
                     Object::Directory(new_dir) => {

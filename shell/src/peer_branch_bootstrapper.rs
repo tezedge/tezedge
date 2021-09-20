@@ -18,10 +18,11 @@ use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::shell_channel::ShellChannelRef;
+use crate::chain_manager::ChainManagerRef;
 use crate::state::bootstrap_state::{AddBranchState, BootstrapState, InnerBlockState};
 use crate::state::data_requester::DataRequesterRef;
 use crate::state::peer_state::DataQueues;
+use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::subscription::subscribe_to_actor_terminated;
 
 /// After this interval, we will check peers, if no activity is done on any pipeline
@@ -206,12 +207,12 @@ impl PeerBranchBootstrapper {
         sys: &ActorSystem,
         chain_id: Arc<ChainId>,
         requester: DataRequesterRef,
-        shell_channel: ShellChannelRef,
+        chain_manager: ChainManagerRef,
         cfg: PeerBranchBootstrapperConfiguration,
     ) -> Result<PeerBranchBootstrapperRef, CreateError> {
         sys.actor_of_props::<PeerBranchBootstrapper>(
             &format!("peer-branch-bootstrapper-{}", &chain_id.to_base58_check()),
-            Props::new_args((chain_id, requester, shell_channel, cfg)),
+            Props::new_args((chain_id, requester, chain_manager, cfg)),
         )
     }
 
@@ -305,21 +306,29 @@ impl
     ActorFactoryArgs<(
         Arc<ChainId>,
         DataRequesterRef,
-        ShellChannelRef,
+        ChainManagerRef,
         PeerBranchBootstrapperConfiguration,
     )> for PeerBranchBootstrapper
 {
     fn create_args(
-        (chain_id, requester, shell_channel, cfg): (
+        (chain_id, requester, chain_manager, cfg): (
             Arc<ChainId>,
             DataRequesterRef,
-            ShellChannelRef,
+            ChainManagerRef,
             PeerBranchBootstrapperConfiguration,
         ),
     ) -> Self {
+        let peer_branch_synchronization_done_callback =
+            Box::new(move |msg: PeerBranchSynchronizationDone| {
+                chain_manager.tell(msg, None);
+            });
+
         PeerBranchBootstrapper {
             chain_id,
-            bootstrap_state: BootstrapState::new(requester, shell_channel),
+            bootstrap_state: BootstrapState::new(
+                requester,
+                peer_branch_synchronization_done_callback,
+            ),
             actor_received_messages_count: 0,
             cfg,
             is_already_scheduled_ping_for_process_all_bootstrap_pipelines: false,
@@ -678,7 +687,7 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         } = self;
 
         bootstrap_state.check_bootstrapped_branches(&None, &log);
-        bootstrap_state.check_stalled_peers(&cfg, &log, |peer| {
+        bootstrap_state.check_stalled_peers(cfg, &log, |peer| {
             ctx.system.stop(peer.peer_ref.clone());
         });
 

@@ -1,12 +1,13 @@
 [package]
 name = "networking"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0"
 bytes = "1"
-failure = "0.1"
+thiserror = "1.0"
 futures = "0.3"
 hex = "0.4"
 riker = "0.4"

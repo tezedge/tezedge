@@ -7,7 +7,7 @@ use std::{
     env,
 };
 
-use failure::Error;
+use anyhow::Error;
 use slog::{Drain, Level, Logger};
 
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ContextHash, ProtocolHash};
@@ -37,6 +37,9 @@ fn test_storage() -> Result<(), Error> {
     let block_meta_storage = BlockMetaStorage::new(tmp_storage.storage());
     let chain_meta_storage = ChainMetaStorage::new(tmp_storage.storage());
     let operations_meta_storage = OperationsMetaStorage::new(tmp_storage.storage());
+    let cycle_meta_storage = CycleMetaStorage::new(tmp_storage.storage());
+    let cycle_eras_storage = CycleErasStorage::new(tmp_storage.storage());
+    let constants_storage = ConstantsStorage::new(tmp_storage.storage());
 
     // tezos env - sample
     let tezos_env = TezosEnvironmentConfiguration {
@@ -214,6 +217,10 @@ fn test_storage() -> Result<(), Error> {
         block_metadata_hash: None,
         ops_metadata_hashes: None,
         ops_metadata_hash: None,
+        cycle_rolls_owner_snapshots: vec![],
+        new_protocol_constants_json: None,
+        new_cycle_eras_json: None,
+        commit_time: 1.0,
     };
     let block_additional_data = store_applied_block_result(
         &block_storage,
@@ -221,6 +228,9 @@ fn test_storage() -> Result<(), Error> {
         &block.hash,
         apply_result.clone(),
         &mut metadata,
+        &cycle_meta_storage,
+        &cycle_eras_storage,
+        &constants_storage,
     )?;
 
     // set block as current head

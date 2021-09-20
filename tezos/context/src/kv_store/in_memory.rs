@@ -1,12 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Implementation of an in-memory repository.
+
 use std::{
     borrow::Cow,
     collections::{hash_map::DefaultHasher, BTreeMap, VecDeque},
     hash::Hasher,
     mem::size_of,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     thread::JoinHandle,
 };
 
@@ -16,23 +18,28 @@ use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
     gc::{
-        worker::{Command, Cycles, GCThread, PRESERVE_CYCLE_COUNT},
+        worker::{Command, Cycles, GCThread, GC_PENDING_HASHIDS, PRESERVE_CYCLE_COUNT},
         GarbageCollectionError, GarbageCollector,
     },
     hash::ObjectHash,
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
+    working_tree::{
+        shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
+        storage::DirEntryId,
+        string_interner::{StringId, StringInterner},
+    },
     Map,
 };
 
 use tezos_spsc::Consumer;
 
-use super::{entries::Entries, HashIdError};
+use super::{index_map::IndexMap, HashIdError};
 use super::{HashId, VacantObjectHash};
 
 #[derive(Debug)]
 pub struct HashValueStore {
-    hashes: Entries<HashId, ObjectHash>,
-    values: Entries<HashId, Option<Arc<[u8]>>>,
+    hashes: IndexMap<HashId, ObjectHash>,
+    values: IndexMap<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
     values_bytes: usize,
@@ -44,8 +51,8 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: Entries::new(),
-            values: Entries::new(),
+            hashes: IndexMap::new(),
+            values: IndexMap::new(),
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
             values_bytes: 0,
@@ -68,13 +75,16 @@ impl HashValueStore {
             hashes_capacity,
             hashes_length: self.hashes.len(),
             total_bytes,
+            npending_free_ids: self.free_ids.as_ref().map(|c| c.len()).unwrap_or(0),
+            gc_npending_free_ids: GC_PENDING_HASHIDS.load(Ordering::Acquire),
+            nshapes: 0,
         }
     }
 
     pub(crate) fn clear(&mut self) {
         *self = Self {
-            hashes: Entries::new(),
-            values: Entries::new(),
+            hashes: IndexMap::new(),
+            values: IndexMap::new(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
             values_bytes: 0,
@@ -143,6 +153,8 @@ pub struct InMemory {
     pub context_hashes: Map<u64, HashId>,
     context_hashes_cycles: VecDeque<Vec<u64>>,
     thread_handle: Option<JoinHandle<()>>,
+    shapes: DirectoryShapes,
+    string_interner: StringInterner,
 }
 
 impl GarbageCollector for InMemory {
@@ -153,15 +165,15 @@ impl GarbageCollector for InMemory {
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: Vec<HashId>,
+        referenced_older_objects: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
-        self.block_applied(referenced_older_entries);
+        self.block_applied(referenced_older_objects);
         Ok(())
     }
 }
 
 impl Flushable for InMemory {
-    fn flush(&self) -> Result<(), failure::Error> {
+    fn flush(&self) -> Result<(), anyhow::Error> {
         Ok(())
     }
 }
@@ -201,13 +213,39 @@ impl KeyValueStoreBackend for InMemory {
         self.get_vacant_entry_hash()
     }
 
-    fn clear_entries(&mut self) -> Result<(), DBError> {
+    fn clear_objects(&mut self) -> Result<(), DBError> {
         // `InMemory` has its own garbage collection
         Ok(())
     }
 
     fn memory_usage(&self) -> RepositoryMemoryUsage {
-        self.hashes.get_memory_usage()
+        let mut mem = self.hashes.get_memory_usage();
+        mem.nshapes = self.shapes.nshapes();
+        mem
+    }
+
+    fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError> {
+        self.shapes
+            .get_shape(shape_id)
+            .map(ShapeStrings::SliceIds)
+            .map_err(Into::into)
+    }
+
+    fn make_shape(
+        &mut self,
+        dir: &[(StringId, DirEntryId)],
+    ) -> Result<Option<DirectoryShapeId>, DBError> {
+        self.shapes.make_shape(dir).map_err(Into::into)
+    }
+
+    fn synchronize_strings(&mut self, string_interner: &StringInterner) -> Result<(), DBError> {
+        self.string_interner.extend_from(string_interner);
+
+        Ok(())
+    }
+
+    fn get_str(&self, string_id: StringId) -> Option<&str> {
+        self.string_interner.get(string_id)
     }
 }
 
@@ -256,6 +294,8 @@ impl InMemory {
             context_hashes,
             context_hashes_cycles,
             thread_handle,
+            shapes: DirectoryShapes::default(),
+            string_interner: StringInterner::default(),
         })
     }
 

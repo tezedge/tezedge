@@ -1,6 +1,6 @@
 [package]
 name = "node-monitoring"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "node-monitoring"
@@ -9,7 +9,7 @@ default-run = "node-monitoring"
 cfg-if = "1.0"
 clap = "2.33"
 chrono = "0.4"
-failure = "0.1"
+thiserror = "1"
 fs2 = "0.4"
 fs_extra = "1.2"
 itertools = "0.10"

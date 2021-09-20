@@ -324,7 +324,7 @@ fn expected_data_length(validation_passes: u8) -> usize {
 mod tests {
     use std::{convert::TryInto, path::Path};
 
-    use failure::Error;
+    use anyhow::Error;
 
     use crate::tests_common::TmpStorage;
 

@@ -2,24 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crypto::hash::OperationHash;
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
-use super::limits::MEMPOOL_MAX_SIZE;
+use super::limits::{MEMPOOL_MAX_OPERATIONS, MEMPOOL_MAX_SIZE};
 
 #[derive(
-    Clone, Serialize, Deserialize, Debug, Default, Getters, HasEncoding, NomReader, PartialEq,
+    Clone,
+    Serialize,
+    Debug,
+    Default,
+    Getters,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    PartialEq,
+    tezos_encoding::generator::Generated,
 )]
 #[encoding(bounded = "MEMPOOL_MAX_SIZE")]
 pub struct Mempool {
     #[get = "pub"]
-    #[encoding(dynamic, list)]
+    #[encoding(dynamic, list = "MEMPOOL_MAX_OPERATIONS")]
     known_valid: Vec<OperationHash>,
     #[get = "pub"]
-    #[encoding(dynamic, dynamic, list)]
+    #[encoding(dynamic, dynamic, list = "MEMPOOL_MAX_OPERATIONS")]
     pending: Vec<OperationHash>,
 }
 

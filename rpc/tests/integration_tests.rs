@@ -15,7 +15,7 @@ use std::env;
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
-use failure::format_err;
+use anyhow::format_err;
 use hyper::body::Buf;
 use hyper::{Client, StatusCode};
 use itertools::Itertools;
@@ -25,6 +25,8 @@ use serde_json::Value;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use url::Url;
+
+use storage::cycle_eras_storage::CycleEra;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
@@ -70,6 +72,297 @@ pub enum NodeType {
 async fn test_rpc_compare() {
     log_settings();
     integration_tests_rpc(from_block_header(), to_block_header()).await
+}
+
+#[ignore]
+#[tokio::test]
+async fn test_rpc_compare_rights_mainnet() {
+    log_settings();
+    integration_test_mainnet_rights_rpc(to_block_header()).await
+}
+
+fn get_era_from_level(level: i64, eras: &[CycleEra]) -> CycleEra {
+    for era in eras {
+        let first_level: i64 = (*era.first_level()).into();
+        if first_level > level {
+            continue;
+        } else {
+            return era.clone();
+        }
+    }
+    panic!("No matching cycle era found")
+}
+
+fn get_era_from_cycle(cycle: i64, eras: &[CycleEra]) -> CycleEra {
+    for era in eras {
+        let first_cycle: i64 = (*era.first_cycle()).into();
+        if first_cycle > cycle {
+            continue;
+        } else {
+            return era.clone();
+        }
+    }
+    panic!("No matching cycle era found")
+}
+
+fn get_cycle_from_era(level: i64, era: &CycleEra) -> i64 {
+    let first_level: i64 = (*era.first_level()).into();
+    let blocks_per_cycle: i64 = (*era.blocks_per_cycle()).into();
+    let first_cycle: i64 = (*era.first_cycle()).into();
+
+    (level - first_level) / blocks_per_cycle + first_cycle
+}
+
+fn _get_level_position_in_cycle(level: i64, era: &CycleEra) -> i64 {
+    let first_level: i64 = (*era.first_level()).into();
+    let blocks_per_cycle: i64 = (*era.blocks_per_cycle()).into();
+
+    (level - first_level) % blocks_per_cycle
+}
+
+fn get_first_level_in_cycle(cycle: i64, era: &CycleEra) -> i64 {
+    let blocks_per_cycle: i64 = (*era.blocks_per_cycle()).into();
+    let first_cycle: i64 = (*era.first_cycle()).into();
+    let first_level: i64 = (*era.first_level()).into();
+
+    (cycle - first_cycle) * blocks_per_cycle + first_level
+}
+
+fn get_last_level_in_cycle(cycle: i64, era: &CycleEra) -> i64 {
+    let blocks_per_cycle: i64 = (*era.blocks_per_cycle()).into();
+    let first_level: i64 = (*era.first_level()).into();
+    let first_cycle: i64 = (*era.first_cycle()).into();
+
+    (cycle - first_cycle) * blocks_per_cycle + first_level + blocks_per_cycle - 1
+}
+
+async fn integration_test_mainnet_rights_rpc(head_level: i64 /* , latest_cycle: i64*/) {
+    let granada_first_level = 1589248;
+    let florence_last_level = 1589247;
+
+    let constants_json = try_get_data_as_json(
+        &format!(
+            "{}/{}/{}",
+            "chains/main/blocks", head_level, "context/constants"
+        ),
+        false,
+    )
+    .await
+    .expect("Failed to get constants");
+
+    let preserved_cycles = constants_json["preserved_cycles"]
+        .as_i64()
+        .unwrap_or_else(|| {
+            panic!(
+                "No constant 'preserved_cycles' for block_id: {}",
+                head_level
+            )
+        });
+
+    // try to get cycle eras from tezedge, if we get Some, override the blocks_per_cycle constatn!
+    // /dev/chains/:chain_id/blocks/:block_id/cycle_eras
+    let cycle_eras: Vec<CycleEra> = serde_json::from_value(
+        try_get_data_as_json(
+            &format!(
+                "{}/{}/{}",
+                "dev/chains/main/blocks", head_level, "cycle_eras"
+            ),
+            true,
+        )
+        .await
+        .expect("Failed to get eras"),
+    )
+    .expect("failed to deserialize eras");
+
+    let current_era = get_era_from_level(head_level, &cycle_eras);
+    let current_cycle = get_cycle_from_era(head_level, &current_era);
+
+    // check the furthest block from head in future that we still have the data to calculate the rights for
+    // this also covers the case when we are requesting the last block of a cycle
+    println!("\n===Checking furthest future block===");
+    let furthest_cycle_future = current_cycle + preserved_cycles;
+    let furthest_level_future = get_last_level_in_cycle(furthest_cycle_future, &current_era);
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks", head_level, "helpers/baking_rights", furthest_level_future
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks", head_level, "helpers/endorsing_rights", furthest_level_future
+    ))
+    .await
+    .expect("test failed");
+
+    // check the furthest block from head in past that we still have the data to calculate the rights for
+    // this also covers the case when we are requesting the first block of a cycle
+    println!("\n===Checking furthest past block===");
+    let furthest_cycle_past = if current_cycle < preserved_cycles {
+        0
+    } else {
+        current_cycle - preserved_cycles
+    };
+    let furthest_level_past = get_first_level_in_cycle(
+        furthest_cycle_past,
+        &get_era_from_cycle(furthest_cycle_past, &cycle_eras),
+    );
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks", head_level, "helpers/baking_rights", furthest_level_past
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks", head_level, "helpers/endorsing_rights", furthest_level_past
+    ))
+    .await
+    .expect("test failed");
+
+    // test common call on the edge of protocol switch (on florence, requesting next granada block)
+    // test common call on the edge of protocol switch (still in florence)
+    println!("\n===Checking last florence block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}",
+        "chains/main/blocks", florence_last_level, "helpers/baking_rights"
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}",
+        "chains/main/blocks", florence_last_level, "helpers/endorsing_rights"
+    ))
+    .await
+    .expect("test failed");
+
+    // test common call on the edge of protocol switch (now in granada)
+    println!("\n===Checking first granada block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}",
+        "chains/main/blocks", granada_first_level, "helpers/baking_rights"
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}",
+        "chains/main/blocks", granada_first_level, "helpers/endorsing_rights"
+    ))
+    .await
+    .expect("test failed");
+
+    println!("\n===Checking (from florence) first granda block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        florence_last_level,
+        "helpers/baking_rights",
+        florence_last_level + 1
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        florence_last_level,
+        "helpers/endorsing_rights",
+        florence_last_level + 1
+    ))
+    .await
+    .expect("test failed");
+
+    // test common call on the edge of protocol switch (on granada, requesting previous florence block)
+    println!("\n===Checking (from granada) last florence block===");
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        granada_first_level,
+        "helpers/baking_rights",
+        granada_first_level - 1
+    ))
+    .await
+    .expect("test failed");
+
+    test_rpc_compare_json(&format!(
+        "{}/{}/{}?level={}",
+        "chains/main/blocks",
+        granada_first_level,
+        "helpers/endorsing_rights",
+        granada_first_level - 1
+    ))
+    .await
+    .expect("test failed");
+
+    // test the common call (future)
+    let blocks_per_cycle: i64 = (*current_era.blocks_per_cycle()).into();
+
+    // 8 cycles
+    let offset = preserved_cycles * blocks_per_cycle;
+    let start_level = if offset >= head_level {
+        1
+    } else {
+        head_level - offset
+    };
+
+    // common call for tested for preserved cycles from head level
+    for level in (start_level..head_level).rev() {
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "helpers/baking_rights"
+        ))
+        .await
+        .expect("test failed");
+
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "helpers/endorsing_rights"
+        ))
+        .await
+        .expect("test failed");
+    }
+
+    // check future cycles (current_cycle + preserved_cycles) + 1 (+1 to include the last cycle as well)
+    println!("\n===Checking future cycles===");
+    for cycle in current_cycle..current_cycle + preserved_cycles + 1 {
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}?cycle={}",
+            "chains/main/blocks", head_level, "helpers/baking_rights", cycle
+        ))
+        .await
+        .expect("test failed");
+
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}?cycle={}",
+            "chains/main/blocks", head_level, "helpers/endorsing_rights", cycle
+        ))
+        .await
+        .expect("test failed");
+    }
+
+    // check past cycles (current_cycle - preserved_cycles)
+    println!("\n===Checking past cycles===");
+    for cycle in current_cycle - preserved_cycles..current_cycle {
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}?cycle={}",
+            "chains/main/blocks", head_level, "helpers/baking_rights", cycle
+        ))
+        .await
+        .expect("test failed");
+
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}?cycle={}",
+            "chains/main/blocks", head_level, "helpers/endorsing_rights", cycle
+        ))
+        .await
+        .expect("test failed");
+    }
 }
 
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
@@ -266,10 +559,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants
-        let constants_json = try_get_data_as_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "context/constants"
-        ))
+        let constants_json = try_get_data_as_json(
+            &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants"),
+            false,
+        )
         .await
         .expect("Failed to get constants");
         let preserved_cycles = constants_json["preserved_cycles"]
@@ -300,7 +593,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/endorsing_rights",
-                std::cmp::max(0, level - 1)
+                std::cmp::max(1, level - 1)
             ))
             .await
             .expect("test failed");
@@ -309,7 +602,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/endorsing_rights",
-                std::cmp::max(0, level - 10)
+                std::cmp::max(1, level - 10)
             ))
             .await
             .expect("test failed");
@@ -318,16 +611,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/endorsing_rights",
-                std::cmp::max(0, level - 1000)
-            ))
-            .await
-            .expect("test failed");
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?level={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                std::cmp::max(0, level - 3000)
+                std::cmp::max(1, level - blocks_per_cycle)
             ))
             .await
             .expect("test failed");
@@ -354,16 +638,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/endorsing_rights",
-                level + 1000
-            ))
-            .await
-            .expect("test failed");
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?level={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                level + 3000
+                level + blocks_per_cycle
             ))
             .await
             .expect("test failed");
@@ -373,7 +648,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/baking_rights",
-                std::cmp::max(0, level - 1)
+                std::cmp::max(1, level - 1)
             ))
             .await
             .expect("test failed");
@@ -382,7 +657,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/baking_rights",
-                std::cmp::max(0, level - 10)
+                std::cmp::max(1, level - 10)
             ))
             .await
             .expect("test failed");
@@ -391,16 +666,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/baking_rights",
-                std::cmp::max(0, level - 1000)
-            ))
-            .await
-            .expect("test failed");
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?level={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                std::cmp::max(0, level - 3000)
+                std::cmp::max(1, level - blocks_per_cycle)
             ))
             .await
             .expect("test failed");
@@ -427,16 +693,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "chains/main/blocks",
                 level,
                 "helpers/baking_rights",
-                level + 1000
-            ))
-            .await
-            .expect("test failed");
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?level={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                level + 3000
+                level + blocks_per_cycle
             ))
             .await
             .expect("test failed");
@@ -454,10 +711,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 // block level 1 does not have metadata/level/cycle, so we use 0 instead
                 0
             } else {
-                let block_json = try_get_data_as_json(&format!(
-                    "{}/{}/{}",
-                    "chains/main/blocks", level, "metadata"
-                ))
+                let block_json = try_get_data_as_json(
+                    &format!("{}/{}/{}", "chains/main/blocks", level, "metadata"),
+                    false,
+                )
                 .await
                 .expect("Failed to get block metadata");
                 cycle_from_metadata(&block_json).expect("failed to get cycle from metadata")
@@ -490,10 +747,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             }
 
             // get all cycles - it is like json: [0,1,2,3,4,5,7,8]
-            let cycles = try_get_data_as_json(&format!(
-                "chains/main/blocks/{}/context/raw/json/cycle",
-                level
-            ))
+            let cycles = try_get_data_as_json(
+                &format!("chains/main/blocks/{}/context/raw/json/cycle", level),
+                false,
+            )
             .await
             .expect("Failed to get cycle data");
             let cycles = cycles.as_array().expect("No cycles data");
@@ -539,13 +796,15 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 
     // get to_block data
-    let to_block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block))
-        .await
-        .expect("Failed to get block metadata");
-    let from_block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", from_block))
-        .await
-        .expect("Failed to get block metadata");
-    let genesis_block_json = try_get_data_as_json("chains/main/blocks/genesis/hash")
+    let to_block_json =
+        try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block), false)
+            .await
+            .expect("Failed to get block metadata");
+    let from_block_json =
+        try_get_data_as_json(&format!("chains/main/blocks/{}/hash", from_block), false)
+            .await
+            .expect("Failed to get block metadata");
+    let genesis_block_json = try_get_data_as_json("chains/main/blocks/genesis/hash", false)
         .await
         .expect("Failed to get block metadata");
     let to_block_hash = to_block_json.as_str().unwrap();
@@ -694,14 +953,13 @@ async fn find_highest_level() -> i64 {
     levels.into_iter().max().unwrap_or(0)
 }
 
-async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
+async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), anyhow::Error> {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
+    println!();
     if is_ignored(&IGNORE_PATH_PATTERNS, rpc_path) {
-        println!();
         println!("Skipping rpc_path check: {}", rpc_path);
         return Ok(());
     } else {
-        println!();
         println!("Checking: {}", rpc_path);
     }
 
@@ -773,11 +1031,18 @@ async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
 }
 
 /// Returns json data from any/random node (if fails, tries other)
-async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
+async fn try_get_data_as_json(
+    rpc_path: &str,
+    use_first_node: bool,
+) -> Result<serde_json::value::Value, anyhow::Error> {
     let mut nodes: Vec<NodeType> = NodeType::iter().collect_vec();
-    nodes.shuffle(&mut rand::thread_rng());
+
+    if !use_first_node {
+        nodes.shuffle(&mut rand::thread_rng());
+    }
 
     for node in nodes {
+        println!("Sending rpc to: {}", node_rpc_url(node, rpc_path));
         match get_rpc_as_json(node, rpc_path).await {
             Ok((_, data, _)) => return Ok(data),
             Err(e) => {
@@ -800,7 +1065,7 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
 async fn get_rpc_as_json(
     node: NodeType,
     rpc_path: &str,
-) -> Result<(StatusCode, serde_json::value::Value, Duration), failure::Error> {
+) -> Result<(StatusCode, serde_json::value::Value, Duration), anyhow::Error> {
     let url_as_string = node_rpc_url(node, rpc_path);
     let url = url_as_string
         .parse()
@@ -860,7 +1125,7 @@ async fn get_rpc_as_json(
     }
 }
 
-fn cycle_from_metadata(block_metadata_json: &Value) -> Result<i64, failure::Error> {
+fn cycle_from_metadata(block_metadata_json: &Value) -> Result<i64, anyhow::Error> {
     // before 008 edo
     if let Some(cycle) = block_metadata_json["level"]["cycle"].as_i64() {
         return Ok(cycle);
@@ -969,7 +1234,7 @@ async fn test_all_operations_for_block(level: i64) {
         .expect("test failed");
 
     let validation_passes =
-        try_get_data_as_json(&format!("chains/main/blocks/{}/operations", level))
+        try_get_data_as_json(&format!("chains/main/blocks/{}/operations", level), false)
             .await
             .expect("Failed to get operations (validation passes)");
     let validation_passes = validation_passes

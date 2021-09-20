@@ -3,14 +3,8 @@
 
 //! Schema used for serialization and deserialization.
 
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
-
 use crypto::hash::{HashTrait, HashType};
-
-use crate::ser::Error;
-use crate::types::Value;
+use std::collections::HashMap;
 
 pub use tezos_encoding_derive::HasEncoding;
 
@@ -109,23 +103,6 @@ impl TagMap {
 
     pub fn tags(&self) -> impl Iterator<Item = &Tag> {
         self.id_to_tag.values()
-    }
-}
-
-/// Custom encoder/decoder that converts between binary data
-/// and [Value]s and produces JSON from a [Value]
-pub trait CustomCodec {
-    fn encode(
-        &self,
-        data: &mut Vec<u8>,
-        value: &Value,
-        encoding: &Encoding,
-    ) -> Result<usize, Error>;
-}
-
-impl fmt::Debug for dyn CustomCodec + Send + Sync {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Custom Codec")
     }
 }
 
@@ -242,7 +219,7 @@ pub enum Encoding {
     /// This is used to perform encoding using custom function
     /// rather than basing on schema. Used to get rid of recursion
     /// while encoding/decoding recursive types.
-    Custom(Arc<dyn CustomCodec + Send + Sync>),
+    Custom,
 }
 
 impl Encoding {

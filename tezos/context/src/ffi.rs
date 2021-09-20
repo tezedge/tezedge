@@ -25,7 +25,7 @@ use crate::{
     working_tree::{
         storage::DirectoryId,
         working_tree::{FoldDepth, TreeWalker, WorkingTree},
-        NodeKind,
+        DirEntryKind,
     },
     ContextKeyValueStore, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
@@ -596,8 +596,8 @@ ocaml_export! {
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
         let result = match tree.kind() {
-            NodeKind::Leaf => TreeKind::Value,
-            NodeKind::NonLeaf => TreeKind::Tree,
+            DirEntryKind::Blob => TreeKind::Value,
+            DirEntryKind::Directory => TreeKind::Tree,
         };
 
         result.to_ocaml(rt)

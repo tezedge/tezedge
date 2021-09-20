@@ -1,34 +1,30 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, sync::Arc};
-
-use crypto::{
-    base58::FromBase58CheckError,
-    hash::{ContextHash, FromBytesError},
+use std::{
+    borrow::Cow,
+    io,
+    sync::{Arc, PoisonError},
 };
-use failure::Fail;
 
-pub use codec::{Codec, Decoder, Encoder, SchemaError};
-pub use database::DBError;
+use crypto::hash::ContextHash;
+use thiserror::Error;
+
 use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
-    kv_store::{HashId, VacantObjectHash},
+    kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash},
+    working_tree::{
+        serializer::DeserializationError,
+        shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
+        storage::DirEntryId,
+        string_interner::{StringId, StringInterner},
+    },
     ObjectHash,
 };
 
-pub mod codec;
-pub mod database;
-
-/// This trait extends basic column family by introducing Codec types safety and enforcement
-pub trait KeyValueSchema {
-    type Key: Codec;
-    type Value: Codec;
-}
-
 pub trait Flushable {
-    fn flush(&self) -> Result<(), failure::Error>;
+    fn flush(&self) -> Result<(), anyhow::Error>;
 }
 
 pub trait Persistable {
@@ -69,57 +65,80 @@ pub trait KeyValueStoreBackend {
     /// Find an object to insert a new ObjectHash
     /// Return the object
     fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError>;
-    /// Manually clear the entries, this should be a no-operation if the implementation
+    /// Manually clear the objects, this should be a no-operation if the implementation
     /// has its own garbage collection
-    fn clear_entries(&mut self) -> Result<(), DBError>;
+    fn clear_objects(&mut self) -> Result<(), DBError>;
     /// Memory usage
     fn memory_usage(&self) -> RepositoryMemoryUsage;
+    /// Returns the strings of the directory shape
+    fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError>;
+    /// Returns the `ShapeId` of this `dir`
+    ///
+    /// Create a new shape when it doesn't exist.
+    /// This returns `None` when a shape cannot be made (currently if one of the
+    /// string is > 30 bytes).
+    fn make_shape(
+        &mut self,
+        dir: &[(StringId, DirEntryId)],
+    ) -> Result<Option<DirectoryShapeId>, DBError>;
+    /// Returns the string associated to this `string_id`.
+    ///
+    /// The string interner must have been updated with the `update_strings` method.
+    fn get_str(&self, string_id: StringId) -> Option<&str>;
+    /// Update the `StringInterner`.
+    fn synchronize_strings(&mut self, string_interner: &StringInterner) -> Result<(), DBError>;
 }
 
-/// Possible errors for storage
-#[derive(Debug, Fail)]
-pub enum StorageError {
-    #[fail(display = "Database error: {}", error)]
-    DBError { error: DBError },
-    #[fail(display = "Error constructing hash: {}", error)]
-    HashError { error: FromBytesError },
-    #[fail(display = "Error decoding hash: {}", error)]
-    HashDecodeError { error: FromBase58CheckError },
+/// Possible errors for schema
+#[derive(Debug, Error)]
+pub enum DBError {
+    #[error("Column family {name} is missing")]
+    MissingColumnFamily { name: &'static str },
+    #[error("Database incompatibility {name}")]
+    DatabaseIncompatibility { name: String },
+    #[error("Value already exists {key}")]
+    ValueExists { key: String },
+    #[error("Found wrong structure. Was looking for {sought}, but found {found}")]
+    FoundUnexpectedStructure { sought: String, found: String },
+    #[error("Guard Poison {error} ")]
+    GuardPoison { error: String },
+    #[error("Mutex/lock lock error! Reason: {reason}")]
+    LockError { reason: String },
+    #[error("I/O error {error}")]
+    IOError {
+        #[from]
+        error: io::Error,
+    },
+    #[error("MemoryStatisticsOverflow")]
+    MemoryStatisticsOverflow,
+    #[error("IPC Context access error: {reason:?}")]
+    IpcAccessError { reason: ContextServiceError },
+    #[error("Missing object: {hash_id:?}")]
+    MissingObject { hash_id: HashId },
+    #[error("Conversion from/to HashId failed")]
+    HashIdFailed,
+    #[error("Deserialization error: {error:?}")]
+    DeserializationError {
+        #[from]
+        error: DeserializationError,
+    },
+    #[error("Shape error: {error:?}")]
+    ShapeError {
+        #[from]
+        error: DirectoryShapeError,
+    },
 }
 
-impl From<DBError> for StorageError {
-    fn from(error: DBError) -> Self {
-        StorageError::DBError { error }
+impl From<HashIdError> for DBError {
+    fn from(_: HashIdError) -> Self {
+        DBError::HashIdFailed
     }
 }
 
-impl From<SchemaError> for StorageError {
-    fn from(error: SchemaError) -> Self {
-        StorageError::DBError {
-            error: error.into(),
+impl<T> From<PoisonError<T>> for DBError {
+    fn from(pe: PoisonError<T>) -> Self {
+        DBError::LockError {
+            reason: format!("{}", pe),
         }
-    }
-}
-
-impl From<FromBytesError> for StorageError {
-    fn from(error: FromBytesError) -> Self {
-        StorageError::HashError { error }
-    }
-}
-
-impl From<FromBase58CheckError> for StorageError {
-    fn from(error: FromBase58CheckError) -> Self {
-        StorageError::HashDecodeError { error }
-    }
-}
-
-impl slog::Value for StorageError {
-    fn serialize(
-        &self,
-        _record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }

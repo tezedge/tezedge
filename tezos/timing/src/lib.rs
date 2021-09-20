@@ -14,10 +14,10 @@ use std::{
 };
 
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
-use failure::Fail;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
+use thiserror::Error;
 
 pub const FILENAME_DB: &str = "context_stats.db";
 
@@ -36,6 +36,7 @@ pub struct SerializeStats {
     pub ndirectories: usize,
     pub nblobs: usize,
     pub nblobs_inlined: usize,
+    pub nshapes: usize,
     pub total_bytes: usize,
 }
 
@@ -84,7 +85,7 @@ pub struct StorageMemoryUsage {
     pub total_bytes: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StringsMemoryUsage {
     pub all_strings_map_cap: usize,
     pub all_strings_map_len: usize,
@@ -112,6 +113,12 @@ pub struct RepositoryMemoryUsage {
     pub hashes_length: usize,
     /// Total bytes occupied in the repository
     pub total_bytes: usize,
+    /// Number of items in the queue of `HashId`
+    pub npending_free_ids: usize,
+    /// Number of items in the GC thread waiting to be pushed in the queue
+    pub gc_npending_free_ids: usize,
+    /// Number of shapes
+    pub nshapes: usize,
 }
 
 #[derive(Debug)]
@@ -379,17 +386,11 @@ pub struct Query {
     pub tezedge_time: Option<f64>,
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum BufferedTimingChannelSendError {
-    #[fail(
-        display = "Failure when locking the timings channel buffer: {}",
-        reason
-    )]
+    #[error("Failure when locking the timings channel buffer: {reason}")]
     LockError { reason: String },
-    #[fail(
-        display = "Failure when sending timming messages to channel: {}",
-        reason
-    )]
+    #[error("Failure when sending timming messages to channel: {reason}")]
     SendError {
         reason: SendError<Vec<TimingMessage>>,
     },
@@ -590,6 +591,9 @@ impl Timing {
               repo_hashes_capacity = :repo_hashes_capacity,
               repo_hashes_length = :repo_hashes_length,
               repo_total_bytes = :repo_total_bytes,
+              repo_npending_free_ids = :repo_npending_free_ids,
+              repo_gc_npending_free_ids = :repo_gc_npending_free_ids,
+              repo_nshapes = :repo_nshapes,
               storage_nodes_capacity = :storage_nodes_capacity,
               storage_nodes_length = :storage_nodes_length,
               storage_trees_capacity = :storage_trees_capacity,
@@ -614,6 +618,7 @@ impl Timing {
               serialize_ntree = :serialize_ntree,
               serialize_nblobs = :serialize_nblobs,
               serialize_nblobs_inlined = :serialize_nblobs_inlined,
+              serialize_nshapes = :serialize_nshapes,
               serialize_total_bytes = :serialize_total_bytes,
               total_bytes = :total_bytes
             WHERE
@@ -628,6 +633,9 @@ impl Timing {
             ":repo_hashes_capacity": stats.context.repo.hashes_capacity,
             ":repo_hashes_length": stats.context.repo.hashes_length,
             ":repo_total_bytes": stats.context.repo.total_bytes,
+            ":repo_npending_free_ids": stats.context.repo.npending_free_ids,
+            ":repo_gc_npending_free_ids": stats.context.repo.gc_npending_free_ids,
+            ":repo_nshapes": stats.context.repo.nshapes,
             ":storage_nodes_length": stats.context.storage.nodes_len,
             ":storage_nodes_capacity": stats.context.storage.nodes_cap,
             ":storage_trees_length": stats.context.storage.directories_len,
@@ -652,6 +660,7 @@ impl Timing {
             ":serialize_ntree": stats.serialize.ndirectories,
             ":serialize_nblobs": stats.serialize.nblobs,
             ":serialize_nblobs_inlined": stats.serialize.nblobs_inlined,
+            ":serialize_nshapes": stats.serialize.nshapes,
             ":serialize_total_bytes": stats.serialize.total_bytes,
             ":total_bytes": stats.context.repo.total_bytes
                 .saturating_add(stats.context.storage.total_bytes)

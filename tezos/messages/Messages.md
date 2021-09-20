@@ -115,13 +115,13 @@ Size: 10
 
 
 ### P2P CurrentHead
-Size: up to 8516630
+Size: up to 8516634
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | # of bytes in the message | 4 | unsigned 32-bit integer |
 | tag | 2 | tag corresponding to the message (0x14) |
-| message | up to 8516624 | [CurrentHeadMessage](#currentheadmessage) |
+| message | up to 8516628 | [CurrentHeadMessage](#currentheadmessage) |
 
 
 ### P2P GetBlockHeaders
@@ -175,13 +175,13 @@ Size: up to 330
 
 
 ### P2P Protocol
-Size: up to 2097162
+Size: up to 2097158
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | # of bytes in the message | 4 | unsigned 32-bit integer |
 | tag | 2 | tag corresponding to the message (0x41) |
-| message | up to 2097156 | [ProtocolMessage](#protocolmessage) |
+| message | up to 2097152 | [ProtocolMessage](#protocolmessage) |
 
 
 ### P2P GetOperationsForBlocks
@@ -224,10 +224,10 @@ Size: variable
 | timestamp | 8 | timestamp |
 | validation_pass | 1 | unsigned byte |
 | operations_hash | 32 | OperationListListHash |
-| # of bytes in the next field | 4 | unsigned 32-bit integer |
+| # of bytes in the next field (up to 24) | 4 | unsigned 32-bit integer |
 | fitness | variable | list of [BlockHeader.fitness items](#blockheaderfitness-items) |
 | context | 32 | ContextHash |
-| protocol_data | variable | list of unsigned byte |
+| protocol_data | up to 8388470 | list of unsigned byte |
 
 
 ### BlockHeader.fitness items
@@ -248,14 +248,14 @@ Size: up to 8388608
 
 
 ### Component
-Size: variable
+Size: up to 205825
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
-| name | variable | UTF8-encoded string |
+| name | up to 1024 | UTF8-encoded string with 1024 elements max |
 | presense of the next field | 1 | 0xff if presend, 0x00 if absent  |
-| interface | variable | UTF8-encoded string |
-| implementation | variable | UTF8-encoded string |
+| interface | up to 102400 | UTF8-encoded string with 102400 elements max |
+| implementation | up to 102400 | UTF8-encoded string with 102400 elements max |
 
 
 ### CurrentBranch
@@ -278,14 +278,14 @@ Size: up to 8420616
 
 
 ### CurrentHeadMessage
-Size: up to 8516624
+Size: up to 8516628
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | chain_id | 4 | ChainId |
 | # of bytes in the next field (up to 8388608) | 4 | unsigned 32-bit integer |
 | current_block_header | up to 8388608 | [BlockHeader](#blockheader) |
-| current_mempool | up to 128008 | [Mempool](#mempool) |
+| current_mempool | up to 128012 | [Mempool](#mempool) |
 
 
 ### DeactivateMessage
@@ -349,15 +349,15 @@ Size: up to 324
 
 
 ### Mempool
-Size: variable
+Size: up to 256012
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | # of bytes in the next field | 4 | unsigned 32-bit integer |
-| known_valid | variable | list of OperationHash |
+| known_valid | up to 128000 | up to 4000 of OperationHash |
 | # of bytes in the next field | 4 | unsigned 32-bit integer |
 | # of bytes in the next field | 4 | unsigned 32-bit integer |
-| pending | variable | list of OperationHash |
+| pending | up to 128000 | up to 4000 of OperationHash |
 
 
 ### NetworkVersion
@@ -421,16 +421,16 @@ Size: variable
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | expected_env_version | 2 | signed 16-bit integer |
-| # of bytes in the next field (up to 2097150) | 4 | unsigned 32-bit integer |
+| # of bytes in the next field (up to 2097146) | 4 | unsigned 32-bit integer |
 | components | variable | list of [Component](#component) |
 
 
 ### ProtocolMessage
-Size: up to 2097156
+Size: up to 2097152
 
 | Name | Size | Contents |
 |:-----|:-----|:---------|
-| protocol | up to 2097156 | [Protocol](#protocol) |
+| protocol | up to 2097152 | [Protocol](#protocol) |
 
 
 ### SwapMessage

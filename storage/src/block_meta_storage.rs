@@ -789,7 +789,7 @@ mod tests {
     use std::convert::TryInto;
     use std::path::Path;
 
-    use failure::Error;
+    use anyhow::Error;
     use rand::Rng;
 
     use crate::persistent::database::open_kv;

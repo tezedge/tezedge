@@ -1,29 +1,42 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crypto::hash::ProtocolHash;
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
-use super::limits::{GET_PROTOCOLS_MAX_LENGTH, PROTOCOL_COMPONENT_MAX_SIZE};
+use super::limits::{
+    COMPONENT_IMPLEMENTATION_MAX_LENGTH, COMPONENT_INTERFACE_MAX_LENGTH, COMPONENT_NAME_MAX_LENGTH,
+    GET_PROTOCOLS_MAX_LENGTH, PROTOCOL_COMPONENT_MAX_SIZE,
+};
 
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+)]
 pub struct ProtocolMessage {
     protocol: Protocol,
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+)]
 pub struct Component {
+    #[encoding(string = "COMPONENT_NAME_MAX_LENGTH")]
     name: String,
+    #[encoding(string = "COMPONENT_INTERFACE_MAX_LENGTH")]
     interface: Option<String>,
+    #[encoding(string = "COMPONENT_IMPLEMENTATION_MAX_LENGTH")]
     implementation: String,
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+)]
 pub struct Protocol {
     expected_env_version: i16,
     #[encoding(dynamic = "PROTOCOL_COMPONENT_MAX_SIZE", list)]
@@ -41,7 +54,9 @@ impl Protocol {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+)]
 pub struct GetProtocolsMessage {
     #[encoding(dynamic, list = "GET_PROTOCOLS_MAX_LENGTH")]
     get_protocols: Vec<ProtocolHash>,

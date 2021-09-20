@@ -5,8 +5,8 @@
 /// uses zstd as a compression library
 mod compression;
 
-use failure::Fail;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
@@ -97,19 +97,19 @@ impl CommitLog {
 }
 
 /// Possible errors for commit log
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum CommitLogError {
-    #[fail(display = "Schema error: {}", error)]
+    #[error("Schema error: {error}")]
     SchemaError { error: SchemaError },
-    #[fail(display = "Commit log I/O error {}", error)]
+    #[error("Commit log I/O error {error}")]
     IOError { error: io::Error },
-    #[fail(display = "Commit log {} is missing", name)]
+    #[error("Commit log {name} is missing")]
     MissingCommitLog { name: &'static str },
-    #[fail(display = "Failed to read record at {}", location)]
+    #[error("Failed to read record at {location}")]
     ReadError { location: Location },
-    #[fail(display = "Failed to read record data corrupted")]
+    #[error("Failed to read record data corrupted")]
     CorruptData,
-    #[fail(display = "RwLock Poison Error {}", error)]
+    #[error("RwLock Poison Error {error}")]
     RwLockPoisonError { error: String },
 }
 

@@ -3,21 +3,33 @@
 
 use std::convert::TryFrom;
 
-use failure::Fail;
 use getset::Getters;
 use hex::FromHexError;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, OperationHash},
 };
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct OperationMessage {
     #[get = "pub"]
     operation: Operation,
@@ -36,7 +48,17 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
+#[derive(
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Debug,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct Operation {
     branch: BlockHash,
     #[encoding(list = "OPERATION_MAX_SIZE")]
@@ -53,11 +75,11 @@ impl Operation {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum FromDecodedOperationError {
-    #[fail(display = "Failed to decode from base58 string: {}", _0)]
+    #[error("Failed to decode from base58 string: {0}")]
     Base58(FromBase58CheckError),
-    #[fail(display = "Failed to decode from hex string: {}", _0)]
+    #[error("Failed to decode from hex string: {0}")]
     Hex(FromHexError),
 }
 
@@ -100,7 +122,17 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct GetOperationsMessage {
     #[get = "pub"]
     #[encoding(dynamic, list = "GET_OPERATIONS_MAX_LENGTH")]

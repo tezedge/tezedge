@@ -3,8 +3,8 @@
 
 use std::convert::TryInto;
 
+use anyhow::Error;
 use crypto::hash::{BlockHash, HashType};
-use failure::Error;
 
 use storage::persistent::{Decoder, Encoder};
 use storage::BlockHeaderWithHash;

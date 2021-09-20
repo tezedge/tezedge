@@ -638,7 +638,7 @@ impl KVStoreKeyValueSchema for BlockByContextHashIndex {
 mod tests {
     use std::path::Path;
 
-    use failure::Error;
+    use anyhow::Error;
 
     use crate::persistent::database::open_kv;
     use crate::persistent::DbConfiguration;
