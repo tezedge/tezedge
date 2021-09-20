@@ -4,7 +4,7 @@
 use std::fmt;
 
 use getset::CopyGetters;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
@@ -13,7 +13,7 @@ use tezos_encoding::nom::NomReader;
 
 use crate::p2p::binary_message::SizeFromChunk;
 
-#[derive(Serialize, CopyGetters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
+#[derive(Serialize, Deserialize, CopyGetters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,

@@ -12,6 +12,7 @@
 //!
 //! CryptoboxPublicKeyHash - generated as a hash of [`PublicKey`], for example used as a peer_id
 
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::{self, Debug};
 
@@ -57,7 +58,7 @@ fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZ
 }
 
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PublicKey`]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PublicKey(box_::PublicKey);
 
 impl PublicKey {
@@ -88,7 +89,7 @@ impl FromHex for PublicKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::SecretKey`]
 pub struct SecretKey(box_::SecretKey);
 
@@ -130,7 +131,7 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
     Ok((sk, pk, pkh))
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);
 

@@ -8,6 +8,7 @@ use nom::{
     Finish,
 };
 use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
@@ -117,7 +118,7 @@ pub(crate) fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderErr
 ///
 /// Difference from [`BinaryMessage`] is that it also contains [`CONTENT_LENGTH_FIELD_BYTES`] bytes
 /// of information about how many bytes is the actual encoding.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BinaryChunk(Vec<u8>);
 
 impl BinaryChunk {

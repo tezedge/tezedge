@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 use hex::FromHex;
 use num_bigint::BigUint;
+use serde::{Deserialize, Serialize};
 use sodiumoxide::randombytes::randombytes;
 use thiserror::Error;
 
@@ -31,7 +32,7 @@ impl From<Blake2bError> for PowError {
 
 pub type PowResult = Result<(), PowError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ProofOfWork([u8; POW_SIZE]);
 
 impl AsRef<[u8]> for ProofOfWork {

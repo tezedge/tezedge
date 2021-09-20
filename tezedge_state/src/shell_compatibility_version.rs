@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use serde::{Deserialize, Serialize};
+
 use tezos_messages::p2p::encoding::ack::NackMotive;
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 
@@ -8,7 +10,7 @@ use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 /// - all distributed_db_versions
 /// - all p2p_versions
 /// - version -> version used for bootstrap
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShellCompatibilityVersion {
     /// All supported distributed_db_versions
     distributed_db_versions: Vec<u16>,
