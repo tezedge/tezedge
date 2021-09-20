@@ -104,7 +104,7 @@ trigger:
 
 ---
 ###################################################################################################################
-# This pipeline runs a long running RPC call comparison test that compares tezedge results with octez, ensuring the 
+# This pipeline runs a long running RPC call comparison test that compares tezedge results with octez, ensuring the
 # data the RPC returns is correct
 ###################################################################################################################
 kind: pipeline
@@ -172,7 +172,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "mainnet" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-data-dir /data/tezedge-data --bootstrap-db-path bootstrap_db
+    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "mainnet" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-data-dir /data/tezedge-data --bootstrap-db-path bootstrap_db --tezos-context-storage irmin
 
 - name: wait-for-snapshoted-nodes
   image: tezedge/tezos-node-bootstrap:latest
