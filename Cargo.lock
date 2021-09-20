@@ -748,7 +748,7 @@ dependencies = [
  "anyhow",
  "base58",
  "hex",
- "num-bigint",
+ "num-bigint 0.3.3",
  "num-traits 0.2.14",
  "rand 0.7.3",
  "serde 1.0.130",
@@ -2042,6 +2042,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "num"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43db66d1170d347f9a065114077f7dccb00c1b9478c89384490a3425279a4606"
+dependencies = [
+ "num-bigint 0.4.2",
+ "num-complex",
+ "num-integer",
+ "num-iter",
+ "num-rational",
+ "num-traits 0.2.14",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2055,12 +2069,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74e768dff5fb39a41b3bcd30bb25cf989706c90d028d1ad71971987aa309d535"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26873667bbbb7c5182d4a37c1add32cdf09f841af72da53318fdb81543c15085"
+dependencies = [
+ "num-traits 0.2.14",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "num-iter"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2021c8337a54d21aca0d59a92577a029af9431cb59b909b03252b9c164fad59"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d41702bd167c2df5520b384281bc111a4b5efcf7fbc4c9c222c815b07e0a6a6a"
+dependencies = [
+ "autocfg",
+ "num-bigint 0.4.2",
+ "num-integer",
  "num-traits 0.2.14",
 ]
 
@@ -2660,6 +2717,7 @@ dependencies = [
  "hyper",
  "itertools 0.10.1",
  "lazy_static",
+ "num",
  "path-tree",
  "rand 0.7.3",
  "riker",
@@ -3396,7 +3454,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "nom 6.1.2",
- "num-bigint",
+ "num-bigint 0.3.3",
  "num-traits 0.2.14",
  "serde 1.0.130",
  "tezos_encoding_derive",
@@ -3473,7 +3531,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "nom 6.1.2",
- "num-bigint",
+ "num-bigint 0.3.3",
  "num-traits 0.2.14",
  "serde 1.0.130",
  "serde_json",

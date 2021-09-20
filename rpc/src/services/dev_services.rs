@@ -7,6 +7,7 @@
 // to reproduce the same functionality.
 
 use std::convert::TryFrom;
+use std::vec;
 
 use anyhow::bail;
 use crypto::hash::ContractKt1Hash;
@@ -15,20 +16,24 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
+use storage::cycle_eras_storage::CycleEra;
 //use tezos_context::actions::context_action_storage::{
 //    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
 //    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 //};
 use storage::{
-    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
+    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
+    CycleErasStorage, PersistentStorage,
 };
 //use tezos_context::channel::ContextAction;
-use tezos_messages::base::rpc_support::UniversalValue;
 use tezos_messages::base::ConversionError;
 
 use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
-use crate::services::protocol::get_context_protocol_params;
+
+use crate::services::protocol::get_blocks_per_cycle;
+
+use super::base_services::{get_additional_data_or_fail, get_raw_block_header_with_hash};
 
 pub type ContractAddress = Vec<u8>;
 
@@ -160,29 +165,64 @@ pub(crate) fn get_stats_memory_protocol_runners() -> MemoryStatsResult<Vec<Memor
 }
 
 pub(crate) fn get_cycle_length_for_block(
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-    log: &Logger,
+    _: &Logger,
 ) -> Result<i32, RpcServiceError> {
-    if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
-        Ok(tezos_messages::protocol::get_constants_for_rpc(
-            &context_proto_params.constants_data,
-            &context_proto_params.protocol_hash,
-        ).map_err(|e| RpcServiceError::UnexpectedError {
-            reason: format!("{}", e)
-        })?
-            .map(|constants| constants.get("blocks_per_cycle")
-                .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-                    slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-                    4096
-                })
-            ).flatten().unwrap_or_else(|| {
-            slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-            4096
-        }))
+    // get the protocol hash
+    let protocol_hash =
+        &get_additional_data_or_fail(chain_id, block_hash, env.persistent_storage())?.protocol_hash;
+
+    let block_level =
+        get_raw_block_header_with_hash(chain_id, block_hash, env.persistent_storage())?
+            .header
+            .level();
+
+    // proto 10 and beyond
+    if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(protocol_hash)? {
+        for era in eras {
+            if *era.first_level() > block_level {
+                continue;
+            } else {
+                return Ok(*era.blocks_per_cycle());
+            }
+        }
+        Err(RpcServiceError::NoDataFoundError {
+            reason: "No matching cycle era found".into(),
+        })
     } else {
-        slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
-        Ok(4096)
+        // if no eras are present, simply get blocks_per_cycle from constatns (proto 001-009)
+        if let Some(constants) =
+            ConstantsStorage::new(env.persistent_storage()).get(protocol_hash)?
+        {
+            match get_blocks_per_cycle(protocol_hash, &constants) {
+                Ok(blocks_per_cycle) => Ok(blocks_per_cycle),
+                Err(e) => Err(RpcServiceError::NoDataFoundError {
+                    reason: e.to_string(),
+                }),
+            }
+        } else {
+            Err(RpcServiceError::NoDataFoundError {
+                reason: "No constants found for protocol".into(),
+            })
+        }
+    }
+}
+
+pub(crate) fn get_cycle_eras(
+    chain_id: &ChainId,
+    block_hash: &BlockHash,
+    env: &RpcServiceEnvironment,
+    _: &Logger,
+) -> Result<Vec<CycleEra>, RpcServiceError> {
+    let protocol_hash =
+        &get_additional_data_or_fail(chain_id, block_hash, env.persistent_storage())?.protocol_hash;
+
+    if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(protocol_hash)? {
+        Ok(eras)
+    } else {
+        Ok(vec![])
     }
 }
 

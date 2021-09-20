@@ -226,6 +226,16 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
 
     // Protocol rpcs - implemented
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
+        protocol_handler::baking_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
+        protocol_handler::endorsing_rights,
+    );
 
     // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
     // context is available. Once these handlers have been tested better and revised, enable again.
@@ -235,16 +245,6 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
             hash_set![Method::GET],
             "/chains/:chain_id/blocks/:block_id/context/constants",
             protocol_handler::context_constants,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
-            protocol_handler::baking_rights,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
-            protocol_handler::endorsing_rights,
         );
         routes.handle(
             hash_set![Method::GET],
@@ -285,6 +285,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/dev/version",
         dev_handler::dev_version,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/chains/:chain_id/blocks/:block_id/cycle_eras",
+        dev_handler::cycle_eras,
     );
     routes.handle(
         hash_set![Method::GET],

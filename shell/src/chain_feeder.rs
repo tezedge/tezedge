@@ -21,12 +21,13 @@ use crypto::hash::{BlockHash, ChainId};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
-    PersistentStorage,
+    CycleErasStorage, CycleMetaStorage, PersistentStorage,
 };
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
-    BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,
-    OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo,
+    BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, ConstantsStorage,
+    OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError,
+    StorageInitInfo,
 };
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
@@ -553,6 +554,9 @@ impl BlockApplierThreadSpawner {
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
                 let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+                let cycle_meta_storage = CycleMetaStorage::new(&persistent_storage);
+                let cycle_eras_storage = CycleErasStorage::new(&persistent_storage);
+                let constants_storage = ConstantsStorage::new(&persistent_storage);
 
                 block_applier_run.store(true, Ordering::Release);
                 info!(log, "Chain feeder started processing");
@@ -569,6 +573,9 @@ impl BlockApplierThreadSpawner {
                             &chain_meta_storage,
                             &operations_storage,
                             &operations_meta_storage,
+                            &cycle_meta_storage,
+                            &cycle_eras_storage,
+                            &constants_storage,
                             &protocol_controller.api,
                             &mut block_applier_event_receiver,
                             &log,
@@ -612,6 +619,9 @@ fn feed_chain_to_protocol(
     chain_meta_storage: &ChainMetaStorage,
     operations_storage: &OperationsStorage,
     operations_meta_storage: &OperationsMetaStorage,
+    cycle_meta_storage: &CycleMetaStorage,
+    cycle_eras_storage: &CycleErasStorage,
+    constants_storage: &ConstantsStorage,
     protocol_controller: &ProtocolController,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
@@ -698,6 +708,9 @@ fn feed_chain_to_protocol(
                             load_metadata_elapsed,
                             block_storage,
                             block_meta_storage,
+                            cycle_meta_storage,
+                            cycle_eras_storage,
+                            constants_storage,
                             protocol_controller,
                             init_storage_data,
                             log,
@@ -850,6 +863,9 @@ fn _apply_block(
     load_metadata_elapsed: Duration,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
+    cycle_meta_storage: &CycleMetaStorage,
+    cycle_eras_storage: &CycleErasStorage,
+    constants_storage: &ConstantsStorage,
     protocol_controller: &ProtocolController,
     storage_init_info: &StorageInitInfo,
     log: &Logger,
@@ -875,16 +891,30 @@ fn _apply_block(
     let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
 
+    if !apply_block_result.cycle_rolls_owner_snapshots.is_empty() {
+        debug!(
+            log,
+            "Block application returned {} new snapshots",
+            apply_block_result.cycle_rolls_owner_snapshots.len()
+        );
+    }
+
+    if let Some(json) = &apply_block_result.new_protocol_constants_json {
+        debug!(log, "Block application returned new constants: {}", json,);
+    }
+
     debug!(log, "Block was applied";
            "block_header_hash" => block_hash.to_base58_check(),
            "context_hash" => apply_block_result.context_hash.to_base58_check(),
            "validation_result_message" => &apply_block_result.validation_result_message);
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
+        let commit_time_duration = Duration::from_secs_f64(apply_block_result.commit_time);
         info!(log, "Block was validated with protocol with long processing";
-                           "block_header_hash" => block_hash.to_base58_check(),
-                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
+              "commit_time" => format!("{:?}", commit_time_duration),
+              "block_header_hash" => block_hash.to_base58_check(),
+              "context_hash" => apply_block_result.context_hash.to_base58_check(),
+              "protocol_call_elapsed" => format!("{:?}", protocol_call_elapsed));
     }
 
     // Lets mark header as applied and store result
@@ -896,6 +926,9 @@ fn _apply_block(
         &block_hash,
         apply_block_result,
         &mut block_meta,
+        cycle_meta_storage,
+        cycle_eras_storage,
+        constants_storage,
     )?;
     let store_result_elapsed = store_result_timer.elapsed();
 

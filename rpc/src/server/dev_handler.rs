@@ -45,8 +45,9 @@ pub async fn dev_blocks(
     };
 
     // get cycle length
-    let cycle_length = dev_services::get_cycle_length_for_block(&from_block_id, &env, env.log())
-        .map_err(|e| format_err!("Failed to get constants, reason: {}", e))?;
+    let cycle_length =
+        dev_services::get_cycle_length_for_block(&chain_id, &from_block_id, &env, env.log())
+            .map_err(|e| format_err!("Failed to get cycle length, reason: {}", e))?;
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),
@@ -234,6 +235,22 @@ pub async fn block_actions(
     let db_path = env.context_stats_db_path.as_ref();
 
     result_option_to_json_response(context::make_block_stats(db_path, block_hash), env.log())
+}
+
+pub async fn cycle_eras(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)
+        .map_err(|e| format_err!("Failed to parse_block_hash, reason: {}", e))?;
+
+    result_to_json_response(
+        dev_services::get_cycle_eras(&chain_id, &block_hash, &env, env.log()),
+        env.log(),
+    )
 }
 
 /// Get the version string
