@@ -233,23 +233,23 @@ fn block_on_actors(
     // create partial (global) states for sharing between threads/actors
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    let mut actor_system_cfg = riker::load_config();
-    if env.riker_threads > 0 {
-        let thread_count = env.riker_threads.min(num_cpus::get());
-        actor_system_cfg
-            .set("dispatcher.pool_size", thread_count as i64)
-            .expect("Failed to set custom thread pool size for riker(actor system).");
-    }
-
     // create riker's actor system
     let actor_system = Arc::new(
         SystemBuilder::new()
             .name("light-node")
             .log(log.clone())
-            .cfg(actor_system_cfg)
-            .create()
+            .create({
+                if env.riker_threads > 0 {
+                    let thread_count = env.riker_threads.min(num_cpus::get());
+                    ThreadPoolConfig::new(thread_count, 0)
+                } else {
+                    // default riker behavior
+                    ThreadPoolConfig::new(num_cpus::get() * 2, 0)
+                }
+            })
             .expect("Failed to create actor system"),
     );
+    info!(log, "Riker configuration"; "cfg" => actor_system.config());
 
     let network_channel =
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");

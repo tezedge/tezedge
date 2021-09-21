@@ -833,7 +833,7 @@ impl Receive<ConnectToPeer> for PeerManager {
         let peers = self.peers.clone();
 
         self.tokio_executor.spawn(async move {
-            let log: riker::system::LoggingSystem = system.log();
+            let log = system.log();
             debug!(log, "(Outgoing) Connecting to IP"; "ip" => msg.address);
             match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                 Ok(Ok(stream)) => {

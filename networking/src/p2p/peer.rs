@@ -725,7 +725,7 @@ mod tests {
     use futures::lock::Mutex;
     use riker::{
         actor::ActorRefFactory,
-        actors::{ActorSystem, SystemBuilder, Tell},
+        actors::{ActorSystem, SystemBuilder, Tell, ThreadPoolConfig},
     };
     use slog::{Drain, Level, Logger, KV};
     use tezos_identity::Identity;
@@ -815,7 +815,7 @@ mod tests {
         SystemBuilder::new()
             .name("create_actor_system")
             .log(log)
-            .create()
+            .create(ThreadPoolConfig::new(1, 0))
             .expect("Failed to create test actor system")
     }
 

@@ -177,7 +177,7 @@ impl NodeInfrastructure {
             SystemBuilder::new()
                 .name(name)
                 .log(log.clone())
-                .create()
+                .create(ThreadPoolConfig::new(4, 0))
                 .expect("Failed to create actor system"),
         );
         let shell_channel =

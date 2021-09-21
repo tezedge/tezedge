@@ -357,7 +357,7 @@ pub mod tests {
             SystemBuilder::new()
                 .name("create_actor_system")
                 .log(log)
-                .create()
+                .create(ThreadPoolConfig::new(1, 0))
                 .expect("Failed to create test actor system")
         }
 
@@ -398,7 +398,9 @@ pub mod tests {
                     )),
                 )
                 .map(|feeder| (feeder, block_applier_event_receiver))
-                .map_err(|e| e.into())
+                .map_err(|e| {
+                    anyhow::format_err!("Failed to create chain_feeder actor mock: {:?}", e)
+                })
         }
 
         pub(crate) fn chain_manager_mock(

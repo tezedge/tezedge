@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 erased-serde = "0.3"
-riker = "0.4"
+riker = { git = "https://github.com/tezedge/riker.git", tag = "v0.4.2-cleanup-unsafe-3" }
 serde = "1.0"
 serde_json = "1.0"
 slog = { version = "2.7", features = ["nested-values", "max_level_trace", "release_max_level_debug"] }
