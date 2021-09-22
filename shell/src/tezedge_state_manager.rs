@@ -10,10 +10,10 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant, SystemTime};
 
 use dns_lookup::LookupError;
-use thiserror::Error;
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use riker::actors::*;
 use slog::{info, warn, Logger};
+use thiserror::Error;
 
 use crypto::hash::ChainId;
 use networking::network_channel::{

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::p2p::{binary_message::SizeFromChunk, encoding::prelude::*, peer_message_size};
 use tezos_encoding::enc::BinWriter;

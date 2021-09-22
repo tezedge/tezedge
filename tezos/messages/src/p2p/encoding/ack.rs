@@ -28,13 +28,14 @@ use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 #[derive(
     Serialize,
     Deserialize,
-    PartialEq,
-    Debug,
     HasEncoding,
     NomReader,
     BinWriter,
     Generated,
     Arbitrary,
+    Debug,
+    Eq,
+    PartialEq,
     Clone,
 )]
 pub enum AckMessage {
@@ -67,7 +68,16 @@ impl SizeFromChunk for AckMessage {
 }
 
 #[derive(
-    Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader, BinWriter, Generated, Clone,
+    Serialize,
+    Deserialize,
+    Getters,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    Generated,
+    Eq,
+    PartialEq,
+    Clone,
 )]
 pub struct NackInfo {
     #[get = "pub"]
@@ -93,12 +103,13 @@ impl Arbitrary for NackInfo {
 #[derive(
     Serialize,
     Deserialize,
-    PartialEq,
     HasEncoding,
     NomReader,
     BinWriter,
     Generated,
     Arbitrary,
+    Eq,
+    PartialEq,
     Clone,
 )]
 #[encoding(tags = "u16")]

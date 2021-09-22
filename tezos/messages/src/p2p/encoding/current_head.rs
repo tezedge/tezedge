@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 use tezos_encoding::enc::BinWriter;

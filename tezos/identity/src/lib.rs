@@ -45,7 +45,7 @@ impl From<PublicKeyError> for IdentityError {
 }
 
 /// This node identity information compatible with Tezos
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 pub struct Identity {
     /// Peer_id is calculated hash of public_key [`crypto_box::PublicKey`]
     pub peer_id: CryptoboxPublicKeyHash,

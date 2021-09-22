@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::ProtocolHash;
 use tezos_encoding::enc::BinWriter;
@@ -14,7 +14,14 @@ use super::limits::{
 };
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
 )]
 pub struct ProtocolMessage {
     protocol: Protocol,
@@ -22,7 +29,14 @@ pub struct ProtocolMessage {
 
 // -----------------------------------------------------------------------------------------------
 #[derive(
-    Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
 )]
 pub struct Component {
     #[encoding(string = "COMPONENT_NAME_MAX_LENGTH")]
@@ -35,7 +49,14 @@ pub struct Component {
 
 // -----------------------------------------------------------------------------------------------
 #[derive(
-    Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
 )]
 pub struct Protocol {
     expected_env_version: i16,
@@ -55,7 +76,14 @@ impl Protocol {
 
 // -----------------------------------------------------------------------------------------------
 #[derive(
-    Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
 )]
 pub struct GetProtocolsMessage {
     #[encoding(dynamic, list = "GET_PROTOCOLS_MAX_LENGTH")]

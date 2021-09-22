@@ -50,11 +50,11 @@ use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
+use crate::state::data_requester::tell_peer;
 use crate::state::head_state::{
     has_any_higher_than, HeadResult, HeadState, RemoteBestKnownCurrentHead,
 };
 use crate::state::peer_state::PeerState;
-use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::{
     PeerBranchSynchronizationDone, SynchronizationBootstrapState,
 };
@@ -1739,12 +1739,7 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
             };
             if can_request {
                 peer.current_head_request_last = Instant::now();
-                tell_peer(
-                    &proposer,
-                    &peer.peer_id,
-                    p2p_msg.clone(),
-                    &ctx.system.log(),
-                );
+                tell_peer(&proposer, &peer.peer_id, p2p_msg.clone(), &ctx.system.log());
             }
         });
     }
@@ -1801,9 +1796,13 @@ impl Receive<AdvertiseToP2pNewMempool> for ChainManager {
         } = msg;
         // get header and send it to p2p
         match self.block_storage.get(&mempool_head) {
-            Ok(Some(header)) => {
-                self.advertise_current_head_to_p2p(&chain_id, header.header, mempool, true, &ctx.system.log())
-            }
+            Ok(Some(header)) => self.advertise_current_head_to_p2p(
+                &chain_id,
+                header.header,
+                mempool,
+                true,
+                &ctx.system.log(),
+            ),
             Ok(None) => warn!(
                 ctx.system.log(),
                 "Failed to spread mempool to p2p - blockHeader ({}) was not found",

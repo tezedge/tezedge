@@ -250,7 +250,8 @@ fn block_on_actors(
 
     let network_channel =
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
-    let shell_channel = ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
+    let shell_channel =
+        ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize tezedge state
     let mut tezedge_state_manager = TezedgeStateManager::new(

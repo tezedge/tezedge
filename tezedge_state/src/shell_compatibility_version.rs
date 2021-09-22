@@ -10,7 +10,7 @@ use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 /// - all distributed_db_versions
 /// - all p2p_versions
 /// - version -> version used for bootstrap
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 pub struct ShellCompatibilityVersion {
     /// All supported distributed_db_versions
     distributed_db_versions: Vec<u16>,

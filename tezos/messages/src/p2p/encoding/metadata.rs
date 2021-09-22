@@ -13,7 +13,17 @@ use tezos_encoding::nom::NomReader;
 
 use crate::p2p::binary_message::SizeFromChunk;
 
-#[derive(Serialize, Deserialize, CopyGetters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
+#[derive(
+    Serialize,
+    Deserialize,
+    CopyGetters,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    Generated,
+    PartialEq,
+    Clone,
+)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,

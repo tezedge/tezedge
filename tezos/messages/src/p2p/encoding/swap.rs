@@ -3,7 +3,7 @@
 
 use crypto::hash::CryptoboxPublicKeyHash;
 use getset::Getters;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;

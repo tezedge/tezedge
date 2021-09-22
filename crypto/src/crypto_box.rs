@@ -58,7 +58,7 @@ fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZ
 }
 
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PublicKey`]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PublicKey(box_::PublicKey);
 
 impl PublicKey {
@@ -89,7 +89,7 @@ impl FromHex for PublicKey {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::SecretKey`]
 pub struct SecretKey(box_::SecretKey);
 
@@ -131,7 +131,7 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
     Ok((sk, pk, pkh))
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);
 
