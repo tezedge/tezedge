@@ -276,7 +276,7 @@ pub fn serialize_object(
                     batch,
                     referenced_older_objects,
                     repository,
-                    // TODO: offset
+                    offset,
                 )?;
             } else {
                 let dir = storage.get_small_dir(*dir_id)?;
@@ -314,7 +314,7 @@ pub fn serialize_object(
             let root_hash_id = commit.root_hash.as_u32();
             serialize_hash_id(root_hash_id, output)?;
 
-            let root_hash_offset: u32 = commit.root_hash_offset.try_into().unwrap();
+            let root_hash_offset: u64 = commit.root_hash_offset;
             output.write_all(&root_hash_offset.to_ne_bytes())?;
 
             output.write_all(&commit.time.to_ne_bytes())?;
@@ -460,10 +460,12 @@ fn serialize_inode(
     batch: &mut Vec<(HashId, Arc<[u8]>)>,
     referenced_older_objects: &mut Vec<HashId>,
     repository: &mut ContextKeyValueStore,
+    off: u64,
 ) -> Result<u64, SerializationError> {
     use SerializationError::*;
 
     let mut start = output.len();
+    let mut offset = start as u64 + off;
 
     // output.clear();
     let inode = storage.get_inode(inode_id)?;
@@ -499,12 +501,14 @@ fn serialize_inode(
                     batch,
                     referenced_older_objects,
                     repository,
+                    off,
                 )?;
 
                 pointer.set_offset(offset);
             }
 
             start = output.len();
+            offset = start as u64 + off;
 
             output.write_all(&[ID_INODE_POINTERS])?;
 
@@ -572,7 +576,7 @@ fn serialize_inode(
         }
     };
 
-    Ok(start as u64)
+    Ok(offset)
 }
 
 #[derive(Debug, Error)]
@@ -851,11 +855,10 @@ pub fn deserialize_object(
 
             pos += nbytes;
 
-            let root_hash_offset = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
-            let root_hash_offset = u32::from_ne_bytes(root_hash_offset.try_into()?);
-            let root_hash_offset: u64 = root_hash_offset as u64;
+            let root_hash_offset = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
+            let root_hash_offset = u64::from_ne_bytes(root_hash_offset.try_into()?);
 
-            pos += 4;
+            pos += 8;
 
             let time = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
             let time = u64::from_ne_bytes(time.try_into()?);
@@ -1340,6 +1343,7 @@ mod tests {
             &mut batch,
             &mut older_objects,
             &mut repo,
+            0,
         )
             .unwrap();
 
@@ -1422,6 +1426,7 @@ mod tests {
             &mut batch,
             &mut older_objects,
             &mut repo,
+            0,
         )
         .unwrap();
 

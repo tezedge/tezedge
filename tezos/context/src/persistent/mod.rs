@@ -206,11 +206,16 @@ fn create_random_path() -> String {
 }
 
 pub fn get_persistent_base_path() -> String {
+    match std::env::var("PERSISTENT_PATH").ok() {
+        Some(path) => path,
+        None => create_random_path(),
+    }
+
     // #[cfg(not(test))]
     // return PERSISTENT_BASE_PATH.to_string();
 
     // #[cfg(test)]
-    return create_random_path();
+    // return create_random_path();
 }
 
 impl File {

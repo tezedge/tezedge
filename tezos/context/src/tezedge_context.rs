@@ -681,7 +681,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
             }
         };
 
-        println!("HASH_ID={:?}, OFFSET={:?}", hash_id, offset);
+        // println!("HASH_ID={:?}, OFFSET={:?}", hash_id, offset);
 
         match self.get_history(offset, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
