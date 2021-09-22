@@ -9,6 +9,7 @@ pub use tezos_api::ffi::ContextKvStoreConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use thiserror::Error;
 
+use crate::kv_store::persistent::Persistent;
 use crate::{kv_store::in_memory::InMemory, kv_store::readonly_ipc::ReadonlyIpcBackend};
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
 
@@ -49,7 +50,8 @@ pub fn initialize_tezedge_index(
                     )),
                 }
             }
-            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
+            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(Persistent::try_new()?)),
+//            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
         },
         patch_context,
     ))

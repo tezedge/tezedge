@@ -26,6 +26,7 @@ tezos_api = { path = "../api" }
 tezos_spsc = { path = "../spsc" }
 crypto = { path = "../../crypto" }
 tezos_timing = { path = "../timing" }
+rand = "0.8"
 
 [dev-dependencies]
 flate2 = "1.0"

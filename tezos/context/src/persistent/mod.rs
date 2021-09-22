@@ -1,11 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    borrow::Cow,
-    io,
-    sync::{Arc, PoisonError},
-};
+use std::{borrow::Cow, fs::OpenOptions, io::{self, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex, PoisonError}};
 
 use crypto::hash::ContextHash;
 use thiserror::Error;
@@ -46,12 +42,12 @@ pub trait KeyValueStoreBackend {
     ///
     /// # Arguments
     /// * `hash_id` - HashId to mark
-    fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError>;
+    fn put_context_hash(&mut self, hash_id: HashId, offset: u64) -> Result<(), DBError>;
     /// Get the HashId corresponding to the ContextHash
     ///
     /// # Arguments
     /// * `context_hash` - ContextHash to find the HashId
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError>;
+    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError>;
     /// Read hash associated with given HashId, if exists.
     ///
     /// # Arguments
@@ -87,6 +83,11 @@ pub trait KeyValueStoreBackend {
     fn get_str(&self, string_id: StringId) -> Option<&str>;
     /// Update the `StringInterner`.
     fn synchronize_strings(&mut self, string_interner: &StringInterner) -> Result<(), DBError>;
+
+    fn get_current_offset(&self) -> Result<u64, DBError>;
+    fn append_serialized_data(&mut self, data: &[u8]) -> Result<(), DBError>;
+    fn synchronize_full(&mut self) -> Result<(), DBError>;
+    fn get_value_from_offset(&self, buffer: &mut Vec<u8>, offset: u64) -> Result<(), DBError>;
 }
 
 /// Possible errors for schema
@@ -142,3 +143,150 @@ impl<T> From<PoisonError<T>> for DBError {
         }
     }
 }
+
+pub enum FileType {
+    ShapeDirectories,
+    CommitIndex,
+    Data,
+    Strings,
+}
+
+const PERSISTENT_BASE_PATH: &str = "db_persistent";
+const PERSISTENT_BASE_PATH_TEST: &str = "db_persistent/{}";
+
+impl FileType {
+    fn get_path(&self) -> &Path {
+        match self {
+            FileType::ShapeDirectories => Path::new("shape_directories.db"),
+            FileType::CommitIndex => Path::new("commit_index.db"),
+            FileType::Data => Path::new("data.db"),
+            FileType::Strings => Path::new("strings.db"),
+        }
+    }
+}
+
+pub struct File {
+    file: std::fs::File,
+    offset: u64,
+}
+
+/// Absolute offset in the file
+#[derive(Debug)]
+pub struct FileOffset(pub u64);
+
+// static BASE_PATH_EXCLUSIVITY: Arc
+
+// #[cfg(test)]
+lazy_static::lazy_static! {
+    static ref BASE_PATH_EXCLU: Arc<Mutex<()>> = {
+        Arc::new(Mutex::new(()))
+    };
+}
+
+// #[cfg(test)]
+fn create_random_path() -> String {
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+
+    // Avoid data races with `Path::exists` below
+    let _guard = BASE_PATH_EXCLU.lock().unwrap();
+
+    let mut path = format!("{}/{}", PERSISTENT_BASE_PATH, rng.gen::<u32>());
+
+    while Path::new(&path).exists() {
+        path = format!("{}/{}", PERSISTENT_BASE_PATH, rng.gen::<u32>());
+    }
+
+    path
+}
+
+pub fn get_persistent_base_path() -> String {
+    // #[cfg(not(test))]
+    // return PERSISTENT_BASE_PATH.to_string();
+
+    // #[cfg(test)]
+    return create_random_path();
+}
+
+impl File {
+    pub fn new(base_path: &str, file_type: FileType) -> Self {
+        println!("FILE={:?}", PathBuf::from(base_path).join(file_type.get_path()));
+        // println!("BASE={:?}", base_path);
+
+        std::fs::create_dir_all(&base_path).unwrap();
+
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(PathBuf::from(base_path).join(file_type.get_path()))
+            .unwrap();
+
+        Self { file, offset: 0 }
+    }
+
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    pub fn append(&mut self, bytes: impl AsRef<[u8]>) -> FileOffset {
+        let bytes = bytes.as_ref();
+
+        let offset = self.offset;
+        self.offset += bytes.len() as u64;
+
+        self.file.write_all(bytes).unwrap();
+
+        FileOffset(offset)
+    }
+
+    pub fn read_at(&self, buffer: &mut Vec<u8>, offset: FileOffset) {
+        use std::os::unix::prelude::FileExt;
+
+        self.file.read_at(buffer, offset.0).unwrap();
+    }
+
+    pub fn read_exact_at(&self, buffer: &mut [u8], offset: FileOffset) {
+        use std::os::unix::prelude::FileExt;
+
+        // println!("READING {:?} AT OFFSET {:?}", buffer.len(), offset);
+
+        self.file.read_exact_at(buffer, offset.0).unwrap();
+    }
+}
+
+// struct FileSystem {
+//     data_file: File,
+//     shape_file: File,
+//     commit_index_file: File,
+//     strings_file: File,
+// }
+
+// impl FileSystem {
+//     fn new() -> FileSystem {
+//         let data_file = File::new(FileType::Data);
+//         let shape_file = File::new(FileType::ShapeDirectories);
+//         let commit_index_file = File::new(FileType::CommitIndex);
+//         let strings_file = File::new(FileType::Strings);
+
+//         Self {
+//             data_file,
+//             shape_file,
+//             commit_index_file,
+//             strings_file,
+//         }
+//     }
+// }
+
+// impl FileType {
+//     fn get_path(&self) -> &Path {
+//         match self {
+//             FileType::ShapeDirectories => Path::new("shape_directories.db"),
+//             FileType::CommitIndex => Path::new("commit_index.db"),
+//             FileType::Data => Path::new("data.db"),
+//             FileType::Strings => Path::new("strings.db"),
+//         }
+//     }
+// }

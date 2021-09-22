@@ -78,9 +78,11 @@ use super::{
 
 pub struct PostCommitData {
     pub commit_hash_id: HashId,
+    pub commit_offset: u64,
     pub batch: Vec<(HashId, Arc<[u8]>)>,
     pub reused: Vec<HashId>,
     pub serialize_stats: Box<SerializeStats>,
+    pub output: Vec<u8>,
 }
 
 // The root of the 'working tree' can be either a Directory or a Value
@@ -377,19 +379,21 @@ pub enum CheckObjectHashError {
 struct SerializingData<'a> {
     batch: Vec<(HashId, Arc<[u8]>)>,
     referenced_older_objects: Vec<HashId>,
-    store: &'a mut ContextKeyValueStore,
+    repository: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
     stats: Box<SerializeStats>,
+    offset: u64,
 }
 
 impl<'a> SerializingData<'a> {
-    fn new(store: &'a mut ContextKeyValueStore) -> Self {
+    fn new(repository: &'a mut ContextKeyValueStore, offset: u64) -> Self {
         Self {
             batch: Vec::with_capacity(2048),
             referenced_older_objects: Vec::with_capacity(2048),
-            store,
+            repository,
             serialized: Vec::with_capacity(2048),
             stats: Default::default(),
+            offset,
         }
     }
 
@@ -398,7 +402,7 @@ impl<'a> SerializingData<'a> {
         object_hash_id: HashId,
         object: &Object,
         storage: &Storage,
-    ) -> Result<(), MerkleError> {
+    ) -> Result<u64, MerkleError> {
         serialize_object(
             object,
             object_hash_id,
@@ -407,7 +411,8 @@ impl<'a> SerializingData<'a> {
             &mut self.stats,
             &mut self.batch,
             &mut self.referenced_older_objects,
-            self.store,
+            self.repository,
+            self.offset,
         )
         .map_err(Into::into)
     }
@@ -417,7 +422,7 @@ impl<'a> SerializingData<'a> {
         dir_entry: &DirEntry,
         storage: &Storage,
     ) -> Result<(), MerkleError> {
-        let hash_id = dir_entry.object_hash_id(self.store, storage)?;
+        let hash_id = dir_entry.object_hash_id(self.repository, storage)?;
 
         if let Some(hash_id) = hash_id {
             self.referenced_older_objects.push(hash_id);
@@ -746,6 +751,7 @@ impl WorkingTree {
         let new_commit = Commit {
             parent_commit_hash,
             root_hash,
+            root_hash_offset: 0,
             time,
             author,
             message,
@@ -753,12 +759,16 @@ impl WorkingTree {
         let object = Object::Commit(Box::new(new_commit.clone()));
         let commit_hash = hash_commit(&new_commit, store)?;
 
+        let offset = store.get_current_offset()?;
+
+        let mut commit_offset = 0;
+
         // produce objects to be persisted to storage
-        let mut data = SerializingData::new(store);
+        let mut data = SerializingData::new(store, offset);
         if commit_to_storage {
             let storage = self.index.storage.borrow();
-            self.serialize_objects_recursively(
-                &object,
+            commit_offset = self.write_objects_recursively(
+                object,
                 commit_hash,
                 Some(root),
                 &mut data,
@@ -766,11 +776,15 @@ impl WorkingTree {
             )?;
         }
 
+        // println!("RESULT OUTPUT LENGTH = {:?}", data.serialized.len());
+
         Ok(PostCommitData {
             commit_hash_id: commit_hash,
+            commit_offset,
             batch: data.batch,
             reused: data.referenced_older_objects,
             serialize_stats: data.stats,
+            output: data.serialized,
         })
     }
 
@@ -906,6 +920,70 @@ impl WorkingTree {
         hash_directory(root, store, &storage).map_err(MerkleError::from)
     }
 
+    fn write_objects_recursively(
+        &self,
+        mut object: Object,
+        object_hash: HashId,
+        root: Option<DirectoryId>,
+        data: &mut SerializingData,
+        storage: &Storage,
+    ) -> Result<u64, MerkleError> {
+
+        match &mut object {
+            Object::Directory(dir_id) => {
+                storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
+                    let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+
+                    let object_hash = match dir_entry.object_hash_id(data.repository, storage)? {
+                        Some(hash_id) => hash_id,
+                        None => return Ok(()), // Object is an inlined blob, we don't serialize them.
+                    };
+
+                    // if dir_entry.object_hash_id(data.store, storage)?.is_none() {
+                    //     return Ok(()); // Object is an inlined blob, we don't serialize them.
+                    // }
+
+                    if dir_entry.is_commited() {
+                        data.add_older_object(dir_entry, storage)?;
+                        return Ok(());
+                    }
+                    dir_entry.set_commited(true);
+
+                    let offset = match dir_entry.get_object() {
+                        None => return Ok(()),
+                        Some(object) => self.write_objects_recursively(
+                            object,
+                            object_hash,
+                            None,
+                            data,
+                            storage,
+                        )?,
+                    };
+
+                    dir_entry.set_offset(offset);
+
+                    Ok(())
+                })?;
+            },
+            Object::Blob(blob_id) => {
+
+            },
+            Object::Commit(commit) => {
+                let object = match root {
+                    Some(root) => Object::Directory(root),
+                    None => self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?,
+                };
+                let root_hash_offset = self.write_objects_recursively(object, commit.root_hash, None, data, storage)?;
+                commit.root_hash_offset = root_hash_offset;
+
+                // TODO: returns the root hash offset here
+            },
+        }
+
+        // Add object to batch
+        data.add_serialized_object(object_hash, &object, storage)
+    }
+
     /// Serializes working tree and builds vector of objects to be persisted to DB, recursively.
     ///
     /// This doesn't traverse objects that were already commited.
@@ -917,16 +995,13 @@ impl WorkingTree {
         data: &mut SerializingData,
         storage: &Storage,
     ) -> Result<(), MerkleError> {
-        // Add object to batch
-        data.add_serialized_object(object_hash, object, storage)?;
-
         match object {
-            Object::Blob(_blob_id) => Ok(()),
+            Object::Blob(_blob_id) => {}
             Object::Directory(dir_id) => {
                 storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
                     let child_dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
-                    let object_hash = match child_dir_entry.object_hash_id(data.store, storage)? {
+                    let object_hash = match child_dir_entry.object_hash_id(data.repository, storage)? {
                         Some(hash_id) => hash_id,
                         None => return Ok(()), // Object is an inlined blob, we don't serialize them.
                     };
@@ -947,31 +1022,93 @@ impl WorkingTree {
                             storage,
                         ),
                     }
-                })
+                })?;
             }
             Object::Commit(commit) => {
                 let object = match root {
                     Some(root) => Object::Directory(root),
-                    None => self.fetch_object_from_repo(commit.root_hash, data.store)?,
+                    None => self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?,
                 };
-                self.serialize_objects_recursively(&object, commit.root_hash, None, data, storage)
+                self.serialize_objects_recursively(&object, commit.root_hash, None, data, storage)?;
             }
         }
+
+        // Add object to batch
+        data.add_serialized_object(object_hash, object, storage).map(|_| ())
     }
+
+    // /// Serializes working tree and builds vector of objects to be persisted to DB, recursively.
+    // ///
+    // /// This doesn't traverse objects that were already commited.
+    // fn serialize_objects_recursively(
+    //     &self,
+    //     object: &Object,
+    //     object_hash: HashId,
+    //     root: Option<DirectoryId>,
+    //     data: &mut SerializingData,
+    //     storage: &Storage,
+    // ) -> Result<(), MerkleError> {
+    //     match object {
+    //         Object::Blob(_blob_id) => {},
+    //         Object::Directory(dir_id) => {
+    //             storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
+    //                 let child_dir_entry = storage.get_dir_entry(dir_entry_id)?;
+
+    //                 let object_hash = match child_dir_entry.object_hash_id(data.store, storage)? {
+    //                     Some(hash_id) => hash_id,
+    //                     None => return Ok(()), // Object is an inlined blob, we don't serialize them.
+    //                 };
+
+    //                 if child_dir_entry.is_commited() {
+    //                     data.add_older_object(child_dir_entry, storage)?;
+    //                     return Ok(());
+    //                 }
+    //                 child_dir_entry.set_commited(true);
+
+    //                 match child_dir_entry.get_object().as_ref() {
+    //                     None => Ok(()),
+    //                     Some(object) => self.serialize_objects_recursively(
+    //                         object,
+    //                         object_hash,
+    //                         None,
+    //                         data,
+    //                         storage,
+    //                     ),
+    //                 }
+    //             })?;
+    //         }
+    //         Object::Commit(commit) => {
+    //             let object = match root {
+    //                 Some(root) => Object::Directory(root),
+    //                 None => self.fetch_object_from_repo(commit.root_hash, data.store)?,
+    //             };
+    //             self.serialize_objects_recursively(&object, commit.root_hash, None, data, storage)?;
+    //         }
+    //     }
+
+    //     // Add object to batch
+    //     data.add_serialized_object(object_hash, object, storage)
+    // }
 
     /// Fetches object of this `hash_id` from the repository.
     fn fetch_object_from_repo(
         &self,
-        hash_id: HashId,
+        offset: u64,
+//        hash_id: HashId,
         store: &ContextKeyValueStore,
     ) -> Result<Object, MerkleError> {
-        match store.get_value(hash_id)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id }),
-            Some(object_bytes) => {
-                let mut storage = self.index.storage.borrow_mut();
-                deserialize_object(object_bytes.as_ref(), &mut storage, store).map_err(Into::into)
-            }
-        }
+        let mut storage = self.index.storage.borrow_mut();
+
+        store.get_value_from_offset(&mut storage.data, offset)?;
+
+        deserialize_object(&mut storage, store).map_err(Into::into)
+
+        // match store.get_value_from_offset(&mut storage.data, hash_id)? {
+        //     None => Err(MerkleError::ObjectNotFound { hash_id }),
+        //     Some(object_bytes) => {
+        //         deserialize_object(&mut storage, store).map_err(Into::into)
+        //     }
+        // }
     }
 
     /// Extracts the directory of this object.

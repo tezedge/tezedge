@@ -46,6 +46,7 @@ pub struct DirEntryInner {
     object_hash_id: B32,
     object_available: bool,
     object_id: B61,
+    file_offset: B64,
 }
 
 /// Wrapper over the children objects of a directory, containing
@@ -57,13 +58,14 @@ pub struct DirEntry {
     pub(crate) inner: Cell<DirEntryInner>,
 }
 
-assert_eq_size!([u8; 12], DirEntry);
+assert_eq_size!([u8; 20], DirEntry);
 
 /// Commit objects are the entry points to different versions of the context tree.
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Commit {
     pub(crate) parent_commit_hash: Option<HashId>,
     pub(crate) root_hash: HashId,
+    pub(crate) root_hash_offset: u64,
     pub(crate) time: u64,
     pub(crate) author: String,
     pub(crate) message: String,
@@ -98,6 +100,19 @@ impl DirEntry {
     pub fn hash_id(&self) -> Option<HashId> {
         let id = self.inner.get().object_hash_id();
         HashId::new(id)
+    }
+
+    pub fn set_offset(&self, offset: u64) {
+        let inner = self.inner.get().with_file_offset(offset);
+        self.inner.set(inner);
+    }
+
+    pub fn get_offset(&self) -> u64 {
+        let inner = self.inner.get();
+
+        // assert!(self.is_commited());
+
+        inner.file_offset()
     }
 
     /// Returns the object of this `DirEntry`.

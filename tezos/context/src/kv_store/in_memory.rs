@@ -193,11 +193,11 @@ impl KeyValueStoreBackend for InMemory {
         self.contains(hash_id)
     }
 
-    fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError> {
+    fn put_context_hash(&mut self, hash_id: HashId, _offset: u64) -> Result<(), DBError> {
         self.put_context_hash_impl(hash_id)
     }
 
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError> {
+    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError> {
         Ok(self.get_context_hash_impl(context_hash))
     }
 
@@ -246,6 +246,20 @@ impl KeyValueStoreBackend for InMemory {
 
     fn get_str(&self, string_id: StringId) -> Option<&str> {
         self.string_interner.get(string_id)
+    }
+
+    fn get_current_offset(&self) -> Result<u64, DBError> {
+        unimplemented!()
+    }
+
+    fn append_serialized_data(&mut self, data: &[u8]) -> Result<(), DBError> {
+        unimplemented!()
+    }
+    fn synchronize_full(&mut self) -> Result<(), DBError> {
+        unimplemented!()
+    }
+    fn get_value_from_offset(&self, buffer: &mut Vec<u8>, offset: u64) -> Result<(), DBError> {
+        unimplemented!()
     }
 }
 
@@ -352,12 +366,12 @@ impl InMemory {
         }
     }
 
-    pub fn get_context_hash_impl(&self, context_hash: &ContextHash) -> Option<HashId> {
+    pub fn get_context_hash_impl(&self, context_hash: &ContextHash) -> Option<(HashId, u64)> {
         let mut hasher = DefaultHasher::new();
         hasher.write(context_hash.as_ref());
         let hashed = hasher.finish();
 
-        self.context_hashes.get(&hashed).cloned()
+        self.context_hashes.get(&hashed).cloned().map(|v| (v, 0))
     }
 
     pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) -> Result<(), DBError> {

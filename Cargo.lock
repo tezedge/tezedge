@@ -3447,6 +3447,7 @@ dependencies = [
  "leb128",
  "modular-bitfield",
  "ocaml-interop",
+ "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
  "slog",

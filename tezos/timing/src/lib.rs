@@ -98,7 +98,7 @@ pub struct StringsMemoryUsage {
     pub total_bytes: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[allow(dead_code)]
 pub struct RepositoryMemoryUsage {
     /// Number of bytes for all values Arc<[u8]>

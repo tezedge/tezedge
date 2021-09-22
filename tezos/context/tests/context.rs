@@ -113,8 +113,12 @@ pub fn test_context_delete_and_remove() -> Result<(), anyhow::Error> {
     let context_hash_1: ContextHash =
         "CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB".try_into()?;
 
+    println!("ICIII1");
+
     let hash = context.commit("Tezos".to_string(), "Genesis".to_string(), 0)?;
     assert_eq!(hash, context_hash_1);
+
+    println!("ICIII2");
 
     // get key from new commit
     assert_data_eq!(
@@ -123,6 +127,9 @@ pub fn test_context_delete_and_remove() -> Result<(), anyhow::Error> {
         context_hash_1,
         vec![1, 2, 3, 4]
     );
+
+    println!("ICIII210");
+
     assert_data_eq!(
         context,
         context_key!("data/rolls/owner/current/cpu/1/a"),
@@ -154,10 +161,14 @@ pub fn test_context_delete_and_remove() -> Result<(), anyhow::Error> {
         vec![1, 2, 3, 4, 5, 6, 7]
     );
 
+    println!("ICIII21");
+
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
     let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
+
+    println!("ICIII3");
 
     // checkout last commit to be modified
     context = context.index.checkout(&context_hash_1)?.expect(&format!(

@@ -14,6 +14,7 @@ use crate::ObjectHash;
 
 pub mod in_memory;
 pub mod index_map;
+pub mod persistent;
 pub mod readonly_ipc;
 
 pub const INMEM: &str = "inmem";

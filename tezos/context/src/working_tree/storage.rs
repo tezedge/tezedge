@@ -377,6 +377,7 @@ pub struct PointerToInodeInner {
     hash_id: B32,
     is_commited: bool,
     inode_id: B31,
+    offset: B64,
 }
 
 #[derive(Clone, Debug)]
@@ -391,7 +392,8 @@ impl PointerToInode {
                 PointerToInodeInner::new()
                     .with_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
                     .with_is_commited(false)
-                    .with_inode_id(inode_id.0),
+                    .with_inode_id(inode_id.0)
+                    .with_offset(0),
             ),
         }
     }
@@ -402,7 +404,8 @@ impl PointerToInode {
                 PointerToInodeInner::new()
                     .with_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
                     .with_is_commited(true)
-                    .with_inode_id(inode_id.0),
+                    .with_inode_id(inode_id.0)
+                    .with_offset(0),
             ),
         }
     }
@@ -428,13 +431,25 @@ impl PointerToInode {
         self.inner.set(inner);
     }
 
+    pub fn set_offset(&self, offset: u64) {
+        let mut inner = self.inner.get();
+        inner.set_offset(offset);
+
+        self.inner.set(inner);
+    }
+
+    pub fn offset(&self) -> u64 {
+        let inner = self.inner.get();
+        inner.offset()
+    }
+
     pub fn is_commited(&self) -> bool {
         let inner = self.inner.get();
         inner.is_commited()
     }
 }
 
-assert_eq_size!([u8; 9], Option<PointerToInode>);
+assert_eq_size!([u8; 17], Option<PointerToInode>);
 
 /// Inode representation used for hashing directories with > DIRECTORY_INODE_THRESHOLD entries.
 #[allow(clippy::large_enum_variant)]
@@ -453,7 +468,8 @@ pub enum Inode {
     },
 }
 
-assert_eq_size!([u8; 304], Inode);
+assert_eq_size!([u8; 560], Inode);
+//assert_eq_size!([u8; 304], Inode);
 
 /// A range inside `Storage::temp_dir`
 type TempDirRange = Range<usize>;
@@ -493,6 +509,8 @@ pub struct Storage {
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: Vec<Inode>,
+
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -538,6 +556,7 @@ impl Storage {
             strings: Default::default(),
             nodes: IndexMap::with_capacity(2048),
             inodes: Vec::with_capacity(256),
+            data: Vec::with_capacity(100_000),
         }
     }
 
