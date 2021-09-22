@@ -409,7 +409,8 @@ mod tests {
 
     #[test]
     fn test_hash_of_commit() {
-        let mut repo = InMemory::try_new().expect("failed to create context");
+        let mut repo = Persistent::try_new().expect("failed to create context");
+        // let mut repo = InMemory::try_new().expect("failed to create context");
 
         // Calculates hash of commit
         // uses BLAKE2 binary 256 length hash function
@@ -499,7 +500,7 @@ mod tests {
 
         assert_eq!(
             calculated_commit_hash.as_ref(),
-            repo.get_hash(hash_id).unwrap().unwrap()
+            repo.get_hash(hash_id).unwrap().unwrap().as_ref()
         );
         assert_eq!(
             expected_commit_hash,
@@ -516,7 +517,8 @@ mod tests {
         // where:
         // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
         // - NODE TYPE - blob dir_entry(0xff00000000000000) or internal dir_entry (0x0000000000000000)
-        let mut repo = InMemory::try_new().expect("failed to create context");
+        let mut repo = Persistent::try_new().expect("failed to create context");
+        // let mut repo = InMemory::try_new().expect("failed to create context");
         let expected_dir_hash = "d49a53323107f2ae40b01eaa4e9bec4d02801daf60bab82dc2529e40d40fa917";
         let dummy_dir = DirectoryId::empty();
 
@@ -578,7 +580,7 @@ mod tests {
 
         assert_eq!(
             calculated_dir_hash.as_ref(),
-            repo.get_hash(hash_id).unwrap().unwrap()
+            repo.get_hash(hash_id).unwrap().unwrap().as_ref(),
         );
         assert_eq!(
             calculated_dir_hash.as_ref(),

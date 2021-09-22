@@ -11,6 +11,7 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 use crate::ObjectHash;
+use crate::persistent::File;
 
 pub mod in_memory;
 pub mod index_map;
@@ -80,17 +81,20 @@ impl HashId {
 }
 
 pub struct VacantObjectHash<'a> {
-    entry: Option<&'a mut ObjectHash>,
+    entry: Option<&'a mut File>,
+    data: ObjectHash,
+    // entry: Option<&'a mut ObjectHash>,
     hash_id: HashId,
 }
 
 impl<'a> VacantObjectHash<'a> {
-    pub(crate) fn write_with<F>(self, fun: F) -> HashId
+    pub(crate) fn write_with<F>(mut self, fun: F) -> HashId
     where
         F: FnOnce(&mut ObjectHash),
     {
         if let Some(entry) = self.entry {
-            fun(entry)
+            fun(&mut self.data);
+            entry.append(self.data);
         };
         self.hash_id
     }

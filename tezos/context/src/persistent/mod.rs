@@ -144,11 +144,13 @@ impl<T> From<PoisonError<T>> for DBError {
     }
 }
 
+#[derive(Debug)]
 pub enum FileType {
     ShapeDirectories,
     CommitIndex,
     Data,
     Strings,
+    Hashes,
 }
 
 const PERSISTENT_BASE_PATH: &str = "db_persistent";
@@ -161,6 +163,7 @@ impl FileType {
             FileType::CommitIndex => Path::new("commit_index.db"),
             FileType::Data => Path::new("data.db"),
             FileType::Strings => Path::new("strings.db"),
+            FileType::Hashes => Path::new("hashes.db"),
         }
     }
 }
@@ -168,6 +171,7 @@ impl FileType {
 pub struct File {
     file: std::fs::File,
     offset: u64,
+    file_type: FileType,
 }
 
 /// Absolute offset in the file
@@ -224,7 +228,7 @@ impl File {
             .open(PathBuf::from(base_path).join(file_type.get_path()))
             .unwrap();
 
-        Self { file, offset: 0 }
+        Self { file, offset: 0, file_type }
     }
 
     pub fn offset(&self) -> u64 {
@@ -251,7 +255,7 @@ impl File {
     pub fn read_exact_at(&self, buffer: &mut [u8], offset: FileOffset) {
         use std::os::unix::prelude::FileExt;
 
-        // println!("READING {:?} AT OFFSET {:?}", buffer.len(), offset);
+        println!("{:?} READING {:?} AT OFFSET {:?}", self.file_type, buffer.len(), offset);
 
         self.file.read_exact_at(buffer, offset.0).unwrap();
     }

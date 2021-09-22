@@ -13,11 +13,14 @@ pub struct Persistent {
     shape_file: File,
     commit_index_file: File,
     strings_file: File,
+    hashes_file: File,
+
+    hashes_file_index: usize,
 
     shapes: DirectoryShapes,
     string_interner: StringInterner,
 
-    hashes: Hashes,
+    // hashes: Hashes,
     pub context_hashes: Map<u64, (HashId, u64)>,
     context_hashes_cycles: VecDeque<Vec<u64>>,
     // data: Vec<u8>,
@@ -77,6 +80,7 @@ impl Persistent {
         let shape_file = File::new(&base_path, FileType::ShapeDirectories);
         let commit_index_file = File::new(&base_path, FileType::CommitIndex);
         let strings_file = File::new(&base_path, FileType::Strings);
+        let hashes_file = File::new(&base_path, FileType::Hashes);
 
         let mut context_hashes_cycles = VecDeque::with_capacity(PRESERVE_CYCLE_COUNT);
         for _ in 0..PRESERVE_CYCLE_COUNT {
@@ -88,9 +92,11 @@ impl Persistent {
             shape_file,
             commit_index_file,
             strings_file,
+            hashes_file,
+            hashes_file_index: 0,
             shapes: DirectoryShapes::default(),
             string_interner: StringInterner::default(),
-            hashes: Default::default(),
+            // hashes: Default::default(),
             context_hashes: Default::default(),
             context_hashes_cycles,
             // data: Vec::with_capacity(100_000),
@@ -124,7 +130,8 @@ impl KeyValueStoreBackend for Persistent {
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
         let hash_id: usize = hash_id.try_into().unwrap();
 
-        Ok((0..self.hashes.len()).contains(&hash_id))
+        Ok(hash_id < self.hashes_file_index)
+        // Ok((0..self.hashes.len()).contains(&hash_id))
     }
 
     fn put_context_hash(&mut self, hash_id: HashId, offset: u64) -> Result<(), DBError> {
@@ -160,12 +167,20 @@ impl KeyValueStoreBackend for Persistent {
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
-        let hash_id: usize = hash_id.try_into().unwrap();
+        let mut hash_id: usize = hash_id.try_into().unwrap();
 
-        match self.hashes.get(hash_id) {
-            Some(hash) => Ok(Some(Cow::Borrowed(hash))),
-            None => return Ok(None),
-        }
+        hash_id *= std::mem::size_of::<ObjectHash>();
+
+        let mut hash: ObjectHash = Default::default();
+
+        self.hashes_file.read_exact_at(&mut hash, FileOffset(hash_id as u64));
+
+        Ok(Some(Cow::Owned(hash)))
+
+        // match self.hashes.get(hash_id) {
+        //     Some(hash) => Ok(Some(Cow::Borrowed(hash))),
+        //     None => return Ok(None),
+        // }
     }
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
@@ -173,13 +188,24 @@ impl KeyValueStoreBackend for Persistent {
     }
 
     fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError> {
-        let index = self.hashes.len();
-        self.hashes.push(Default::default());
+
+        let index = self.hashes_file_index;
+        self.hashes_file_index += 1;
 
         Ok(VacantObjectHash {
-            entry: Some(&mut self.hashes[index]),
+            //entry: Some(&mut self.hashes[index]),
+            entry: Some(&mut self.hashes_file),
             hash_id: HashId::try_from(index).unwrap(),
+            data: Default::default(),
         })
+
+        // let index = self.hashes.len();
+        // self.hashes.push(Default::default());
+
+        // Ok(VacantObjectHash {
+        //     entry: Some(&mut self.hashes[index]),
+        //     hash_id: HashId::try_from(index).unwrap(),
+        // })
     }
 
     fn clear_objects(&mut self) -> Result<(), DBError> {
