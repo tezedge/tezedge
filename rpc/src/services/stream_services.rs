@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
-use anyhow::format_err;
+use anyhow::{bail, format_err};
 use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -99,7 +99,7 @@ pub struct OperationMonitorStream {
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
-    delay: Option<Interval>,
+    contains_waker: bool,
     streamed_operations: Option<HashSet<String>>,
     query: MempoolOperationsQuery,
 }
@@ -119,7 +119,7 @@ impl OperationMonitorStream {
             state,
             last_checked_head,
             log,
-            delay: None,
+            contains_waker: false,
             query: mempool_operaions_query,
             streamed_operations: None,
         }
@@ -229,6 +229,7 @@ impl OperationMonitorStream {
             Poll::Ready(Some(Ok(to_yield_string)))
         }
     }
+
 }
 
 impl HeadMonitorStream {
@@ -354,40 +355,45 @@ impl Stream for OperationMonitorStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<String, anyhow::Error>>> {
-        // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
-        let delay = self.delay.get_or_insert_with(|| {
-            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
-        });
 
-        // poll the delay future
-        match delay.poll_tick(cx) {
-            Poll::Pending => Poll::Pending,
-            _ => {
-                // get rid of the used delay
-                self.delay = None;
+        if !self.contains_waker {
+            // let mut state = self.current_mempool_state_storage.write()?;
+            let mut mempool_state = match self.current_mempool_state_storage.write() {
+                Ok(state) => state,
+                // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
+                // investigate and rework, so we do not ignore the error
+                // We end the stream on error, but the error is never propagated
+                Err(_) => return Poll::Ready(None)
+            };
+            mempool_state.add_waker(cx.waker().clone())
+        }
 
-                let state = self.state.read().unwrap();
-                let current_head = state.current_head().clone();
+        // let state = self.state.read()?;
+        let state = match self.state.read() {
+            Ok(state) => state,
+            // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
+            // investigate and rework, so we do not ignore the error
+            Err(_) => return Poll::Ready(None)
+        };
+        let current_head = state.current_head().clone();
 
-                // drop the immutable borrow so we can borrow self again as mutable
-                // TODO: refactor this drop (remove if possible)
-                drop(state);
+        // drop the immutable borrow so we can borrow self again as mutable
+        // TODO: refactor this drop (remove if possible)
+        drop(state);
 
-                if self.last_checked_head == current_head.hash {
-                    // current head not changed, check for new operations
-                    let yielded = self.yield_operations();
-                    match yielded {
-                        Poll::Pending => {
-                            cx.waker().wake_by_ref();
-                            Poll::Pending
-                        }
-                        _ => yielded,
-                    }
-                } else {
-                    // Head change, end stream
-                    Poll::Ready(None)
+        if self.last_checked_head == current_head.hash {
+            // current head not changed, check for new operations
+            let yielded = self.yield_operations();
+            match yielded {
+                Poll::Pending => {
+                    // cx.waker().wake_by_ref();
+                    Poll::Pending
                 }
+                _ => yielded,
             }
+        } else {
+            // Head change, end stream
+            Poll::Ready(None)
         }
     }
 }

@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use futures::task::Waker;
 
 use crypto::hash::{BlockHash, OperationHash};
 use tezos_api::ffi::{Applied, PrevalidatorWrapper, ValidateOperationResult};
@@ -34,6 +35,9 @@ pub struct MempoolState {
     // TODO: pendings limit
     // TODO: pendings as vec and order
     pending: HashSet<OperationHash>,
+
+    // Wakers for open streams (monitors) that access the mempool state
+    streams: Vec<Waker>,
 }
 
 impl MempoolState {
@@ -58,6 +62,8 @@ impl MempoolState {
         self.predecessor = predecessor;
         self.prevalidator = prevalidator;
         self.validation_result = ValidateOperationResult::default();
+
+        self.wake_up_all_streams();
 
         unneeded_operations
     }
@@ -223,6 +229,14 @@ impl MempoolState {
 
     pub fn operations(&self) -> &HashMap<OperationHash, Operation> {
         &self.operations
+    }
+
+    pub fn add_waker(&mut self, waker: Waker) {
+        self.streams.push(waker)
+    }
+
+    pub fn wake_up_all_streams(&self) {
+        self.streams.iter().for_each(|waker| waker.wake_by_ref())
     }
 }
 

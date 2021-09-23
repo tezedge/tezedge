@@ -428,6 +428,8 @@ fn process_prevalidation(
                             }
                         } else if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
                             warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
+                        } else {
+                            current_mempool_state_storage.read()?.wake_up_all_streams();
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
