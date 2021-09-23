@@ -4,30 +4,22 @@
 //! This module covers helper functionality with managing current head attirbute for chain managers
 
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::ChainId;
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, ChainMetaStorage};
+use storage::{PersistentStorage, StorageError};
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::Head;
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::state::StateError;
 use crate::validation;
 
-/// In-memory synchronized struct for sharing current head between threads/actors
-pub type CurrentHeadRef = Arc<RwLock<Option<Head>>>;
-
-/// Inits empty current head state
-pub fn init_current_head_state() -> CurrentHeadRef {
-    Arc::new(RwLock::new(None))
-}
-
 pub enum HeadResult {
     BranchSwitch,
     HeadIncrement,
-    GenesisInitialized,
 }
 
 impl fmt::Display for HeadResult {
@@ -35,7 +27,6 @@ impl fmt::Display for HeadResult {
         match *self {
             HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
             HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
-            HeadResult::GenesisInitialized => write!(f, "GenesisInitialized"),
         }
     }
 }
@@ -44,29 +35,28 @@ pub struct HeadState {
     ///persistent chain metadata storage
     chain_meta_storage: ChainMetaStorage,
 
-    /// Current head information
-    current_head_state: CurrentHeadRef,
-    /// Holds ref to global current shared mempool state
-    current_mempool_state: CurrentMempoolStateStorageRef,
+    /// Current head information (required, at least genesis should be here)
+    current_head: Head,
 
     chain_id: Arc<ChainId>,
-    chain_genesis_block_hash: Arc<BlockHash>,
+}
+
+impl AsRef<Head> for HeadState {
+    fn as_ref(&self) -> &Head {
+        &self.current_head
+    }
 }
 
 impl HeadState {
     pub fn new(
         persistent_storage: &PersistentStorage,
-        current_head_state: CurrentHeadRef,
-        current_mempool_state: CurrentMempoolStateStorageRef,
+        current_head: Head,
         chain_id: Arc<ChainId>,
-        chain_genesis_block_hash: Arc<BlockHash>,
     ) -> Self {
         HeadState {
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
-            current_head_state,
-            current_mempool_state,
+            current_head,
             chain_id,
-            chain_genesis_block_hash,
         }
     }
 
@@ -76,59 +66,43 @@ impl HeadState {
     /// - None, if head was not updated, means was ignored
     /// - Some(new_head, head_result)
     pub fn try_update_new_current_head(
-        &self,
+        &mut self,
         potential_new_head: &BlockHeaderWithHash,
+        current_mempool_state: &CurrentMempoolStateStorageRef,
     ) -> Result<Option<(Head, HeadResult)>, StateError> {
         // check if we can update head
-        if let Some(current_head) = self.current_head_state.read()?.as_ref() {
-            // get fitness from mempool, if not, than use current_head.fitness
-            let mempool_state = self.current_mempool_state.read()?;
-            let current_context_fitness = {
-                if let Some(Some(fitness)) = mempool_state
-                    .prevalidator()
-                    .map(|p| p.context_fitness.as_ref())
-                {
-                    fitness
-                } else {
-                    current_head.fitness()
-                }
-            };
-            // need to check against current_head, if not accepted, just ignore potential head
-            if !validation::can_update_current_head(
-                potential_new_head,
-                &current_head,
-                &current_context_fitness,
-            ) {
-                // just ignore
-                return Ok(None);
+        // get fitness from mempool, if not, than use current_head.fitness
+        let mempool_state = current_mempool_state.read()?;
+        let current_context_fitness = {
+            if let Some(Some(fitness)) = mempool_state
+                .prevalidator()
+                .map(|p| p.context_fitness.as_ref())
+            {
+                fitness
+            } else {
+                self.current_head.fitness()
             }
+        };
+        // need to check against current_head, if not accepted, just ignore potential head
+        if !validation::can_update_current_head(
+            potential_new_head,
+            &self.current_head,
+            current_context_fitness,
+        ) {
+            // just ignore
+            return Ok(None);
         }
 
         // we need to check, if previous head is predecessor of new_head (for later use)
-        let head_result = match self.current_head_state.read()?.as_ref() {
-            Some(previos_head) => {
-                if previos_head
-                    .block_hash()
-                    .eq(potential_new_head.header.predecessor())
-                {
-                    HeadResult::HeadIncrement
-                } else {
-                    // if previous head is not predecesor of new head, means it could be new branch
-                    HeadResult::BranchSwitch
-                }
-            }
-            None => {
-                // we check, if new head is genesis
-                if self
-                    .chain_genesis_block_hash
-                    .as_ref()
-                    .eq(&potential_new_head.hash)
-                {
-                    HeadResult::GenesisInitialized
-                } else {
-                    HeadResult::HeadIncrement
-                }
-            }
+        let head_result = if self
+            .current_head
+            .block_hash()
+            .eq(potential_new_head.header.predecessor())
+        {
+            HeadResult::HeadIncrement
+        } else {
+            // if previous head is not predecesor of new head, means it could be new branch
+            HeadResult::BranchSwitch
         };
 
         // this will be new head
@@ -143,21 +117,82 @@ impl HeadState {
             .set_current_head(&self.chain_id, head.clone())?;
 
         // set new head to in-memory
-        let mut current_head_state = self.current_head_state.write()?;
-        *current_head_state = Some(head.clone());
+        self.current_head = head.clone();
 
         Ok(Some((head, head_result)))
     }
 
     /// Tries to load last known current head from database
-    pub(crate) fn load_current_head_state(&self) -> Result<Option<Head>, StateError> {
+    /// Returns Some(previous) if changed, else None
+    pub(crate) fn reload_current_head_state(&mut self) -> Result<Option<Head>, StorageError> {
         match self.chain_meta_storage.get_current_head(&self.chain_id)? {
             Some(head) => {
-                let mut current_head_state = self.current_head_state.write()?;
-                *current_head_state = Some(head.clone());
-                Ok(Some(head))
+                if !head.block_hash().eq(self.current_head.block_hash()) {
+                    Ok(Some(std::mem::replace(&mut self.current_head, head)))
+                } else {
+                    Ok(None)
+                }
             }
             None => Ok(None),
         }
     }
+}
+
+/// This struct holds info best known remote "current" head
+pub struct RemoteBestKnownCurrentHead {
+    /// Remote current head. This represents info about
+    /// the current branch with the highest level received from network.
+    remote: Option<Head>,
+}
+
+impl AsRef<Option<Head>> for RemoteBestKnownCurrentHead {
+    fn as_ref(&self) -> &Option<Head> {
+        &self.remote
+    }
+}
+
+impl RemoteBestKnownCurrentHead {
+    pub fn new() -> Self {
+        RemoteBestKnownCurrentHead { remote: None }
+    }
+
+    fn need_update_remote_level(&self, new_remote_level: i32) -> bool {
+        match &self.remote {
+            None => true,
+            Some(current_remote_head) => new_remote_level > *current_remote_head.level(),
+        }
+    }
+
+    pub fn update_remote_head(&mut self, block_header: &BlockHeaderWithHash) {
+        // TODO: maybe fitness check?
+        if self.need_update_remote_level(block_header.header.level()) {
+            self.remote = Some(Head::new(
+                block_header.hash.clone(),
+                block_header.header.level(),
+                block_header.header.fitness().to_vec(),
+            ));
+        }
+    }
+}
+
+pub fn has_any_higher_than(
+    local_current_head: impl AsRef<Head>,
+    remote_current_head: impl AsRef<Option<Head>>,
+    level_to_check: Level,
+) -> bool {
+    // check remote head
+    // TODO: maybe fitness check?
+    if let Some(remote_head) = remote_current_head.as_ref() {
+        if remote_head.level() > &level_to_check {
+            return true;
+        }
+    }
+
+    // check local head
+    // TODO: maybe fitness check?
+    if local_current_head.as_ref().level() > &level_to_check {
+        return true;
+    }
+
+    false
 }

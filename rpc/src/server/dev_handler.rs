@@ -37,10 +37,7 @@ pub async fn dev_blocks(
                 .state()
                 .read()
                 .map_err(|e| format_err!("Failed to lock current state, reason: {}", e))?;
-            match state.current_head() {
-                Some(current_head) => current_head.hash.clone(),
-                None => env.main_chain_genesis_hash().clone(),
-            }
+            state.current_head().hash.clone()
         }
     };
 

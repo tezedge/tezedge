@@ -16,6 +16,7 @@ use slog::{warn, Logger};
 use crypto::hash::{BlockHash, ChainId};
 use networking::p2p::peer::SendMessage;
 use networking::PeerId;
+use shell_integration::InjectBlockOneshotResultCallback;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{
@@ -23,8 +24,8 @@ use tezos_messages::p2p::encoding::prelude::{
 };
 
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
+use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
-use crate::shell_channel::InjectBlockOneshotResultCallback;
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
@@ -346,15 +347,22 @@ impl DataRequester {
         &self,
         chain_id: Arc<ChainId>,
         block_hash: BlockHash,
+        chain_manager: Arc<ChainManagerRef>,
         result_callback: Option<InjectBlockOneshotResultCallback>,
     ) -> Result<(), StateError> {
-        self.call_apply_block(chain_id, ApplyBlockBatch::one(block_hash), result_callback)
+        self.call_apply_block(
+            chain_id,
+            ApplyBlockBatch::one(block_hash),
+            chain_manager,
+            result_callback,
+        )
     }
 
     fn call_apply_block(
         &self,
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
+        chain_manager: Arc<ChainManagerRef>,
         result_callback: Option<InjectBlockOneshotResultCallback>,
     ) -> Result<(), StateError> {
         // check batch, if the start block is ok and can be applied
@@ -423,7 +431,7 @@ impl DataRequester {
 
         // try to call apply
         self.block_applier.tell(
-            ApplyBlock::new(chain_id, batch, result_callback, None, None),
+            ApplyBlock::new(chain_id, batch, chain_manager, result_callback, None, None),
             None,
         );
 
@@ -434,11 +442,14 @@ impl DataRequester {
         &self,
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
+        chain_manager: Arc<ChainManagerRef>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
     ) {
         // try to call apply
-        self.block_applier
-            .tell(ScheduleApplyBlock::new(chain_id, batch, bootstrapper), None);
+        self.block_applier.tell(
+            ScheduleApplyBlock::new(chain_id, batch, chain_manager, bootstrapper),
+            None,
+        );
     }
 }
 
@@ -506,8 +517,8 @@ mod tests {
     use crate::shell_channel::ShellChannel;
     use crate::state::data_requester::DataRequester;
     use crate::state::tests::prerequisites::{
-        chain_feeder_mock, create_logger, create_test_actor_system, create_test_tokio_runtime,
-        test_peer,
+        chain_feeder_mock, chain_manager_mock, create_logger, create_test_actor_system,
+        create_test_tokio_runtime, test_peer,
     };
     use crate::state::tests::{block, block_ref};
     use crate::state::ApplyBlockBatch;
@@ -780,13 +791,25 @@ mod tests {
     fn test_call_apply_block() -> Result<(), anyhow::Error> {
         // prerequizities
         let log = create_logger(Level::Debug);
-        let actor_system = create_test_actor_system(log.clone());
+        let actor_system = Arc::new(create_test_actor_system(log.clone()));
+        let tokio_runtime = create_test_tokio_runtime();
         let shell_channel =
-            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
+            ShellChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
+        let network_channel =
+            NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_one")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
         let (chain_feeder_mock, _) =
-            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
+            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel.clone())?;
+        let chain_manager_mock = Arc::new(chain_manager_mock(
+            actor_system,
+            log,
+            shell_channel,
+            network_channel,
+            chain_feeder_mock.clone(),
+            storage.storage().clone(),
+            &tokio_runtime,
+        )?);
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -805,6 +828,7 @@ mod tests {
             data_requester.call_apply_block(
                 chain_id.clone(),
                 batch_with_block1.clone(),
+                chain_manager_mock.clone(),
                 None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("No metadata found")
@@ -832,6 +856,7 @@ mod tests {
             data_requester.call_apply_block(
                 chain_id.clone(),
                 batch_with_block1.clone(),
+                chain_manager_mock.clone(),
                 None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("cannot be applied")
@@ -843,7 +868,12 @@ mod tests {
 
         // try schedule - ok
         assert!(matches!(
-            data_requester.call_apply_block(chain_id.clone(), batch_with_block1.clone(), None),
+            data_requester.call_apply_block(
+                chain_id.clone(),
+                batch_with_block1.clone(),
+                chain_manager_mock.clone(),
+                None
+            ),
             Ok(())
         ));
 
@@ -856,6 +886,7 @@ mod tests {
             data_requester.call_apply_block(
                 chain_id,
                 batch_with_block1,
+                chain_manager_mock,
                 None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("is already applied")

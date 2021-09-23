@@ -10,10 +10,10 @@ use riker::actors::*;
 use slog::{error, info, warn, Logger};
 use tokio::runtime::Handle;
 
-use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
+use shell_integration::ShellConnectorRef;
 use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -33,7 +33,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 #[derive(CopyGetters, Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
-    current_head: Option<Arc<BlockHeaderWithHash>>,
+    current_head: Arc<BlockHeaderWithHash>,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -50,8 +50,10 @@ impl RpcServer {
     }
 
     pub fn actor(
-        sys: &ActorSystem,
+        sys: Arc<ActorSystem>,
+        log: Logger,
         shell_channel: ShellChannelRef,
+        shell_connector: ShellConnectorRef,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
@@ -62,20 +64,17 @@ impl RpcServer {
         tezos_env: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
+        hydrated_current_head_block: Arc<BlockHeaderWithHash>,
         tezedge_is_enabled: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(
-                persistent_storage,
-                &init_storage_data.chain_id,
-                &sys.log(),
-            ),
+            current_head: hydrated_current_head_block,
         }));
 
         let env = Arc::new(RpcServiceEnvironment::new(
-            sys.clone(),
             Arc::new(tokio_executor),
             shell_channel,
+            shell_connector,
             tezos_env,
             network_version,
             persistent_storage,
@@ -84,11 +83,10 @@ impl RpcServer {
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
             init_storage_data.chain_id.clone(),
-            init_storage_data.genesis_block_header_hash.clone(),
             shared_state.clone(),
             init_storage_data.context_stats_db_path.clone(),
             tezedge_is_enabled,
-            &sys.log(),
+            log.clone(),
         ));
 
         let actor_ref = sys.actor_of_props::<RpcServer>(
@@ -98,13 +96,12 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let inner_log = sys.log();
             let env_for_server = env.clone();
 
             env.tokio_executor().spawn(async move {
-                info!(inner_log, "Starting RPC server"; "address" => format!("{}", &rpc_listen_address));
+                info!(log, "Starting RPC server"; "address" => format!("{}", &rpc_listen_address));
                 if let Err(e) = spawn_server(&rpc_listen_address, env_for_server).await {
-                    error!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
+                    error!(log, "HTTP Server encountered failure"; "error" => format!("{}", e));
                 }
             });
         }
@@ -123,7 +120,7 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_new_current_head(&self.env.shell_channel(), ctx.myself());
+        subscribe_to_shell_new_current_head(self.env.shell_channel(), ctx.myself());
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -162,43 +159,15 @@ impl Receive<ShellChannelMsg> for RpcServer {
                 });
             }
 
-            let current_head_ref = &mut *self.state.write().unwrap();
-            current_head_ref.current_head = Some(block);
-        }
-    }
-}
-
-/// Load local head (block with highest level) from dedicated storage
-fn load_current_head(
-    persistent_storage: &PersistentStorage,
-    chain_id: &ChainId,
-    log: &Logger,
-) -> Option<Arc<BlockHeaderWithHash>> {
-    use storage::chain_meta_storage::ChainMetaStorageReader;
-    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
-
-    let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
-    match chain_meta_storage.get_current_head(chain_id) {
-        Ok(Some(head)) => {
-            let block_applied = BlockStorage::new(persistent_storage)
-                .get(head.block_hash())
-                .and_then(|data| {
-                    data.ok_or_else(|| StorageError::MissingKey {
-                        when: "load_current_head".into(),
-                    })
-                });
-            match block_applied {
-                Ok(block) => Some(Arc::new(block)),
+            // update current head state
+            match self.state.write() {
+                Ok(mut current_head_ref) => {
+                    current_head_ref.current_head = block;
+                }
                 Err(e) => {
-                    warn!(log, "Error reading current head detail from database."; "reason" => format!("{}", e));
-                    None
+                    warn!(self.env.log(), "Failed to update current head in RPC server env"; "reason" => format!("{}", e));
                 }
             }
-        }
-        Ok(None) => None,
-        Err(e) => {
-            warn!(log, "Error reading current head from database."; "reason" => format!("{}", e));
-            None
         }
     }
 }

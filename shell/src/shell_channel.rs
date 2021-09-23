@@ -7,21 +7,13 @@ use std::sync::Arc;
 
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::BlockHash;
 use storage::BlockHeaderWithHash;
-use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
-
-use crate::state::StateError;
-use crate::utils::OneshotResultCallback;
 
 /// Notify actors that system is about to shut down
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
-
-/// Request peers to send their current heads
-#[derive(Clone, Debug)]
-pub struct RequestCurrentHead;
 
 /// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
@@ -35,16 +27,6 @@ pub struct BlockReceived {
 pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
-
-#[derive(Clone, Debug)]
-pub struct InjectBlock {
-    pub chain_id: Arc<ChainId>,
-    pub block_header: Arc<BlockHeaderWithHash>,
-    pub operations: Option<Vec<Vec<Operation>>>,
-    pub operation_paths: Option<Vec<Path>>,
-}
-
-pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), StateError>>;
 
 /// Shell channel event message.
 #[derive(Clone, Debug)]
@@ -61,11 +43,6 @@ pub enum ShellChannelMsg {
     AllBlockOperationsReceived(AllBlockOperationsReceived),
 
     /// Commands
-    AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
-    AdvertiseToP2pNewCurrentHead(Arc<ChainId>, Arc<BlockHash>),
-    AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
-    InjectBlock(InjectBlock, Option<InjectBlockOneshotResultCallback>),
-    RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }
 
@@ -84,12 +61,6 @@ impl From<AllBlockOperationsReceived> for ShellChannelMsg {
 impl From<ShuttingDown> for ShellChannelMsg {
     fn from(msg: ShuttingDown) -> Self {
         ShellChannelMsg::ShuttingDown(msg)
-    }
-}
-
-impl From<RequestCurrentHead> for ShellChannelMsg {
-    fn from(msg: RequestCurrentHead) -> Self {
-        ShellChannelMsg::RequestCurrentHead(msg)
     }
 }
 

@@ -22,7 +22,6 @@ use serial_test::serial;
 
 use crypto::hash::OperationHash;
 use networking::ShellCompatibilityVersion;
-use shell::mempool::find_mempool_prevalidator;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
@@ -76,7 +75,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         TmpStorage::create(common::prepare_empty_dir("__test_01"))?,
         &common::prepare_empty_dir("__test_01_context"),
         "test_process_current_branch_on_level3_then_current_head_level4",
-        &tezos_env,
+        tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -158,7 +157,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         TmpStorage::create(common::prepare_empty_dir("__test_07"))?,
         &common::prepare_empty_dir("__test_07_context"),
         "test_process_bootstrapping_current_branch_on_level3_then_current_heads",
-        &tezos_env,
+        tezos_env,
         None,
         Some(p2p_cfg),
         NODE_IDENTITY.clone(),
@@ -173,18 +172,6 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         node.tezos_env.genesis_header_hash()?,
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
-
-    // check not bootstrapped
-    assert!(!node
-        .bootstrap_state
-        .read()
-        .expect("Failed to get lock")
-        .is_bootstrapped());
-
-    // check mempool is not running
-    assert!(
-        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_none()
-    );
 
     // connect mocked node peer with test data set
     let clocks = Instant::now();
@@ -233,16 +220,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
 
     println!("\nProcessed current_branch[7] in {:?}!\n", clocks.elapsed());
 
-    // check is bootstrapped
-    node.wait_for_bootstrapped(
-        "bootstrapped",
-        (Duration::from_secs(5), Duration::from_millis(100)),
-    )?;
-
-    // check mempool is running
-    assert!(
-        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_some()
-    );
+    // check mempool
     node.wait_for_mempool_on_head(
         "mempool_head_7",
         db.block_hash(7)?,
@@ -278,7 +256,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), anyhow::Er
         TmpStorage::create(common::prepare_empty_dir("__test_02"))?,
         &common::prepare_empty_dir("__test_02_context"),
         "test_process_reorg_with_different_current_branches",
-        &tezos_env,
+        tezos_env,
         patch_context,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -386,7 +364,7 @@ fn test_process_current_heads_to_level3() -> Result<(), anyhow::Error> {
         TmpStorage::create(common::prepare_empty_dir("__test_03"))?,
         &common::prepare_empty_dir("__test_03_context"),
         "test_process_current_heads_to_level3",
-        &tezos_env,
+        tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -479,7 +457,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Resu
         TmpStorage::create(common::prepare_empty_dir("__test_04"))?,
         &common::prepare_empty_dir("__test_04_context"),
         "test_process_current_head_with_malformed_blocks_and_check_blacklist",
-        &tezos_env,
+        tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -640,7 +618,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         storage,
         root_context_db_path,
         name,
-        &tezos_env,
+        tezos_env,
         None,
         Some(p2p_cfg),
         NODE_IDENTITY.clone(),
@@ -656,9 +634,6 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
     // check mempool is running
-    assert!(
-        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_some()
-    );
     node.wait_for_mempool_on_head(
         "mempool_head_genesis",
         node.tezos_env.genesis_header_hash()?,
@@ -866,7 +841,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), any
         storage,
         root_context_db_path,
         "test_process_bootstrap_level1324_and_generate_action_file",
-        &tezos_env,
+        tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -945,7 +920,7 @@ mod stats {
     ) -> Result<Vec<String>, anyhow::Error> {
         let mut stats = Vec::new();
         stats.push(String::from(""));
-        stats.push(format!("{}", marker));
+        stats.push(marker.to_string());
         stats.push(String::from("------------"));
 
         let mut options = DirOptions::new();

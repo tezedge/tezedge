@@ -192,6 +192,9 @@ pub struct PeerBranchBootstrapper {
     actor_received_messages_count: usize,
     cfg: PeerBranchBootstrapperConfiguration,
 
+    /// parent reference to ChainManager
+    chain_manager: Arc<ChainManagerRef>,
+
     /// We dont want to stuck pipelines, so we schedule ping for all pipelines to continue
     /// If we scheduled one ping, we dont need to schedule another until the first one is resolved.
     /// This is kind of optimization to prevenet overloading processing of all pipelines, when it is not necessery.
@@ -278,6 +281,7 @@ impl PeerBranchBootstrapper {
             bootstrap_state,
             chain_id,
             cfg,
+            chain_manager,
             ..
         } = self;
 
@@ -292,6 +296,7 @@ impl PeerBranchBootstrapper {
             &filter_peer,
             cfg.max_block_apply_batch,
             chain_id,
+            chain_manager,
             &ctx.myself,
             log,
         );
@@ -318,10 +323,13 @@ impl
             PeerBranchBootstrapperConfiguration,
         ),
     ) -> Self {
-        let peer_branch_synchronization_done_callback =
+        let chain_manager = Arc::new(chain_manager);
+        let peer_branch_synchronization_done_callback = {
+            let chain_manager = chain_manager.clone();
             Box::new(move |msg: PeerBranchSynchronizationDone| {
                 chain_manager.tell(msg, None);
-            });
+            })
+        };
 
         PeerBranchBootstrapper {
             chain_id,
@@ -332,6 +340,7 @@ impl
             actor_received_messages_count: 0,
             cfg,
             is_already_scheduled_ping_for_process_all_bootstrap_pipelines: false,
+            chain_manager,
         }
     }
 }

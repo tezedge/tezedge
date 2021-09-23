@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
-use slog::{debug, info, warn, Logger};
+use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
@@ -17,7 +17,6 @@ use shell::subscription::{
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
-use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
@@ -47,6 +46,8 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
     LogStats
 )]
 pub struct Monitor {
+    persistent_storage: PersistentStorage,
+    main_chain_id: ChainId,
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     websocket_ref: ActorRef<WebsocketHandlerMsg>,
@@ -99,9 +100,10 @@ impl Monitor {
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
             // TODO: TE-190 - reimplement correctly, now not all messages are counted in (Ack, Metadata, ConnectionMessage is not involved)
-            let size = if let Ok(msg) = msg.message.as_bytes() {
-                msg.len()
+            let size = if let Some(size_hint) = msg.message.size_hint() {
+                *size_hint
             } else {
+                trace!(log, "size_hint not available for received peer message"; "peer" => msg.peer.name());
                 size_of_val(&msg.message)
             };
             monitor.incoming_bytes(size);
@@ -133,10 +135,14 @@ impl
             ChainId,
         ),
     ) -> Self {
-        let (chain_monitor, blocks_monitor, bootstrap_monitor) =
-            initialize_monitors(&persistent_storage, &main_chain_id);
+        // default empty monitors
+        let chain_monitor = ChainMonitor::new();
+        let blocks_monitor = BlocksMonitor::new(4096, 0);
+        let bootstrap_monitor = BootstrapMonitor::initialize(0, 0);
 
         Self {
+            persistent_storage,
+            main_chain_id,
             network_channel: event_channel,
             shell_channel,
             websocket_ref,
@@ -180,6 +186,13 @@ impl Actor for Monitor {
             None,
             BroadcastSignal::PublishBlocksStatistics,
         );
+
+        // recalculate stats from storage, before start processing any new message
+        let (chain_monitor, blocks_monitor, bootstrap_monitor) =
+            initialize_monitors(&self.persistent_storage, &self.main_chain_id);
+        self.chain_monitor = chain_monitor;
+        self.blocks_monitor = blocks_monitor;
+        self.bootstrap_monitor = bootstrap_monitor;
     }
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
@@ -339,8 +352,8 @@ fn initialize_monitors(
 ) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
     let mut chain_monitor = ChainMonitor::new();
 
-    let block_storage = BlockStorage::new(&persistent_storage);
-    let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
+    let operations_meta_storage = OperationsMetaStorage::new(persistent_storage);
 
     let mut downloaded_headers = 0;
     let mut downloaded_blocks = 0;
@@ -365,7 +378,7 @@ fn initialize_monitors(
     }
 
     let current_head_level = if let Ok(Some(head)) =
-        ChainMetaStorage::new(&persistent_storage).get_current_head(&main_chain_id)
+        ChainMetaStorage::new(persistent_storage).get_current_head(main_chain_id)
     {
         *head.level()
     } else {

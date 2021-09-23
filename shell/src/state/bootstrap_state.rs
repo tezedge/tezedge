@@ -19,6 +19,7 @@ use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
+use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
 };
@@ -490,6 +491,7 @@ impl BootstrapState {
         filter_peer: &Arc<PeerId>,
         max_block_apply_batch: usize,
         chain_id: &Arc<ChainId>,
+        chain_manager: &Arc<ChainManagerRef>,
         peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
         log: &slog::Logger,
     ) {
@@ -512,6 +514,7 @@ impl BootstrapState {
                     block_state_db,
                     data_requester,
                     chain_id,
+                    chain_manager,
                     peer_branch_bootstrapper,
                 ) {
                     warn!(log, "Failed to schedule blocks for apply";
@@ -828,6 +831,7 @@ impl BranchState {
         block_state_db: &mut BlockStateDb,
         data_requester: &DataRequester,
         chain_id: &Arc<ChainId>,
+        chain_manager: &Arc<ChainManagerRef>,
         peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
     ) -> Result<(), StateError> {
         // we can apply blocks just from the first "scheduled" interval
@@ -921,6 +925,7 @@ impl BranchState {
                                     data_requester.call_schedule_apply_block(
                                         chain_id.clone(),
                                         batch,
+                                        chain_manager.clone(),
                                         Some(peer_branch_bootstrapper.clone()),
                                     );
                                     // start new one
@@ -955,6 +960,7 @@ impl BranchState {
             data_requester.call_schedule_apply_block(
                 chain_id.clone(),
                 batch,
+                chain_manager.clone(),
                 Some(peer_branch_bootstrapper.clone()),
             );
         }

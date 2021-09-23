@@ -90,6 +90,7 @@ pub struct Storage {
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
     pub main_db: TezedgeDatabaseBackendConfiguration,
+    pub initialize_context_timeout: Duration,
 }
 
 impl Storage {
@@ -103,6 +104,8 @@ impl Storage {
     const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context::kv_store::INMEM;
 
     const DEFAULT_MAINDB: &'static str = "rocksdb";
+
+    const DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS: u64 = 15;
 }
 
 #[derive(Debug, Clone)]
@@ -282,6 +285,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to context-stats database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("initialize-context-timeout")
+            .long("initialize-context-timeout")
+            .takes_value(true)
+            .value_name("NUM")
+            .required(false)
+            .help("Panic if the context initialization of application took longer than this number of seconds")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+        )
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
             .global(true)
@@ -1110,7 +1121,7 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path");
-                let db_path = get_final_path(&tezos_data_dir, path.clone());
+                let db_path = get_final_path(&tezos_data_dir, path);
 
                 let context_stats_db_path = args.value_of("context-stats-db-path").map(|value| {
                     let path = value
@@ -1252,6 +1263,15 @@ impl Environment {
                             }
                         }
                     },
+                    initialize_context_timeout: std::time::Duration::from_secs(
+                        args.value_of("initialize-context-timeout")
+                            .unwrap_or(&format!(
+                                "{}",
+                                Storage::DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS
+                            ))
+                            .parse::<u64>()
+                            .expect("Provided value cannot be converted to number"),
+                    ),
                 }
             },
             identity: crate::configuration::Identity {

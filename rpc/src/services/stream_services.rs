@@ -136,7 +136,7 @@ impl OperationMonitorStream {
         } = self;
 
         let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) =
-            get_pending_operations(&chain_id, current_mempool_state_storage.clone())
+            get_pending_operations(chain_id, current_mempool_state_storage.clone())
         {
             (ops, protocol_hash)
         } else {
@@ -315,46 +315,32 @@ impl Stream for HeadMonitorStream {
                     head_hash
                 } else {
                     // first poll
-                    if let Some(current_head) = current_head {
-                        self.last_checked_head = Some(current_head.hash.clone());
-                        // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                        // would end the stream, in this case, we need to Pend.
-                        if let Some(head_string_result) = self.yield_head(&current_head).transpose()
-                        {
-                            return Poll::Ready(Some(head_string_result));
-                        } else {
-                            cx.waker().wake_by_ref();
-                            return Poll::Pending;
-                        };
+                    self.last_checked_head = Some(current_head.hash.clone());
+                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+                    // would end the stream, in this case, we need to Pend.
+                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
+                        return Poll::Ready(Some(head_string_result));
                     } else {
-                        // No current head found, storage not ready yet
                         cx.waker().wake_by_ref();
                         return Poll::Pending;
-                    }
+                    };
                 };
 
-                if let Some(current_head) = current_head {
-                    if last_checked_head == &current_head.hash {
-                        // current head not changed, yield nothing
-                        cx.waker().wake_by_ref();
-                        Poll::Pending
-                    } else {
-                        // Head change, yield new head
-                        self.last_checked_head = Some(current_head.hash.clone());
-                        // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                        // would end the stream, in this case, we need to Pend.
-                        if let Some(head_string_result) = self.yield_head(&current_head).transpose()
-                        {
-                            Poll::Ready(Some(head_string_result))
-                        } else {
-                            cx.waker().wake_by_ref();
-                            Poll::Pending
-                        }
-                    }
-                } else {
-                    // No current head found, storage not ready yet, wait
+                if last_checked_head == &current_head.hash {
+                    // current head not changed, yield nothing
                     cx.waker().wake_by_ref();
                     Poll::Pending
+                } else {
+                    // Head change, yield new head
+                    self.last_checked_head = Some(current_head.hash.clone());
+                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+                    // would end the stream, in this case, we need to Pend.
+                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
+                        Poll::Ready(Some(head_string_result))
+                    } else {
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    }
                 }
             }
         }
@@ -387,25 +373,19 @@ impl Stream for OperationMonitorStream {
                 // TODO: refactor this drop (remove if possible)
                 drop(state);
 
-                if let Some(current_head) = current_head {
-                    if self.last_checked_head == current_head.hash {
-                        // current head not changed, check for new operations
-                        let yielded = self.yield_operations();
-                        match yielded {
-                            Poll::Pending => {
-                                cx.waker().wake_by_ref();
-                                Poll::Pending
-                            }
-                            _ => yielded,
+                if self.last_checked_head == current_head.hash {
+                    // current head not changed, check for new operations
+                    let yielded = self.yield_operations();
+                    match yielded {
+                        Poll::Pending => {
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
                         }
-                    } else {
-                        // Head change, end stream
-                        Poll::Ready(None)
+                        _ => yielded,
                     }
                 } else {
-                    // No current head found, storage not ready yet
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
+                    // Head change, end stream
+                    Poll::Ready(None)
                 }
             }
         }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::sync::Arc;
-
 use thiserror::Error;
 
 pub type OneshotResultCallback<T> = Arc<std::sync::mpsc::SyncSender<T>>;
@@ -37,7 +36,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::utils::dispatch_oneshot_result;
+    use super::dispatch_oneshot_result;
 
     #[test]
     fn test_wait_and_dispatch() -> Result<(), anyhow::Error> {
