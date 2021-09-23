@@ -51,6 +51,7 @@ pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
 use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
+pub use crate::redux_action_storage::ReduxActionStorage;
 pub use crate::redux_state_storage::ReduxStateStorage;
 pub use crate::system_storage::SystemStorage;
 
@@ -67,6 +68,7 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
+pub mod redux_action_storage;
 pub mod redux_state_storage;
 pub mod system_storage;
 
@@ -543,6 +545,7 @@ pub mod initializer {
                 crate::CycleErasStorage::descriptor(cache),
                 crate::ConstantsStorage::descriptor(cache),
                 crate::ReduxStateStorage::descriptor(cache),
+                crate::ReduxActionStorage::descriptor(cache),
             ]
         }
     }
@@ -792,6 +795,7 @@ pub mod tests_common {
                         CycleMetaStorage::descriptor(&db_cache),
                         ConstantsStorage::descriptor(&db_cache),
                         ReduxStateStorage::descriptor(&db_cache),
+                        ReduxActionStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
@@ -822,6 +826,7 @@ pub mod tests_common {
                         CycleMetaStorage::descriptor(&db_cache),
                         ConstantsStorage::descriptor(&db_cache),
                         ReduxStateStorage::descriptor(&db_cache),
+                        ReduxActionStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
