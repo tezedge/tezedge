@@ -97,26 +97,55 @@ pub struct KeyDirEntryDescriptor {
 // Must fit in 1 byte
 assert_eq_size!(KeyDirEntryDescriptor, u8);
 
+#[derive(BitfieldSpecifier)]
+#[bits = 5]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum ObjectLength {
+    OneByte,
+    TwoBytes,
+    FourBytes,
+}
+
+#[derive(BitfieldSpecifier)]
+#[bits = 3]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum ObjectTag {
+    Directory,
+    Blob,
+    Commit,
+    InodePointers,
+    ShapedDirectory,
+}
+
+#[bitfield(bits = 8)]
+pub struct ObjectHeader {
+    tag: ObjectTag,
+    length: ObjectLength,
+}
+
+impl ObjectHeader {
+    pub fn get_length(&self) -> ObjectLength {
+        self.length()
+    }
+}
+
 fn serialize_shaped_directory(
     shape_id: DirectoryShapeId,
     dir: &[(StringId, DirEntryId)],
     output: &mut Vec<u8>,
     storage: &Storage,
     stats: &mut SerializeStats,
-    repository: &mut ContextKeyValueStore,
 ) -> Result<(), SerializationError> {
-    let start = output.len() as u64;
+    let start = output.len();
 
-    output.write_all(&[ID_SHAPED_DIRECTORY])?;
-
-    // Replaced by the length
-    output.write_all(&[0, 0, 0, 0])?;
+    // Replaced by ObjectHeader
+    output.write_all(&[0, 0])?;
 
     let shape_id = shape_id.as_u32();
     output.write_all(&shape_id.to_ne_bytes())?;
 
     // Make sure that SHAPED_DIRECTORY_NBYTES_TO_HASHES is correct.
-    debug_assert_eq!(output[start as usize..].len(), SHAPED_DIRECTORY_NBYTES_TO_HASHES);
+    debug_assert_eq!(output[start + 2..].len(), SHAPED_DIRECTORY_NBYTES_TO_HASHES);
 
     for (_, dir_entry_id) in dir {
         let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
@@ -149,12 +178,60 @@ fn serialize_shaped_directory(
         }
     }
 
-    let length = output.len() as u32 - start as u32;
-    output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
+    write_object_header(output, start, ObjectTag::ShapedDirectory);
 
     stats.nshapes = stats.nshapes.saturating_add(1);
 
     Ok(())
+}
+
+fn write_object_header(
+    output: &mut Vec<u8>,
+    start: usize,
+    //length: usize,
+    tag: ObjectTag,
+) {
+    let length = output.len() - start;
+
+    if length <= 0xFF {
+        let header: [u8; 1] = ObjectHeader::new()
+            .with_tag(tag)
+            .with_length(ObjectLength::OneByte)
+            .into_bytes();
+
+        output[start] = header[0];
+        output[start + 1] = length as u8;
+    } else if length <= (0xFFFF - 1) {
+        output.push(0);
+
+        let end = output.len();
+        output.copy_within(start + 2..end - 1, start + 3);
+
+        let header: [u8; 1] = ObjectHeader::new()
+            .with_tag(tag)
+            .with_length(ObjectLength::TwoBytes)
+            .into_bytes();
+
+        let length: u16 = length as u16 + 1;
+
+        output[start] = header[0];
+        output[start + 1..start + 3].copy_from_slice(&length.to_le_bytes());
+    } else {
+        output.extend_from_slice(&[0, 0, 0]);
+
+        let end = output.len();
+        output.copy_within(start + 2..end - 3, start + 5);
+
+        let header: [u8; 1] = ObjectHeader::new()
+            .with_tag(tag)
+            .with_length(ObjectLength::FourBytes)
+            .into_bytes();
+
+        let length: u32 = length as u32 + 3;
+
+        output[start] = header[0];
+        output[start + 1..start + 5].copy_from_slice(&length.to_le_bytes());
+    }
 }
 
 fn serialize_directory(
@@ -171,15 +248,18 @@ fn serialize_directory(
     let mut blobs_length: usize = 0;
 
     if let Some(shape_id) = repository.make_shape(dir)? {
-        return serialize_shaped_directory(shape_id, dir, output, storage, stats, repository);
+        return serialize_shaped_directory(shape_id, dir, output, storage, stats);
     };
 
-    let start = output.len() as u64;
+    let start = output.len();
 
-    output.write_all(&[ID_DIRECTORY])?;
+    // Replaced by ObjectHeader
+    output.write_all(&[0, 0])?;
 
-    // Replaced by the length
-    output.write_all(&[0, 0, 0, 0])?;
+    // output.write_all(&[ID_DIRECTORY])?;
+
+    // // Replaced by the length
+    // output.write_all(&[0, 0, 0, 0])?;
 
     for (key_id, dir_entry_id) in dir {
         let key = storage.get_str(*key_id)?;
@@ -234,8 +314,10 @@ fn serialize_directory(
         }
     }
 
-    let length = output.len() as u32 - start as u32;
-    output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
+    write_object_header(output, start, ObjectTag::Directory);
+
+    // let length = output.len() as u32 - start as u32;
+    // output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
 
     stats.add_directory(
         hash_ids_length,
@@ -290,23 +372,32 @@ pub fn serialize_object(
             debug_assert!(!blob_id.is_inline());
 
             let blob = storage.get_blob(*blob_id)?;
-            output.write_all(&[ID_BLOB])?;
 
-            let length: u32 = blob.len() as u32;
-            let length = length + 5;
-            output.write_all(&length.to_ne_bytes())?;
+            // Replaced by ObjectHeader
+            output.write_all(&[0, 0])?;
+
+            // output.write_all(&[ID_BLOB])?;
+
+            // let length: u32 = blob.len() as u32;
+            // let length = length + 5;
+            // output.write_all(&length.to_ne_bytes())?;
 
             output.write_all(blob.as_ref())?;
+
+            write_object_header(output, start, ObjectTag::Blob);
 
             stats.add_blob(blob.len());
 
             batch.push((object_hash_id, Arc::from(&output[start..])));
         }
         Object::Commit(commit) => {
-            output.write_all(&[ID_COMMIT])?;
+            // Replaced by ObjectHeader
+            output.write_all(&[0, 0])?;
 
-            // Replaced by the length
-            output.write_all(&[0, 0, 0, 0])?;
+            // output.write_all(&[ID_COMMIT])?;
+
+            // // Replaced by the length
+            // output.write_all(&[0, 0, 0, 0])?;
 
             let parent_hash_id = commit.parent_commit_hash.map(|h| h.as_u32()).unwrap_or(0);
             serialize_hash_id(parent_hash_id, output)?;
@@ -327,8 +418,10 @@ pub fn serialize_object(
             // It's until the end of the slice
             output.write_all(commit.message.as_bytes())?;
 
-            let length = output.len() as u32 - start as u32;
-            output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
+            write_object_header(output, start, ObjectTag::Commit);
+
+            // let length = output.len() as u32 - start as u32;
+            // output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
 
             batch.push((object_hash_id, Arc::from(&output[start..])));
         }
@@ -510,10 +603,12 @@ fn serialize_inode(
             start = output.len();
             offset = start as u64 + off;
 
-            output.write_all(&[ID_INODE_POINTERS])?;
+            // Replaced by ObjectHeader
+            output.write_all(&[0, 0])?;
+            // output.write_all(&[ID_INODE_POINTERS])?;
 
-            // Replaced by the length
-            output.write_all(&[0, 0, 0, 0])?;
+            // // Replaced by the length
+            // output.write_all(&[0, 0, 0, 0])?;
 
             output.write_all(&depth.to_ne_bytes())?;
             output.write_all(&nchildren.to_ne_bytes())?;
@@ -522,7 +617,7 @@ fn serialize_inode(
             output.write_all(&bitfield.to_bytes())?;
 
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
-            debug_assert_eq!(output[start..].len(), INODE_POINTERS_NBYTES_TO_HASHES);
+            debug_assert_eq!(output[start + 2..].len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
@@ -534,8 +629,10 @@ fn serialize_inode(
                 output.write_all(&offset.to_ne_bytes())?;
             }
 
-            let length = output.len() as u32 - start as u32;
-            output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
+            write_object_header(output, start, ObjectTag::InodePointers);
+
+            // let length = output.len() as u32 - start as u32;
+            // output[start as usize + 1..start as usize + 5].copy_from_slice(&length.to_ne_bytes());
 
             batch.push((hash_id, Arc::from(&output[start..])));
 
@@ -661,7 +758,7 @@ fn deserialize_shaped_directory(
     use DeserializationError as Error;
     use DeserializationError::*;
 
-    let mut pos = 5;
+    let mut pos = 0;
     let data_length = data.len();
 
     let shape_id = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
@@ -740,7 +837,7 @@ fn deserialize_directory(
     use DeserializationError as Error;
     use DeserializationError::*;
 
-    let mut pos = 5;
+    let mut pos = 0;
     let data_length = data.len();
 
     let dir_id = storage.with_new_dir::<_, Result<_, Error>>(|storage, new_dir| {
@@ -814,6 +911,25 @@ fn deserialize_directory(
     Ok(dir_id)
 }
 
+pub fn read_object_length(data: &[u8], header: &ObjectHeader) -> (usize, usize) {
+    match header.length() {
+        ObjectLength::OneByte => {
+            let length = data[1] as usize;
+            (1 + 1, length)
+        }
+        ObjectLength::TwoBytes => {
+            let length = &data[1..3];
+            let length = u16::from_le_bytes(length.try_into().unwrap()) as usize;
+            (1 + 2, length)
+        }
+        ObjectLength::FourBytes => {
+            let length = &data[1..5];
+            let length = u32::from_le_bytes(length.try_into().unwrap()) as usize;
+            (1 + 4, length)
+        }
+    }
+}
+
 /// Extract values from `data` to store them in `storage`.
 /// Return an `Object`, which can be ids (refering to data inside `storage`) or a `Commit`
 pub fn deserialize_object(
@@ -826,25 +942,28 @@ pub fn deserialize_object(
     let data = std::mem::take(&mut storage.data);
     let data = &data;
 
-    let mut pos = 1;
+    let header = data.get(0).copied().ok_or(UnexpectedEOF)?;
+    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
 
-    match data.get(0).copied().ok_or(UnexpectedEOF)? {
-        ID_DIRECTORY => {
-            let dir_id = deserialize_directory(data, storage)?;
+    let (header_nbytes, _) = read_object_length(data, &header);
+
+    let mut pos = header_nbytes;
+
+    match header.tag_or_err().map_err(|_| UnknownID)? {
+        ObjectTag::Directory => {
+            let dir_id = deserialize_directory(&data[pos..], storage)?;
             Ok(Object::Directory(dir_id))
         }
-        ID_SHAPED_DIRECTORY => {
-            let dir_id = deserialize_shaped_directory(data, storage, repository)?;
+        ObjectTag::ShapedDirectory => {
+            let dir_id = deserialize_shaped_directory(&data[pos..], storage, repository)?;
             Ok(Object::Directory(dir_id))
         }
-        ID_BLOB => {
-            let blob = data.get(pos + 4..).ok_or(UnexpectedEOF)?;
+        ObjectTag::Blob => {
+            let blob = data.get(pos..).ok_or(UnexpectedEOF)?;
             let blob_id = storage.add_blob_by_ref(blob)?;
             Ok(Object::Blob(blob_id))
         }
-        ID_COMMIT => {
-            pos += 4;
-
+        ObjectTag::Commit => {
             let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
             let (parent_commit_hash, nbytes) = deserialize_hash_id(bytes)?;
 
@@ -885,13 +1004,13 @@ pub fn deserialize_object(
                 message: String::from_utf8(message)?,
             })))
         }
-        ID_INODE_POINTERS => {
-            let inode = deserialize_inode_pointers(&data[5..], storage, repository)?;
+        ObjectTag::InodePointers => {
+            let inode = deserialize_inode_pointers(&data[pos..], storage, repository)?;
             let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(inode_id.into()))
         }
-        _ => Err(UnknownID),
+        // _ => Err(UnknownID),
     }
 }
 
@@ -978,19 +1097,24 @@ pub fn deserialize_inode(
 ) -> Result<InodeId, DeserializationError> {
     use DeserializationError::*;
 
-    match data.get(0).copied().ok_or(UnexpectedEOF)? {
-        ID_INODE_POINTERS => {
-            let inode = deserialize_inode_pointers(&data[5..], storage, repository)?;
+    let header = data.get(0).copied().ok_or(UnexpectedEOF)?;
+    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
+
+    let (header_nbytes, _) = read_object_length(data, &header);
+
+    match header.tag_or_err().map_err(|_| UnknownID)? {
+        ObjectTag::InodePointers => {
+            let inode = deserialize_inode_pointers(&data[header_nbytes..], storage, repository)?;
             storage.add_inode(inode).map_err(Into::into)
         }
-        ID_DIRECTORY => {
-            let dir_id = deserialize_directory(data, storage)?;
+        ObjectTag::Directory => {
+            let dir_id = deserialize_directory(&data[header_nbytes..], storage)?;
             storage
                 .add_inode(Inode::Directory(dir_id))
                 .map_err(Into::into)
         }
-        ID_SHAPED_DIRECTORY => {
-            let dir_id = deserialize_shaped_directory(data, storage, repository)?;
+        ObjectTag::ShapedDirectory => {
+            let dir_id = deserialize_shaped_directory(&data[header_nbytes..], storage, repository)?;
             storage
                 .add_inode(Inode::Directory(dir_id))
                 .map_err(Into::into)
@@ -1012,99 +1136,190 @@ pub struct HashIdIterator<'a> {
 /// Number of bytes to reach the hashes when serializing a `Inode::Pointers`.
 ///
 /// This skip `ID_INODE_POINTERS`, `depth`, `nchildren` and `PointersDescriptor`.
-const INODE_POINTERS_NBYTES_TO_HASHES: usize = 17;
+const INODE_POINTERS_NBYTES_TO_HASHES: usize = 12;
 
 /// Number of bytes to reach the hashes when serializing a shaped directory.
 ///
 /// This skip `ID_SHAPED_DIRECTORY` and the `ShapeId`
-const SHAPED_DIRECTORY_NBYTES_TO_HASHES: usize = 9;
+const SHAPED_DIRECTORY_NBYTES_TO_HASHES: usize = 4;
 
 impl<'a> Iterator for HashIdIterator<'a> {
     type Item = HashId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let id = self.data.get(0).copied()?;
+        // let id = self.data.get(0).copied()?;
+
+        let header = self.data.get(0).copied()?;
+        let header: ObjectHeader = ObjectHeader::from_bytes([header]);
+        let tag: ObjectTag = header.tag_or_err().ok()?;
 
         loop {
             let mut pos = self.pos;
 
             if pos == 0 {
-                if id == ID_BLOB {
-                    // No HashId in Object::Blob
-                    return None;
-                } else if id == ID_COMMIT {
-                    // Deserialize the parent hash to know it's size
-                    let (_, nbytes) = deserialize_hash_id(self.data.get(5..)?).ok()?;
 
-                    // Object::Commit.root_hash
-                    let (root_hash, _) = deserialize_hash_id(self.data.get(5 + nbytes..)?).ok()?;
-                    self.pos = self.data.len();
+                let (header_nbytes, length) = read_object_length(self.data, &header);
 
-                    return root_hash;
-                } else if id == ID_INODE_POINTERS {
-                    // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
-                    // the hashes
-                    pos += INODE_POINTERS_NBYTES_TO_HASHES;
-                } else if id == ID_SHAPED_DIRECTORY {
-                    pos += SHAPED_DIRECTORY_NBYTES_TO_HASHES;
-                } else {
-                    debug_assert_eq!(ID_DIRECTORY, id);
+                match tag {
+                    ObjectTag::Blob => {
+                        // No HashId in Object::Blob
+                        return None;
+                    },
+                    ObjectTag::Commit => {
+                        // Deserialize the parent hash to know it's size
+                        let (_, nbytes) = deserialize_hash_id(self.data.get(header_nbytes..)?).ok()?;
 
-                    // Skip the tag (ID_DIRECTORY)
-                    pos += 5;
+                        // Object::Commit.root_hash
+                        let (root_hash, _) = deserialize_hash_id(self.data.get(header_nbytes + nbytes..)?).ok()?;
+                        self.pos = self.data.len();
+
+                        return root_hash;
+                    },
+                    ObjectTag::InodePointers => {
+                        // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
+                        // the hashes
+                        pos += header_nbytes + INODE_POINTERS_NBYTES_TO_HASHES;
+                    },
+                    ObjectTag::ShapedDirectory => {
+                        pos += header_nbytes + SHAPED_DIRECTORY_NBYTES_TO_HASHES;
+                    },
+                    ObjectTag::Directory => {
+                        // Skip the tag (ID_DIRECTORY)
+                        // pos += 5;
+                        pos += header_nbytes;
+                    },
                 }
+
+                // if id == ID_BLOB {
+                //     // No HashId in Object::Blob
+                //     return None;
+                // } else if id == ID_COMMIT {
+                //     // Deserialize the parent hash to know it's size
+                //     let (_, nbytes) = deserialize_hash_id(self.data.get(5..)?).ok()?;
+
+                //     // Object::Commit.root_hash
+                //     let (root_hash, _) = deserialize_hash_id(self.data.get(5 + nbytes..)?).ok()?;
+                //     self.pos = self.data.len();
+
+                //     return root_hash;
+                // } else if id == ID_INODE_POINTERS {
+                //     // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
+                //     // the hashes
+                //     pos += INODE_POINTERS_NBYTES_TO_HASHES;
+                // } else if id == ID_SHAPED_DIRECTORY {
+                //     pos += SHAPED_DIRECTORY_NBYTES_TO_HASHES;
+                // } else {
+                //     debug_assert_eq!(ID_DIRECTORY, id);
+
+                //     // Skip the tag (ID_DIRECTORY)
+                //     pos += 5;
+                // }
             }
 
-            if id == ID_INODE_POINTERS {
-                let bytes = self.data.get(pos..)?;
-                let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
+            match tag {
+                ObjectTag::InodePointers => {
+                    let bytes = self.data.get(pos..)?;
+                    let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
 
-                self.pos = pos + nbytes + 8;
+                    self.pos = pos + nbytes + 8;
 
-                return hash_id;
-            } else {
-                // ID_DIRECTORY or ID_SHAPED_DIRECTORY
-
-                let descriptor = self.data.get(pos..pos + 1)?;
-                let descriptor = KeyDirEntryDescriptor::from_bytes([descriptor[0]; 1]);
-
-                pos += 1;
-
-                if id != ID_SHAPED_DIRECTORY {
-                    // ID_SHAPED_DIRECTORY do not contain the keys
-
-                    let offset = match descriptor.key_inline_length() as usize {
-                        len if len > 0 => len,
-                        _ => {
-                            let key_length = self.data.get(pos..pos + 2)?;
-                            let key_length = u16::from_ne_bytes(key_length.try_into().ok()?);
-                            2 + key_length as usize
-                        }
-                    };
-
-                    pos += offset;
+                    return hash_id;
                 }
+                ObjectTag::Directory | ObjectTag::ShapedDirectory => {
+                    let descriptor = self.data.get(pos..pos + 1)?;
+                    let descriptor = KeyDirEntryDescriptor::from_bytes([descriptor[0]; 1]);
 
-                let blob_inline_length = descriptor.blob_inline_length() as usize;
+                    pos += 1;
 
-                if blob_inline_length > 0 {
-                    // No HashId when the blob is inlined, go to next dir entry
-                    self.pos = pos + blob_inline_length;
-                    continue;
+                    if tag != ObjectTag::ShapedDirectory {
+                    // if id != ID_SHAPED_DIRECTORY {
+                        // ID_SHAPED_DIRECTORY do not contain the keys
+
+                        let offset = match descriptor.key_inline_length() as usize {
+                            len if len > 0 => len,
+                            _ => {
+                                let key_length = self.data.get(pos..pos + 2)?;
+                                let key_length = u16::from_ne_bytes(key_length.try_into().ok()?);
+                                2 + key_length as usize
+                            }
+                        };
+
+                        pos += offset;
+                    }
+
+                    let blob_inline_length = descriptor.blob_inline_length() as usize;
+
+                    if blob_inline_length > 0 {
+                        // No HashId when the blob is inlined, go to next dir entry
+                        self.pos = pos + blob_inline_length;
+                        continue;
+                    }
+
+                    let bytes = self.data.get(pos..)?;
+                    let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
+
+                    self.pos = pos + nbytes;
+
+                    self.pos += 8;
+
+                    // let offset = self.data.get(pos..pos + 8).ok()?;
+                    // let offset = u64::from_ne_bytes(offset.try_into()?);
+
+                    return hash_id;
                 }
-
-                let bytes = self.data.get(pos..)?;
-                let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
-
-                self.pos = pos + nbytes;
-
-                self.pos += 8;
-
-                // let offset = self.data.get(pos..pos + 8).ok()?;
-                // let offset = u64::from_ne_bytes(offset.try_into()?);
-
-                return hash_id;
+                _ => return None,
             }
+
+            // if id == ID_INODE_POINTERS {
+            //     let bytes = self.data.get(pos..)?;
+            //     let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
+
+            //     self.pos = pos + nbytes + 8;
+
+            //     return hash_id;
+            // } else {
+            //     // ID_DIRECTORY or ID_SHAPED_DIRECTORY
+
+            //     let descriptor = self.data.get(pos..pos + 1)?;
+            //     let descriptor = KeyDirEntryDescriptor::from_bytes([descriptor[0]; 1]);
+
+            //     pos += 1;
+
+            //     if id != ID_SHAPED_DIRECTORY {
+            //         // ID_SHAPED_DIRECTORY do not contain the keys
+
+            //         let offset = match descriptor.key_inline_length() as usize {
+            //             len if len > 0 => len,
+            //             _ => {
+            //                 let key_length = self.data.get(pos..pos + 2)?;
+            //                 let key_length = u16::from_ne_bytes(key_length.try_into().ok()?);
+            //                 2 + key_length as usize
+            //             }
+            //         };
+
+            //         pos += offset;
+            //     }
+
+            //     let blob_inline_length = descriptor.blob_inline_length() as usize;
+
+            //     if blob_inline_length > 0 {
+            //         // No HashId when the blob is inlined, go to next dir entry
+            //         self.pos = pos + blob_inline_length;
+            //         continue;
+            //     }
+
+            //     let bytes = self.data.get(pos..)?;
+            //     let (hash_id, nbytes) = deserialize_hash_id(bytes).ok()?;
+
+            //     self.pos = pos + nbytes;
+
+            //     self.pos += 8;
+
+            //     // let offset = self.data.get(pos..pos + 8).ok()?;
+            //     // let offset = u64::from_ne_bytes(offset.try_into()?);
+
+            //     return hash_id;
+            // }
         }
     }
 }

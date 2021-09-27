@@ -3,7 +3,7 @@ use std::{borrow::Cow, cell::Cell, collections::{VecDeque, hash_map::DefaultHash
 use crypto::hash::ContextHash;
 use tezos_timing::RepositoryMemoryUsage;
 
-use crate::{Map, ObjectHash, gc::{GarbageCollectionError, GarbageCollector, worker::PRESERVE_CYCLE_COUNT}, persistent::{DBError, File, FileOffset, FileType, Flushable, KeyValueStoreBackend, Persistable, get_persistent_base_path}, working_tree::{shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings}, storage::DirEntryId, string_interner::{StringId, StringInterner}}};
+use crate::{Map, ObjectHash, gc::{GarbageCollectionError, GarbageCollector, worker::PRESERVE_CYCLE_COUNT}, persistent::{DBError, File, FileOffset, FileType, Flushable, KeyValueStoreBackend, Persistable, get_persistent_base_path}, working_tree::{serializer::{ObjectHeader, ObjectLength, read_object_length}, shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings}, storage::DirEntryId, string_interner::{StringId, StringInterner}}};
 
 use super::{HashId, VacantObjectHash};
 
@@ -317,14 +317,24 @@ impl KeyValueStoreBackend for Persistent {
 
     fn get_value_from_offset(&self, buffer: &mut Vec<u8>, offset: u64) -> Result<(), DBError> {
         let mut header: [u8; 5] = Default::default();
+        self.data_file.read_exact_at(&mut header[..1], FileOffset(offset));
 
-        self.data_file.read_exact_at(&mut header, FileOffset(offset));
+        let object_header: ObjectHeader = ObjectHeader::from_bytes([header[0]]);
 
-        let length = u32::from_ne_bytes(header[1..].try_into().unwrap());
-        let total_length = length as usize;
+        let header = match object_header.get_length() {
+            ObjectLength::OneByte => &mut header[..2],
+            ObjectLength::TwoBytes => &mut header[..3],
+            ObjectLength::FourBytes => &mut header[..5],
+        };
+
+        self.data_file.read_exact_at(header, FileOffset(offset));
+        let (_, length) = read_object_length(header, &object_header);
+
+        // let length = u32::from_ne_bytes(header[1..].try_into().unwrap());
+        // let total_length = length as usize;
         //let total_length = 5 + length as usize;
 
-        buffer.resize(total_length, 0);
+        buffer.resize(length, 0);
         // self.data.clear();
         // self.data.reserve(total_length);
 
@@ -332,4 +342,21 @@ impl KeyValueStoreBackend for Persistent {
 
         Ok(())
     }
+
+    // fn get_value_from_offset(&self, buffer: &mut Vec<u8>, offset: u64) -> Result<(), DBError> {
+    //     let mut header: [u8; 5] = Default::default();
+    //     self.data_file.read_exact_at(&mut header, FileOffset(offset));
+
+    //     let length = u32::from_ne_bytes(header[1..].try_into().unwrap());
+    //     let total_length = length as usize;
+    //     //let total_length = 5 + length as usize;
+
+    //     buffer.resize(total_length, 0);
+    //     // self.data.clear();
+    //     // self.data.reserve(total_length);
+
+    //     self.data_file.read_exact_at(buffer, FileOffset(offset));
+
+    //     Ok(())
+    // }
 }
