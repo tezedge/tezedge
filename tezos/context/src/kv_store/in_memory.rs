@@ -198,7 +198,10 @@ impl KeyValueStoreBackend for InMemory {
         self.put_context_hash_impl(hash_id)
     }
 
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError> {
+    fn get_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<(HashId, u64)>, DBError> {
         Ok(self.get_context_hash_impl(context_hash))
     }
 

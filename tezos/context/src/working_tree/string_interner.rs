@@ -164,8 +164,12 @@ impl BigStrings {
             output.big_strings.extend_from_slice(&length.to_le_bytes());
             output.big_strings.extend_from_slice(string.as_bytes());
 
-            output.big_strings_offsets.extend_from_slice(&start.to_le_bytes());
-            output.big_strings_offsets.extend_from_slice(&end.to_le_bytes());
+            output
+                .big_strings_offsets
+                .extend_from_slice(&start.to_le_bytes());
+            output
+                .big_strings_offsets
+                .extend_from_slice(&end.to_le_bytes());
         }
 
         self.to_serialize_index = self.offsets.len();
@@ -294,7 +298,11 @@ impl StringInterner {
             strings: Vec::with_capacity(1000),
         };
 
-        println!("TO_SER {:?} ALL={:?}", self.all_strings_to_serialize.len(), self.all_strings.len());
+        println!(
+            "TO_SER {:?} ALL={:?}",
+            self.all_strings_to_serialize.len(),
+            self.all_strings.len()
+        );
 
         for id in &self.all_strings_to_serialize {
             let (start, end) = id.get_start_end();
@@ -305,7 +313,9 @@ impl StringInterner {
             let length: u8 = length.try_into().unwrap(); // never fail, the string is less than 30 bytes
 
             output.strings.push(length);
-            output.strings.extend_from_slice(self.all_strings[start..end].as_bytes());
+            output
+                .strings
+                .extend_from_slice(self.all_strings[start..end].as_bytes());
         }
 
         self.all_strings_to_serialize.clear();

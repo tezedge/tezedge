@@ -79,7 +79,6 @@ pub struct DirectoryShapes {
     /// Map `DirectoryShapeHash` to its `DirectoryShapeId` and strings.
     hash_to_strings: BTreeMap<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
     //hash_to_strings: BTreeMap<DirectoryShapeHash, (DirectoryShapeId, Box<[StringId]>)>,
-
     shapes: Vec<StringId>,
 
     to_serialize: Vec<ShapeSliceId>,
@@ -131,7 +130,8 @@ impl DirectoryShapes {
             None => return Err(DirectoryShapeError::ShapeIdNotFound),
         };
 
-        let slice_id = self.hash_to_strings
+        let slice_id = self
+            .hash_to_strings
             .get(&hash)
             .map(|s| s.1)
             .ok_or(DirectoryShapeError::ShapeIdNotFound)?;
@@ -167,7 +167,6 @@ impl DirectoryShapes {
         match self.hash_to_strings.entry(shape_hash) {
             Occupied(entry) => Ok(Some(entry.get().0)),
             Vacant(entry) => {
-
                 let start = self.shapes.len() as u64;
                 let length = self.temp.len() as u32;
 
@@ -179,7 +178,7 @@ impl DirectoryShapes {
 
                 let shape_id = self.id_to_hash.push(shape_hash)?;
                 entry.insert((shape_id, slice_id));
-//                entry.insert((shape_id, Box::from(self.temp.as_slice())));
+                //                entry.insert((shape_id, Box::from(self.temp.as_slice())));
                 Ok(Some(shape_id))
             }
         }

@@ -100,8 +100,7 @@ impl TezedgeIndex {
 
         Ok(Some(deserialize_object(
             // &storage.data,
-            storage,
-            &*repo,
+            storage, &*repo,
         )?))
 
         // match repo.get_value_from_offset(&mut storage.data, offset)? {
@@ -136,7 +135,9 @@ impl TezedgeIndex {
         storage: &mut Storage,
     ) -> Result<Object, MerkleError> {
         match self.fetch_object(offset, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id: (offset as usize).try_into().unwrap() }),
+            None => Err(MerkleError::ObjectNotFound {
+                hash_id: (offset as usize).try_into().unwrap(),
+            }),
             Some(object) => Ok(object),
         }
     }
@@ -172,7 +173,9 @@ impl TezedgeIndex {
         storage: &mut Storage,
     ) -> Result<Commit, MerkleError> {
         match self.fetch_commit(offset, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id: HashId::new(offset as u32).unwrap() }),
+            None => Err(MerkleError::ObjectNotFound {
+                hash_id: HashId::new(offset as u32).unwrap(),
+            }),
             Some(object) => Ok(object),
         }
     }
@@ -187,7 +190,6 @@ impl TezedgeIndex {
         //hash_id: HashId,
         storage: &mut Storage,
     ) -> Result<Option<DirectoryId>, DBError> {
-
         match self.fetch_object(offset, storage)? {
             Some(Object::Directory(dir_id)) => Ok(Some(dir_id)),
             Some(Object::Blob(_)) => Err(DBError::FoundUnexpectedStructure {
@@ -212,7 +214,9 @@ impl TezedgeIndex {
         storage: &mut Storage,
     ) -> Result<DirectoryId, MerkleError> {
         match self.fetch_directory(offset, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id: HashId::new(offset as u32).unwrap() }),
+            None => Err(MerkleError::ObjectNotFound {
+                hash_id: HashId::new(offset as u32).unwrap(),
+            }),
             Some(object) => Ok(object),
         }
     }
@@ -266,7 +270,7 @@ impl TezedgeIndex {
         let offset = dir_entry.get_offset();
 
         let object = self.get_object(offset, storage)?;
-//        let object = self.get_object(hash_id, storage)?;
+        //        let object = self.get_object(hash_id, storage)?;
 
         let dir_entry = storage.get_dir_entry(dir_entry_id)?;
         dir_entry.set_object(&object)?;
@@ -628,7 +632,6 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
                 None => return Ok(None),
             }
         };
-
 
         let mut storage = self.storage.borrow_mut();
         storage.clear();

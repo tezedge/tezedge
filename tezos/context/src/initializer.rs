@@ -51,7 +51,7 @@ pub fn initialize_tezedge_index(
                 }
             }
             ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(Persistent::try_new()?)),
-//            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
+            //            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
         },
         patch_context,
     ))

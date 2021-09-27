@@ -928,7 +928,6 @@ impl WorkingTree {
         data: &mut SerializingData,
         storage: &Storage,
     ) -> Result<u64, MerkleError> {
-
         match &mut object {
             Object::Directory(dir_id) => {
                 storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
@@ -964,20 +963,21 @@ impl WorkingTree {
 
                     Ok(())
                 })?;
-            },
-            Object::Blob(blob_id) => {
-
-            },
+            }
+            Object::Blob(blob_id) => {}
             Object::Commit(commit) => {
                 let object = match root {
                     Some(root) => Object::Directory(root),
-                    None => self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?,
+                    None => {
+                        self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?
+                    }
                 };
-                let root_hash_offset = self.write_objects_recursively(object, commit.root_hash, None, data, storage)?;
+                let root_hash_offset =
+                    self.write_objects_recursively(object, commit.root_hash, None, data, storage)?;
                 commit.root_hash_offset = root_hash_offset;
 
                 // TODO: returns the root hash offset here
-            },
+            }
         }
 
         // Add object to batch
@@ -1001,10 +1001,11 @@ impl WorkingTree {
                 storage.dir_iterate_unsorted(*dir_id, |&(_, dir_entry_id)| {
                     let child_dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
-                    let object_hash = match child_dir_entry.object_hash_id(data.repository, storage)? {
-                        Some(hash_id) => hash_id,
-                        None => return Ok(()), // Object is an inlined blob, we don't serialize them.
-                    };
+                    let object_hash =
+                        match child_dir_entry.object_hash_id(data.repository, storage)? {
+                            Some(hash_id) => hash_id,
+                            None => return Ok(()), // Object is an inlined blob, we don't serialize them.
+                        };
 
                     if child_dir_entry.is_commited() {
                         data.add_older_object(child_dir_entry, storage)?;
@@ -1027,14 +1028,17 @@ impl WorkingTree {
             Object::Commit(commit) => {
                 let object = match root {
                     Some(root) => Object::Directory(root),
-                    None => self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?,
+                    None => {
+                        self.fetch_object_from_repo(commit.root_hash_offset, data.repository)?
+                    }
                 };
                 self.serialize_objects_recursively(&object, commit.root_hash, None, data, storage)?;
             }
         }
 
         // Add object to batch
-        data.add_serialized_object(object_hash, object, storage).map(|_| ())
+        data.add_serialized_object(object_hash, object, storage)
+            .map(|_| ())
     }
 
     // /// Serializes working tree and builds vector of objects to be persisted to DB, recursively.
@@ -1094,7 +1098,7 @@ impl WorkingTree {
     fn fetch_object_from_repo(
         &self,
         offset: u64,
-//        hash_id: HashId,
+        //        hash_id: HashId,
         store: &ContextKeyValueStore,
     ) -> Result<Object, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();

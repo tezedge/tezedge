@@ -1,7 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, fs::OpenOptions, io::{self, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex, PoisonError}};
+use std::{
+    borrow::Cow,
+    fs::OpenOptions,
+    io::{self, Write},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, PoisonError},
+};
 
 use crypto::hash::ContextHash;
 use thiserror::Error;
@@ -47,7 +53,10 @@ pub trait KeyValueStoreBackend {
     ///
     /// # Arguments
     /// * `context_hash` - ContextHash to find the HashId
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError>;
+    fn get_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<(HashId, u64)>, DBError>;
     /// Read hash associated with given HashId, if exists.
     ///
     /// # Arguments
@@ -226,7 +235,10 @@ pub fn get_persistent_base_path() -> String {
 
 impl File {
     pub fn new(base_path: &str, file_type: FileType) -> Self {
-        println!("FILE={:?}", PathBuf::from(base_path).join(file_type.get_path()));
+        println!(
+            "FILE={:?}",
+            PathBuf::from(base_path).join(file_type.get_path())
+        );
         // println!("BASE={:?}", base_path);
 
         std::fs::create_dir_all(&base_path).unwrap();
@@ -239,7 +251,11 @@ impl File {
             .open(PathBuf::from(base_path).join(file_type.get_path()))
             .unwrap();
 
-        Self { file, offset: 0, file_type }
+        Self {
+            file,
+            offset: 0,
+            file_type,
+        }
     }
 
     pub fn offset(&self) -> u64 {

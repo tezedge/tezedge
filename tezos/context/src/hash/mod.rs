@@ -395,8 +395,8 @@ mod tests {
     use crypto::hash::{ContextHash, HashTrait};
     use tezos_timing::SerializeStats;
 
-    use crate::persistent::KeyValueStoreBackend;
     use crate::kv_store::persistent::Persistent;
+    use crate::persistent::KeyValueStoreBackend;
     use crate::{
         kv_store::in_memory::InMemory,
         working_tree::{

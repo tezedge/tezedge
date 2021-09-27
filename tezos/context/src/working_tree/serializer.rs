@@ -814,7 +814,8 @@ fn deserialize_shaped_directory(
 
                 pos += 8;
 
-                let dir_entry = DirEntry::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None);
+                let dir_entry =
+                    DirEntry::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None);
                 dir_entry.set_offset(offset);
                 dir_entry
             };
@@ -895,7 +896,8 @@ fn deserialize_directory(
 
                 pos += 8;
 
-                let dir_entry = DirEntry::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None);
+                let dir_entry =
+                    DirEntry::new_commited(kind, Some(hash_id.ok_or(MissingHash)?), None);
                 dir_entry.set_offset(offset);
                 dir_entry
             };
@@ -1009,8 +1011,7 @@ pub fn deserialize_object(
             let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(inode_id.into()))
-        }
-        // _ => Err(UnknownID),
+        } // _ => Err(UnknownID),
     }
 }
 
@@ -1056,14 +1057,16 @@ fn deserialize_inode_pointers(
 
         let mut output = Vec::with_capacity(1000);
 
-        repository.get_value_from_offset(&mut output, offset).unwrap();
+        repository
+            .get_value_from_offset(&mut output, offset)
+            .unwrap();
         let inode_id = deserialize_inode(&output, storage, repository).unwrap();
 
-            // .map_err(|_| InodeNotFoundInRepository)
-            // .and_then(|data| {
-            //     let data = data.ok_or(InodeEmptyInRepository)?;
-            //     deserialize_inode(data.as_ref(), storage, repository)
-            // })?;
+        // .map_err(|_| InodeNotFoundInRepository)
+        // .and_then(|data| {
+        //     let data = data.ok_or(InodeEmptyInRepository)?;
+        //     deserialize_inode(data.as_ref(), storage, repository)
+        // })?;
 
         // let inode_id = repository
         //     .get_value(hash_id.ok_or(MissingHash)?)
@@ -1073,10 +1076,8 @@ fn deserialize_inode_pointers(
         //         deserialize_inode(data.as_ref(), storage, repository)
         //     })?;
 
-        let pointer_to_inode = PointerToInode::new_commited(
-            Some(hash_id.ok_or(MissingHash)?),
-            inode_id,
-        );
+        let pointer_to_inode =
+            PointerToInode::new_commited(Some(hash_id.ok_or(MissingHash)?), inode_id);
         pointer_to_inode.set_offset(offset);
 
         pointers[index as usize] = Some(pointer_to_inode);
@@ -1157,37 +1158,38 @@ impl<'a> Iterator for HashIdIterator<'a> {
             let mut pos = self.pos;
 
             if pos == 0 {
-
                 let (header_nbytes, length) = read_object_length(self.data, &header);
 
                 match tag {
                     ObjectTag::Blob => {
                         // No HashId in Object::Blob
                         return None;
-                    },
+                    }
                     ObjectTag::Commit => {
                         // Deserialize the parent hash to know it's size
-                        let (_, nbytes) = deserialize_hash_id(self.data.get(header_nbytes..)?).ok()?;
+                        let (_, nbytes) =
+                            deserialize_hash_id(self.data.get(header_nbytes..)?).ok()?;
 
                         // Object::Commit.root_hash
-                        let (root_hash, _) = deserialize_hash_id(self.data.get(header_nbytes + nbytes..)?).ok()?;
+                        let (root_hash, _) =
+                            deserialize_hash_id(self.data.get(header_nbytes + nbytes..)?).ok()?;
                         self.pos = self.data.len();
 
                         return root_hash;
-                    },
+                    }
                     ObjectTag::InodePointers => {
                         // We skip the first bytes (ID_INODE_POINTERS, depth, nchildren, ..) to reach
                         // the hashes
                         pos += header_nbytes + INODE_POINTERS_NBYTES_TO_HASHES;
-                    },
+                    }
                     ObjectTag::ShapedDirectory => {
                         pos += header_nbytes + SHAPED_DIRECTORY_NBYTES_TO_HASHES;
-                    },
+                    }
                     ObjectTag::Directory => {
                         // Skip the tag (ID_DIRECTORY)
                         // pos += 5;
                         pos += header_nbytes;
-                    },
+                    }
                 }
 
                 // if id == ID_BLOB {
@@ -1232,7 +1234,7 @@ impl<'a> Iterator for HashIdIterator<'a> {
                     pos += 1;
 
                     if tag != ObjectTag::ShapedDirectory {
-                    // if id != ID_SHAPED_DIRECTORY {
+                        // if id != ID_SHAPED_DIRECTORY {
                         // ID_SHAPED_DIRECTORY do not contain the keys
 
                         let offset = match descriptor.key_inline_length() as usize {
@@ -1331,7 +1333,11 @@ mod tests {
     use tezos_timing::SerializeStats;
 
     use crate::persistent::KeyValueStoreBackend;
-    use crate::{hash::hash_object, kv_store::{in_memory::InMemory, persistent::Persistent}, working_tree::storage::DirectoryId};
+    use crate::{
+        hash::hash_object,
+        kv_store::{in_memory::InMemory, persistent::Persistent},
+        working_tree::storage::DirectoryId,
+    };
 
     use super::*;
 
@@ -1560,13 +1566,14 @@ mod tests {
             &mut repo,
             0,
         )
-            .unwrap();
+        .unwrap();
 
         println!("DATA LENGTH={:?}", data.len());
         repo.append_serialized_data(&data).unwrap();
 
         println!("ID={:?}", batch.last().unwrap().1[0]);
-        let new_inode_id = deserialize_inode(&batch.last().unwrap().1, &mut storage, &repo).unwrap();
+        let new_inode_id =
+            deserialize_inode(&batch.last().unwrap().1, &mut storage, &repo).unwrap();
         //let new_inode_id = deserialize_inode(&batch[0].1, &mut storage, &repo).unwrap();
         let new_inode = storage.get_inode(new_inode_id).unwrap();
 

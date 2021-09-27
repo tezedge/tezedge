@@ -1,12 +1,32 @@
-use std::{borrow::Cow, cell::Cell, collections::{VecDeque, hash_map::DefaultHasher}, convert::{TryFrom, TryInto}, hash::Hasher, io::Write, sync::Arc};
+use std::{
+    borrow::Cow,
+    cell::Cell,
+    collections::{hash_map::DefaultHasher, VecDeque},
+    convert::{TryFrom, TryInto},
+    hash::Hasher,
+    io::Write,
+    sync::Arc,
+};
 
 use crypto::hash::ContextHash;
 use tezos_timing::RepositoryMemoryUsage;
 
-use crate::{Map, ObjectHash, gc::{GarbageCollectionError, GarbageCollector, worker::PRESERVE_CYCLE_COUNT}, persistent::{DBError, File, FileOffset, FileType, Flushable, KeyValueStoreBackend, Persistable, get_persistent_base_path}, working_tree::{serializer::{ObjectHeader, ObjectLength, read_object_length}, shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings}, storage::DirEntryId, string_interner::{StringId, StringInterner}}};
+use crate::{
+    gc::{worker::PRESERVE_CYCLE_COUNT, GarbageCollectionError, GarbageCollector},
+    persistent::{
+        get_persistent_base_path, DBError, File, FileOffset, FileType, Flushable,
+        KeyValueStoreBackend, Persistable,
+    },
+    working_tree::{
+        serializer::{read_object_length, ObjectHeader, ObjectLength},
+        shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
+        storage::DirEntryId,
+        string_interner::{StringId, StringInterner},
+    },
+    Map, ObjectHash,
+};
 
 use super::{HashId, VacantObjectHash};
-
 
 pub struct Persistent {
     data_file: File,
@@ -21,7 +41,6 @@ pub struct Persistent {
     // hashes_file: File,
 
     // hashes_file_index: usize,
-
     shapes: DirectoryShapes,
     string_interner: StringInterner,
 
@@ -90,7 +109,8 @@ impl Hashes {
 
             let mut hash: ObjectHash = Default::default();
 
-            self.hashes_file.read_exact_at(&mut hash, FileOffset(offset as u64));
+            self.hashes_file
+                .read_exact_at(&mut hash, FileOffset(offset as u64));
 
             Ok(Some(Cow::Owned(hash)))
         } else {
@@ -230,7 +250,10 @@ impl KeyValueStoreBackend for Persistent {
         Ok(())
     }
 
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError> {
+    fn get_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<(HashId, u64)>, DBError> {
         let mut hasher = DefaultHasher::new();
         hasher.write(context_hash.as_ref());
         let hashed = hasher.finish();
@@ -293,7 +316,8 @@ impl KeyValueStoreBackend for Persistent {
 
         self.strings_file.append(&strings.strings);
         self.big_strings_file.append(&strings.big_strings);
-        self.big_strings_offsets_file.append(&strings.big_strings_offsets);
+        self.big_strings_offsets_file
+            .append(&strings.big_strings_offsets);
 
         let shapes = self.shapes.serialize();
         self.shape_file.append(shapes.shapes);
@@ -317,7 +341,8 @@ impl KeyValueStoreBackend for Persistent {
 
     fn get_value_from_offset(&self, buffer: &mut Vec<u8>, offset: u64) -> Result<(), DBError> {
         let mut header: [u8; 5] = Default::default();
-        self.data_file.read_exact_at(&mut header[..1], FileOffset(offset));
+        self.data_file
+            .read_exact_at(&mut header[..1], FileOffset(offset));
 
         let object_header: ObjectHeader = ObjectHeader::from_bytes([header[0]]);
 

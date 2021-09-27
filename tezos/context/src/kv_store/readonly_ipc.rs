@@ -67,7 +67,10 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         Ok(())
     }
 
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<(HashId, u64)>, DBError> {
+    fn get_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<(HashId, u64)>, DBError> {
         self.client
             .get_context_hash_id(context_hash)
             .map(|v| v.map(|v| (v, 0)))
