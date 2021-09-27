@@ -300,7 +300,7 @@ impl Stream for HeadMonitorStream {
             Ok(state) => state,
             // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
             // investigate and rework, so we do not ignore the error
-            // We end the stream on error, but the error is never propagated
+            // We end the stream on error, but the error is never propagated 
             Err(_) => return Poll::Ready(None)
         };
 
@@ -348,6 +348,15 @@ impl Stream for HeadMonitorStream {
                     Poll::Pending
                 }
             }
+    }
+}
+
+// The head stream is only closed by the client, remove the stream from the map when the stream goes out of scope
+impl Drop for HeadMonitorStream {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.state.write() {
+            state.remove_stream(self.stream_id);
+        };
     }
 }
 
