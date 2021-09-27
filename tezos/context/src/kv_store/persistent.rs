@@ -11,8 +11,11 @@ use super::{HashId, VacantObjectHash};
 pub struct Persistent {
     data_file: File,
     shape_file: File,
+    shape_index_file: File,
     commit_index_file: File,
     strings_file: File,
+    big_strings_file: File,
+    big_strings_offsets_file: File,
 
     hashes: Hashes,
     // hashes_file: File,
@@ -141,8 +144,11 @@ impl Persistent {
 
         let data_file = File::new(&base_path, FileType::Data);
         let shape_file = File::new(&base_path, FileType::ShapeDirectories);
+        let shape_index_file = File::new(&base_path, FileType::ShapeDirectoriesIndex);
         let commit_index_file = File::new(&base_path, FileType::CommitIndex);
         let strings_file = File::new(&base_path, FileType::Strings);
+        let big_strings_file = File::new(&base_path, FileType::BigStrings);
+        let big_strings_offsets_file = File::new(&base_path, FileType::BigStringsOffsets);
 
         let hashes = Hashes::try_new(&base_path);
         // let hashes_file = File::new(&base_path, FileType::Hashes);
@@ -155,9 +161,12 @@ impl Persistent {
         Ok(Self {
             data_file,
             shape_file,
+            shape_index_file,
             commit_index_file,
             strings_file,
             hashes,
+            big_strings_file,
+            big_strings_offsets_file,
             // hashes_file,
             // hashes_file_index: 0,
             shapes: DirectoryShapes::default(),
@@ -283,6 +292,16 @@ impl KeyValueStoreBackend for Persistent {
         if !data.is_empty() {
             self.data_file.sync();
         }
+
+        let strings = self.string_interner.serialize();
+
+        self.strings_file.append(&strings.strings);
+        self.big_strings_file.append(&strings.big_strings);
+        self.big_strings_offsets_file.append(&strings.big_strings_offsets);
+
+        let shapes = self.shapes.serialize();
+        self.shape_file.append(shapes.shapes);
+        self.shape_index_file.append(shapes.index);
 
         self.hashes.commit();
 

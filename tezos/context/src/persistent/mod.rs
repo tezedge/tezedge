@@ -147,9 +147,12 @@ impl<T> From<PoisonError<T>> for DBError {
 #[derive(Debug)]
 pub enum FileType {
     ShapeDirectories,
+    ShapeDirectoriesIndex,
     CommitIndex,
     Data,
     Strings,
+    BigStrings,
+    BigStringsOffsets,
     Hashes,
 }
 
@@ -160,10 +163,13 @@ impl FileType {
     fn get_path(&self) -> &Path {
         match self {
             FileType::ShapeDirectories => Path::new("shape_directories.db"),
+            FileType::ShapeDirectoriesIndex => Path::new("shape_directories_index.db"),
             FileType::CommitIndex => Path::new("commit_index.db"),
             FileType::Data => Path::new("data.db"),
             FileType::Strings => Path::new("strings.db"),
             FileType::Hashes => Path::new("hashes.db"),
+            FileType::BigStrings => Path::new("big_strings.db"),
+            FileType::BigStringsOffsets => Path::new("big_strings_offsets.db"),
         }
     }
 }

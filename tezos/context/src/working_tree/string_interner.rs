@@ -4,7 +4,7 @@
 //! Implementation of string interning used to implement hash-consing for context path fragments.
 //! This avoids un-necessary duplication of strings, saving memory.
 
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
 
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
@@ -60,11 +60,31 @@ impl StringId {
     }
 }
 
+pub struct SerializeStrings {
+    /// Concatenation of all strings STRING_INTERN_THRESHOLD and above
+    ///
+    /// Example:
+    /// ['a', 'b', 'c', 'd', 'e,]
+    pub big_strings: Vec<u8>,
+    /// Contains offsets (u32 as 4 u8) into `big_strings`:
+    ///
+    /// Example:
+    /// [0, 3, 3, 5] // Points to ['a, 'b', 'c'] and ['d', 'e']
+    pub big_strings_offsets: Vec<u8>,
+    /// Contains all strings below STRING_INTERN_THRESHOLD
+    ///
+    /// Format is [length, [string], length, [string], ..]
+    /// Example:
+    /// [3, 'a', 'b', 'c', 1, 'z', 4, 'd', 'c', 'b', 'a']
+    pub strings: Vec<u8>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct BigStrings {
     hashes: Map<u64, u32>,
     strings: String,
     offsets: Vec<(u32, u32)>,
+    to_serialize_index: usize,
 }
 
 impl PartialEq for BigStrings {
@@ -132,6 +152,24 @@ impl BigStrings {
         self.offsets.extend_from_slice(&other.offsets[self_len..]);
         debug_assert_eq!(self.offsets, other.offsets);
     }
+
+    fn serialize_big_strings(&mut self, output: &mut SerializeStrings) {
+        let start = self.to_serialize_index;
+
+        for (start, end) in &self.offsets[start..] {
+            let string = self.strings.get(*start as usize..*end as usize).unwrap();
+
+            let length: u32 = string.len().try_into().unwrap(); // TODO: Handle overflow
+
+            output.big_strings.extend_from_slice(&length.to_le_bytes());
+            output.big_strings.extend_from_slice(string.as_bytes());
+
+            output.big_strings_offsets.extend_from_slice(&start.to_le_bytes());
+            output.big_strings_offsets.extend_from_slice(&end.to_le_bytes());
+        }
+
+        self.to_serialize_index = self.offsets.len();
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -143,6 +181,9 @@ pub struct StringInterner {
     /// Concatenation of all strings < STRING_INTERN_THRESHOLD.
     /// This is never cleared/deallocated
     all_strings: String,
+
+    all_strings_to_serialize: Vec<StringId>,
+
     /// Concatenation of big strings. This is cleared/deallocated
     /// before every checkouts
     big_strings: BigStrings,
@@ -172,6 +213,8 @@ impl StringInterner {
         // Append the missing chunk into Self
         let self_len = self.all_strings.len();
         self.all_strings.push_str(&other.all_strings[self_len..]);
+
+        self.all_strings_to_serialize = other.all_strings_to_serialize.clone();
 
         debug_assert_eq!(self.all_strings, other.all_strings);
 
@@ -207,6 +250,7 @@ impl StringInterner {
         };
 
         self.string_to_offset.insert(hashed, string_id);
+        self.all_strings_to_serialize.push(string_id);
 
         debug_assert_eq!(s, self.get(string_id).unwrap());
 
@@ -241,6 +285,34 @@ impl StringInterner {
             big_strings_map_len: self.big_strings.offsets.len(),
             total_bytes: all_strings_cap + big_strings_cap,
         }
+    }
+
+    pub fn serialize(&mut self) -> SerializeStrings {
+        let mut output = SerializeStrings {
+            big_strings: Vec::with_capacity(1000),
+            big_strings_offsets: Vec::with_capacity(1000),
+            strings: Vec::with_capacity(1000),
+        };
+
+        println!("TO_SER {:?} ALL={:?}", self.all_strings_to_serialize.len(), self.all_strings.len());
+
+        for id in &self.all_strings_to_serialize {
+            let (start, end) = id.get_start_end();
+
+            let string = self.all_strings[start..end].as_bytes();
+
+            let length = string.len();
+            let length: u8 = length.try_into().unwrap(); // never fail, the string is less than 30 bytes
+
+            output.strings.push(length);
+            output.strings.extend_from_slice(self.all_strings[start..end].as_bytes());
+        }
+
+        self.all_strings_to_serialize.clear();
+
+        self.big_strings.serialize_big_strings(&mut output);
+
+        output
     }
 }
 
