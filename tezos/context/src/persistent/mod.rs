@@ -240,6 +240,13 @@ impl File {
         self.offset
     }
 
+    pub fn sync(&mut self) {
+        match self.file.sync_all() {
+            Ok(_) => eprintln!("FSYNC OK"),
+            Err(e) => eprintln!("FSYNC ERROR {:?}", e),
+        }
+    }
+
     pub fn append(&mut self, bytes: impl AsRef<[u8]>) -> FileOffset {
         let bytes = bytes.as_ref();
 

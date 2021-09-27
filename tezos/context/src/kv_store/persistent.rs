@@ -13,9 +13,11 @@ pub struct Persistent {
     shape_file: File,
     commit_index_file: File,
     strings_file: File,
-    hashes_file: File,
 
-    hashes_file_index: usize,
+    hashes: Hashes,
+    // hashes_file: File,
+
+    // hashes_file_index: usize,
 
     shapes: DirectoryShapes,
     string_interner: StringInterner,
@@ -53,22 +55,83 @@ impl Persistable for Persistent {
     }
 }
 
-#[derive(Debug, Default)]
 struct Hashes {
     list: Vec<ObjectHash>,
+    list_first_index: usize,
+    hashes_file: File,
+
+    bytes: Vec<u8>,
+    // hashes_file_index: usize,
 }
 
-impl std::ops::Deref for Hashes {
-    type Target = Vec<ObjectHash>;
+impl Hashes {
+    fn try_new(base_path: &str) -> Self {
+        let hashes_file = File::new(base_path, FileType::Hashes);
 
-    fn deref(&self) -> &Self::Target {
-        &self.list
+        Self {
+            list: Vec::with_capacity(1000),
+            hashes_file,
+            // hashes_file_index: 0,
+            list_first_index: 0,
+            bytes: Vec::with_capacity(1000),
+        }
     }
-}
 
-impl std::ops::DerefMut for Hashes {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.list
+    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
+        let hash_id: usize = hash_id.try_into().unwrap();
+
+        let is_in_file = hash_id < self.list_first_index;
+
+        if is_in_file {
+            let offset = hash_id * std::mem::size_of::<ObjectHash>();
+
+            let mut hash: ObjectHash = Default::default();
+
+            self.hashes_file.read_exact_at(&mut hash, FileOffset(offset as u64));
+
+            Ok(Some(Cow::Owned(hash)))
+        } else {
+            let hash_id = hash_id - self.list_first_index;
+
+            match self.list.get(hash_id) {
+                Some(hash) => Ok(Some(Cow::Borrowed(hash))),
+                None => Ok(None),
+            }
+        }
+    }
+
+    fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError> {
+        let list_length = self.list.len();
+        let index = self.list_first_index + list_length;
+        self.list.push(Default::default());
+
+        Ok(VacantObjectHash {
+            entry: Some(&mut self.list[list_length]),
+            // entry: Some(&mut self.hashes_file),
+            hash_id: HashId::try_from(index).unwrap(),
+            // data: Default::default(),
+        })
+    }
+
+    fn contains(&self, hash_id: HashId) -> bool {
+        let hash_id: usize = hash_id.try_into().unwrap();
+
+        hash_id < self.list_first_index + self.list.len()
+    }
+
+    fn commit(&mut self) {
+        if self.list.is_empty() {
+            return;
+        }
+
+        self.bytes.clear();
+        for h in &self.list {
+            self.bytes.extend_from_slice(h);
+        }
+        self.list_first_index += self.list.len();
+
+        self.hashes_file.append(&self.bytes);
+        self.list.clear();
     }
 }
 
@@ -80,7 +143,9 @@ impl Persistent {
         let shape_file = File::new(&base_path, FileType::ShapeDirectories);
         let commit_index_file = File::new(&base_path, FileType::CommitIndex);
         let strings_file = File::new(&base_path, FileType::Strings);
-        let hashes_file = File::new(&base_path, FileType::Hashes);
+
+        let hashes = Hashes::try_new(&base_path);
+        // let hashes_file = File::new(&base_path, FileType::Hashes);
 
         let mut context_hashes_cycles = VecDeque::with_capacity(PRESERVE_CYCLE_COUNT);
         for _ in 0..PRESERVE_CYCLE_COUNT {
@@ -92,8 +157,9 @@ impl Persistent {
             shape_file,
             commit_index_file,
             strings_file,
-            hashes_file,
-            hashes_file_index: 0,
+            hashes,
+            // hashes_file,
+            // hashes_file_index: 0,
             shapes: DirectoryShapes::default(),
             string_interner: StringInterner::default(),
             // hashes: Default::default(),
@@ -128,10 +194,7 @@ impl KeyValueStoreBackend for Persistent {
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
-        let hash_id: usize = hash_id.try_into().unwrap();
-
-        Ok(hash_id < self.hashes_file_index)
-        // Ok((0..self.hashes.len()).contains(&hash_id))
+        Ok(self.hashes.contains(hash_id))
     }
 
     fn put_context_hash(&mut self, hash_id: HashId, offset: u64) -> Result<(), DBError> {
@@ -167,20 +230,7 @@ impl KeyValueStoreBackend for Persistent {
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
-        let mut hash_id: usize = hash_id.try_into().unwrap();
-
-        hash_id *= std::mem::size_of::<ObjectHash>();
-
-        let mut hash: ObjectHash = Default::default();
-
-        self.hashes_file.read_exact_at(&mut hash, FileOffset(hash_id as u64));
-
-        Ok(Some(Cow::Owned(hash)))
-
-        // match self.hashes.get(hash_id) {
-        //     Some(hash) => Ok(Some(Cow::Borrowed(hash))),
-        //     None => return Ok(None),
-        // }
+        self.hashes.get_hash(hash_id)
     }
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
@@ -188,24 +238,7 @@ impl KeyValueStoreBackend for Persistent {
     }
 
     fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError> {
-
-        let index = self.hashes_file_index;
-        self.hashes_file_index += 1;
-
-        Ok(VacantObjectHash {
-            //entry: Some(&mut self.hashes[index]),
-            entry: Some(&mut self.hashes_file),
-            hash_id: HashId::try_from(index).unwrap(),
-            data: Default::default(),
-        })
-
-        // let index = self.hashes.len();
-        // self.hashes.push(Default::default());
-
-        // Ok(VacantObjectHash {
-        //     entry: Some(&mut self.hashes[index]),
-        //     hash_id: HashId::try_from(index).unwrap(),
-        // })
+        self.hashes.get_vacant_object_hash()
     }
 
     fn clear_objects(&mut self) -> Result<(), DBError> {
@@ -246,6 +279,12 @@ impl KeyValueStoreBackend for Persistent {
 
     fn append_serialized_data(&mut self, data: &[u8]) -> Result<(), DBError> {
         self.data_file.append(data);
+
+        if !data.is_empty() {
+            self.data_file.sync();
+        }
+
+        self.hashes.commit();
 
         Ok(())
     }
