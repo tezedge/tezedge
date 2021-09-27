@@ -78,12 +78,12 @@ impl Hashes {
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
-        let hash_id: usize = hash_id.try_into().unwrap();
+        let hash_id_index: usize = hash_id.try_into().unwrap();
 
-        let is_in_file = hash_id < self.list_first_index;
+        let is_in_file = hash_id_index < self.list_first_index;
 
         if is_in_file {
-            let offset = hash_id * std::mem::size_of::<ObjectHash>();
+            let offset = hash_id_index * std::mem::size_of::<ObjectHash>();
 
             let mut hash: ObjectHash = Default::default();
 
@@ -91,9 +91,9 @@ impl Hashes {
 
             Ok(Some(Cow::Owned(hash)))
         } else {
-            let hash_id = hash_id - self.list_first_index;
+            let index = hash_id_index - self.list_first_index;
 
-            match self.list.get(hash_id) {
+            match self.list.get(index) {
                 Some(hash) => Ok(Some(Cow::Borrowed(hash))),
                 None => Ok(None),
             }

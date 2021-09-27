@@ -241,10 +241,7 @@ impl File {
     }
 
     pub fn sync(&mut self) {
-        match self.file.sync_all() {
-            Ok(_) => eprintln!("FSYNC OK"),
-            Err(e) => eprintln!("FSYNC ERROR {:?}", e),
-        }
+        self.file.sync_all().unwrap();
     }
 
     pub fn append(&mut self, bytes: impl AsRef<[u8]>) -> FileOffset {
