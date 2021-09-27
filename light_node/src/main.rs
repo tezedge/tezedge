@@ -238,15 +238,8 @@ fn block_on_actors(
         SystemBuilder::new()
             .name("light-node")
             .log(log.clone())
-            .create({
-                if env.riker_threads > 0 {
-                    let thread_count = env.riker_threads.min(num_cpus::get());
-                    ThreadPoolConfig::new(thread_count, 0)
-                } else {
-                    // default riker behavior
-                    ThreadPoolConfig::new(num_cpus::get() * 2, 0)
-                }
-            })
+            .exec(tokio_runtime.handle().clone().into())
+            .create()
             .expect("Failed to create actor system"),
     );
     info!(log, "Riker configuration"; "cfg" => actor_system.config());
@@ -499,6 +492,7 @@ fn block_on_actors(
         );
 
         // give actors some time to shut down
+        info!(log, "Waiting 2s for shutdown of actors (2/6)");
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         info!(log, "Shutting down actors (4/8)");

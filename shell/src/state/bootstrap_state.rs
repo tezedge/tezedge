@@ -1607,8 +1607,8 @@ mod tests {
     fn test_bootstrap_state_add_new_branch() {
         // actors stuff
         let log = create_logger(slog::Level::Info);
-        let sys = create_test_actor_system(log.clone());
         let runtime = create_test_tokio_runtime();
+        let sys = create_test_actor_system(log.clone(), runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&sys).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")

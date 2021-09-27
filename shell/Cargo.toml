@@ -18,7 +18,7 @@ nix = "0.19"
 page_size = "0.4.1"
 rand = "0.7.3"
 regex = "1.5"
-riker = { git = "https://github.com/tezedge/riker.git", tag = "v0.4.2-cleanup-unsafe-3" }
+riker = { git = "https://github.com/tezedge/riker.git", rev = "81165c9c9f98fac9bb37f37a30e1b7aa0c27e93a" }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 serde = "1.0"
 serde_json = "1.0"

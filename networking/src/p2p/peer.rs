@@ -725,7 +725,7 @@ mod tests {
     use futures::lock::Mutex;
     use riker::{
         actor::ActorRefFactory,
-        actors::{ActorSystem, SystemBuilder, Tell, ThreadPoolConfig},
+        actors::{ActorSystem, SystemBuilder, Tell},
     };
     use slog::{Drain, Level, Logger, KV};
     use tezos_identity::Identity;
@@ -811,11 +811,12 @@ mod tests {
         Logger::root(drain, slog::o!())
     }
 
-    fn create_test_actor_system(log: Logger) -> ActorSystem {
+    fn create_test_actor_system(log: Logger, handle: tokio::runtime::Handle) -> ActorSystem {
         SystemBuilder::new()
             .name("create_actor_system")
             .log(log)
-            .create(ThreadPoolConfig::new(1, 0))
+            .exec(handle.into())
+            .create()
             .expect("Failed to create test actor system")
     }
 
@@ -870,8 +871,8 @@ mod tests {
             quota_exceeded.clone(),
             Level::Debug,
         );
-        let actor_system = create_test_actor_system(log.clone());
         let runtime = create_test_tokio_runtime();
+        let actor_system = create_test_actor_system(log.clone(), runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let peer = create_test_peer(

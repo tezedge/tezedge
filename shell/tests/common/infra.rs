@@ -177,7 +177,8 @@ impl NodeInfrastructure {
             SystemBuilder::new()
                 .name(name)
                 .log(log.clone())
-                .create(ThreadPoolConfig::new(4, 0))
+                .exec(tokio_runtime.handle().clone().into())
+                .create()
                 .expect("Failed to create actor system"),
         );
         let shell_channel =

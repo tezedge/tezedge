@@ -226,7 +226,7 @@ pub mod tests {
         // prerequizities
         let tokio_runtime = create_test_tokio_runtime();
         let log = create_logger(Level::Debug);
-        let actor_system = create_test_actor_system(log.clone());
+        let actor_system = create_test_actor_system(log.clone(), tokio_runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let mut peer_state1 = test_peer(

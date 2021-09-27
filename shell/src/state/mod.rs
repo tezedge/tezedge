@@ -353,11 +353,15 @@ pub mod tests {
             )
         }
 
-        pub(crate) fn create_test_actor_system(log: Logger) -> ActorSystem {
+        pub(crate) fn create_test_actor_system(
+            log: Logger,
+            handle: tokio::runtime::Handle,
+        ) -> ActorSystem {
             SystemBuilder::new()
                 .name("create_actor_system")
                 .log(log)
-                .create(ThreadPoolConfig::new(1, 0))
+                .exec(handle.into())
+                .create()
                 .expect("Failed to create test actor system")
         }
 
