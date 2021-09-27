@@ -289,10 +289,6 @@ impl KeyValueStoreBackend for Persistent {
     fn append_serialized_data(&mut self, data: &[u8]) -> Result<(), DBError> {
         self.data_file.append(data);
 
-        if !data.is_empty() {
-            self.data_file.sync();
-        }
-
         let strings = self.string_interner.serialize();
 
         self.strings_file.append(&strings.strings);
@@ -304,6 +300,13 @@ impl KeyValueStoreBackend for Persistent {
         self.shape_index_file.append(shapes.index);
 
         self.hashes.commit();
+
+        self.data_file.sync();
+        self.strings_file.sync();
+        self.big_strings_file.sync();
+        self.big_strings_offsets_file.sync();
+        self.hashes.hashes_file.sync();
+        self.commit_index_file.sync();
 
         Ok(())
     }
