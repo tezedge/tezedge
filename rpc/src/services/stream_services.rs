@@ -4,24 +4,22 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
-use anyhow::{bail, format_err};
+use anyhow::format_err;
 use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{warn, Logger};
-use tokio::time::{interval_at, Interval};
-use tokio::time::{Duration, Instant};
+use uuid::Uuid;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use shell::state::streaming_state::StreamCounter;
 
 use crate::server::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
-
-pub const MONITOR_TIMER_MILIS: u64 = 100;
 
 /// Object containing information to recreate the block header shell information
 #[derive(Serialize, Debug, Clone)]
@@ -89,8 +87,9 @@ pub struct HeadMonitorStream {
 
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
-    delay: Option<Interval>,
     protocol: Option<ProtocolHash>,
+    contains_waker: bool,
+    stream_id: Uuid,
 }
 
 pub struct OperationMonitorStream {
@@ -100,6 +99,7 @@ pub struct OperationMonitorStream {
     last_checked_head: BlockHash,
     log: Logger,
     contains_waker: bool,
+    stream_id: Uuid,
     streamed_operations: Option<HashSet<String>>,
     query: MempoolOperationsQuery,
 }
@@ -113,6 +113,7 @@ impl OperationMonitorStream {
         last_checked_head: BlockHash,
         mempool_operaions_query: MempoolOperationsQuery,
     ) -> Self {
+        let stream_id = Uuid::new_v4();
         Self {
             chain_id,
             current_mempool_state_storage,
@@ -122,6 +123,7 @@ impl OperationMonitorStream {
             contains_waker: false,
             query: mempool_operaions_query,
             streamed_operations: None,
+            stream_id,
         }
     }
 
@@ -238,12 +240,14 @@ impl HeadMonitorStream {
         protocol: Option<ProtocolHash>,
         persistent_storage: &PersistentStorage,
     ) -> Self {
+        let stream_id = Uuid::new_v4();
         Self {
             state,
             protocol,
             last_checked_head: None,
-            delay: None,
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
+            contains_waker: false,
+            stream_id,
         }
     }
 
@@ -292,59 +296,58 @@ impl Stream for HeadMonitorStream {
     ) -> Poll<Option<Result<String, anyhow::Error>>> {
         // Note: the stream only ends on the client dropping the connection
 
-        // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
-        let delay = self.delay.get_or_insert_with(|| {
-            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
-        });
+        let mut rpc_state = match self.state.write() {
+            Ok(state) => state,
+            // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
+            // investigate and rework, so we do not ignore the error
+            // We end the stream on error, but the error is never propagated
+            Err(_) => return Poll::Ready(None)
+        };
 
-        // poll the delay future
-        match delay.poll_tick(cx) {
-            Poll::Pending => Poll::Pending,
-            _ => {
-                // get rid of the used delay
-                self.delay = None;
+        let current_head = rpc_state.current_head().clone();
 
-                let state = self.state.read().unwrap();
-                let current_head = state.current_head().clone();
+        if !self.contains_waker {
+            rpc_state.add_stream(self.stream_id, cx.waker().clone());
+        }
 
-                // drop the immutable borrow so we can borrow self again as mutable
-                // TODO: refactor this drop (remove if possible)
-                drop(state);
+        // drop the immutable borrow so we can borrow self again as mutable
+        // TODO: refactor this drop (remove if possible)
+        drop(rpc_state);
 
-                // if last_checked_head is None, this is the first poll, yield the current_head
-                let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
-                    head_hash
+        // if last_checked_head is None, this is the first poll, yield the current_head
+        let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
+            head_hash
+        } else {
+            // first poll
+            self.last_checked_head = Some(current_head.hash.clone());
+            // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+            // would end the stream, in this case, we need to Pend.
+            if let Some(head_string_result) = self.yield_head(&current_head).transpose()
+            {
+                return Poll::Ready(Some(head_string_result));
+            } else {
+                // cx.waker().wake_by_ref();
+                return Poll::Pending;
+            };
+        };
+        
+            if last_checked_head == &current_head.hash {
+                // current head not changed, yield nothing
+                // cx.waker().wake_by_ref();
+                Poll::Pending
+            } else {
+                // Head change, yield new head
+                self.last_checked_head = Some(current_head.hash.clone());
+                // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+                // would end the stream, in this case, we need to Pend.
+                if let Some(head_string_result) = self.yield_head(&current_head).transpose()
+                {
+                    Poll::Ready(Some(head_string_result))
                 } else {
-                    // first poll
-                    self.last_checked_head = Some(current_head.hash.clone());
-                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                    // would end the stream, in this case, we need to Pend.
-                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
-                        return Poll::Ready(Some(head_string_result));
-                    } else {
-                        cx.waker().wake_by_ref();
-                        return Poll::Pending;
-                    };
-                };
-
-                if last_checked_head == &current_head.hash {
-                    // current head not changed, yield nothing
-                    cx.waker().wake_by_ref();
+                    // cx.waker().wake_by_ref();
                     Poll::Pending
-                } else {
-                    // Head change, yield new head
-                    self.last_checked_head = Some(current_head.hash.clone());
-                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                    // would end the stream, in this case, we need to Pend.
-                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
-                        Poll::Ready(Some(head_string_result))
-                    } else {
-                        cx.waker().wake_by_ref();
-                        Poll::Pending
-                    }
                 }
             }
-        }
     }
 }
 
@@ -365,7 +368,7 @@ impl Stream for OperationMonitorStream {
                 // We end the stream on error, but the error is never propagated
                 Err(_) => return Poll::Ready(None)
             };
-            mempool_state.add_waker(cx.waker().clone())
+            mempool_state.add_stream(self.stream_id, cx.waker().clone())
         }
 
         // let state = self.state.read()?;
@@ -393,6 +396,14 @@ impl Stream for OperationMonitorStream {
             }
         } else {
             // Head change, end stream
+            let mut mempool_state = match self.current_mempool_state_storage.write() {
+                Ok(state) => state,
+                // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
+                // investigate and rework, so we do not ignore the error
+                // We end the stream on error, but the error is never propagated
+                Err(_) => return Poll::Ready(None)
+            };
+            mempool_state.remove_stream(self.stream_id);
             Poll::Ready(None)
         }
     }

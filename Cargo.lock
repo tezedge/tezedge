@@ -1937,7 +1937,7 @@ dependencies = [
  "tezos_messages",
  "tokio",
  "tokio-stream",
- "uuid",
+ "uuid 0.8.2",
  "warp",
 ]
 
@@ -2663,7 +2663,7 @@ dependencies = [
  "slog",
  "slog-scope",
  "slog-stdlog",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -2738,6 +2738,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
+ "uuid 0.8.2-cleanup-unsafe-1",
 ]
 
 [[package]]
@@ -3048,6 +3049,7 @@ dependencies = [
  "tezos_wrapper",
  "thiserror",
  "tokio",
+ "uuid 0.8.2-cleanup-unsafe-1",
  "zip",
 ]
 
@@ -3895,6 +3897,14 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "uuid"
+version = "0.8.2-cleanup-unsafe-1"
+source = "git+https://github.com/tezedge/uuid?tag=v0.8.2-cleanup-unsafe-1#90da5950d270f2f80310cc733030048682e3db06"
+dependencies = [
+ "getrandom 0.2.3",
+]
 
 [[package]]
 name = "uuid"

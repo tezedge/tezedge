@@ -85,7 +85,7 @@ pub fn get_pending_operations(
     Ok((mempool_operations, mempool_prevalidator_protocol))
 }
 
-fn convert_applied(
+pub(crate) fn convert_applied(
     applied: &[Applied],
     operations: &HashMap<OperationHash, Operation>,
 ) -> Result<Vec<HashMap<String, Value>>, RpcServiceError> {
@@ -118,7 +118,7 @@ fn convert_applied(
     Ok(result)
 }
 
-fn convert_errored(
+pub(crate) fn convert_errored(
     errored: &[Errored],
     operations: &HashMap<OperationHash, Operation>,
     protocol: &ProtocolHash,

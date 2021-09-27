@@ -45,6 +45,7 @@ use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::subscribe_to_shell_shutdown;
+use crate::state::streaming_state::StreamCounter;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 

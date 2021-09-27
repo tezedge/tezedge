@@ -5,10 +5,13 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use futures::task::Waker;
+use uuid::Uuid;
 
 use crypto::hash::{BlockHash, OperationHash};
 use tezos_api::ffi::{Applied, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation};
+
+use crate::state::streaming_state::StreamCounter;
 
 /// Mempool state is defined with mempool and validation_result attributes, which are in sync:
 /// - `validation_result`
@@ -37,7 +40,17 @@ pub struct MempoolState {
     pending: HashSet<OperationHash>,
 
     // Wakers for open streams (monitors) that access the mempool state
-    streams: Vec<Waker>,
+    streams: HashMap<Uuid, Waker>,
+}
+
+impl StreamCounter for MempoolState {
+    fn get_streams(&self) -> HashMap<Uuid, Waker> {
+        self.streams.clone()
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut HashMap<Uuid, Waker> {
+        &mut self.streams
+    }
 }
 
 impl MempoolState {
@@ -231,13 +244,17 @@ impl MempoolState {
         &self.operations
     }
 
-    pub fn add_waker(&mut self, waker: Waker) {
-        self.streams.push(waker)
-    }
+    // pub fn add_stream(&mut self, id: Uuid, waker: Waker) {
+    //     self.streams.insert(id, waker);
+    // }
 
-    pub fn wake_up_all_streams(&self) {
-        self.streams.iter().for_each(|waker| waker.wake_by_ref())
-    }
+    // pub fn remove_stream(&mut self, id: Uuid) {
+    //     self.streams.remove(&id);
+    // }
+
+    // pub fn wake_up_all_streams(&self) {
+    //     self.streams.iter().for_each(|(_, waker)| waker.wake_by_ref())
+    // }
 }
 
 pub(crate) fn collect_mempool(applied: &Vec<Applied>, pending: &HashSet<OperationHash>) -> Mempool {

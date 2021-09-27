@@ -15,6 +15,8 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use slog::{error, Logger};
 use tokio::runtime::Handle;
+use uuid::Uuid;
+use futures::task::Waker;
 
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
@@ -25,6 +27,7 @@ use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
+use shell::state::streaming_state::StreamCounter;
 
 use crate::{error_with_message, not_found, options};
 
@@ -47,6 +50,19 @@ pub type RpcServiceEnvironmentRef = Arc<RpcServiceEnvironment>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Arc<BlockHeaderWithHash>,
+
+    // Wakers for open streams (monitors) that access the mempool state
+    streams: HashMap<Uuid, Waker>
+}
+
+impl StreamCounter for RpcCollectedState {
+    fn get_streams(&self) -> HashMap<Uuid, Waker> {
+        self.streams.clone()
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut HashMap<Uuid, Waker> {
+        &mut self.streams
+    }
 }
 
 /// Server environment parameters

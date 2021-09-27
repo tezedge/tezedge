@@ -24,6 +24,7 @@ url = "2.2"
 rusqlite = "0.25.1"
 cached = "0.23"
 bincode = "1.3"
+uuid = { git = "https://github.com/tezedge/uuid", tag = "v0.8.2-cleanup-unsafe-1", default-features = false, features = ["v4"] }
 # local dependencies
 crypto = { path = "../crypto" }
 # TODO: once full integration is done, remove shell dependency from here
