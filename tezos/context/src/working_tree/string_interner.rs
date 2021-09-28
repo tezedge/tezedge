@@ -186,7 +186,7 @@ pub struct StringInterner {
     /// This is never cleared/deallocated
     all_strings: String,
 
-    all_strings_to_serialize: Vec<StringId>,
+    pub all_strings_to_serialize: Vec<StringId>,
 
     /// Concatenation of big strings. This is cleared/deallocated
     /// before every checkouts
