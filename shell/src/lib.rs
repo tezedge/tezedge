@@ -88,8 +88,6 @@ pub mod subscription {
 
     use networking::p2p::network_channel::NetworkChannelTopic;
 
-    use crate::shell_channel::ShellChannelTopic;
-
     #[inline]
     pub fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
     where
@@ -146,7 +144,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellEvents.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellEvents.into(),
             },
             None,
         );
@@ -163,7 +161,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellNewCurrentHead.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellNewCurrentHead.into(),
             },
             None,
         );
@@ -180,7 +178,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellCommands.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellCommands.into(),
             },
             None,
         );
@@ -195,7 +193,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellShutdown.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );

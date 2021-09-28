@@ -8,8 +8,7 @@ use std::sync::Arc;
 use riker::actors::*;
 
 use crypto::hash::BlockHash;
-use storage::BlockHeaderWithHash;
-use tezos_messages::Head;
+use shell_integration::notifications::NewCurrentHeadNotificationRef;
 
 /// Notify actors that system is about to shut down
 #[derive(Clone, Debug)]
@@ -33,11 +32,7 @@ pub struct AllBlockOperationsReceived {
 pub enum ShellChannelMsg {
     /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(
-        Head,
-        Arc<BlockHeaderWithHash>,
-        bool, /* is_bootstrapped */
-    ),
+    NewCurrentHead(NewCurrentHeadNotificationRef),
     BlockReceived(BlockReceived),
     BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),

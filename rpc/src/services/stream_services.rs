@@ -18,7 +18,7 @@ use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
-use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
 
 pub const MONITOR_TIMER_MILIS: u64 = 100;
