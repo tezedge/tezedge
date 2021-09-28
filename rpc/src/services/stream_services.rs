@@ -76,7 +76,7 @@ pub struct MonitoredOperation {
     #[serde(flatten)]
     protocol_data: HashMap<String, Value>,
 
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
     #[serde(skip_serializing)]
     hash: String,
@@ -187,6 +187,7 @@ pub struct OperationMonitorStream {
     stream_id: Uuid,
     streamed_operations: HashSet<String>,
     query: MempoolOperationsQuery,
+    poll_counter: usize,
 }
 
 impl OperationMonitorStream {
@@ -209,6 +210,7 @@ impl OperationMonitorStream {
             query: mempool_operaions_query,
             streamed_operations: HashSet::new(),
             stream_id,
+            poll_counter: 0,
         }
     }
 
@@ -222,7 +224,7 @@ impl OperationMonitorStream {
         } = self;
 
         // 1. get the operations currently in mempool
-        match current_mempool_state_storage.write() {
+        match current_mempool_state_storage.read() {
             Ok(current_mempool_state) => {
                 let (validate_operation_result, operations, protocol_hash) =
                     match current_mempool_state.prevalidator() {
@@ -231,8 +233,11 @@ impl OperationMonitorStream {
                             current_mempool_state.operations(),
                             prevalidator.protocol.to_base58_check(),
                         ),
-
-                        None => return Poll::Pending,
+                        None => {
+                            // No prevalidator present means the node is not bootstrapped and cannot process mempool operations
+                            // end the stream in this case 
+                            return Poll::Ready(None)
+                        },
                     };
                 let mut requested_ops =
                     Vec::with_capacity(validate_operation_result.operations_count());
@@ -275,14 +280,17 @@ impl OperationMonitorStream {
                     requested_ops.extend(monitored_branch_delayed);
                 }
 
-                if requested_ops.is_empty() {
-                    Poll::Pending
-                } else {
-                    let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
-                    to_yield_string = to_yield_string.replace("\\", "");
-                    to_yield_string.push('\n');
-                    Poll::Ready(Some(Ok(to_yield_string)))
+                // handle special case, when the first poll has no operations, return an empty vector
+                if requested_ops.is_empty() && self.poll_counter == 1 {
+                    return Poll::Ready(Some(Ok("[]\n".to_string())))
+                } else if requested_ops.is_empty() {
+                    return Poll::Pending
                 }
+
+                let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
+                to_yield_string = to_yield_string.replace("\\", "");
+                to_yield_string.push('\n');
+                Poll::Ready(Some(Ok(to_yield_string)))
             }
             Err(_) => Poll::Ready(None),
         }
@@ -369,6 +377,11 @@ impl Stream for HeadMonitorStream {
         // TODO: refactor this drop (remove if possible)
         drop(rpc_state);
 
+        // TODO: need a more elegant solution here
+        if !self.contains_waker {
+            self.contains_waker = true;
+        }
+
         // if last_checked_head is None, this is the first poll, yield the current_head
         let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
             head_hash
@@ -421,8 +434,11 @@ impl Stream for OperationMonitorStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<String, anyhow::Error>>> {
+        self.poll_counter += 1;
+ 
         if !self.contains_waker {
-            // let mut state = self.current_mempool_state_storage.write()?;
+            // TODO: need a more elegant solution here
+            self.contains_waker = true;
             let mut mempool_state = match self.current_mempool_state_storage.write() {
                 Ok(state) => state,
                 // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
@@ -430,10 +446,9 @@ impl Stream for OperationMonitorStream {
                 // We end the stream on error, but the error is never propagated
                 Err(_) => return Poll::Ready(None),
             };
-            mempool_state.add_stream(self.stream_id, cx.waker().clone())
+            mempool_state.add_stream(self.stream_id, cx.waker().clone());
         }
 
-        // let state = self.state.read()?;
         let state = match self.state.read() {
             Ok(state) => state,
             // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
@@ -468,6 +483,14 @@ impl Stream for OperationMonitorStream {
             mempool_state.remove_stream(self.stream_id);
             Poll::Ready(None)
         }
+    }
+}
+
+impl Drop for OperationMonitorStream {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.current_mempool_state_storage.write() {
+            state.remove_stream(self.stream_id);
+        };
     }
 }
 
