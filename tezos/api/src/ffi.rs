@@ -421,6 +421,10 @@ impl ValidateOperationResult {
 
         added || changed
     }
+
+    pub fn operations_count(&self) -> usize {
+        self.applied.len() + self.branch_delayed.len() + self.branch_refused.len() + self.refused.len()
+    }
 }
 
 /// Init protocol context result

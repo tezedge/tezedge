@@ -4,22 +4,23 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
-use anyhow::format_err;
+use anyhow::{bail, format_err};
 use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::{warn, Logger};
+use slog::Logger;
+use tezos_api::ffi::{Applied, Errored};
+use tezos_messages::p2p::encoding::operation::Operation;
 use uuid::Uuid;
 
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 use shell::state::streaming_state::StreamCounter;
 
 use crate::server::RpcCollectedStateRef;
-use crate::services::mempool_services::get_pending_operations;
 
 /// Object containing information to recreate the block header shell information
 #[derive(Serialize, Debug, Clone)]
@@ -68,18 +69,83 @@ pub struct MempoolOperationsQuery {
     pub branch_refused: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MonitoredOperation {
-    signature: String,
     branch: String,
-    contents: Value,
+
+    #[serde(flatten)]
+    protocol_data: HashMap<String, Value>,
 
     #[serde(skip_deserializing)]
     protocol: Option<String>,
     #[serde(skip_serializing)]
     hash: String,
     #[serde(skip_serializing)]
-    error: Option<Value>,
+    error: Option<String>,
+}
+
+impl MonitoredOperation {
+    pub fn collect_applied(applied: &[Applied], operations: &HashMap<OperationHash, Operation>, protocol_hash: &str, streamed_operations: &mut HashSet<String>) -> Result<Vec<Self>, anyhow::Error> {
+        let mut result = Vec::with_capacity(applied.len());
+        for applied_op in applied {
+            let op_hash = applied_op.hash.to_base58_check();
+
+            // if the operation is allready included in the stream, ignore it
+            if streamed_operations.contains(&op_hash) {
+                continue;
+            }
+
+            streamed_operations.insert(op_hash.clone());
+
+            let operation = match operations.get(&applied_op.hash) {
+                Some(op) => op,
+                None => {
+                    // TODO: log an error and end the stream
+                    bail!("No operation data found for operation hash: {}", op_hash)
+                }
+            };
+            let monitored_op = MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: Some(protocol_hash.to_string()),
+                hash: op_hash,
+                protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
+                error: None,
+            };
+            result.push(monitored_op)
+        }
+        Ok(result)
+    }
+
+    pub fn collect_errored(errored: &[Errored], operations: &HashMap<OperationHash, Operation>, protocol_hash: &str, streamed_operations: &mut HashSet<String>) -> Result<Vec<Self>, anyhow::Error> {
+        let mut result = Vec::with_capacity(errored.len());
+        for errored_op in errored {
+            let op_hash = errored_op.hash.to_base58_check();
+
+            // if the operation is allready included in the stream, ignore it
+            if streamed_operations.contains(&op_hash) {
+                continue;
+            }
+
+            streamed_operations.insert(op_hash.clone());
+
+            let operation = match operations.get(&errored_op.hash) {
+                Some(op) => op,
+                None => {
+                    // TODO: log an error and end the stream
+                    bail!("No operation data found for operation hash: {}", op_hash)
+                }
+            };
+            let monitored_op = MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: Some(protocol_hash.to_string()),
+                hash: op_hash,
+                protocol_data: serde_json::from_str(&errored_op.protocol_data_json_with_error_json.protocol_data_json)?,
+                error: Some(errored_op.protocol_data_json_with_error_json.error_json.clone()),
+            };
+            result.push(monitored_op)
+        }
+        Ok(result)
+    }
 }
 
 pub struct HeadMonitorStream {
@@ -93,20 +159,20 @@ pub struct HeadMonitorStream {
 }
 
 pub struct OperationMonitorStream {
-    chain_id: ChainId,
+    _chain_id: ChainId,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
     contains_waker: bool,
     stream_id: Uuid,
-    streamed_operations: Option<HashSet<String>>,
+    streamed_operations: HashSet<String>,
     query: MempoolOperationsQuery,
 }
 
 impl OperationMonitorStream {
     pub fn new(
-        chain_id: ChainId,
+        _chain_id: ChainId,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         state: RpcCollectedStateRef,
         log: Logger,
@@ -115,21 +181,20 @@ impl OperationMonitorStream {
     ) -> Self {
         let stream_id = Uuid::new_v4();
         Self {
-            chain_id,
+            _chain_id,
             current_mempool_state_storage,
             state,
             last_checked_head,
             log,
             contains_waker: false,
             query: mempool_operaions_query,
-            streamed_operations: None,
+            streamed_operations: HashSet::new(),
             stream_id,
         }
     }
 
     fn yield_operations(&mut self) -> Poll<Option<Result<String, anyhow::Error>>> {
         let OperationMonitorStream {
-            chain_id,
             current_mempool_state_storage,
             log,
             query,
@@ -137,101 +202,48 @@ impl OperationMonitorStream {
             ..
         } = self;
 
-        let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) =
-            get_pending_operations(chain_id, current_mempool_state_storage.clone())
-        {
-            (ops, protocol_hash)
-        } else {
-            return Poll::Pending;
-        };
-        let mut requested_ops: HashMap<String, Value> = HashMap::new();
+        // 1. get the operations currently in mempool
+        match current_mempool_state_storage.write() {
+            Ok(current_mempool_state) => {
+                let (validate_operation_result, operations, protocol_hash) = match current_mempool_state.prevalidator() {
+                    Some(prevalidator) => {
+                        (current_mempool_state.result(), current_mempool_state.operations(), prevalidator.protocol.to_base58_check())
+                    },
 
-        // fill in the resulting vector according to the querry
-        if query.applied {
-            let applied: HashMap<_, _> = mempool_operations
-                .applied
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), serde_json::to_value(v).unwrap()))
-                .collect();
-            requested_ops.extend(applied);
-        }
-        if query.branch_delayed {
-            let branch_delayed: HashMap<_, _> = mempool_operations
-                .branch_delayed
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(branch_delayed);
-        }
-        if query.branch_refused {
-            let branch_refused: HashMap<_, _> = mempool_operations
-                .branch_refused
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(branch_refused);
-        }
-        if query.refused {
-            let refused: HashMap<_, _> = mempool_operations
-                .refused
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(refused);
-        }
+                    None => return Poll::Pending
+                };
+                let mut requested_ops = Vec::with_capacity(validate_operation_result.operations_count());
 
-        if let Some(streamed_operations) = streamed_operations {
-            let to_yield: Vec<MonitoredOperation> = requested_ops
-                .clone()
-                .into_iter()
-                .filter(|(k, _)| !streamed_operations.contains(k))
-                .map(|(_, v)| {
-                    let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
-                    monitor_op
-                })
-                .collect();
+                // 2. collect the requested operations
+                if query.applied {
+                    let monitored_applied = MonitoredOperation::collect_applied(&validate_operation_result.applied, operations, &protocol_hash, streamed_operations)?;
+                    requested_ops.extend(monitored_applied);
+                }
+                if query.refused {
+                    let monitored_refused = MonitoredOperation::collect_errored(&validate_operation_result.refused, operations, &protocol_hash, streamed_operations)?;
+                    requested_ops.extend(monitored_refused);
+                }
+                if query.branch_delayed {
+                    let monitored_branch_delayed = MonitoredOperation::collect_errored(&validate_operation_result.branch_delayed, operations, &protocol_hash, streamed_operations)?;
+                    requested_ops.extend(monitored_branch_delayed);
+                }
+                if query.branch_refused {
+                    let monitored_branch_delayed = MonitoredOperation::collect_errored(&validate_operation_result.branch_delayed, operations, &protocol_hash, streamed_operations)?;
+                    requested_ops.extend(monitored_branch_delayed);
+                }
 
-            for op_hash in requested_ops.keys() {
-                streamed_operations.insert(op_hash.to_string());
-            }
-
-            if to_yield.is_empty() {
-                Poll::Pending
-            } else {
-                let mut to_yield_string = serde_json::to_string(&to_yield)?;
-                to_yield_string = to_yield_string.replace("\\", "");
-                to_yield_string.push('\n');
-                Poll::Ready(Some(Ok(to_yield_string)))
-            }
-        } else {
-            // first poll, yield the operations in mempool, or an empty vector if mempool is empty
-            let mut streamed_operations = HashSet::<String>::new();
-            let to_yield: Vec<MonitoredOperation> = requested_ops
-                .into_iter()
-                .map(|(k, v)| {
-                    streamed_operations.insert(k);
-                    let mut monitor_op: MonitoredOperation = match serde_json::from_value(v) {
-                        Ok(json_value) => json_value,
-                        Err(e) => {
-                            warn!(log, "Wont yield errored op: {}", e);
-                            return Err(e);
-                        }
-                    };
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
-                    Ok(monitor_op)
-                })
-                .filter_map(Result::ok)
-                .collect();
-
-            self.streamed_operations = Some(streamed_operations);
-            let mut to_yield_string = serde_json::to_string(&to_yield)?;
-            to_yield_string = to_yield_string.replace("\\", "");
-            to_yield_string.push('\n');
-            Poll::Ready(Some(Ok(to_yield_string)))
+                if requested_ops.is_empty() {
+                    Poll::Pending
+                } else {
+                    let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
+                    to_yield_string = to_yield_string.replace("\\", "");
+                    to_yield_string.push('\n');
+                    Poll::Ready(Some(Ok(to_yield_string)))
+                }
+            },
+            Err(_) => Poll::Ready(None) 
         }
     }
-
 }
 
 impl HeadMonitorStream {
