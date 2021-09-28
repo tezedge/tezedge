@@ -16,9 +16,9 @@ use uuid::Uuid;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::state::streaming_state::StreamCounter;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
-use shell::state::streaming_state::StreamCounter;
 
 use crate::server::RpcCollectedStateRef;
 
@@ -85,7 +85,12 @@ pub struct MonitoredOperation {
 }
 
 impl MonitoredOperation {
-    pub fn collect_applied(applied: &[Applied], operations: &HashMap<OperationHash, Operation>, protocol_hash: &str, streamed_operations: &mut HashSet<String>) -> Result<Vec<Self>, anyhow::Error> {
+    pub fn collect_applied(
+        applied: &[Applied],
+        operations: &HashMap<OperationHash, Operation>,
+        protocol_hash: &str,
+        streamed_operations: &mut HashSet<String>,
+    ) -> Result<Vec<Self>, anyhow::Error> {
         let mut result = Vec::with_capacity(applied.len());
         for applied_op in applied {
             let op_hash = applied_op.hash.to_base58_check();
@@ -116,7 +121,12 @@ impl MonitoredOperation {
         Ok(result)
     }
 
-    pub fn collect_errored(errored: &[Errored], operations: &HashMap<OperationHash, Operation>, protocol_hash: &str, streamed_operations: &mut HashSet<String>) -> Result<Vec<Self>, anyhow::Error> {
+    pub fn collect_errored(
+        errored: &[Errored],
+        operations: &HashMap<OperationHash, Operation>,
+        protocol_hash: &str,
+        streamed_operations: &mut HashSet<String>,
+    ) -> Result<Vec<Self>, anyhow::Error> {
         let mut result = Vec::with_capacity(errored.len());
         for errored_op in errored {
             let op_hash = errored_op.hash.to_base58_check();
@@ -139,8 +149,17 @@ impl MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
                 hash: op_hash,
-                protocol_data: serde_json::from_str(&errored_op.protocol_data_json_with_error_json.protocol_data_json)?,
-                error: Some(errored_op.protocol_data_json_with_error_json.error_json.clone()),
+                protocol_data: serde_json::from_str(
+                    &errored_op
+                        .protocol_data_json_with_error_json
+                        .protocol_data_json,
+                )?,
+                error: Some(
+                    errored_op
+                        .protocol_data_json_with_error_json
+                        .error_json
+                        .clone(),
+                ),
             };
             result.push(monitored_op)
         }
@@ -205,30 +224,54 @@ impl OperationMonitorStream {
         // 1. get the operations currently in mempool
         match current_mempool_state_storage.write() {
             Ok(current_mempool_state) => {
-                let (validate_operation_result, operations, protocol_hash) = match current_mempool_state.prevalidator() {
-                    Some(prevalidator) => {
-                        (current_mempool_state.result(), current_mempool_state.operations(), prevalidator.protocol.to_base58_check())
-                    },
+                let (validate_operation_result, operations, protocol_hash) =
+                    match current_mempool_state.prevalidator() {
+                        Some(prevalidator) => (
+                            current_mempool_state.result(),
+                            current_mempool_state.operations(),
+                            prevalidator.protocol.to_base58_check(),
+                        ),
 
-                    None => return Poll::Pending
-                };
-                let mut requested_ops = Vec::with_capacity(validate_operation_result.operations_count());
+                        None => return Poll::Pending,
+                    };
+                let mut requested_ops =
+                    Vec::with_capacity(validate_operation_result.operations_count());
 
                 // 2. collect the requested operations
                 if query.applied {
-                    let monitored_applied = MonitoredOperation::collect_applied(&validate_operation_result.applied, operations, &protocol_hash, streamed_operations)?;
+                    let monitored_applied = MonitoredOperation::collect_applied(
+                        &validate_operation_result.applied,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
                     requested_ops.extend(monitored_applied);
                 }
                 if query.refused {
-                    let monitored_refused = MonitoredOperation::collect_errored(&validate_operation_result.refused, operations, &protocol_hash, streamed_operations)?;
+                    let monitored_refused = MonitoredOperation::collect_errored(
+                        &validate_operation_result.refused,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
                     requested_ops.extend(monitored_refused);
                 }
                 if query.branch_delayed {
-                    let monitored_branch_delayed = MonitoredOperation::collect_errored(&validate_operation_result.branch_delayed, operations, &protocol_hash, streamed_operations)?;
+                    let monitored_branch_delayed = MonitoredOperation::collect_errored(
+                        &validate_operation_result.branch_delayed,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
                     requested_ops.extend(monitored_branch_delayed);
                 }
                 if query.branch_refused {
-                    let monitored_branch_delayed = MonitoredOperation::collect_errored(&validate_operation_result.branch_delayed, operations, &protocol_hash, streamed_operations)?;
+                    let monitored_branch_delayed = MonitoredOperation::collect_errored(
+                        &validate_operation_result.branch_delayed,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
                     requested_ops.extend(monitored_branch_delayed);
                 }
 
@@ -240,8 +283,8 @@ impl OperationMonitorStream {
                     to_yield_string.push('\n');
                     Poll::Ready(Some(Ok(to_yield_string)))
                 }
-            },
-            Err(_) => Poll::Ready(None) 
+            }
+            Err(_) => Poll::Ready(None),
         }
     }
 }
@@ -312,8 +355,8 @@ impl Stream for HeadMonitorStream {
             Ok(state) => state,
             // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
             // investigate and rework, so we do not ignore the error
-            // We end the stream on error, but the error is never propagated 
-            Err(_) => return Poll::Ready(None)
+            // We end the stream on error, but the error is never propagated
+            Err(_) => return Poll::Ready(None),
         };
 
         let current_head = rpc_state.current_head().clone();
@@ -352,8 +395,7 @@ impl Stream for HeadMonitorStream {
                 self.last_checked_head = Some(current_head.hash.clone());
                 // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
                 // would end the stream, in this case, we need to Pend.
-                if let Some(head_string_result) = self.yield_head(&current_head).transpose()
-                {
+                if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
                     Poll::Ready(Some(head_string_result))
                 } else {
                     // cx.waker().wake_by_ref();
@@ -379,7 +421,6 @@ impl Stream for OperationMonitorStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<String, anyhow::Error>>> {
-
         if !self.contains_waker {
             // let mut state = self.current_mempool_state_storage.write()?;
             let mut mempool_state = match self.current_mempool_state_storage.write() {
@@ -387,7 +428,7 @@ impl Stream for OperationMonitorStream {
                 // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
                 // investigate and rework, so we do not ignore the error
                 // We end the stream on error, but the error is never propagated
-                Err(_) => return Poll::Ready(None)
+                Err(_) => return Poll::Ready(None),
             };
             mempool_state.add_stream(self.stream_id, cx.waker().clone())
         }
@@ -397,7 +438,7 @@ impl Stream for OperationMonitorStream {
             Ok(state) => state,
             // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
             // investigate and rework, so we do not ignore the error
-            Err(_) => return Poll::Ready(None)
+            Err(_) => return Poll::Ready(None),
         };
         let current_head = state.current_head().clone();
 

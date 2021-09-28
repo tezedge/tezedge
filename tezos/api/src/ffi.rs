@@ -423,7 +423,10 @@ impl ValidateOperationResult {
     }
 
     pub fn operations_count(&self) -> usize {
-        self.applied.len() + self.branch_delayed.len() + self.branch_refused.len() + self.refused.len()
+        self.applied.len()
+            + self.branch_delayed.len()
+            + self.branch_refused.len()
+            + self.refused.len()
     }
 }
 

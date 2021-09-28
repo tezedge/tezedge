@@ -16,8 +16,8 @@ pub mod chain_state;
 pub mod data_requester;
 pub mod head_state;
 pub mod peer_state;
-pub mod synchronization_state;
 pub mod streaming_state;
+pub mod synchronization_state;
 
 /// Possible errors for state processing
 #[derive(Debug, Error)]

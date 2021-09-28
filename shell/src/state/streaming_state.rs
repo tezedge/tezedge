@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use uuid::Uuid;
 use futures::task::Waker;
+use uuid::Uuid;
 
 pub trait StreamCounter {
     fn get_mutable_streams(&mut self) -> &mut HashMap<Uuid, Waker>;
