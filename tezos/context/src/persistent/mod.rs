@@ -286,9 +286,11 @@ impl File {
     pub fn read_exact_at(&self, buffer: &mut [u8], offset: FileOffset) {
         use std::os::unix::prelude::FileExt;
 
-        // println!("{:?} READING {:?} AT OFFSET {:?}", self.file_type, buffer.len(), offset);
+        // println!("{:?} READING {:?} AT OFFSET {:?} FILE_OFFSET={:?}", self.file_type, buffer.len(), offset, self.offset());
 
         self.file.read_exact_at(buffer, offset.0).unwrap();
+
+        // println!("{:?} READING {:?} AT OFFSET {:?} FILE_OFFSET={:?} ID={:?}", self.file_type, buffer.len(), offset, self.offset(), buffer.get(0));
     }
 }
 

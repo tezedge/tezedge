@@ -398,16 +398,24 @@ impl PointerToInode {
         }
     }
 
-    pub fn new_commited(hash_id: Option<HashId>, inode_id: InodeId) -> Self {
+    pub fn new_commited(hash_id: Option<HashId>, inode_id: InodeId, offset: u64) -> Self {
         Self {
             inner: Cell::new(
                 PointerToInodeInner::new()
                     .with_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
                     .with_is_commited(true)
                     .with_inode_id(inode_id.0)
-                    .with_offset(0),
+                    .with_offset(offset), //.with_offset(0),
             ),
         }
+    }
+
+    pub fn with_offset(self, offset: u64) -> Self {
+        let mut inner = self.inner.get();
+        inner.set_offset(offset);
+        self.inner.set(inner);
+
+        self
     }
 
     pub fn inode_id(&self) -> InodeId {

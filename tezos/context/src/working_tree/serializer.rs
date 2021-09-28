@@ -92,7 +92,8 @@ pub struct KeyDirEntryDescriptor {
     kind: DirEntryKind,
     blob_inline_length: B3,
     offset_length: OffsetLength,
-    #[skip] _unused: B1,
+    #[skip]
+    _unused: B2,
     // key_inline_length: B4,
 }
 
@@ -132,7 +133,7 @@ impl ObjectHeader {
 }
 
 #[derive(BitfieldSpecifier)]
-#[bits = 3]
+#[bits = 2]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 enum OffsetLength {
     RelativeOneByte,
@@ -170,18 +171,18 @@ fn serialize_offset(
         OffsetLength::RelativeOneByte => {
             let offset: u8 = relative_offset as u8;
             output.write_all(&offset.to_le_bytes()).unwrap();
-        },
+        }
         OffsetLength::RelativeTwoBytes => {
             let offset: u16 = relative_offset as u16;
             output.write_all(&offset.to_le_bytes()).unwrap();
-        },
+        }
         OffsetLength::RelativeFourBytes => {
             let offset: u32 = relative_offset as u32;
             output.write_all(&offset.to_le_bytes()).unwrap();
-        },
+        }
         OffsetLength::RelativeHeightBytes => {
             output.write_all(&relative_offset.to_le_bytes()).unwrap();
-        },
+        }
     }
 }
 
@@ -252,6 +253,8 @@ fn write_object_header(
     tag: ObjectTag,
 ) {
     let length = output.len() - start;
+
+    // println!("WRITE_OBJECT_HEADER LENGTH={:?} TAG={:?} START={:?}", length, tag, start);
 
     if length <= 0xFF {
         let header: [u8; 1] = ObjectHeader::new()
@@ -607,6 +610,65 @@ impl Iterator for PointersDescriptorIterator {
     }
 }
 
+#[derive(Default, Debug)]
+struct PointersOffsetsHeader {
+    bitfield: u64,
+}
+
+impl PointersOffsetsHeader {
+    fn set(&mut self, index: usize, offset_length: OffsetLength) {
+        assert!(index < 32);
+
+        let bits: u64 = match offset_length {
+            OffsetLength::RelativeOneByte => 0,
+            OffsetLength::RelativeTwoBytes => 1,
+            OffsetLength::RelativeFourBytes => 2,
+            OffsetLength::RelativeHeightBytes => 3,
+        };
+
+        self.bitfield |= bits << (index * 2);
+
+        assert_eq!(self.get(index), offset_length)
+    }
+
+    fn get(&self, index: usize) -> OffsetLength {
+        assert!(index < 32);
+
+        let bits = self.bitfield & 2 << (index * 2);
+
+        match bits {
+            0 => OffsetLength::RelativeOneByte,
+            1 => OffsetLength::RelativeTwoBytes,
+            2 => OffsetLength::RelativeFourBytes,
+            _ => OffsetLength::RelativeHeightBytes,
+        }
+    }
+
+    fn from_pointers(object_offset: u64, pointers: &[Option<PointerToInode>; 32]) -> Self {
+        let mut bitfield = Self::default();
+
+        for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
+            let p_offset = pointer.offset();
+
+            let (_, offset_length) = get_relative_offset(object_offset, p_offset);
+
+            bitfield.set(index, offset_length);
+        }
+
+        bitfield
+    }
+
+    fn to_bytes(&self) -> [u8; 8] {
+        self.bitfield.to_le_bytes()
+    }
+
+    fn from_bytes(bytes: [u8; 8]) -> Self {
+        Self {
+            bitfield: u64::from_ne_bytes(bytes),
+        }
+    }
+}
+
 fn serialize_inode(
     inode_id: InodeId,
     output: &mut Vec<u8>,
@@ -625,6 +687,8 @@ fn serialize_inode(
 
     // output.clear();
     let inode = storage.get_inode(inode_id)?;
+
+    println!("SERIALIZE_INODE {:?}", inode);
 
     match inode {
         Inode::Pointers {
@@ -679,6 +743,14 @@ fn serialize_inode(
             let bitfield = PointersDescriptor::from(pointers);
             output.write_all(&bitfield.to_bytes())?;
 
+            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers);
+            output.write_all(&bitfield_offsets.to_bytes())?;
+
+            println!(
+                "SER HEADER_OFFSET={:?} POINTERS={:?}",
+                bitfield_offsets, pointers
+            );
+
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
             debug_assert_eq!(output[start + 2..].len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
@@ -688,8 +760,20 @@ fn serialize_inode(
 
                 serialize_hash_id(hash_id, output)?;
 
-                let offset = pointer.offset();
-                output.write_all(&offset.to_ne_bytes())?;
+                let (relative_offset, offset_length) =
+                    get_relative_offset(offset, pointer.offset());
+
+                println!(
+                    "SER OFFSET={:?} REL_OFFSET={:?} LENGTH={:?}",
+                    pointer.offset(),
+                    relative_offset,
+                    offset_length
+                );
+
+                serialize_offset(output, relative_offset, offset_length);
+
+                // let offset = pointer.offset();
+                // output.write_all(&offset.to_ne_bytes())?;
             }
 
             write_object_header(output, start, ObjectTag::InodePointers);
@@ -813,32 +897,39 @@ fn deserialize_hash_id(data: &[u8]) -> Result<(Option<HashId>, usize), Deseriali
     }
 }
 
-fn deserialize_offset_length(data: &[u8], offset_length: OffsetLength, object_offset: u64) -> (u64, usize) {
+fn deserialize_offset_length(
+    data: &[u8],
+    offset_length: OffsetLength,
+    object_offset: u64,
+) -> (u64, usize) {
     match offset_length {
         OffsetLength::RelativeOneByte => {
             let byte = data.get(0).unwrap();
             let relative_offset: u8 = u8::from_le_bytes([*byte]);
             let offset = object_offset - relative_offset as u64;
+
+            println!("LAAA REL={:?} OFFSET={:?}", relative_offset, offset);
+
             (offset, 1)
-        },
+        }
         OffsetLength::RelativeTwoBytes => {
             let bytes = data.get(..2).unwrap();
             let relative_offset: u16 = u16::from_le_bytes(bytes.try_into().unwrap());
             let offset = object_offset - relative_offset as u64;
             (offset, 2)
-        },
+        }
         OffsetLength::RelativeFourBytes => {
             let bytes = data.get(..4).unwrap();
             let relative_offset: u32 = u32::from_le_bytes(bytes.try_into().unwrap());
             let offset = object_offset - relative_offset as u64;
             (offset, 4)
-        },
+        }
         OffsetLength::RelativeHeightBytes => {
             let bytes = data.get(..8).unwrap();
             let relative_offset: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
             let offset = object_offset - relative_offset;
             (offset, 8)
-        },
+        }
     }
 }
 
@@ -903,7 +994,8 @@ fn deserialize_shaped_directory(
 
                 pos += nbytes;
 
-                let (offset, nbytes) = deserialize_offset_length(&data[pos..], offset_length, object_offset);
+                let (offset, nbytes) =
+                    deserialize_offset_length(&data[pos..], offset_length, object_offset);
 
                 // println!("DESERIALIZING OFFSET offset={:?} nbytes={:?} length={:?} object={:?}", offset, nbytes, offset_length, object_offset);
 
@@ -1058,7 +1150,8 @@ pub fn deserialize_object(
             Ok(Object::Directory(dir_id))
         }
         ObjectTag::ShapedDirectory => {
-            let dir_id = deserialize_shaped_directory(&data[pos..], object_offset, storage, repository)?;
+            let dir_id =
+                deserialize_shaped_directory(&data[pos..], object_offset, storage, repository)?;
             Ok(Object::Directory(dir_id))
         }
         ObjectTag::Blob => {
@@ -1108,7 +1201,8 @@ pub fn deserialize_object(
             })))
         }
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(&data[pos..], storage, repository)?;
+            let inode =
+                deserialize_inode_pointers(&data[pos..], object_offset, storage, repository)?;
             let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(inode_id.into()))
@@ -1118,6 +1212,7 @@ pub fn deserialize_object(
 
 fn deserialize_inode_pointers(
     data: &[u8],
+    object_offset: u64,
     storage: &mut Storage,
     repository: &ContextKeyValueStore,
 ) -> Result<Inode, DeserializationError> {
@@ -1141,18 +1236,39 @@ fn deserialize_inode_pointers(
 
     pos += 4;
 
+    let header_offsets = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
+    let header_offsets = PointersOffsetsHeader::from_bytes(header_offsets.try_into()?);
+
+    println!(
+        "DES START OBJECT_OFFSET={:?} HEADER_OFFSET={:?}",
+        object_offset, header_offsets
+    );
+
+    pos += 8;
+
     let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-    for index in indexes_iter {
+    for (index, pointer_index) in indexes_iter.enumerate() {
         let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
         let (hash_id, nbytes) = deserialize_hash_id(bytes)?;
 
         pos += nbytes;
 
-        let offset = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
-        let offset = u64::from_ne_bytes(offset.try_into()?);
+        let offset_length = header_offsets.get(index);
+        let (offset, nbytes) =
+            deserialize_offset_length(&data[pos..], offset_length, object_offset);
 
-        pos += 8;
+        println!(
+            "DES OFFSET={:?} NBYTES={:?} LENGTH={:?} INDEX={:?}",
+            offset, nbytes, offset_length, index
+        );
+
+        pos += nbytes;
+
+        // let offset = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
+        // let offset = u64::from_ne_bytes(offset.try_into()?);
+
+        // pos += 8;
 
         // TODO: Use offset
 
@@ -1177,11 +1293,11 @@ fn deserialize_inode_pointers(
         //         deserialize_inode(data.as_ref(), storage, repository)
         //     })?;
 
-        let pointer_to_inode =
-            PointerToInode::new_commited(Some(hash_id.ok_or(MissingHash)?), inode_id);
-        pointer_to_inode.set_offset(offset);
-
-        pointers[index as usize] = Some(pointer_to_inode);
+        pointers[pointer_index as usize] = Some(PointerToInode::new_commited(
+            Some(hash_id.ok_or(MissingHash)?),
+            inode_id,
+            offset,
+        ));
     }
 
     Ok(Inode::Pointers {
@@ -1207,7 +1323,12 @@ pub fn deserialize_inode(
 
     match header.tag_or_err().map_err(|_| UnknownID)? {
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(&data[header_nbytes..], storage, repository)?;
+            let inode = deserialize_inode_pointers(
+                &data[header_nbytes..],
+                object_offset,
+                storage,
+                repository,
+            )?;
             storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
@@ -1217,7 +1338,12 @@ pub fn deserialize_inode(
                 .map_err(Into::into)
         }
         ObjectTag::ShapedDirectory => {
-            let dir_id = deserialize_shaped_directory(&data[header_nbytes..], object_offset, storage, repository)?;
+            let dir_id = deserialize_shaped_directory(
+                &data[header_nbytes..],
+                object_offset,
+                storage,
+                repository,
+            )?;
             storage
                 .add_inode(Inode::Directory(dir_id))
                 .map_err(Into::into)
@@ -1239,7 +1365,7 @@ pub struct HashIdIterator<'a> {
 /// Number of bytes to reach the hashes when serializing a `Inode::Pointers`.
 ///
 /// This skip `ID_INODE_POINTERS`, `depth`, `nchildren` and `PointersDescriptor`.
-const INODE_POINTERS_NBYTES_TO_HASHES: usize = 12;
+const INODE_POINTERS_NBYTES_TO_HASHES: usize = 20;
 
 /// Number of bytes to reach the hashes when serializing a shaped directory.
 ///
@@ -1569,24 +1695,21 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a1",
-                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(4), None)
-                    .with_offset(1),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(4), None).with_offset(1),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "bab1",
-                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(5), None)
-                    .with_offset(2),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(5), None).with_offset(2),
             )
             .unwrap();
         let dir_id = storage
             .dir_insert(
                 dir_id,
                 "0aa1",
-                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(6), None)
-                    .with_offset(3),
+                DirEntry::new_commited(DirEntryKind::Blob, HashId::new(6), None).with_offset(3),
             )
             .unwrap();
 
@@ -1612,7 +1735,6 @@ mod tests {
         let object = deserialize_object(offset as u64, &mut storage, &repo).unwrap();
 
         if let Object::Directory(object) = object {
-
             println!("RESULT={:?}", storage.get_owned_dir(object).unwrap());
 
             assert_eq!(
@@ -1626,152 +1748,214 @@ mod tests {
         // let iter = iter_hash_ids(&data);
         // assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[3, 1, 2]);
 
-        return;
+        // Test Object::Blob
 
-        // // Test Object::Blob
+        // Not inlined value
+        let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
-        // // Not inlined value
-        // let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+        let mut data = Vec::with_capacity(1024);
+        serialize_object(
+            &Object::Blob(blob_id),
+            fake_hash_id,
+            &mut data,
+            &storage,
+            &mut stats,
+            &mut batch,
+            &mut older_objects,
+            &mut repo,
+            0,
+        )
+        .unwrap();
 
-        // let mut data = Vec::with_capacity(1024);
-        // serialize_object(
-        //     &Object::Blob(blob_id),
-        //     fake_hash_id,
-        //     &mut data,
-        //     &storage,
-        //     &mut stats,
-        //     &mut batch,
-        //     &mut older_objects,
-        //     &mut repo,
-        //     0,
-        // )
-        // .unwrap();
+        let offset = data.len();
 
-        // storage.data = data.clone(); // TODO: Do not do this
-        // let object = deserialize_object(&mut storage, &repo).unwrap();
-        // if let Object::Blob(object) = object {
-        //     let blob = storage.get_blob(object).unwrap();
-        //     assert_eq!(blob.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-        // } else {
-        //     panic!();
-        // }
+        storage.data = data.clone(); // TODO: Do not do this
+        let object = deserialize_object(offset as u64, &mut storage, &repo).unwrap();
+        if let Object::Blob(object) = object {
+            let blob = storage.get_blob(object).unwrap();
+            assert_eq!(blob.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+        } else {
+            panic!();
+        }
         // let iter = iter_hash_ids(&data);
         // assert_eq!(iter.count(), 0);
 
-        // // Test Object::Commit
+        // Test Object::Commit
 
-        // let mut data = Vec::with_capacity(1024);
+        let mut data = Vec::with_capacity(1024);
 
-        // let commit = Commit {
-        //     parent_commit_hash: HashId::new(9876),
-        //     root_hash: HashId::new(12345).unwrap(),
-        //     root_hash_offset: 0,
-        //     time: 12345,
-        //     author: "123".to_string(),
-        //     message: "abc".to_string(),
-        // };
+        let commit = Commit {
+            parent_commit_hash: HashId::new(9876),
+            root_hash: HashId::new(12345).unwrap(),
+            root_hash_offset: 0,
+            time: 12345,
+            author: "123".to_string(),
+            message: "abc".to_string(),
+        };
 
-        // serialize_object(
-        //     &Object::Commit(Box::new(commit.clone())),
-        //     fake_hash_id,
-        //     &mut data,
-        //     &storage,
-        //     &mut stats,
-        //     &mut batch,
-        //     &mut older_objects,
-        //     &mut repo,
-        //     0,
-        // )
-        // .unwrap();
+        serialize_object(
+            &Object::Commit(Box::new(commit.clone())),
+            fake_hash_id,
+            &mut data,
+            &storage,
+            &mut stats,
+            &mut batch,
+            &mut older_objects,
+            &mut repo,
+            0,
+        )
+        .unwrap();
 
-        // storage.data = data.clone(); // TODO: Do not do this
-        // let object = deserialize_object(&mut storage, &repo).unwrap();
-        // if let Object::Commit(object) = object {
-        //     assert_eq!(*object, commit);
-        // } else {
-        //     panic!();
-        // }
+        let offset = data.len();
+
+        storage.data = data.clone(); // TODO: Do not do this
+        let object = deserialize_object(offset as u64, &mut storage, &repo).unwrap();
+        if let Object::Commit(object) = object {
+            assert_eq!(*object, commit);
+        } else {
+            panic!();
+        }
 
         // let iter = iter_hash_ids(&data);
         // assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[12345]);
 
-        // println!("OKKKK");
+        println!("OKKKK");
 
-        // // Test Inode::Directory
+        // data.clear();
+        // let mut data = Vec::with_capacity(1024);
 
-        // let mut pointers: [Option<PointerToInode>; 32] = Default::default();
+        // data.extend_from_slice(&[1,2,3,4,5]);
 
-        // for index in 0..pointers.len() {
-        //     let inode_value = Inode::Directory(DirectoryId::empty());
-        //     let inode_value_id = storage.add_inode(inode_value).unwrap();
+        repo.append_serialized_data(&data).unwrap();
+        let offset = repo.get_current_offset().unwrap();
 
-        //     let hash_id = HashId::new((index + 1) as u32).unwrap();
+        data.clear();
 
-        //     repo.write_batch(vec![(hash_id, Arc::new([ID_DIRECTORY]))])
-        //         .unwrap();
+        let mut offsets = Vec::with_capacity(32);
 
-        //     pointers[index] = Some(PointerToInode::new(Some(hash_id), inode_value_id));
-        // }
+        // Test Inode::Directory
 
-        // let inode = Inode::Pointers {
-        //     depth: 100,
-        //     nchildren: 200,
-        //     npointers: 250,
-        //     pointers,
-        // };
+        let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-        // let inode_id = storage.add_inode(inode).unwrap();
+        println!("START POINTERS AT OFFSET {:?}", offset);
 
-        // let hash_id = HashId::new(123).unwrap();
-        // batch.clear();
-        // serialize_inode(
-        //     inode_id,
-        //     &mut data,
-        //     hash_id,
-        //     &storage,
-        //     &mut stats,
-        //     &mut batch,
-        //     &mut older_objects,
-        //     &mut repo,
-        //     0,
-        // )
-        // .unwrap();
+        for index in 0..pointers.len() {
+            let inode_value = Inode::Directory(DirectoryId::empty());
+            let inode_value_id = storage.add_inode(inode_value).unwrap();
 
-        // println!("DATA LENGTH={:?}", data.len());
-        // repo.append_serialized_data(&data).unwrap();
+            let hash_id = HashId::new((index + 1) as u32).unwrap();
 
-        // println!("ID={:?}", batch.last().unwrap().1[0]);
-        // let new_inode_id =
-        //     deserialize_inode(&batch.last().unwrap().1, &mut storage, &repo).unwrap();
-        // //let new_inode_id = deserialize_inode(&batch[0].1, &mut storage, &repo).unwrap();
-        // let new_inode = storage.get_inode(new_inode_id).unwrap();
+            let off = data.len();
+            let offset = serialize_inode(
+                inode_value_id,
+                &mut data,
+                hash_id,
+                &storage,
+                &mut stats,
+                &mut batch,
+                &mut older_objects,
+                &mut repo,
+                offset,
+            )
+            .unwrap();
 
-        // if let Inode::Pointers {
-        //     depth,
-        //     nchildren,
-        //     npointers,
-        //     pointers,
-        // } = new_inode
-        // {
-        //     assert_eq!(*depth, 100);
-        //     assert_eq!(*nchildren, 200);
-        //     assert_eq!(*npointers, 32);
+            offsets.push(offset);
 
-        //     for (index, pointer) in pointers.iter().enumerate() {
-        //         let pointer = pointer.as_ref().unwrap();
-        //         let hash_id = pointer.hash_id().unwrap();
-        //         assert_eq!(hash_id.as_u32() as usize, index + 1);
+            repo.write_batch(vec![(hash_id, Arc::new([ID_DIRECTORY]))])
+                .unwrap();
 
-        //         let inode = storage.get_inode(pointer.inode_id()).unwrap();
-        //         match inode {
-        //             Inode::Directory(dir_id) => assert!(dir_id.is_empty()),
-        //             _ => panic!(),
-        //         }
-        //     }
-        // } else {
-        //     println!("LAAA {:?}", new_inode);
-        //     panic!()
-        // }
+            println!(
+                "OFFSET={:?} DATA_LEN={:?} OFF={:?}",
+                offset,
+                data.len(),
+                off
+            );
+
+            pointers[index] = Some(PointerToInode::new_commited(
+                Some(hash_id),
+                inode_value_id,
+                offset,
+            ));
+        }
+
+        println!("END POINTERS",);
+
+        let inode = Inode::Pointers {
+            depth: 100,
+            nchildren: 200,
+            npointers: 250,
+            pointers,
+        };
+
+        println!("POINTERS={:?}", inode);
+
+        // let offset = data.len();
+
+        let inode_id = storage.add_inode(inode).unwrap();
+
+        let hash_id = HashId::new(123).unwrap();
+        batch.clear();
+        let offset = serialize_inode(
+            inode_id,
+            &mut data,
+            hash_id,
+            &storage,
+            &mut stats,
+            &mut batch,
+            &mut older_objects,
+            &mut repo,
+            //            5,
+            offset as u64,
+        )
+        .unwrap();
+
+        // let offset = data.len();
+
+        println!("DATA LENGTH={:?}", data.len());
+        repo.append_serialized_data(&data).unwrap();
+
+        println!("ID={:?}", batch.last().unwrap().1[0]);
+        let new_inode_id =
+            deserialize_inode(&batch.last().unwrap().1, offset as u64, &mut storage, &repo)
+                .unwrap();
+        //let new_inode_id = deserialize_inode(&batch[0].1, &mut storage, &repo).unwrap();
+        let new_inode = storage.get_inode(new_inode_id).unwrap();
+
+        if let Inode::Pointers {
+            depth,
+            nchildren,
+            npointers,
+            pointers,
+        } = new_inode
+        {
+            assert_eq!(*depth, 100);
+            assert_eq!(*nchildren, 200);
+            assert_eq!(*npointers, 32);
+
+            for (index, pointer) in pointers.iter().enumerate() {
+                let pointer = pointer.as_ref().unwrap();
+                let hash_id = pointer.hash_id().unwrap();
+                assert_eq!(hash_id.as_u32() as usize, index + 1);
+
+                let inode = storage.get_inode(pointer.inode_id()).unwrap();
+                match inode {
+                    Inode::Directory(dir_id) => assert!(dir_id.is_empty()),
+                    _ => panic!(),
+                }
+
+                println!(
+                    "RES INDEX={:?} P_OFFSET={:?} OFFSET={:?}",
+                    index,
+                    pointer.offset(),
+                    offsets[index]
+                );
+
+                assert_eq!(pointer.offset(), offsets[index]);
+            }
+        } else {
+            println!("LAAA {:?}", new_inode);
+            panic!()
+        }
 
         // let iter = iter_hash_ids(&batch.last().unwrap().1);
         // assert_eq!(
@@ -1821,7 +2005,9 @@ mod tests {
         // )
         // .unwrap();
 
-        // let new_inode_id = deserialize_inode(&batch[0].1, &mut storage, &repo).unwrap();
+        // let offset = data.len();
+
+        // let new_inode_id = deserialize_inode(&batch[0].1, offset as u64, &mut storage, &repo).unwrap();
         // let new_inode = storage.get_inode(new_inode_id).unwrap();
 
         // if let Inode::Directory(new_dir_id) = new_inode {
