@@ -107,6 +107,12 @@ impl DirEntry {
         self.inner.set(inner);
     }
 
+    pub fn with_offset(self, offset: u64) -> Self {
+        let inner = self.inner.get().with_file_offset(offset);
+        self.inner.set(inner);
+        self
+    }
+
     pub fn get_offset(&self) -> u64 {
         let inner = self.inner.get();
 

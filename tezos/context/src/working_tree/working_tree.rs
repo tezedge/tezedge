@@ -1105,7 +1105,7 @@ impl WorkingTree {
 
         store.get_value_from_offset(&mut storage.data, offset)?;
 
-        deserialize_object(&mut storage, store).map_err(Into::into)
+        deserialize_object(offset, &mut storage, store).map_err(Into::into)
 
         // match store.get_value_from_offset(&mut storage.data, hash_id)? {
         //     None => Err(MerkleError::ObjectNotFound { hash_id }),
