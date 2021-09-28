@@ -355,7 +355,7 @@ impl KeyValueStoreBackend for Persistent {
         self.data_file.read_exact_at(header, FileOffset(offset));
         let (_, length) = read_object_length(header, &object_header);
 
-        println!("LENGTH={:?}", length);
+        // println!("LENGTH={:?}", length);
 
         // let length = u32::from_ne_bytes(header[1..].try_into().unwrap());
         // let total_length = length as usize;

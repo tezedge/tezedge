@@ -688,8 +688,6 @@ fn serialize_inode(
     // output.clear();
     let inode = storage.get_inode(inode_id)?;
 
-    println!("SERIALIZE_INODE {:?}", inode);
-
     match inode {
         Inode::Pointers {
             depth,
@@ -746,10 +744,10 @@ fn serialize_inode(
             let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers);
             output.write_all(&bitfield_offsets.to_bytes())?;
 
-            println!(
-                "SER HEADER_OFFSET={:?} POINTERS={:?}",
-                bitfield_offsets, pointers
-            );
+            // println!(
+            //     "SER HEADER_OFFSET={:?} POINTERS={:?}",
+            //     bitfield_offsets, pointers
+            // );
 
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
             debug_assert_eq!(output[start + 2..].len(), INODE_POINTERS_NBYTES_TO_HASHES);
@@ -763,12 +761,12 @@ fn serialize_inode(
                 let (relative_offset, offset_length) =
                     get_relative_offset(offset, pointer.offset());
 
-                println!(
-                    "SER OFFSET={:?} REL_OFFSET={:?} LENGTH={:?}",
-                    pointer.offset(),
-                    relative_offset,
-                    offset_length
-                );
+                // println!(
+                //     "SER OFFSET={:?} REL_OFFSET={:?} LENGTH={:?}",
+                //     pointer.offset(),
+                //     relative_offset,
+                //     offset_length
+                // );
 
                 serialize_offset(output, relative_offset, offset_length);
 
@@ -908,7 +906,7 @@ fn deserialize_offset_length(
             let relative_offset: u8 = u8::from_le_bytes([*byte]);
             let offset = object_offset - relative_offset as u64;
 
-            println!("LAAA REL={:?} OFFSET={:?}", relative_offset, offset);
+            // println!("LAAA REL={:?} OFFSET={:?}", relative_offset, offset);
 
             (offset, 1)
         }
@@ -1239,10 +1237,10 @@ fn deserialize_inode_pointers(
     let header_offsets = data.get(pos..pos + 8).ok_or(UnexpectedEOF)?;
     let header_offsets = PointersOffsetsHeader::from_bytes(header_offsets.try_into()?);
 
-    println!(
-        "DES START OBJECT_OFFSET={:?} HEADER_OFFSET={:?}",
-        object_offset, header_offsets
-    );
+    // println!(
+    //     "DES START OBJECT_OFFSET={:?} HEADER_OFFSET={:?}",
+    //     object_offset, header_offsets
+    // );
 
     pos += 8;
 
@@ -1258,10 +1256,10 @@ fn deserialize_inode_pointers(
         let (offset, nbytes) =
             deserialize_offset_length(&data[pos..], offset_length, object_offset);
 
-        println!(
-            "DES OFFSET={:?} NBYTES={:?} LENGTH={:?} INDEX={:?}",
-            offset, nbytes, offset_length, index
-        );
+        // println!(
+        //     "DES OFFSET={:?} NBYTES={:?} LENGTH={:?} INDEX={:?}",
+        //     offset, nbytes, offset_length, index
+        // );
 
         pos += nbytes;
 

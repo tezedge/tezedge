@@ -298,11 +298,11 @@ impl StringInterner {
             strings: Vec::with_capacity(1000),
         };
 
-        println!(
-            "TO_SER {:?} ALL={:?}",
-            self.all_strings_to_serialize.len(),
-            self.all_strings.len()
-        );
+        // println!(
+        //     "TO_SER {:?} ALL={:?}",
+        //     self.all_strings_to_serialize.len(),
+        //     self.all_strings.len()
+        // );
 
         for id in &self.all_strings_to_serialize {
             let (start, end) = id.get_start_end();
