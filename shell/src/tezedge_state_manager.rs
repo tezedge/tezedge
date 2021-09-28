@@ -77,10 +77,10 @@ impl From<NetworkChannelMsg> for ProposerMsg {
 }
 
 #[derive(Debug, Error)]
-enum NotifyProposerError {
-    #[error(display = "notify proposer failed, reason: {0}")]
+pub enum NotifyProposerError {
+    #[error("notify proposer failed, reason: {0}")]
     IO(std::io::Error),
-    #[error(display = "Notify proposer failed (queue), reason: {0}")]
+    #[error("Notify proposer failed (queue), reason: {0}")]
     SendError(std::sync::mpsc::SendError<ProposerMsg>),
 }
 

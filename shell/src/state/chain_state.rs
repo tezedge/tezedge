@@ -422,6 +422,7 @@ impl BlockchainState {
                         sys,
                         self.chain_id.clone(),
                         self.requester.clone(),
+                        chain_manager_ref.clone(),
                         PeerBranchBootstrapperConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,

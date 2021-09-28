@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crypto::hash::ChainId;
 use tezos_encoding::enc::BinWriter;
@@ -15,6 +15,7 @@ use super::mempool::Mempool;
 
 #[derive(
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     Clone,
@@ -51,6 +52,7 @@ impl CurrentHeadMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     Clone,

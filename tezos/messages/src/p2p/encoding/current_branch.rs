@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crypto::hash::{BlockHash, ChainId};
 use tezos_encoding::enc::BinWriter;
@@ -16,6 +16,7 @@ use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 #[derive(
     Clone,
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     HasEncoding,
@@ -44,6 +45,7 @@ impl CurrentBranchMessage {
 #[derive(
     Clone,
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     HasEncoding,
@@ -73,7 +75,7 @@ impl CurrentBranch {
 
 // -----------------------------------------------------------------------------------------------
 #[derive(
-    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
 )]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,

@@ -4,7 +4,7 @@
 use std::net::SocketAddr;
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
@@ -14,6 +14,7 @@ use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
 #[derive(
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     Clone,

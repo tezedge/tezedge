@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crypto::hash::ChainId;
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
-#[derive(Serialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct DeactivateMessage {
     #[get = "pub"]
     deactivate: ChainId,
