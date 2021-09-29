@@ -235,9 +235,9 @@ impl OperationMonitorStream {
                         ),
                         None => {
                             // No prevalidator present means the node is not bootstrapped and cannot process mempool operations
-                            // end the stream in this case 
-                            return Poll::Ready(None)
-                        },
+                            // end the stream in this case
+                            return Poll::Ready(None);
+                        }
                     };
                 let mut requested_ops =
                     Vec::with_capacity(validate_operation_result.operations_count());
@@ -282,9 +282,9 @@ impl OperationMonitorStream {
 
                 // handle special case, when the first poll has no operations, return an empty vector
                 if requested_ops.is_empty() && self.poll_counter == 1 {
-                    return Poll::Ready(Some(Ok("[]\n".to_string())))
+                    return Poll::Ready(Some(Ok("[]\n".to_string())));
                 } else if requested_ops.is_empty() {
-                    return Poll::Pending
+                    return Poll::Pending;
                 }
 
                 let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
@@ -390,31 +390,30 @@ impl Stream for HeadMonitorStream {
             self.last_checked_head = Some(current_head.hash.clone());
             // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
             // would end the stream, in this case, we need to Pend.
-            if let Some(head_string_result) = self.yield_head(&current_head).transpose()
-            {
+            if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
                 return Poll::Ready(Some(head_string_result));
             } else {
                 // cx.waker().wake_by_ref();
                 return Poll::Pending;
             };
         };
-        
-            if last_checked_head == &current_head.hash {
-                // current head not changed, yield nothing
+
+        if last_checked_head == &current_head.hash {
+            // current head not changed, yield nothing
+            // cx.waker().wake_by_ref();
+            Poll::Pending
+        } else {
+            // Head change, yield new head
+            self.last_checked_head = Some(current_head.hash.clone());
+            // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+            // would end the stream, in this case, we need to Pend.
+            if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
+                Poll::Ready(Some(head_string_result))
+            } else {
                 // cx.waker().wake_by_ref();
                 Poll::Pending
-            } else {
-                // Head change, yield new head
-                self.last_checked_head = Some(current_head.hash.clone());
-                // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                // would end the stream, in this case, we need to Pend.
-                if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
-                    Poll::Ready(Some(head_string_result))
-                } else {
-                    // cx.waker().wake_by_ref();
-                    Poll::Pending
-                }
             }
+        }
     }
 }
 
@@ -435,7 +434,7 @@ impl Stream for OperationMonitorStream {
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<String, anyhow::Error>>> {
         self.poll_counter += 1;
- 
+
         if !self.contains_waker {
             // TODO: need a more elegant solution here
             self.contains_waker = true;
@@ -478,7 +477,7 @@ impl Stream for OperationMonitorStream {
                 // TODO: if we try to send Poll::Ready(Some(e)) the compilator complains about the error cannot be sent accross threads safely
                 // investigate and rework, so we do not ignore the error
                 // We end the stream on error, but the error is never propagated
-                Err(_) => return Poll::Ready(None)
+                Err(_) => return Poll::Ready(None),
             };
             mempool_state.remove_stream(self.stream_id);
             Poll::Ready(None)
