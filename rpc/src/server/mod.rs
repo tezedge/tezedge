@@ -53,8 +53,8 @@ pub struct RpcCollectedState {
 }
 
 impl StreamCounter for RpcCollectedState {
-    fn get_streams(&self) -> StreamWakers {
-        self.streams.clone()
+    fn get_streams(&self) -> &StreamWakers {
+        &self.streams
     }
 
     fn get_mutable_streams(&mut self) -> &mut StreamWakers {

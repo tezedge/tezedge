@@ -6,18 +6,19 @@ use std::collections::HashMap;
 use futures::task::Waker;
 use uuid::Uuid;
 
-pub type StreamWakers = HashMap<Uuid, Waker>;
+pub type StreamId = Uuid;
+pub type StreamWakers = HashMap<StreamId, Waker>;
 
 pub trait StreamCounter {
     fn get_mutable_streams(&mut self) -> &mut StreamWakers;
-    fn get_streams(&self) -> StreamWakers;
+    fn get_streams(&self) -> &StreamWakers;
 
-    fn add_stream(&mut self, id: Uuid, waker: Waker) {
+    fn add_stream(&mut self, id: StreamId, waker: Waker) {
         let streams = self.get_mutable_streams();
 
         streams.insert(id, waker);
     }
-    fn remove_stream(&mut self, id: Uuid) {
+    fn remove_stream(&mut self, id: StreamId) {
         let streams = self.get_mutable_streams();
 
         streams.remove(&id);
@@ -27,4 +28,8 @@ pub trait StreamCounter {
 
         streams.iter().for_each(|(_, waker)| waker.wake_by_ref())
     }
+}
+
+pub fn generate_stream_id() -> StreamId {
+    Uuid::new_v4()
 }

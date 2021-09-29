@@ -11,11 +11,10 @@ use serde_json::Value;
 use slog::{error, Logger};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::operation::Operation;
-use uuid::Uuid;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_integration::StreamCounter;
+use shell_integration::{generate_stream_id, StreamCounter, StreamId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
@@ -176,7 +175,7 @@ pub struct HeadMonitorStream {
     last_checked_head: Option<BlockHash>,
     protocol: Option<ProtocolHash>,
     contains_waker: bool,
-    stream_id: Uuid,
+    stream_id: StreamId,
     log: Logger,
 }
 
@@ -187,7 +186,7 @@ pub struct OperationMonitorStream {
     last_checked_head: BlockHash,
     log: Logger,
     contains_waker: bool,
-    stream_id: Uuid,
+    stream_id: StreamId,
     streamed_operations: HashSet<String>,
     query: MempoolOperationsQuery,
     poll_counter: usize,
@@ -202,7 +201,6 @@ impl OperationMonitorStream {
         last_checked_head: BlockHash,
         mempool_operaions_query: MempoolOperationsQuery,
     ) -> Self {
-        let stream_id = Uuid::new_v4();
         Self {
             _chain_id,
             current_mempool_state_storage,
@@ -212,7 +210,7 @@ impl OperationMonitorStream {
             contains_waker: false,
             query: mempool_operaions_query,
             streamed_operations: HashSet::new(),
-            stream_id,
+            stream_id: generate_stream_id(),
             poll_counter: 0,
         }
     }
@@ -306,7 +304,7 @@ impl HeadMonitorStream {
         persistent_storage: &PersistentStorage,
         log: Logger,
     ) -> Self {
-        let stream_id = Uuid::new_v4();
+        let stream_id = generate_stream_id();
         Self {
             state,
             protocol,

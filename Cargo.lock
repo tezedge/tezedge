@@ -2738,7 +2738,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "uuid 0.8.2-cleanup-unsafe-1",
 ]
 
 [[package]]
