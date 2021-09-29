@@ -1937,7 +1937,7 @@ dependencies = [
  "tezos_messages",
  "tokio",
  "tokio-stream",
- "uuid",
+ "uuid 0.8.2-cleanup-unsafe-1",
  "warp",
 ]
 
@@ -2663,7 +2663,7 @@ dependencies = [
  "slog",
  "slog-scope",
  "slog-stdlog",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3057,6 +3057,7 @@ version = "1.9.0"
 dependencies = [
  "anyhow",
  "crypto",
+ "futures",
  "serde 1.0.130",
  "serde_json",
  "slog",
@@ -3064,6 +3065,7 @@ dependencies = [
  "tezos_api",
  "tezos_messages",
  "thiserror",
+ "uuid 0.8.2-cleanup-unsafe-1",
 ]
 
 [[package]]
@@ -3898,12 +3900,19 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "uuid"
+version = "0.8.2-cleanup-unsafe-1"
+source = "git+https://github.com/tezedge/uuid?tag=v0.8.2-cleanup-unsafe-1#90da5950d270f2f80310cc733030048682e3db06"
+dependencies = [
+ "getrandom 0.2.3",
+]
+
+[[package]]
+name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
- "serde 1.0.130",
 ]
 
 [[package]]

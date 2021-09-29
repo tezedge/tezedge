@@ -5,6 +5,7 @@ use shell::mempool::CurrentMempoolStateStorageRef;
 use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -56,6 +57,7 @@ impl RpcServer {
     ) -> Self {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: hydrated_current_head_block,
+            streams: HashMap::new(),
         }));
 
         let env = Arc::new(RpcServiceEnvironment::new(
@@ -142,6 +144,7 @@ pub fn handle_notify_rpc_server_msg(
     match env.state().write() {
         Ok(mut current_head_ref) => {
             current_head_ref.current_head = notification.block.clone();
+            current_head_ref.wake_up_all_streams();
         }
         Err(e) => {
             warn!(env.log(), "Failed to update current head in RPC server env"; "reason" => format!("{}", e));

@@ -20,7 +20,7 @@ tokio = { version = "1.8", features = ["full"] }
 tokio-stream = "0.1.2"
 futures = { version = "0.3", default-features = false }
 warp = "0.3"
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { git = "https://github.com/tezedge/uuid", tag = "v0.8.2-cleanup-unsafe-1", default-features = false, features = ["v4"] }
 storage = { path = "../storage" }
 
 [dev-dependencies]

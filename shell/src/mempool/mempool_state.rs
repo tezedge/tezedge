@@ -9,6 +9,7 @@ use crypto::hash::{BlockHash, OperationHash};
 use tezos_api::ffi::{Applied, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation};
 
+use shell_integration::{StreamCounter, StreamWakers};
 /// Mempool state is defined with mempool and validation_result attributes, which are in sync:
 /// - `validation_result`
 ///     - contains results of all validated operations
@@ -34,6 +35,19 @@ pub struct MempoolState {
     // TODO: pendings limit
     // TODO: pendings as vec and order
     pending: HashSet<OperationHash>,
+
+    // Wakers for open streams (monitors) that access the mempool state
+    streams: StreamWakers,
+}
+
+impl StreamCounter for MempoolState {
+    fn get_streams(&self) -> &StreamWakers {
+        &self.streams
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers {
+        &mut self.streams
+    }
 }
 
 impl MempoolState {
@@ -59,6 +73,8 @@ impl MempoolState {
         self.prevalidator = prevalidator;
         self.validation_result = ValidateOperationResult::default();
 
+        self.wake_up_all_streams();
+
         unneeded_operations
     }
 
@@ -69,7 +85,7 @@ impl MempoolState {
         operation_hash: &OperationHash,
         operation: Operation,
     ) -> bool {
-        if self.is_already_validated(&operation_hash) {
+        if self.is_already_validated(operation_hash) {
             return false;
         }
 
@@ -148,8 +164,8 @@ impl MempoolState {
         match self.prevalidator.as_ref() {
             Some(prevalidator) => match self.predecessor.as_ref() {
                 Some(head) => Some((
-                    &prevalidator,
-                    &head,
+                    prevalidator,
+                    head,
                     &mut self.pending,
                     &self.operations,
                     &mut self.validation_result,
@@ -226,7 +242,7 @@ impl MempoolState {
     }
 }
 
-pub(crate) fn collect_mempool(applied: &Vec<Applied>, pending: &HashSet<OperationHash>) -> Mempool {
+pub(crate) fn collect_mempool(applied: &[Applied], pending: &HashSet<OperationHash>) -> Mempool {
     let known_valid = applied
         .iter()
         .cloned()

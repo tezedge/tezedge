@@ -102,6 +102,7 @@ pub async fn head_chain(
         env.state.clone(),
         protocol,
         &env.persistent_storage,
+        env.log.clone(),
     ))
 }
 

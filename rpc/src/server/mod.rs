@@ -18,7 +18,7 @@ use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_integration::ShellConnectorRef;
+use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -47,6 +47,19 @@ pub type RpcServiceEnvironmentRef = Arc<RpcServiceEnvironment>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Arc<BlockHeaderWithHash>,
+
+    // Wakers for open streams (monitors) that access the mempool state
+    streams: StreamWakers,
+}
+
+impl StreamCounter for RpcCollectedState {
+    fn get_streams(&self) -> &StreamWakers {
+        &self.streams
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers {
+        &mut self.streams
+    }
 }
 
 /// Server environment parameters

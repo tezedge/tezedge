@@ -4,24 +4,22 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
-use anyhow::format_err;
 use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::{warn, Logger};
-use tokio::time::{interval_at, Interval};
-use tokio::time::{Duration, Instant};
+use slog::{error, Logger};
+use tezos_api::ffi::{Applied, Errored};
+use tezos_messages::p2p::encoding::operation::Operation;
 
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
+use shell_integration::{generate_stream_id, StreamCounter, StreamId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
+use crate::helpers::RpcServiceError;
 use crate::server::RpcCollectedStateRef;
-use crate::services::mempool_services::get_pending_operations;
-
-pub const MONITOR_TIMER_MILIS: u64 = 100;
 
 /// Object containing information to recreate the block header shell information
 #[derive(Serialize, Debug, Clone)]
@@ -70,18 +68,104 @@ pub struct MempoolOperationsQuery {
     pub branch_refused: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MonitoredOperation {
-    signature: String,
     branch: String,
-    contents: Value,
 
-    #[serde(skip_deserializing)]
+    #[serde(flatten)]
+    protocol_data: HashMap<String, Value>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
     #[serde(skip_serializing)]
     hash: String,
     #[serde(skip_serializing)]
-    error: Option<Value>,
+    error: Option<String>,
+}
+
+impl MonitoredOperation {
+    pub fn collect_applied(
+        applied: &[Applied],
+        operations: &HashMap<OperationHash, Operation>,
+        protocol_hash: &str,
+        streamed_operations: &mut HashSet<String>,
+    ) -> Result<Vec<Self>, RpcServiceError> {
+        let mut result = Vec::with_capacity(applied.len());
+        for applied_op in applied {
+            let op_hash = applied_op.hash.to_base58_check();
+
+            // if the operation is allready included in the stream, ignore it
+            if streamed_operations.contains(&op_hash) {
+                continue;
+            }
+
+            streamed_operations.insert(op_hash.clone());
+
+            let operation = match operations.get(&applied_op.hash) {
+                Some(op) => op,
+                None => {
+                    return Err(RpcServiceError::NoDataFoundError {
+                        reason: "Operation hash not found in operations data".into(),
+                    })
+                }
+            };
+            let monitored_op = MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: Some(protocol_hash.to_string()),
+                hash: op_hash,
+                protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
+                error: None,
+            };
+            result.push(monitored_op)
+        }
+        Ok(result)
+    }
+
+    pub fn collect_errored(
+        errored: &[Errored],
+        operations: &HashMap<OperationHash, Operation>,
+        protocol_hash: &str,
+        streamed_operations: &mut HashSet<String>,
+    ) -> Result<Vec<Self>, RpcServiceError> {
+        let mut result = Vec::with_capacity(errored.len());
+        for errored_op in errored {
+            let op_hash = errored_op.hash.to_base58_check();
+
+            // if the operation is allready included in the stream, ignore it
+            if streamed_operations.contains(&op_hash) {
+                continue;
+            }
+
+            streamed_operations.insert(op_hash.clone());
+
+            let operation = match operations.get(&errored_op.hash) {
+                Some(op) => op,
+                None => {
+                    return Err(RpcServiceError::NoDataFoundError {
+                        reason: "Operation hash not found in operations data".into(),
+                    })
+                }
+            };
+            let monitored_op = MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: Some(protocol_hash.to_string()),
+                hash: op_hash,
+                protocol_data: serde_json::from_str(
+                    &errored_op
+                        .protocol_data_json_with_error_json
+                        .protocol_data_json,
+                )?,
+                error: Some(
+                    errored_op
+                        .protocol_data_json_with_error_json
+                        .error_json
+                        .clone(),
+                ),
+            };
+            result.push(monitored_op)
+        }
+        Ok(result)
+    }
 }
 
 pub struct HeadMonitorStream {
@@ -89,24 +173,28 @@ pub struct HeadMonitorStream {
 
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
-    delay: Option<Interval>,
     protocol: Option<ProtocolHash>,
+    contains_waker: bool,
+    stream_id: StreamId,
+    log: Logger,
 }
 
 pub struct OperationMonitorStream {
-    chain_id: ChainId,
+    _chain_id: ChainId,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
-    delay: Option<Interval>,
-    streamed_operations: Option<HashSet<String>>,
+    contains_waker: bool,
+    stream_id: StreamId,
+    streamed_operations: HashSet<String>,
     query: MempoolOperationsQuery,
+    poll_counter: usize,
 }
 
 impl OperationMonitorStream {
     pub fn new(
-        chain_id: ChainId,
+        _chain_id: ChainId,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         state: RpcCollectedStateRef,
         log: Logger,
@@ -114,119 +202,97 @@ impl OperationMonitorStream {
         mempool_operaions_query: MempoolOperationsQuery,
     ) -> Self {
         Self {
-            chain_id,
+            _chain_id,
             current_mempool_state_storage,
             state,
             last_checked_head,
             log,
-            delay: None,
+            contains_waker: false,
             query: mempool_operaions_query,
-            streamed_operations: None,
+            streamed_operations: HashSet::new(),
+            stream_id: generate_stream_id(),
+            poll_counter: 0,
         }
     }
 
-    fn yield_operations(&mut self) -> Poll<Option<Result<String, anyhow::Error>>> {
+    fn yield_operations(&mut self) -> Poll<Option<Result<String, RpcServiceError>>> {
         let OperationMonitorStream {
-            chain_id,
             current_mempool_state_storage,
-            log,
             query,
             streamed_operations,
             ..
         } = self;
 
-        let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) =
-            get_pending_operations(chain_id, current_mempool_state_storage.clone())
-        {
-            (ops, protocol_hash)
-        } else {
-            return Poll::Pending;
-        };
-        let mut requested_ops: HashMap<String, Value> = HashMap::new();
+        // 1. get the operations currently in mempool
+        match current_mempool_state_storage.read() {
+            Ok(current_mempool_state) => {
+                let (validate_operation_result, operations, protocol_hash) =
+                    match current_mempool_state.prevalidator() {
+                        Some(prevalidator) => (
+                            current_mempool_state.result(),
+                            current_mempool_state.operations(),
+                            prevalidator.protocol.to_base58_check(),
+                        ),
+                        None => {
+                            // No prevalidator present means the node is not bootstrapped and cannot process mempool operations
+                            // end the stream in this case
+                            return Poll::Ready(None);
+                        }
+                    };
+                let mut requested_ops =
+                    Vec::with_capacity(validate_operation_result.operations_count());
 
-        // fill in the resulting vector according to the querry
-        if query.applied {
-            let applied: HashMap<_, _> = mempool_operations
-                .applied
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), serde_json::to_value(v).unwrap()))
-                .collect();
-            requested_ops.extend(applied);
-        }
-        if query.branch_delayed {
-            let branch_delayed: HashMap<_, _> = mempool_operations
-                .branch_delayed
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(branch_delayed);
-        }
-        if query.branch_refused {
-            let branch_refused: HashMap<_, _> = mempool_operations
-                .branch_refused
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(branch_refused);
-        }
-        if query.refused {
-            let refused: HashMap<_, _> = mempool_operations
-                .refused
-                .into_iter()
-                .map(|v| (v["hash"].to_string(), v))
-                .collect();
-            requested_ops.extend(refused);
-        }
+                // 2. collect the requested operations
+                if query.applied {
+                    let monitored_applied = MonitoredOperation::collect_applied(
+                        &validate_operation_result.applied,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
+                    requested_ops.extend(monitored_applied);
+                }
+                if query.refused {
+                    let monitored_refused = MonitoredOperation::collect_errored(
+                        &validate_operation_result.refused,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
+                    requested_ops.extend(monitored_refused);
+                }
+                if query.branch_delayed {
+                    let monitored_branch_delayed = MonitoredOperation::collect_errored(
+                        &validate_operation_result.branch_delayed,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
+                    requested_ops.extend(monitored_branch_delayed);
+                }
+                if query.branch_refused {
+                    let monitored_branch_refused = MonitoredOperation::collect_errored(
+                        &validate_operation_result.branch_refused,
+                        operations,
+                        &protocol_hash,
+                        streamed_operations,
+                    )?;
+                    requested_ops.extend(monitored_branch_refused);
+                }
 
-        if let Some(streamed_operations) = streamed_operations {
-            let to_yield: Vec<MonitoredOperation> = requested_ops
-                .clone()
-                .into_iter()
-                .filter(|(k, _)| !streamed_operations.contains(k))
-                .map(|(_, v)| {
-                    let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
-                    monitor_op
-                })
-                .collect();
+                // handle special case, when the first poll has no operations, return an empty vector
+                if requested_ops.is_empty() && self.poll_counter == 1 {
+                    return Poll::Ready(Some(Ok("[]\n".to_string())));
+                } else if requested_ops.is_empty() {
+                    return Poll::Pending;
+                }
 
-            for op_hash in requested_ops.keys() {
-                streamed_operations.insert(op_hash.to_string());
-            }
-
-            if to_yield.is_empty() {
-                Poll::Pending
-            } else {
-                let mut to_yield_string = serde_json::to_string(&to_yield)?;
+                let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
                 to_yield_string = to_yield_string.replace("\\", "");
                 to_yield_string.push('\n');
                 Poll::Ready(Some(Ok(to_yield_string)))
             }
-        } else {
-            // first poll, yield the operations in mempool, or an empty vector if mempool is empty
-            let mut streamed_operations = HashSet::<String>::new();
-            let to_yield: Vec<MonitoredOperation> = requested_ops
-                .into_iter()
-                .map(|(k, v)| {
-                    streamed_operations.insert(k);
-                    let mut monitor_op: MonitoredOperation = match serde_json::from_value(v) {
-                        Ok(json_value) => json_value,
-                        Err(e) => {
-                            warn!(log, "Wont yield errored op: {}", e);
-                            return Err(e);
-                        }
-                    };
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
-                    Ok(monitor_op)
-                })
-                .filter_map(Result::ok)
-                .collect();
-
-            self.streamed_operations = Some(streamed_operations);
-            let mut to_yield_string = serde_json::to_string(&to_yield)?;
-            to_yield_string = to_yield_string.replace("\\", "");
-            to_yield_string.push('\n');
-            Poll::Ready(Some(Ok(to_yield_string)))
+            Err(_) => Poll::Ready(None),
         }
     }
 }
@@ -236,20 +302,24 @@ impl HeadMonitorStream {
         state: RpcCollectedStateRef,
         protocol: Option<ProtocolHash>,
         persistent_storage: &PersistentStorage,
+        log: Logger,
     ) -> Self {
+        let stream_id = generate_stream_id();
         Self {
             state,
             protocol,
             last_checked_head: None,
-            delay: None,
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
+            contains_waker: false,
+            stream_id,
+            log,
         }
     }
 
     fn yield_head(
         &self,
         current_head: &BlockHeaderWithHash,
-    ) -> Result<Option<String>, anyhow::Error> {
+    ) -> Result<Option<String>, RpcServiceError> {
         let HeadMonitorStream { protocol, .. } = self;
 
         if let Some(protocol) = &protocol {
@@ -259,10 +329,12 @@ impl HeadMonitorStream {
             {
                 Some(block_additional_data) => block_additional_data,
                 None => {
-                    return Err(format_err!(
-                        "Missing block additional data for block_hash: {}",
-                        current_head.hash.to_base58_check(),
-                    ));
+                    return Err(RpcServiceError::NoDataFoundError {
+                        reason: format!(
+                            "Missing block additional data for block_hash: {}",
+                            current_head.hash.to_base58_check()
+                        ),
+                    })
                 }
             };
 
@@ -283,112 +355,150 @@ impl HeadMonitorStream {
 }
 
 impl Stream for HeadMonitorStream {
-    type Item = Result<String, anyhow::Error>;
+    type Item = Result<String, RpcServiceError>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<String, anyhow::Error>>> {
-        // Note: the stream only ends on the client dropping the connection
+    ) -> Poll<Option<Result<String, RpcServiceError>>> {
+        // Note: the stream only ends on the client dropping the connection or on error
 
-        // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
-        let delay = self.delay.get_or_insert_with(|| {
-            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
-        });
+        let mut rpc_state = match self.state.write() {
+            Ok(state) => state,
+            Err(e) => {
+                error!(
+                    self.log,
+                    "HeadMonitorStream cannot access shared rpc state, reason: {}", e
+                );
+                return Poll::Ready(None);
+            }
+        };
 
-        // poll the delay future
-        match delay.poll_tick(cx) {
-            Poll::Pending => Poll::Pending,
-            _ => {
-                // get rid of the used delay
-                self.delay = None;
+        let current_head = rpc_state.current_head().clone();
 
-                let state = self.state.read().unwrap();
-                let current_head = state.current_head().clone();
+        if !self.contains_waker {
+            rpc_state.add_stream(self.stream_id, cx.waker().clone());
 
-                // drop the immutable borrow so we can borrow self again as mutable
-                // TODO: refactor this drop (remove if possible)
-                drop(state);
+            // drop the immutable borrow so we can borrow self again as mutable
+            drop(rpc_state);
 
-                // if last_checked_head is None, this is the first poll, yield the current_head
-                let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
-                    head_hash
-                } else {
-                    // first poll
-                    self.last_checked_head = Some(current_head.hash.clone());
-                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                    // would end the stream, in this case, we need to Pend.
-                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
-                        return Poll::Ready(Some(head_string_result));
-                    } else {
-                        cx.waker().wake_by_ref();
-                        return Poll::Pending;
-                    };
-                };
+            self.contains_waker = true;
+        } else {
+            // drop the immutable borrow so we can borrow self again as mutable
+            drop(rpc_state);
+        }
 
-                if last_checked_head == &current_head.hash {
-                    // current head not changed, yield nothing
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else {
-                    // Head change, yield new head
-                    self.last_checked_head = Some(current_head.hash.clone());
-                    // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                    // would end the stream, in this case, we need to Pend.
-                    if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
-                        Poll::Ready(Some(head_string_result))
-                    } else {
-                        cx.waker().wake_by_ref();
-                        Poll::Pending
-                    }
-                }
+        // if last_checked_head is None, this is the first poll, yield the current_head
+        let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
+            head_hash
+        } else {
+            // first poll
+            self.last_checked_head = Some(current_head.hash.clone());
+            // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+            // would end the stream, in this case, we need to Pend.
+            if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
+                return Poll::Ready(Some(head_string_result));
+            } else {
+                return Poll::Pending;
+            };
+        };
+
+        if last_checked_head == &current_head.hash {
+            // current head not changed, yield nothing
+            Poll::Pending
+        } else {
+            // Head change, yield new head
+            self.last_checked_head = Some(current_head.hash.clone());
+            // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+            // would end the stream, in this case, we need to Pend.
+            if let Some(head_string_result) = self.yield_head(&current_head).transpose() {
+                Poll::Ready(Some(head_string_result))
+            } else {
+                Poll::Pending
             }
         }
     }
 }
 
+// The head stream is only closed by the client, remove the stream from the map when the stream goes out of scope
+impl Drop for HeadMonitorStream {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.state.write() {
+            state.remove_stream(self.stream_id);
+        };
+    }
+}
+
 impl Stream for OperationMonitorStream {
-    type Item = Result<String, anyhow::Error>;
+    type Item = Result<String, RpcServiceError>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<String, anyhow::Error>>> {
-        // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
-        let delay = self.delay.get_or_insert_with(|| {
-            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
-        });
+    ) -> Poll<Option<Result<String, RpcServiceError>>> {
+        self.poll_counter += 1;
 
-        // poll the delay future
-        match delay.poll_tick(cx) {
-            Poll::Pending => Poll::Pending,
-            _ => {
-                // get rid of the used delay
-                self.delay = None;
-
-                let state = self.state.read().unwrap();
-                let current_head = state.current_head().clone();
-
-                // drop the immutable borrow so we can borrow self again as mutable
-                // TODO: refactor this drop (remove if possible)
-                drop(state);
-
-                if self.last_checked_head == current_head.hash {
-                    // current head not changed, check for new operations
-                    let yielded = self.yield_operations();
-                    match yielded {
-                        Poll::Pending => {
-                            cx.waker().wake_by_ref();
-                            Poll::Pending
-                        }
-                        _ => yielded,
-                    }
-                } else {
-                    // Head change, end stream
-                    Poll::Ready(None)
+        if !self.contains_waker {
+            let mut mempool_state = match self.current_mempool_state_storage.write() {
+                Ok(state) => state,
+                Err(e) => {
+                    error!(
+                        self.log,
+                        "OperationMonitorStream cannot access shared mempool state, reason: {}", e
+                    );
+                    return Poll::Ready(None);
                 }
-            }
+            };
+            mempool_state.add_stream(self.stream_id, cx.waker().clone());
+            drop(mempool_state);
+            self.contains_waker = true;
         }
+
+        let state = match self.state.read() {
+            Ok(state) => state,
+            Err(e) => {
+                error!(
+                    self.log,
+                    "OperationMonitorStream cannot access shared rpc state, reason: {}", e
+                );
+                return Poll::Ready(None);
+            }
+        };
+        let current_head = state.current_head().clone();
+
+        // drop the immutable borrow so we can borrow self again as mutable
+        drop(state);
+
+        if self.last_checked_head == current_head.hash {
+            // current head not changed, check for new operations
+            let yielded = self.yield_operations();
+            match yielded {
+                Poll::Pending => Poll::Pending,
+                _ => yielded,
+            }
+        } else {
+            // Head change, end stream
+            let mut mempool_state = match self.current_mempool_state_storage.write() {
+                Ok(state) => state,
+                Err(e) => {
+                    error!(
+                        self.log,
+                        "OperationMonitorStream cannot access shared mempool state, reason: {}", e
+                    );
+                    return Poll::Ready(None);
+                }
+            };
+            mempool_state.remove_stream(self.stream_id);
+            Poll::Ready(None)
+        }
+    }
+}
+
+impl Drop for OperationMonitorStream {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.current_mempool_state_storage.write() {
+            state.remove_stream(self.stream_id);
+        };
     }
 }
 
