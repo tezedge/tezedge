@@ -79,7 +79,7 @@ pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -
 
 /// Function to generate JSON response from a stream
 pub(crate) fn make_json_stream_response<
-    T: futures::Stream<Item = Result<String, anyhow::Error>> + Send + 'static,
+    T: futures::Stream<Item = Result<String, RpcServiceError>> + Send + 'static,
 >(
     content: T,
 ) -> ServiceResult {

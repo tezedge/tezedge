@@ -6,9 +6,11 @@ use std::collections::HashMap;
 use futures::task::Waker;
 use uuid::Uuid;
 
+pub type StreamWakers = HashMap<Uuid, Waker>;
+
 pub trait StreamCounter {
-    fn get_mutable_streams(&mut self) -> &mut HashMap<Uuid, Waker>;
-    fn get_streams(&self) -> HashMap<Uuid, Waker>;
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers;
+    fn get_streams(&self) -> StreamWakers;
 
     fn add_stream(&mut self, id: Uuid, waker: Waker) {
         let streams = self.get_mutable_streams();

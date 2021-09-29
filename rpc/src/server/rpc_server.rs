@@ -15,7 +15,6 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 use tokio::runtime::Handle;
-use shell::state::streaming_state::StreamCounter;
 
 use crate::server::{spawn_server, RpcCollectedState, RpcServiceEnvironment};
 use crate::RpcServiceEnvironmentRef;

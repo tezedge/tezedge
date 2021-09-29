@@ -10,18 +10,15 @@ use std::{
     path::PathBuf,
 };
 
-use futures::task::Waker;
 use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use slog::{error, Logger};
 use tokio::runtime::Handle;
-use uuid::Uuid;
 
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::state::streaming_state::StreamCounter;
-use shell_integration::ShellConnectorRef;
+use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -52,15 +49,15 @@ pub struct RpcCollectedState {
     current_head: Arc<BlockHeaderWithHash>,
 
     // Wakers for open streams (monitors) that access the mempool state
-    streams: HashMap<Uuid, Waker>,
+    streams: StreamWakers,
 }
 
 impl StreamCounter for RpcCollectedState {
-    fn get_streams(&self) -> HashMap<Uuid, Waker> {
+    fn get_streams(&self) -> StreamWakers {
         self.streams.clone()
     }
 
-    fn get_mutable_streams(&mut self) -> &mut HashMap<Uuid, Waker> {
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers {
         &mut self.streams
     }
 }

@@ -23,7 +23,6 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debu
 serde = "1.0"
 serde_json = "1.0"
 tokio = { version = "1.8", features = ["time"] }
-uuid = { git = "https://github.com/tezedge/uuid", tag = "v0.8.2-cleanup-unsafe-1", default-features = false, features = ["v4"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }

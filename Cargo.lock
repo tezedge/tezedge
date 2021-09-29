@@ -3049,7 +3049,6 @@ dependencies = [
  "tezos_wrapper",
  "thiserror",
  "tokio",
- "uuid 0.8.2-cleanup-unsafe-1",
  "zip",
 ]
 
@@ -3059,6 +3058,7 @@ version = "1.9.0"
 dependencies = [
  "anyhow",
  "crypto",
+ "futures",
  "serde 1.0.130",
  "serde_json",
  "slog",
@@ -3066,6 +3066,7 @@ dependencies = [
  "tezos_api",
  "tezos_messages",
  "thiserror",
+ "uuid 0.8.2-cleanup-unsafe-1",
 ]
 
 [[package]]

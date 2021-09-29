@@ -11,6 +11,9 @@ pub use oneshot::*;
 mod messages;
 pub use messages::*;
 
+mod streaming_state;
+pub use streaming_state::*;
+
 #[derive(Debug)]
 pub struct UnsupportedMessageError;
 
