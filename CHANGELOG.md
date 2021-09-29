@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Nothing.
+- Optimize `chains/{chain_id}/mempool/monitor_operations` and `monitor/heads/{chain_id}` RPCs.
 
 ### Security
 
