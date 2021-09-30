@@ -5,17 +5,17 @@ use hyper::{
 use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::future::Future;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
-use std::{convert::Infallible, future::Future};
 use storage::{PersistentStorage, ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError};
 
-use crate::{action::Action, request::RequestId, State};
+use crate::{action::Action, State};
 
 use super::service_channel::{
-    worker_channel, RequestSendError, ResponseTryRecvError, ServiceWorkerRequester,
-    ServiceWorkerResponder, ServiceWorkerResponderSender,
+    worker_channel, ResponseTryRecvError, ServiceWorkerRequester, ServiceWorkerResponder,
+    ServiceWorkerResponderSender,
 };
 
 pub trait RpcService {
@@ -161,7 +161,7 @@ impl RpcServiceDefault {
     }
 
     async fn handle_global_state_get(
-        mut sender: ServiceWorkerResponderSender<RpcResponse>,
+        sender: ServiceWorkerResponderSender<RpcResponse>,
         snapshot_storage: &ShellAutomatonStateStorage,
         action_storage: &ShellAutomatonActionStorage,
         target_action_id: Option<u64>,
@@ -177,7 +177,7 @@ impl RpcServiceDefault {
     }
 
     async fn handle_actions_get(
-        mut sender: ServiceWorkerResponderSender<RpcResponse>,
+        sender: ServiceWorkerResponderSender<RpcResponse>,
         snapshot_storage: &ShellAutomatonStateStorage,
         action_storage: &ShellAutomatonActionStorage,
         cursor: Option<u64>,
@@ -190,8 +190,7 @@ impl RpcServiceDefault {
             Some(v) => v,
             None => {
                 let state = Self::get_current_global_state(sender).await.unwrap();
-                let last_action_id_num: u64 = state.last_action_id.into();
-                last_action_id_num.checked_sub(limit).unwrap_or(0)
+                state.last_action_id.into()
             }
         };
         let start = end.checked_sub(limit - 1).unwrap_or(0);
@@ -230,7 +229,7 @@ impl RpcServiceDefault {
 
     fn run_worker(
         bind_address: SocketAddr,
-        mut channel: ServiceWorkerResponder<(), RpcResponse>,
+        channel: ServiceWorkerResponder<(), RpcResponse>,
         storage: PersistentStorage,
     ) -> impl Future<Output = Result<(), hyper::Error>> {
         let sender = channel.sender();

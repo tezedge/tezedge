@@ -7,10 +7,12 @@ use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::State;
 
+use crate::peer::binary_message::read::peer_binary_message_read_effects::peer_binary_message_read_effects;
+use crate::peer::binary_message::write::peer_binary_message_write_effects::peer_binary_message_write_effects;
+use crate::peer::chunk::read::peer_chunk_read_effects::peer_chunk_read_effects;
+use crate::peer::chunk::write::peer_chunk_write_effects::peer_chunk_write_effects;
 use crate::peer::connection::outgoing::peer_connection_outgoing_effects;
 use crate::peer::disconnection::peer_disconnection_effects;
-use crate::peer::handshaking::connection_message::read::peer_connection_message_read_effects;
-use crate::peer::handshaking::connection_message::write::peer_connection_message_write_effects;
 use crate::peer::handshaking::peer_handshaking_effects;
 use crate::peer::peer_effects;
 
@@ -25,7 +27,7 @@ use crate::storage::state_snapshot::create::{
 
 use crate::rpc::rpc_effects;
 
-fn log_effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
+fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
     eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 }
@@ -59,8 +61,10 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peer_connection_incoming_accept_effects(store, action);
     peer_connection_incoming_effects(store, action);
     peer_handshaking_effects(store, action);
-    peer_connection_message_write_effects(store, action);
-    peer_connection_message_read_effects(store, action);
+    peer_binary_message_write_effects(store, action);
+    peer_binary_message_read_effects(store, action);
+    peer_chunk_write_effects(store, action);
+    peer_chunk_read_effects(store, action);
     peer_disconnection_effects(store, action);
 
     storage_block_header_put_effects(store, action);

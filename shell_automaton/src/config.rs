@@ -21,23 +21,15 @@ pub fn identity(pkh: &[u8], pk: &[u8], sk: &[u8], pow: &[u8]) -> Identity {
 }
 
 pub fn identity_1() -> Identity {
-    identity(
-        &[
-            86, 205, 231, 178, 152, 146, 2, 157, 213, 131, 90, 117, 83, 132, 177, 84,
-        ],
-        &[
-            148, 73, 141, 148, 22, 20, 15, 188, 69, 132, 149, 51, 61, 170, 193, 180, 200, 126, 65,
-            159, 87, 38, 113, 122, 84, 249, 182, 198, 116, 118, 174, 28,
-        ],
-        &[
-            172, 122, 207, 58, 254, 215, 99, 123, 225, 15, 143, 199, 106, 46, 182, 179, 53, 156,
-            120, 173, 177, 216, 19, 180, 28, 186, 179, 250, 233, 84, 244, 177,
-        ],
-        &[
-            187, 194, 48, 1, 73, 36, 158, 28, 204, 132, 165, 67, 98, 35, 108, 60, 187, 194, 204,
-            47, 251, 211, 182, 234,
-        ],
-    )
+    const IDENTITY: &str = r#"
+{
+    "peer_id": "idrdoT9g6YwELhUQyshCcHwAzBS9zA",
+    "proof_of_work_stamp": "bbc2300149249e1ccc84a54362236c3cbbc2cc2ffbd3b6ea",
+    "public_key": "94498d9416140fbc458495333daac1b4c87e419f5726717a54f9b6c67476ae1c",
+    "secret_key": "ac7acf3afed7637be10f8fc76a2eb6b3359c78adb1d813b41cbab3fae954f4b1"
+}
+"#;
+    Identity::from_json(IDENTITY).unwrap()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -62,6 +54,23 @@ pub fn default_config() -> Config {
         shell_compatibility_version: ShellCompatibilityVersion::new(
             "TEZOS_MAINNET".to_owned(),
             vec![0, 1],
+            vec![1],
+        ),
+    }
+}
+
+pub fn test_config() -> Config {
+    let pow_target = 0.0;
+    Config {
+        port: 19732,
+        disable_mempool: false,
+        private_node: false,
+        pow_target,
+        // identity: Identity::generate(pow_target).unwrap(),
+        identity: identity_1(),
+        shell_compatibility_version: ShellCompatibilityVersion::new(
+            "TEZOS_GRANADANET_2021-05-21T15:00:00Z".to_owned(),
+            vec![0],
             vec![1],
         ),
     }

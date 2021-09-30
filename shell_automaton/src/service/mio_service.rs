@@ -1,14 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use derive_more::From;
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::event::{Event, P2pPeerEvent, P2pPeerUnknownEvent, P2pServerEvent, WakeupEvent};
 use crate::io_error_kind::IOErrorKind;
@@ -221,8 +220,7 @@ impl MioService for MioServiceDefault {
             let peer_entry = peers.vacant_entry();
             let token = mio::Token(peer_entry.key());
 
-            let registered_poll = poll
-                .registry()
+            poll.registry()
                 .register(
                     &mut stream,
                     token,

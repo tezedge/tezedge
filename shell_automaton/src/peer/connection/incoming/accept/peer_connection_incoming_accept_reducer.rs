@@ -1,7 +1,6 @@
 use redux_rs::ActionWithId;
 
 use crate::action::Action;
-use crate::peer::{Peer, PeerStatus};
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use crate::State;
 

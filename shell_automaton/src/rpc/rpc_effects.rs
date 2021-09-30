@@ -1,7 +1,7 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::service::rpc_service::RpcResponse;
-use crate::service::{RpcService, Service, StorageService};
+use crate::service::{RpcService, Service};
 use crate::{action::Action, State};
 
 pub fn rpc_effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {

@@ -1,11 +1,8 @@
 use redux_rs::{ActionWithId, Store};
 
-use crate::io_error_kind::IOErrorKind;
-use crate::peer::handshaking::PeerHandshakingInitAction;
-use crate::peer::PeerStatus;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
-use crate::service::{MioService, RandomnessService, Service};
+use crate::service::{MioService, Service};
 use crate::{action::Action, State};
 
 use super::{
@@ -58,9 +55,6 @@ pub fn peer_connection_incoming_accept_effects<S>(
             // there might be more connections in backlog. In mio we have
             // to exhaust those, or we won't receive another incoming
             // connection event, until we have new incoming connections.
-            store.dispatch(PeerConnectionIncomingAcceptAction {}.into());
-        }
-        Action::PeerConnectionIncomingAcceptSuccess(_) => {
             store.dispatch(PeerConnectionIncomingAcceptAction {}.into());
         }
         _ => {}

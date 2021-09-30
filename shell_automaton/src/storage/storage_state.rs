@@ -1,12 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use storage::BlockHeaderWithHash;
-
-use crate::request::{PendingRequests, RequestId};
-use crate::service::storage_service::{
-    StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
-};
+use crate::request::PendingRequests;
 use crate::storage::block_header::put::StorageBlockHeaderPutState;
 use crate::storage::request::StorageRequestState;
 

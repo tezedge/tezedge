@@ -1,11 +1,8 @@
-use bytes::Buf;
 use redux_rs::{ActionWithId, Store};
-use std::io::{Read, Write};
-use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::action::Action;
-use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
-use crate::service::{MioService, Service, StorageService};
+use crate::service::storage_service::StorageRequest;
+use crate::service::{Service, StorageService};
 use crate::storage::block_header::put::StorageBlockHeaderPutNextInitAction;
 use crate::State;
 

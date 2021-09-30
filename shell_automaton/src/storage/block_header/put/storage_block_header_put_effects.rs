@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use bytes::Buf;
 use redux_rs::{ActionWithId, Store};
 use std::io::{Read, Write};
@@ -26,12 +27,8 @@ pub fn storage_block_header_put_effects<S>(
         Action::StorageBlockHeaderPutNextInit(_) => {
             match store.state.get().storage.block_headers_put.front() {
                 Some(StorageBlockHeaderPutState::Init { req_id, .. }) => {
-                    store.dispatch(
-                        StorageBlockHeaderPutNextPendingAction {
-                            req_id: req_id.clone(),
-                        }
-                        .into(),
-                    );
+                    let req_id = req_id.clone();
+                    store.dispatch(StorageBlockHeaderPutNextPendingAction { req_id }.into());
                 }
                 _ => {}
             }

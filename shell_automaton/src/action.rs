@@ -1,28 +1,24 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use storage::persistent::{BincodeEncoded, SchemaError};
+use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
-use crate::peer::connection::incoming::accept::{
-    PeerConnectionIncomingAcceptAction, PeerConnectionIncomingAcceptErrorAction,
-    PeerConnectionIncomingAcceptSuccessAction,
-};
+use crate::peer::connection::incoming::accept::*;
 use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
+
+use crate::peer::binary_message::read::peer_binary_message_read_actions::*;
+use crate::peer::binary_message::write::peer_binary_message_write_actions::*;
+use crate::peer::chunk::read::peer_chunk_read_actions::*;
+use crate::peer::chunk::write::peer_chunk_write_actions::*;
+
 use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
     PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
     PeerConnectionOutgoingSuccessAction,
 };
 use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
-use crate::peer::handshaking::connection_message::read::{
-    PeerConnectionMessagePartReadAction, PeerConnectionMessageReadErrorAction,
-    PeerConnectionMessageReadInitAction, PeerConnectionMessageReadSuccessAction,
-};
-use crate::peer::handshaking::connection_message::write::{
-    PeerConnectionMessagePartWrittenAction, PeerConnectionMessageWriteErrorAction,
-    PeerConnectionMessageWriteInitAction, PeerConnectionMessageWriteSuccessAction,
-};
-use crate::peer::handshaking::PeerHandshakingInitAction;
+use crate::peer::handshaking::*;
+
 use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
@@ -75,17 +71,57 @@ pub enum Action {
     PeerTryWrite(PeerTryWriteAction),
     PeerTryRead(PeerTryReadAction),
 
+    // chunk read
+    PeerChunkReadInit(PeerChunkReadInitAction),
+    PeerChunkReadPart(PeerChunkReadPartAction),
+    PeerChunkReadDecrypt(PeerChunkReadDecryptAction),
+    PeerChunkReadReady(PeerChunkReadReadyAction),
+    PeerChunkReadError(PeerChunkReadErrorAction),
+
+    // chunk write
+    PeerChunkWriteSetContent(PeerChunkWriteSetContentAction),
+    PeerChunkWriteEncryptContent(PeerChunkWriteEncryptContentAction),
+    PeerChunkWriteCreateChunk(PeerChunkWriteCreateChunkAction),
+    PeerChunkWritePart(PeerChunkWritePartAction),
+    PeerChunkWriteReady(PeerChunkWriteReadyAction),
+    PeerChunkWriteError(PeerChunkWriteErrorAction),
+
+    // binary message read
+    PeerBinaryMessageReadInit(PeerBinaryMessageReadInitAction),
+    PeerBinaryMessageReadChunkReady(PeerBinaryMessageReadChunkReadyAction),
+    PeerBinaryMessageReadSizeReady(PeerBinaryMessageReadSizeReadyAction),
+    PeerBinaryMessageReadReady(PeerBinaryMessageReadReadyAction),
+    PeerBinaryMessageReadError(PeerBinaryMessageReadErrorAction),
+
+    // binary message write
+    PeerBinaryMessageWriteSetContent(PeerBinaryMessageWriteSetContentAction),
+    PeerBinaryMessageWriteNextChunk(PeerBinaryMessageWriteNextChunkAction),
+    PeerBinaryMessageWriteReady(PeerBinaryMessageWriteReadyAction),
+    PeerBinaryMessageWriteError(PeerBinaryMessageWriteErrorAction),
+
     PeerHandshakingInit(PeerHandshakingInitAction),
+    PeerHandshakingConnectionMessageInit(PeerHandshakingConnectionMessageInitAction),
+    PeerHandshakingConnectionMessageEncode(PeerHandshakingConnectionMessageEncodeAction),
+    PeerHandshakingConnectionMessageWrite(PeerHandshakingConnectionMessageWriteAction),
+    PeerHandshakingConnectionMessageRead(PeerHandshakingConnectionMessageReadAction),
+    PeerHandshakingConnectionMessageDecode(PeerHandshakingConnectionMessageDecodeAction),
 
-    PeerConnectionMessageWriteInit(PeerConnectionMessageWriteInitAction),
-    PeerConnectionMessagePartWritten(PeerConnectionMessagePartWrittenAction),
-    PeerConnectionMessageWriteError(PeerConnectionMessageWriteErrorAction),
-    PeerConnectionMessageWriteSuccess(PeerConnectionMessageWriteSuccessAction),
+    PeerHandshakingEncryptionInit(PeerHandshakingEncryptionInitAction),
 
-    PeerConnectionMessageReadInit(PeerConnectionMessageReadInitAction),
-    PeerConnectionMessagePartRead(PeerConnectionMessagePartReadAction),
-    PeerConnectionMessageReadError(PeerConnectionMessageReadErrorAction),
-    PeerConnectionMessageReadSuccess(PeerConnectionMessageReadSuccessAction),
+    PeerHandshakingMetadataMessageInit(PeerHandshakingMetadataMessageInitAction),
+    PeerHandshakingMetadataMessageEncode(PeerHandshakingMetadataMessageEncodeAction),
+    PeerHandshakingMetadataMessageWrite(PeerHandshakingMetadataMessageWriteAction),
+    PeerHandshakingMetadataMessageRead(PeerHandshakingMetadataMessageReadAction),
+    PeerHandshakingMetadataMessageDecode(PeerHandshakingMetadataMessageDecodeAction),
+
+    PeerHandshakingAckMessageInit(PeerHandshakingAckMessageInitAction),
+    PeerHandshakingAckMessageEncode(PeerHandshakingAckMessageEncodeAction),
+    PeerHandshakingAckMessageWrite(PeerHandshakingAckMessageWriteAction),
+    PeerHandshakingAckMessageRead(PeerHandshakingAckMessageReadAction),
+    PeerHandshakingAckMessageDecode(PeerHandshakingAckMessageDecodeAction),
+
+    PeerHandshakingError(PeerHandshakingErrorAction),
+    PeerHandshakingFinish(PeerHandshakingFinishAction),
 
     StorageBlockHeadersPut(StorageBlockHeadersPutAction),
     StorageBlockHeaderPutNextInit(StorageBlockHeaderPutNextInitAction),

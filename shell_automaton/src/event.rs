@@ -3,7 +3,7 @@
 
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, time::Instant};
+use std::net::SocketAddr;
 
 use crate::peer::PeerToken;
 

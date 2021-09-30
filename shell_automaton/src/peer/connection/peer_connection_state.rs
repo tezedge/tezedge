@@ -1,8 +1,6 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use std::io;
 
-use crate::io_error_kind::IOErrorKind;
 use crate::peer::connection::incoming::PeerConnectionIncomingState;
 use crate::peer::connection::outgoing::PeerConnectionOutgoingState;
 use crate::peer::PeerToken;

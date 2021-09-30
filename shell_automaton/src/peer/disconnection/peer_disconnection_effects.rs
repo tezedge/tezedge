@@ -1,7 +1,6 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
-use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
 use crate::peers::remove::PeersRemoveAction;
 use crate::service::{MioService, Service};

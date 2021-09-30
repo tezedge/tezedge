@@ -1,14 +1,6 @@
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{
-        connection::outgoing::PeerConnectionOutgoingState,
-        disconnection::{PeerDisconnecting, PeerDisconnectionState},
-        Peer, PeerStatus,
-    },
-    State,
-};
+use crate::{action::Action, peer::PeerStatus, State};
 
 pub fn peers_remove_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {

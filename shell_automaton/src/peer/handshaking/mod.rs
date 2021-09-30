@@ -9,5 +9,3 @@ pub use peer_handshaking_reducer::*;
 
 mod peer_handshaking_effects;
 pub use peer_handshaking_effects::*;
-
-pub mod connection_message;

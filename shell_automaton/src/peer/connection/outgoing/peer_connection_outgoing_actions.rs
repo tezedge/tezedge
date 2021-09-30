@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::io;
 use std::net::SocketAddr;
 
 use crate::io_error_kind::IOErrorKind;
