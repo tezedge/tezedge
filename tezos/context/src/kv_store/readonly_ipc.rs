@@ -129,9 +129,12 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         None
     }
 
-    fn synchronize_strings(&mut self, _string_interner: &StringInterner) -> Result<(), DBError> {
+    fn synchronize_strings_from(&mut self, _string_interner: &StringInterner) {
         // Readonly protocol runner doesn't update strings.
-        Ok(())
+    }
+
+    fn synchronize_strings_into(&self, _string_interner: &mut StringInterner) {
+        // Readonly protocol runner doesn't update strings.
     }
 }
 
