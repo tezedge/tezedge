@@ -1,11 +1,7 @@
 use redux_rs::ActionWithId;
 
 use crate::peer::connection::PeerConnectionState;
-use crate::{
-    action::Action,
-    peer::{Peer, PeerStatus},
-    State,
-};
+use crate::{action::Action, peer::PeerStatus, State};
 
 use super::PeerConnectionIncomingState;
 

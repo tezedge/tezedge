@@ -1,21 +1,22 @@
-use bytes::Buf;
 use redux_rs::{ActionWithId, Store};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::action::Action;
+use crate::peer::binary_message::write::peer_binary_message_write_state::PeerBinaryMessageWriteState;
+use crate::peer::chunk::read::peer_chunk_read_actions::{
+    PeerChunkReadErrorAction, PeerChunkReadPartAction,
+};
+use crate::peer::chunk::write::peer_chunk_write_state::PeerChunkWriteState;
+use crate::peer::chunk::write::{PeerChunkWriteErrorAction, PeerChunkWritePartAction};
 use crate::peer::PeerStatus;
 use crate::service::{MioService, Service};
 use crate::State;
 
+use super::binary_message::read::peer_binary_message_read_state::PeerBinaryMessageReadState;
+use super::chunk::read::peer_chunk_read_state::PeerChunkReadState;
 use super::disconnection::PeerDisconnectedAction;
-use super::handshaking::connection_message::read::{
-    PeerConnectionMessagePartReadAction, PeerConnectionMessageReadErrorAction,
-};
-use super::handshaking::connection_message::write::{
-    PeerConnectionMessagePartWrittenAction, PeerConnectionMessageWriteErrorAction,
-};
-use super::handshaking::{MessageReadState, MessageWriteState, PeerHandshakingStatus};
+use super::handshaking::PeerHandshakingStatus;
 use super::{PeerTryReadAction, PeerTryWriteAction};
 
 pub fn peer_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
@@ -68,45 +69,53 @@ where
                 None => return,
             };
 
-            match &peer.status {
+            let chunk_state = match &peer.status {
                 PeerStatus::Handshaking(handshaking) => match &handshaking.status {
-                    PeerHandshakingStatus::ConnectionMessageWrite { conn_msg, status } => {
-                        let bytes = match status {
-                            MessageWriteState::Idle => conn_msg.raw(),
-                            MessageWriteState::Pending { written } => &conn_msg.raw()[*written..],
-                            _ => return,
-                        };
-                        match peer_stream.write(bytes) {
-                            Ok(written) => {
-                                if written == 0 {
-                                    return;
-                                }
-                                store.dispatch(
-                                    PeerConnectionMessagePartWrittenAction {
-                                        address: action.address,
-                                        bytes_written: written,
-                                    }
-                                    .into(),
-                                );
-                            }
-                            Err(err) => {
-                                match err.kind() {
-                                    std::io::ErrorKind::WouldBlock => return,
-                                    _ => {}
-                                }
-                                store.dispatch(
-                                    PeerConnectionMessageWriteErrorAction {
-                                        address: action.address,
-                                        error: err.kind().into(),
-                                    }
-                                    .into(),
-                                );
-                            }
-                        }
+                    PeerHandshakingStatus::ConnectionMessageWritePending {
+                        chunk_state, ..
+                    } => chunk_state,
+                    PeerHandshakingStatus::MetadataMessageWritePending {
+                        binary_message_state,
+                        ..
                     }
+                    | PeerHandshakingStatus::AckMessageWritePending {
+                        binary_message_state,
+                        ..
+                    } => match binary_message_state {
+                        PeerBinaryMessageWriteState::Pending { chunk, .. } => &chunk.state,
+                        _ => return,
+                    },
                     _ => return,
                 },
                 _ => return,
+            };
+
+            if let PeerChunkWriteState::Pending {
+                chunk,
+                written: prev_written,
+            } = chunk_state
+            {
+                match peer_stream.write(&chunk.raw()[*prev_written..]) {
+                    Ok(written) if written > 0 => {
+                        eprintln!("<<< {}", hex::encode(&chunk.raw()[*prev_written..written]));
+                        store.dispatch(
+                            PeerChunkWritePartAction {
+                                address: action.address,
+                                written,
+                            }
+                            .into(),
+                        )
+                    }
+                    Ok(_) => {}
+                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(err) => store.dispatch(
+                        PeerChunkWriteErrorAction {
+                            address: action.address,
+                            error: err.into(),
+                        }
+                        .into(),
+                    ),
+                }
             }
         }
         Action::PeerTryRead(action) => {
@@ -125,58 +134,57 @@ where
                 None => return,
             };
 
-            match &peer.status {
-                PeerStatus::Handshaking(handshaking) => {
-                    // set dispatch_error and dispatch_success methods
-                    // based on which message we are expecting to read.
-                    let (bytes_to_read, dispatch_success, dispatch_error) =
-                        match &handshaking.status {
-                            PeerHandshakingStatus::ConnectionMessageRead { status, .. } => {
-                                let bytes_to_read = match status {
-                                    MessageReadState::Idle => CONTENT_LENGTH_FIELD_BYTES,
-                                    MessageReadState::Pending { buffer } => {
-                                        buffer.bytes_left().unwrap_or(CONTENT_LENGTH_FIELD_BYTES)
-                                    }
-                                    _ => return,
-                                };
-                                (
-                                    bytes_to_read,
-                                    |store: &mut Store<State, S, Action>, bytes| {
-                                        store.dispatch(
-                                            PeerConnectionMessagePartReadAction {
-                                                address: action.address,
-                                                bytes,
-                                            }
-                                            .into(),
-                                        );
-                                    },
-                                    |store: &mut Store<State, S, Action>, error| {
-                                        store.dispatch(
-                                            PeerConnectionMessageReadErrorAction {
-                                                address: action.address,
-                                                error,
-                                            }
-                                            .into(),
-                                        );
-                                    },
-                                )
-                            }
-                            _ => return,
-                        };
-
-                    &bytes_to_read;
-                    let mut buf = vec![0; bytes_to_read];
-                    match peer_stream.read(&mut buf) {
-                        Ok(read_bytes) => {
-                            dispatch_success(store, buf[..read_bytes].to_vec());
-                        }
-                        Err(err) => match err.kind() {
-                            std::io::ErrorKind::WouldBlock => return,
-                            err => dispatch_error(store, err.into()),
-                        },
+            let chunk_state = match &peer.status {
+                PeerStatus::Handshaking(handshaking) => match &handshaking.status {
+                    PeerHandshakingStatus::ConnectionMessageReadPending { chunk_state, .. } => {
+                        chunk_state
                     }
-                }
+                    PeerHandshakingStatus::MetadataMessageReadPending {
+                        binary_message_state,
+                        ..
+                    }
+                    | PeerHandshakingStatus::AckMessageReadPending {
+                        binary_message_state,
+                        ..
+                    } => match binary_message_state {
+                        PeerBinaryMessageReadState::PendingFirstChunk { chunk, .. }
+                        | PeerBinaryMessageReadState::Pending { chunk, .. } => &chunk.state,
+                        _ => return,
+                    },
+                    _ => return,
+                },
                 _ => return,
+            };
+
+            let bytes_to_read = match chunk_state {
+                PeerChunkReadState::PendingSize { buffer } => {
+                    CONTENT_LENGTH_FIELD_BYTES - buffer.len()
+                }
+                PeerChunkReadState::PendingBody { buffer, size } => size - buffer.len(),
+                _ => return,
+            };
+
+            let mut buff = vec![0; bytes_to_read];
+            match peer_stream.read(&mut buff) {
+                Ok(bytes) if bytes > 0 => {
+                    eprintln!(">>> {}", hex::encode(&buff));
+                    store.dispatch(
+                        PeerChunkReadPartAction {
+                            address: action.address,
+                            bytes: buff[..bytes].to_vec(),
+                        }
+                        .into(),
+                    );
+                }
+                Ok(_) => todo!("handle eof"),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
+                Err(err) => store.dispatch(
+                    PeerChunkReadErrorAction {
+                        address: action.address,
+                        error: err.into(),
+                    }
+                    .into(),
+                ),
             }
         }
         _ => {}

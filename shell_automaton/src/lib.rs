@@ -9,7 +9,6 @@ pub mod action;
 use action::Action;
 
 pub mod config;
-use config::default_config;
 pub use config::Config;
 
 mod state;
@@ -31,23 +30,13 @@ pub mod peers;
 use peers::dns_lookup::PeersDnsLookupInitAction;
 
 pub mod storage;
-use crate::storage::block_header::put::StorageBlockHeadersPutAction;
 use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub mod rpc;
 
 pub mod service;
-use crate::service::RpcServiceDefault;
-use service::mio_service::MioInternalEventsContainer;
-use service::{
-    DnsServiceDefault, MioService, MioServiceDefault, RandomnessServiceDefault,
-    StorageServiceDefault,
-};
 pub use service::{Service, ServiceDefault};
-
-pub mod tmp;
-use tmp::persistent_storage::{gen_block_headers, init_storage};
-
+use service::MioService;
 pub type Port = u16;
 
 pub struct ShellAutomaton<Serv, Events> {

@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use std::io::Cursor;
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
@@ -19,7 +19,7 @@ use tezos_encoding::{
 use crate::p2p::binary_message::{BinaryChunk, BinaryRead};
 use crate::p2p::encoding::version::NetworkVersion;
 
-#[derive(Serialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
 pub struct ConnectionMessage {
     pub port: u16,
     #[get = "pub"]

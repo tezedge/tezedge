@@ -1,10 +1,6 @@
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{Peer, PeerStatus},
-    State,
-};
+use crate::{action::Action, State};
 
 use super::{PeersDnsLookupState, PeersDnsLookupStatus};
 

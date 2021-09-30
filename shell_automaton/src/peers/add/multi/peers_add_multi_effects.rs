@@ -9,7 +9,7 @@ pub fn peers_add_multi_effects<S: Service>(
     action: &ActionWithId<Action>,
 ) {
     match &action.action {
-        Action::PeersAddMulti(action) => {
+        Action::PeersAddMulti(_) => {
             store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
         }
         _ => {}

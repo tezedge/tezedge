@@ -1,6 +1,5 @@
 use redux_rs::{ActionWithId, Store};
 
-use crate::peer::PeerStatus;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::service::{DnsService, Service};
 use crate::{action::Action, State};
@@ -32,12 +31,8 @@ pub fn peers_dns_lookup_effects<S: Service>(
             };
             match &dns_lookup_state.status {
                 PeersDnsLookupStatus::Success { addresses } => {
-                    store.dispatch(
-                        PeersAddMultiAction {
-                            addresses: addresses.clone(),
-                        }
-                        .into(),
-                    );
+                    let addresses = addresses.clone();
+                    store.dispatch(PeersAddMultiAction { addresses }.into());
                 }
                 _ => {}
             }

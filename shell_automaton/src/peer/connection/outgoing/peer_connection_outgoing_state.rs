@@ -1,8 +1,6 @@
-use serde::{Deserialize, Serialize};
-use std::io;
-
 use crate::io_error_kind::IOErrorKind;
 use crate::peer::PeerToken;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionOutgoingState {

@@ -3,7 +3,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::peer::connection::PeerConnectionState;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
-use crate::service::{MioService, RandomnessService, Service};
+use crate::service::Service;
 use crate::{action::Action, State};
 
 use super::{PeerConnectionIncomingState, PeerConnectionIncomingSuccessAction};

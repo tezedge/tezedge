@@ -1,6 +1,5 @@
 use redux_rs::ActionWithId;
 
-use crate::service::storage_service::StorageRequestPayload;
 use crate::{action::Action, State};
 
 use super::{StorageRequestState, StorageRequestStatus};

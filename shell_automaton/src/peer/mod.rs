@@ -1,3 +1,5 @@
+pub mod binary_message;
+pub mod chunk;
 pub mod connection;
 pub mod disconnection;
 pub mod handshaking;
