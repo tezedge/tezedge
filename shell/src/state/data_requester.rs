@@ -26,11 +26,11 @@ use tezos_messages::p2p::encoding::prelude::{
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::shell_automaton_manager::{ShellAutomatonSender, ShellAutomatonMsg};
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
 use crate::state::{ApplyBlockBatch, StateError};
-use crate::tezedge_state_manager::ProposerHandle;
 use crate::validation;
 use crate::validation::CanApplyStatus;
 
@@ -43,7 +43,7 @@ pub struct DataRequester {
     pub(crate) block_meta_storage: BlockMetaStorage,
     pub(crate) operations_meta_storage: OperationsMetaStorage,
 
-    pub(crate) proposer: ProposerHandle,
+    pub(crate) shell_automaton: ShellAutomatonSender,
 
     /// Chain feeder - actor, which is responsible to apply_block to context
     block_applier: ChainFeederRef,
@@ -53,13 +53,13 @@ impl DataRequester {
     pub fn new(
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
-        proposer: ProposerHandle,
+        shell_automaton: ShellAutomatonSender,
         block_applier: ChainFeederRef,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
-            proposer,
+            shell_automaton,
             block_applier,
         }
     }
@@ -130,7 +130,7 @@ impl DataRequester {
                 .chunks(limits::GET_BLOCK_HEADERS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        &self.proposer,
+                        &self.shell_automaton,
                         peer,
                         GetBlockHeadersMessage::new(
                             blocks_to_download
@@ -144,7 +144,7 @@ impl DataRequester {
                 });
         } else {
             tell_peer(
-                &self.proposer,
+                &self.shell_automaton,
                 peer,
                 GetBlockHeadersMessage::new(
                     blocks_to_download
@@ -255,7 +255,7 @@ impl DataRequester {
                 .chunks(limits::GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        &self.proposer,
+                        &self.shell_automaton,
                         peer,
                         GetOperationsForBlocksMessage::new(blocks_to_download.into()).into(),
                         log,
@@ -263,7 +263,7 @@ impl DataRequester {
                 });
         } else {
             tell_peer(
-                &self.proposer,
+                &self.shell_automaton,
                 peer,
                 GetOperationsForBlocksMessage::new(
                     blocks_to_download
@@ -511,16 +511,16 @@ impl Drop for RequestedOperationDataLock {
 }
 
 pub fn tell_peer(
-    proposer: &ProposerHandle,
+    shell_automaton: &ShellAutomatonSender,
     peer_id: &PeerId,
     msg: Arc<PeerMessageResponse>,
     log: &Logger,
 ) {
-    if let Err(err) = proposer.notify(NetworkChannelMsg::SendMessage(
+    if let Err(err) = shell_automaton.send(ShellAutomatonMsg::SendMessage(
         Arc::new(peer_id.clone()),
         msg,
     )) {
-        warn!(log, "Failed to notify proposer (data_requester)"; "reason" => format!("{:?}", err));
+        warn!(log, "Failed to send message to shell_automaton (data_requester)"; "reason" => format!("{:?}", err));
     }
 }
 

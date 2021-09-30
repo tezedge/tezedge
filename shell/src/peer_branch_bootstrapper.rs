@@ -6,10 +6,10 @@
 //! PeerBranchBootstrapper operates just for one chain_id.
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use networking::PeerAddress;
 use rand::Rng;
 use riker::actors::*;
 use slog::{info, warn, Logger};
@@ -25,6 +25,7 @@ use crate::state::bootstrap_state::{AddBranchState, BootstrapState, InnerBlockSt
 use crate::state::data_requester::DataRequesterRef;
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
+use crate::shell_automaton_manager::ShellAutomatonMsg;
 
 /// After this interval, we will check peers, if no activity is done on any pipeline
 /// So if peer does not change any branch bootstrap, we will disconnect it
@@ -267,7 +268,7 @@ impl PeerBranchBootstrapper {
         std::mem::replace(&mut self.actor_received_messages_count, 0)
     }
 
-    fn clean_peer_data(&mut self, peer_address: &PeerAddress) {
+    fn clean_peer_data(&mut self, peer_address: &SocketAddr) {
         self.bootstrap_state.clean_peer_data(peer_address);
     }
 
@@ -673,8 +674,8 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         bootstrap_state.check_bootstrapped_branches(&None, &log);
         bootstrap_state.check_stalled_peers(&cfg, &log, |peer, data_requester| {
             // notify state machine about a message from network channel.
-            if let Err(err) = data_requester.proposer.notify(NetworkChannelMsg::PeerStalled(Arc::new(peer.clone()))) {
-                warn!(ctx.system.log(), "Failed to notify proposer"; "reason" => format!("{:?}", err));
+            if let Err(err) = data_requester.shell_automaton.send(ShellAutomatonMsg::PeerStalled(Arc::new(peer.clone()))) {
+                warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
             }
         });
 

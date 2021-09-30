@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-//! This crate handles low level p2p communication.
-
-use std::sync::Arc;
-
-use crypto::hash::CryptoboxPublicKeyHash;
-pub use tezedge_state::PeerAddress;
-use tezos_identity::Identity;
-
-#[derive(Debug, Clone)]
-pub struct PeerId {
-    pub address: PeerAddress,
-    pub public_key_hash: CryptoboxPublicKeyHash,
-}
-
 pub mod network_channel;
 
-pub use tezedge_state::ShellCompatibilityVersion;
+use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+
+use crypto::hash::CryptoboxPublicKeyHash;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerId {
+    pub address: SocketAddr,
+    pub public_key_hash: CryptoboxPublicKeyHash,
+}

@@ -12,16 +12,16 @@ use slog::{debug, error, info, warn, Logger};
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
-use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ApplyBlock;
 use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::connector::ShellConnectorSupport;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
+use shell::shell_automaton_manager::ShellAutomatonManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use shell::tezedge_state_manager::TezedgeStateManager;
+use shell::ShellCompatibilityVersion;
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
@@ -254,7 +254,8 @@ fn block_on_actors(
         ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize tezedge state
-    let mut tezedge_state_manager = TezedgeStateManager::new(
+    let mut tezedge_state_manager = ShellAutomatonManager::new(
+        persistent_storage.clone(),
         network_channel.clone(),
         log.clone(),
         identity.clone(),
@@ -333,7 +334,7 @@ fn block_on_actors(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
-        tezedge_state_manager.proposer_handle(),
+        tezedge_state_manager.shell_automaton_sender(),
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),

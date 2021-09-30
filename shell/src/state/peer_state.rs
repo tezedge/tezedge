@@ -3,23 +3,24 @@
 
 use std::cmp;
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use slog::Logger;
 
 use crypto::hash::{BlockHash, OperationHash};
-use networking::{PeerAddress, PeerId};
+use networking::PeerId;
 use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, MetadataMessage};
 
+use crate::shell_automaton_manager::ShellAutomatonSender;
 use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
-use crate::tezedge_state_manager::ProposerHandle;
 
 /// Limit to how many mempool operations to request in a batch
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = limits::MEMPOOL_MAX_OPERATIONS;
@@ -156,8 +157,8 @@ impl PeerState {
     }
 
     pub fn schedule_missing_operations_for_mempool(
-        proposer: &ProposerHandle,
-        peers: &mut HashMap<PeerAddress, PeerState>,
+        shell_automaton: &ShellAutomatonSender,
+        peers: &mut HashMap<SocketAddr, PeerState>,
         log: &Logger,
     ) {
         peers
@@ -193,7 +194,7 @@ impl PeerState {
                         .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
                         .for_each(|ops_to_get| {
                             tell_peer(
-                                &proposer,
+                                &shell_automaton,
                                 &peer.peer_id,
                                 GetOperationsMessage::new(ops_to_get.into()).into(),
                                 log,
@@ -201,7 +202,7 @@ impl PeerState {
                         });
                 } else {
                     tell_peer(
-                        &proposer,
+                        &shell_automaton,
                         &peer.peer_id,
                         GetOperationsMessage::new(ops_to_get).into(),
                         log,

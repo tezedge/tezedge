@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::time::Duration;
 
-use networking::PeerAddress;
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{debug, info, trace, warn, Logger};
 
@@ -47,7 +47,7 @@ pub struct Monitor {
     shell_channel: ShellChannelRef,
     websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
-    peer_monitors: HashMap<PeerAddress, PeerMonitor>,
+    peer_monitors: HashMap<SocketAddr, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
     block_application_monitor: ApplicationMonitor,

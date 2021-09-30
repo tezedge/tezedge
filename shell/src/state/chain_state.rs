@@ -29,11 +29,11 @@ use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
     StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
+use crate::shell_automaton_manager::ShellAutomatonSender;
 use crate::state::bootstrap_state::InnerBlockState;
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
-use crate::tezedge_state_manager::ProposerHandle;
 use crate::validation;
 
 /// Constants for controlling bootstrap speed
@@ -97,7 +97,7 @@ pub struct BlockchainState {
 
 impl BlockchainState {
     pub fn new(
-        proposer: ProposerHandle,
+        shell_automaton: ShellAutomatonSender,
         block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
         chain_id: Arc<ChainId>,
@@ -107,7 +107,7 @@ impl BlockchainState {
             requester: DataRequesterRef::new(DataRequester::new(
                 BlockMetaStorage::new(&persistent_storage),
                 OperationsMetaStorage::new(&persistent_storage),
-                proposer,
+                shell_automaton,
                 block_applier,
             )),
             peer_branch_bootstrapper: None,

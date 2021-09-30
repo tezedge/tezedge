@@ -8,6 +8,7 @@
 //! - it is king of bingo, where we prepare block intervals, and we check/mark what is downloaded/applied, and what needs to be downloaded or applied
 
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -15,7 +16,7 @@ use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::{PeerAddress, PeerId};
+use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
@@ -42,7 +43,7 @@ type PeerBranchSynchronizationDoneCallback = Box<dyn Fn(PeerBranchSynchronizatio
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
     /// Holds peers info
-    pub(crate) peers: HashMap<PeerAddress, PeerBootstrapState>,
+    pub(crate) peers: HashMap<SocketAddr, PeerBootstrapState>,
 
     /// Holds unique blocks cache, shared for all branch bootstraps to minimalize memory usage
     block_state_db: BlockStateDb,
@@ -71,7 +72,7 @@ impl BootstrapState {
         self.peers.len()
     }
 
-    pub fn clean_peer_data(&mut self, peer_address: &PeerAddress) {
+    pub fn clean_peer_data(&mut self, peer_address: &SocketAddr) {
         if let Some(mut state) = self.peers.remove(peer_address) {
             state.branches.clear();
         }

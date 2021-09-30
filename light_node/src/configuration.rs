@@ -16,7 +16,7 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
-use shell::tezedge_state_manager::P2p;
+use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
@@ -1097,7 +1097,7 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
-                effects_seed: args.value_of("effects-seed").map(|s| {
+                randomness_seed: args.value_of("randomness-seed").map(|s| {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")
                 }),

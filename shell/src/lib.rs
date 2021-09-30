@@ -10,11 +10,13 @@ pub mod chain_feeder;
 pub mod chain_manager;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;
+pub mod shell_automaton_manager;
 pub mod shell_channel;
 pub mod state;
 pub mod stats;
-pub mod tezedge_state_manager;
 pub mod validation;
+
+pub use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 
 /// Constant tells about p2p feature versions, which this shell is compatible with
 pub const SUPPORTED_P2P_VERSION: &[u16] = &[0, 1];
@@ -204,7 +206,7 @@ pub mod subscription {
 
 /// Module implements shell integration based on actual shell constalation.
 /// In case of new architecture (state machine, ..., whatever),
-/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ProposerHandle or whatever
+/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ShellAutomatonSender or whatever
 pub mod connector {
     use std::sync::Arc;
 

@@ -3,6 +3,7 @@
 
 //! This channel is used to transmit p2p networking messages between actors.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use riker::actors::*;
@@ -10,14 +11,14 @@ use riker::actors::*;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::{PeerAddress, PeerId};
+use crate::PeerId;
 
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 /// We have received message from another peer
 #[derive(Clone, Debug)]
 pub struct PeerMessageReceived {
-    pub peer_address: PeerAddress,
+    pub peer_address: SocketAddr,
     pub message: Arc<PeerMessageResponse>,
 }
 
@@ -26,14 +27,9 @@ pub struct PeerMessageReceived {
 pub enum NetworkChannelMsg {
     /// Events
     PeerBootstrapped(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
-    PeerDisconnected(PeerAddress),
-    PeerBlacklisted(PeerAddress),
+    PeerDisconnected(SocketAddr),
+    PeerBlacklisted(SocketAddr),
     PeerMessageReceived(PeerMessageReceived),
-    PeerStalled(Arc<PeerId>),
-    /// Commands (dedicated to peer_manager)
-    /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
-    BlacklistPeer(Arc<PeerId>, String),
-    SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
 }
 
 /// Represents various topics
