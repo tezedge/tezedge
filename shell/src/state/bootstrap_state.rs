@@ -1529,7 +1529,6 @@ mod tests {
 
     use networking::p2p::network_channel::NetworkChannel;
 
-    use crate::shell_channel::ShellChannel;
     use crate::state::peer_state::DataQueuesLimits;
     use crate::state::tests::block;
     use crate::state::tests::prerequisites::{
@@ -1571,12 +1570,10 @@ mod tests {
         let runtime = create_test_tokio_runtime();
         let network_channel =
             NetworkChannel::actor(&sys).expect("Failed to create network channel");
-        let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
             .expect("failed to create tmp storage");
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state", shell_channel)
-                .expect("failed to create chain_feeder_mock");
+        let (chain_feeder_mock, _) = chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state")
+            .expect("failed to create chain_feeder_mock");
         let data_requester = Arc::new(DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),

@@ -1,7 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 
 use chrono::SecondsFormat;
 use riker::actors::*;
@@ -18,7 +19,6 @@ use crate::mempool::mempool_prevalidator::{
     MempoolPrevalidator, MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg,
 };
 use crate::mempool::mempool_state::MempoolState;
-use crate::shell_channel::ShellChannelRef;
 
 pub mod mempool_prevalidator;
 pub mod mempool_state;
@@ -45,19 +45,18 @@ pub enum MempoolPrevalidatorInitError {
 pub struct MempoolPrevalidatorFactory {
     actor_system: Arc<ActorSystem>,
     log: Logger,
-    shell_channel: ShellChannelRef,
     persistent_storage: PersistentStorage,
     current_mempool_state: CurrentMempoolStateStorageRef,
     tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
     /// Indicates if mempool is disabled to propagate to p2p
     pub p2p_disable_mempool: bool,
+    mempool_thread_watchers: Arc<Mutex<HashMap<ActorUri, ThreadWatcher>>>,
 }
 
 impl MempoolPrevalidatorFactory {
     pub fn new(
         actor_system: Arc<ActorSystem>,
         log: Logger,
-        shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         current_mempool_state: CurrentMempoolStateStorageRef,
         tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
@@ -66,12 +65,16 @@ impl MempoolPrevalidatorFactory {
         Self {
             actor_system,
             log,
-            shell_channel,
             persistent_storage,
             current_mempool_state,
             tezos_readonly_mempool_api,
             p2p_disable_mempool,
+            mempool_thread_watchers: Arc::new(Mutex::new(Default::default())),
         }
+    }
+
+    pub fn mempool_thread_watchers(&self) -> &Arc<Mutex<HashMap<ActorUri, ThreadWatcher>>> {
+        &self.mempool_thread_watchers
     }
 
     pub fn get_or_start_mempool(
@@ -92,20 +95,38 @@ impl MempoolPrevalidatorFactory {
                 return Ok(existing_mempool_prevalidator);
             }
 
+            // at first lock registry
+            let mut mempool_thread_watchers = match self.mempool_thread_watchers.lock() {
+                Ok(mempool_thread_watchers) => mempool_thread_watchers,
+                Err(e) => {
+                    warn!(self.log, "Failed to lock mempool thread registry"; "reason" => format!("{}", e));
+                    return Err(MempoolPrevalidatorInitError::CreateError {
+                        reason: CreateError::System,
+                    });
+                }
+            };
+
             // if not found, we need to start new one
             info!(self.log, "Starting mempool prevalidator"; "chain_id" => chain_id.to_base58_check());
-            MempoolPrevalidator::actor(
-                self.actor_system.as_ref(),
-                chain_manager.clone(),
-                self.shell_channel.clone(),
-                self.persistent_storage.clone(),
-                self.current_mempool_state.clone(),
-                chain_id,
-                self.tezos_readonly_mempool_api.clone(),
-                self.log.clone(),
-            )
-            .map_err(MempoolPrevalidatorInitError::from)
-            .map(MempoolPrevalidatorBasicRef::from)
+            let (mempool_prevalidator, mempool_prevalidator_thread_watcher) =
+                MempoolPrevalidator::actor(
+                    self.actor_system.as_ref(),
+                    chain_manager.clone(),
+                    self.persistent_storage.clone(),
+                    self.current_mempool_state.clone(),
+                    chain_id,
+                    self.tezos_readonly_mempool_api.clone(),
+                    self.log.clone(),
+                )
+                .map_err(MempoolPrevalidatorInitError::from)?;
+
+            // add thread watcher to registry
+            let _ = mempool_thread_watchers.insert(
+                mempool_prevalidator.uri().clone(),
+                mempool_prevalidator_thread_watcher,
+            );
+
+            Ok(MempoolPrevalidatorBasicRef::from(mempool_prevalidator))
         }
     }
 

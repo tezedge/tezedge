@@ -28,6 +28,7 @@ use shell::mempool::{
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::PeerConnectionThreshold;
+use shell_integration::ThreadWatcher;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
@@ -57,6 +58,8 @@ pub struct NodeInfrastructure {
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
+    block_applier_thread_watcher: ThreadWatcher,
+    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
 }
 
 impl NodeInfrastructure {
@@ -184,7 +187,6 @@ impl NodeInfrastructure {
         let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
             actor_system.clone(),
             log.clone(),
-            shell_channel.clone(),
             persistent_storage.clone(),
             current_mempool_state_storage.clone(),
             tezos_readonly_api_pool.clone(),
@@ -196,9 +198,8 @@ impl NodeInfrastructure {
                 std::sync::mpsc::sync_channel(1);
             (Arc::new(result_callback_sender), result_callback_receiver)
         };
-        let block_applier = ChainFeeder::actor(
+        let (block_applier, block_applier_thread_watcher) = ChainFeeder::actor(
             actor_system.as_ref(),
-            shell_channel.clone(),
             persistent_storage.clone(),
             tezos_writeable_api,
             init_storage_data.clone(),
@@ -239,7 +240,7 @@ impl NodeInfrastructure {
             hydrated_current_head,
             current_mempool_state_storage.clone(),
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
-            mempool_prevalidator_factory,
+            mempool_prevalidator_factory.clone(),
             identity.clone(),
         )
         .expect("Failed to create chain manager");
@@ -275,6 +276,8 @@ impl NodeInfrastructure {
             tmp_storage,
             current_mempool_state_storage,
             tezos_env: tezos_env.clone(),
+            block_applier_thread_watcher,
+            mempool_prevalidator_factory,
         })
     }
 
@@ -284,9 +287,48 @@ impl NodeInfrastructure {
             shell_channel,
             actor_system,
             tokio_runtime,
+            block_applier_thread_watcher,
+            mempool_prevalidator_factory,
             ..
         } = self;
         warn!(log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
+
+        info!(log, "Shutting down of thread workers starting");
+        if let Err(e) = block_applier_thread_watcher.stop() {
+            warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => block_applier_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+        }
+        let mempool_thread_watchers = match mempool_prevalidator_factory
+            .mempool_thread_watchers()
+            .lock()
+        {
+            Ok(mut mempool_prevalidator_factory) => {
+                let (mempool_thread_watchers_stop_initiated, _): (
+                    Vec<ThreadWatcher>,
+                    Vec<ThreadWatcher>,
+                ) = mempool_prevalidator_factory
+                    .drain()
+                    .map(|(_, b)| b)
+                    .partition(|thread_worker| {
+                        if let Err(e) = thread_worker.stop() {
+                            warn!(log, "Failed to stop thread watcher";
+                               "thread_name" => thread_worker.thread_name(),
+                               "reason" => format!("{}", e));
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                mempool_thread_watchers_stop_initiated
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock mempool thread watchers, so we cannot gracefully release them";
+                           "reason" => format!("{}", e));
+                vec![]
+            }
+        };
+        info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
         // clean up + shutdown events listening
         shell_channel.tell(
@@ -300,6 +342,26 @@ impl NodeInfrastructure {
         let _ = tokio_runtime.block_on(async move {
             tokio::time::timeout(Duration::from_secs(10), actor_system.shutdown()).await
         });
+
+        info!(
+            log,
+            "Waiting for thread workers finish gracefully (please, wait, it could take some time)"
+        );
+        if let Some(thread) = block_applier_thread_watcher.thread() {
+            thread.thread().unpark();
+            if let Err(e) = thread.join() {
+                warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        for mut mempool_thread_watcher in mempool_thread_watchers {
+            if let Some(thread) = mempool_thread_watcher.thread() {
+                thread.thread().unpark();
+                if let Err(e) = thread.join() {
+                    warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+                }
+            }
+        }
+        info!(log, "Thread workers stopped");
 
         warn!(log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
     }
