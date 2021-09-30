@@ -33,7 +33,7 @@ lazy_static! {
     pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
             listener_port: *NODE_P2P_PORT,
-            listener_address: format!("0.0.0.0:{}", *NODE_P2P_PORT).parse::<SocketAddr>().expect("Failed to parse listener address"),
+            listener_address: format!("127.0.0.1:{}", *NODE_P2P_PORT).parse::<SocketAddr>().expect("Failed to parse listener address"),
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
