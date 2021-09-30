@@ -23,6 +23,7 @@ use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
+use shell_integration::ThreadWatcher;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -257,7 +258,6 @@ fn block_on_actors(
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
         actor_system.clone(),
         log.clone(),
-        shell_channel.clone(),
         persistent_storage.clone(),
         current_mempool_state_storage.clone(),
         tezos_readonly_api_pool.clone(),
@@ -271,9 +271,8 @@ fn block_on_actors(
         (Arc::new(result_callback_sender), result_callback_receiver)
     };
 
-    let block_applier = ChainFeeder::actor(
+    let (block_applier, mut block_applier_thread_watcher) = ChainFeeder::actor(
         actor_system.as_ref(),
-        shell_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
@@ -339,7 +338,7 @@ fn block_on_actors(
     .expect("Failed to create chain manager");
 
     let shell_connector =
-        ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory);
+        ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory.clone());
 
     // initialize rpc server
     let mut rpc_server = RpcServer::new(
@@ -438,10 +437,47 @@ fn block_on_actors(
             info!(log, "Ctrl-c or SIGINT received!");
         }
 
-        info!(log, "Shutting down rpc server (1/6)");
+        info!(log, "Shutting down rpc server (1/8)");
         drop(rpc_server);
 
-        info!(log, "Sending shutdown notification to actors (2/6)");
+        info!(log, "Shutting down of thread workers starting (2/8)");
+        if let Err(e) = block_applier_thread_watcher.stop() {
+            warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => block_applier_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+        }
+        let mempool_thread_watchers = match mempool_prevalidator_factory
+            .mempool_thread_watchers()
+            .lock()
+        {
+            Ok(mut mempool_prevalidator_factory) => {
+                let (mempool_thread_watchers_stop_initiated, _): (
+                    Vec<ThreadWatcher>,
+                    Vec<ThreadWatcher>,
+                ) = mempool_prevalidator_factory
+                    .drain()
+                    .map(|(_, b)| b)
+                    .partition(|thread_worker| {
+                        if let Err(e) = thread_worker.stop() {
+                            warn!(log, "Failed to stop thread watcher";
+                               "thread_name" => thread_worker.thread_name(),
+                               "reason" => format!("{}", e));
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                mempool_thread_watchers_stop_initiated
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock mempool thread watchers, so we cannot gracefully release them";
+                           "reason" => format!("{}", e));
+                vec![]
+            }
+        };
+        info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
+
+        info!(log, "Sending shutdown notification to actors (3/8)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -453,24 +489,41 @@ fn block_on_actors(
         // give actors some time to shut down
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors (3/6)");
+        info!(log, "Shutting down actors (4/8)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
-            Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
+            Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Shutting down protocol runner pools (4/6)");
+        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (5/8)");
+        if let Some(thread) = block_applier_thread_watcher.thread() {
+            thread.thread().unpark();
+            if let Err(e) = thread.join() {
+                warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        for mut mempool_thread_watcher in mempool_thread_watchers {
+            if let Some(thread) = mempool_thread_watcher.thread() {
+                thread.thread().unpark();
+                if let Err(e) = thread.join() {
+                    warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+                }
+            }
+        }
+        info!(log, "Thread workers stopped");
+
+        info!(log, "Shutting down protocol runner pools (6/8)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
         drop(tezos_writeable_api_pool);
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases (5/6)");
+        info!(log, "Flushing databases (7/8)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (6/6)");
+        info!(log, "Shutdown complete (8/8)");
     });
 }
 

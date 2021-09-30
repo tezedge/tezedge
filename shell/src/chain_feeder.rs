@@ -5,11 +5,10 @@
 //! This actor is responsible for correct applying of blocks with Tezos protocol in context
 //! This actor is aslo responsible for correct initialization of genesis in storage.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use anyhow::{format_err, Error};
@@ -20,7 +19,7 @@ use thiserror::Error;
 use crypto::hash::{BlockHash, ChainId};
 use shell_integration::{
     dispatch_oneshot_result, InjectBlockError, InjectBlockOneshotResultCallback,
-    OneshotResultCallback,
+    OneshotResultCallback, ThreadRunningStatus, ThreadWatcher,
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
@@ -44,14 +43,10 @@ use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::state::ApplyBlockBatch;
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
-use crate::subscription::subscribe_to_shell_shutdown;
 use std::collections::VecDeque;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-
-type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 pub type InitializeContextOneshotResultCallback =
     OneshotResultCallback<Result<(), InitializeContextOneshotResultCallbackError>>;
@@ -146,17 +141,8 @@ pub(crate) enum Event {
 }
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(
-    ShellChannelMsg,
-    ApplyBlock,
-    ScheduleApplyBlock,
-    LogStats,
-    ApplyBlockDone
-)]
+#[actor(ApplyBlock, ScheduleApplyBlock, LogStats, ApplyBlockDone)]
 pub struct ChainFeeder {
-    /// Just for subscribing to shell shutdown channel
-    shell_channel: ShellChannelRef,
-
     /// We apply blocks by batches, and this queue will be like 'waiting room'
     /// Blocks from the queue will be
     queue: VecDeque<ScheduleApplyBlock>,
@@ -169,9 +155,7 @@ pub struct ChainFeeder {
     /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
     /// Thread where blocks are applied will run until this is set to `false`
-    block_applier_run: Arc<AtomicBool>,
-    /// Block applier thread
-    block_applier_thread: SharedJoinHandle,
+    block_applier_thread_run: ThreadRunningStatus,
 
     /// Statistics for applying blocks
     apply_block_stats: ApplyBlockStats,
@@ -191,16 +175,15 @@ impl ChainFeeder {
     /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
     pub fn actor(
         sys: &impl ActorRefFactory,
-        shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
         initialize_context_result_callback: InitializeContextOneshotResultCallback,
-    ) -> Result<ChainFeederRef, CreateError> {
+    ) -> Result<(ChainFeederRef, ThreadWatcher), CreateError> {
         // spawn inner thread
-        let (block_applier_event_sender, block_applier_run, block_applier_thread) =
+        let (block_applier_event_sender, block_applier_thread_watcher) =
             BlockApplierThreadSpawner::new(
                 persistent_storage,
                 Arc::new(init_storage_data),
@@ -214,13 +197,12 @@ impl ChainFeeder {
         sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
             Props::new_args((
-                shell_channel,
                 Arc::new(Mutex::new(block_applier_event_sender)),
-                block_applier_run,
-                Arc::new(Mutex::new(Some(block_applier_thread))),
+                block_applier_thread_watcher.thread_running_status().clone(),
                 BLOCK_APPLY_BATCH_MAX_TICKETS,
             )),
         )
+        .map(|actor| (actor, block_applier_thread_watcher))
     }
 
     /// The `ChainFeeder` is intended to serve as a singleton actor so that's why
@@ -292,36 +274,20 @@ impl ChainFeeder {
     }
 }
 
-impl
-    ActorFactoryArgs<(
-        ShellChannelRef,
-        Arc<Mutex<QueueSender<Event>>>,
-        Arc<AtomicBool>,
-        SharedJoinHandle,
-        usize,
-    )> for ChainFeeder
+impl ActorFactoryArgs<(Arc<Mutex<QueueSender<Event>>>, ThreadRunningStatus, usize)>
+    for ChainFeeder
 {
     fn create_args(
-        (
-            shell_channel,
-            block_applier_event_sender,
-            block_applier_run,
-            block_applier_thread,
-            max_permits,
-        ): (
-            ShellChannelRef,
+        (block_applier_event_sender, block_applier_thread_run, max_permits): (
             Arc<Mutex<QueueSender<Event>>>,
-            Arc<AtomicBool>,
-            SharedJoinHandle,
+            ThreadRunningStatus,
             usize,
         ),
     ) -> Self {
         ChainFeeder {
-            shell_channel,
             queue: VecDeque::new(),
             block_applier_event_sender,
-            block_applier_run,
-            block_applier_thread,
+            block_applier_thread_run,
             apply_block_stats: ApplyBlockStats::default(),
             apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
             apply_block_tickets_maximum: max_permits,
@@ -333,8 +299,6 @@ impl Actor for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-
         ctx.schedule::<Self::Msg, _>(
             LOG_INTERVAL / 2,
             LOG_INTERVAL,
@@ -342,23 +306,6 @@ impl Actor for ChainFeeder {
             None,
             LogStats.into(),
         );
-    }
-
-    fn post_stop(&mut self) {
-        // Set the flag, and let the thread wake up. There is no race condition here, if `unpark`
-        // happens first, `park` will return immediately. Hence there is no risk of a deadlock.
-        self.block_applier_run.store(false, Ordering::Release);
-
-        let join_handle = self
-            .block_applier_thread
-            .lock()
-            .unwrap()
-            .take()
-            .expect("Thread join handle is missing");
-        join_handle.thread().unpark();
-        let _ = join_handle
-            .join()
-            .expect("Failed to join block applier thread");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -370,10 +317,10 @@ impl Receive<ApplyBlock> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlock, _: Sender) {
-        if !self.block_applier_run.load(Ordering::Acquire) {
+        // do not process any message, when thread is down
+        if !self.block_applier_thread_run.load(Ordering::Acquire) {
             return;
         }
-
         self.apply_completed_block(msg, ctx.myself(), &ctx.system.log());
     }
 }
@@ -382,7 +329,8 @@ impl Receive<ScheduleApplyBlock> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ScheduleApplyBlock, _: Sender) {
-        if !self.block_applier_run.load(Ordering::Acquire) {
+        // do not process any message, when thread is down
+        if !self.block_applier_thread_run.load(Ordering::Acquire) {
             return;
         }
         self.add_to_batch_queue(msg);
@@ -394,7 +342,8 @@ impl Receive<ApplyBlockDone> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlockDone, _: Sender) {
-        if !self.block_applier_run.load(Ordering::Acquire) {
+        // do not process any message, when thread is down
+        if !self.block_applier_thread_run.load(Ordering::Acquire) {
             return;
         }
         self.update_stats(msg.stats);
@@ -466,20 +415,6 @@ impl Receive<LogStats> for ChainFeeder {
     }
 }
 
-impl Receive<ShellChannelMsg> for ChainFeeder {
-    type Msg = ChainFeederMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        if let ShellChannelMsg::ShuttingDown(_) = msg {
-            self.block_applier_run.store(false, Ordering::Release);
-            // This event just pings the inner thread to shutdown
-            if let Err(e) = self.send_to_queue(Event::ShuttingDown) {
-                warn!(ctx.system.log(), "Failed to send ShuttinDown event do internal queue"; "reason" => format!("{:?}", e));
-            }
-        }
-    }
-}
-
 /// Possible errors for feeding chain
 #[derive(Debug, Error)]
 pub enum FeedChainError {
@@ -541,17 +476,20 @@ impl BlockApplierThreadSpawner {
         &self,
         thread_name: String,
         initialize_context_result_callback: InitializeContextOneshotResultCallback,
-    ) -> Result<
-        (
-            QueueSender<Event>,
-            Arc<AtomicBool>,
-            JoinHandle<Result<(), Error>>,
-        ),
-        anyhow::Error,
-    > {
+    ) -> Result<(QueueSender<Event>, ThreadWatcher), anyhow::Error> {
         // spawn thread which processes event
         let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
-        let block_applier_run = Arc::new(AtomicBool::new(false));
+        let mut block_applier_thread_watcher = {
+            let block_applier_event_sender = block_applier_event_sender.clone();
+            ThreadWatcher::start(
+                thread_name.clone(),
+                Box::new(move || {
+                    block_applier_event_sender
+                        .send(Event::ShuttingDown)
+                        .map_err(|e| e.into())
+                }),
+            )
+        };
 
         let block_applier_thread = {
             let persistent_storage = self.persistent_storage.clone();
@@ -559,10 +497,10 @@ impl BlockApplierThreadSpawner {
             let init_storage_data = self.init_storage_data.clone();
             let tezos_env = self.tezos_env.clone();
             let log = self.log.clone();
-            let block_applier_run = block_applier_run.clone();
+            let apply_block_run = block_applier_thread_watcher.thread_running_status().clone();
             let mut initialize_context_result_callback = Some(initialize_context_result_callback);
 
-            thread::Builder::new().name(thread_name).spawn(move || -> Result<(), Error> {
+            thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
@@ -572,15 +510,13 @@ impl BlockApplierThreadSpawner {
                 let cycle_eras_storage = CycleErasStorage::new(&persistent_storage);
                 let constants_storage = ConstantsStorage::new(&persistent_storage);
 
-                block_applier_run.store(true, Ordering::Release);
                 info!(log, "Chain feeder started processing");
-
-                while block_applier_run.load(Ordering::Acquire) {
+                while apply_block_run.load(Ordering::Acquire) {
                     match tezos_writeable_api.pool.get() {
                         Ok(protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
                             &init_storage_data,
-                            &block_applier_run,
+                            &apply_block_run,
                             &block_storage,
                             &block_meta_storage,
                             &chain_meta_storage,
@@ -600,7 +536,7 @@ impl BlockApplierThreadSpawner {
                             }
                             Err(err) => {
                                 protocol_controller.set_release_on_return_to_pool();
-                                if block_applier_run.load(Ordering::Acquire) {
+                                if apply_block_run.load(Ordering::Acquire) {
                                     warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
                                 }
                             }
@@ -612,21 +548,17 @@ impl BlockApplierThreadSpawner {
                 }
 
                 info!(log, "Chain feeder thread finished");
-                Ok(())
             })?
         };
-        Ok((
-            block_applier_event_sender,
-            block_applier_run,
-            block_applier_thread,
-        ))
+        block_applier_thread_watcher.set_thread(block_applier_thread);
+        Ok((block_applier_event_sender, block_applier_thread_watcher))
     }
 }
 
 fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
-    apply_block_run: &AtomicBool,
+    apply_block_run: &ThreadRunningStatus,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
@@ -874,7 +806,12 @@ fn feed_chain_to_protocol(
                     }
                 }
                 Event::ShuttingDown => {
-                    apply_block_run.store(false, Ordering::Release);
+                    // just finish the loop
+                    info!(
+                        log,
+                        "Chain feeder thread worker received shutting down event"
+                    );
+                    break;
                 }
             }
         }

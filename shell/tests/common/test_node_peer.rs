@@ -59,7 +59,7 @@ impl TestNodePeer {
             PeerMessageResponse,
         ) -> Result<Vec<PeerMessageResponse>, anyhow::Error>,
     ) -> TestNodePeer {
-        let server_address = format!("0.0.0.0:{}", connect_to_node_port)
+        let server_address = format!("127.0.0.1:{}", connect_to_node_port)
             .parse::<SocketAddr>()
             .expect("Failed to parse server address");
         let tokio_executor = tokio_runtime.handle().clone();
@@ -161,7 +161,7 @@ impl TestNodePeer {
         log: Logger,
         tokio_runtime: &Runtime,
     ) -> Result<(), anyhow::Error> {
-        let server_address = format!("0.0.0.0:{}", connect_to_node_port)
+        let server_address = format!("127.0.0.1:{}", connect_to_node_port)
             .parse::<SocketAddr>()
             .expect("Failed to parse server address");
         let tokio_executor = tokio_runtime.handle().clone();

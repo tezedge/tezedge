@@ -4,8 +4,6 @@
 //! This actor responsibility is to take care of Mempool/MempoolState,
 //! which means, to validate operations which are not yet injected in any block.
 //!
-//! This actor listens on shell events (see [process_shell_channel_message]) and schedules it to internal queue/channel for validation processing.
-//!
 //! Actor validates received operations and result of validate as a new MempoolState is send back to shell channel, where:
 //!     - is used by rpc_actor to show current mempool state - pending_operations
 //!     - is used by chain_manager to send new current head with current mempool to inform other peers throught P2P
@@ -15,7 +13,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::thread::JoinHandle;
 
 use anyhow::{format_err, Error};
 use riker::actors::*;
@@ -23,11 +20,11 @@ use slog::{debug, info, trace, warn, Logger};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
-use shell_integration::StreamCounter;
 use shell_integration::{
     dispatch_oneshot_result, MempoolError, MempoolOperationReceived, OneshotResultCallback,
     ResetMempool,
 };
+use shell_integration::{StreamCounter, ThreadRunningStatus, ThreadWatcher};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::{BlockHeaderWithHash, PersistentStorage};
@@ -44,19 +41,12 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::chain_manager::{AdvertiseToP2pNewMempool, ChainManagerRef};
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use crate::subscription::subscribe_to_shell_shutdown;
-
-type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ShellChannelMsg, ResetMempool, MempoolOperationReceived)]
+#[actor(ResetMempool, MempoolOperationReceived)]
 pub struct MempoolPrevalidator {
-    shell_channel: ShellChannelRef,
-
     validator_event_sender: Arc<Mutex<QueueSender<Event>>>,
-    validator_run: Arc<AtomicBool>,
-    validator_thread: SharedJoinHandle,
+    validator_run: ThreadRunningStatus,
 }
 
 enum Event {
@@ -76,21 +66,33 @@ impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
         chain_manager: ChainManagerRef,
-        shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         log: Logger,
-    ) -> Result<MempoolPrevalidatorRef, CreateError> {
+    ) -> Result<(MempoolPrevalidatorRef, ThreadWatcher), CreateError> {
+        let thread_name = format!("mmpl-{}", chain_id.to_base58_check());
+
         // spawn thread which processes event
         let (validator_event_sender, mut validator_event_receiver) = channel();
-        let validator_run = Arc::new(AtomicBool::new(true));
-        let validator_thread = {
-            let validator_run = validator_run.clone();
+        let mut mempool_thread_watcher = {
+            let validator_event_sender = validator_event_sender.clone();
+            ThreadWatcher::start(
+                thread_name.clone(),
+                Box::new(move || {
+                    validator_event_sender
+                        .send(Event::ShuttingDown)
+                        .map_err(|e| e.into())
+                }),
+            )
+        };
+
+        let mempool_thread = {
+            let validator_run = mempool_thread_watcher.thread_running_status().clone();
             let chain_id = chain_id.clone();
 
-            thread::Builder::new().name(format!("mmpl-{}", chain_id.to_base58_check())).spawn(move || {
+            thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let mempool_storage = MempoolStorage::new(&persistent_storage);
@@ -127,36 +129,20 @@ impl MempoolPrevalidator {
                 }
 
                 info!(log, "Mempool prevalidator thread finished");
-                Ok(())
             }).map_err(|_|{CreateError::Panicked})?
         };
+        mempool_thread_watcher.set_thread(mempool_thread);
 
         // create actor
         let myself = sys.actor_of_props::<MempoolPrevalidator>(
             &MempoolPrevalidator::name(&chain_id),
             Props::new_args((
-                shell_channel,
-                validator_run,
-                Arc::new(Mutex::new(Some(validator_thread))),
+                mempool_thread_watcher.thread_running_status().clone(),
                 Arc::new(Mutex::new(validator_event_sender)),
             )),
         )?;
 
-        Ok(myself)
-    }
-
-    fn process_shell_channel_message(
-        &mut self,
-        _: &Context<MempoolPrevalidatorMsg>,
-        msg: ShellChannelMsg,
-    ) -> Result<(), Error> {
-        if let ShellChannelMsg::ShuttingDown(_) = msg {
-            self.validator_event_sender
-                .lock()
-                .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-                .send(Event::ShuttingDown)?;
-        }
-        Ok(())
+        Ok((myself, mempool_thread_watcher))
     }
 
     fn process_reset_mempool_message(
@@ -219,26 +205,17 @@ impl MempoolPrevalidator {
     }
 }
 
-impl
-    ActorFactoryArgs<(
-        ShellChannelRef,
-        Arc<AtomicBool>,
-        SharedJoinHandle,
-        Arc<Mutex<QueueSender<Event>>>,
-    )> for MempoolPrevalidator
+impl ActorFactoryArgs<(ThreadRunningStatus, Arc<Mutex<QueueSender<Event>>>)>
+    for MempoolPrevalidator
 {
     fn create_args(
-        (shell_channel, validator_run, validator_thread, validator_event_sender): (
-            ShellChannelRef,
-            Arc<AtomicBool>,
-            SharedJoinHandle,
+        (validator_run, validator_event_sender): (
+            ThreadRunningStatus,
             Arc<Mutex<QueueSender<Event>>>,
         ),
     ) -> Self {
         MempoolPrevalidator {
-            shell_channel,
             validator_run,
-            validator_thread,
             validator_event_sender,
         }
     }
@@ -247,40 +224,8 @@ impl
 impl Actor for MempoolPrevalidator {
     type Msg = MempoolPrevalidatorMsg;
 
-    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-    }
-
-    fn post_stop(&mut self) {
-        self.validator_run.store(false, Ordering::Release);
-
-        let join_handle = self
-            .validator_thread
-            .lock()
-            .unwrap()
-            .take()
-            .expect("Thread join handle is missing");
-        join_handle.thread().unpark();
-        let _ = join_handle
-            .join()
-            .expect("Failed to join block applier thread");
-    }
-
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
-    }
-}
-
-impl Receive<ShellChannelMsg> for MempoolPrevalidator {
-    type Msg = MempoolPrevalidatorMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match self.process_shell_channel_message(ctx, msg) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(ctx.system.log(), "Mempool - failed to process shell channel message"; "reason" => format!("{:?}", e))
-            }
-        }
     }
 }
 
@@ -288,6 +233,10 @@ impl Receive<MempoolOperationReceived> for MempoolPrevalidator {
     type Msg = MempoolPrevalidatorMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: MempoolOperationReceived, _: Sender) {
+        // do not process any message, when thread is down
+        if !self.validator_run.load(Ordering::Acquire) {
+            return;
+        }
         match self.process_mempool_operation_received_message(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
@@ -301,6 +250,10 @@ impl Receive<ResetMempool> for MempoolPrevalidator {
     type Msg = MempoolPrevalidatorMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ResetMempool, _: Sender) {
+        // do not process any message, when thread is down
+        if !self.validator_run.load(Ordering::Acquire) {
+            return;
+        }
         match self.process_reset_mempool_message(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
@@ -442,7 +395,12 @@ fn process_prevalidation(
                     }
                 }
                 Event::ShuttingDown => {
-                    validator_run.store(false, Ordering::Release);
+                    // just finish the loop
+                    info!(
+                        log,
+                        "Mempool prevalidator thread worker received shutting down event"
+                    );
+                    break;
                 }
             }
         }

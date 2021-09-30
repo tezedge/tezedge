@@ -274,7 +274,6 @@ pub mod tests {
         use std::sync::atomic::AtomicBool;
         use std::sync::mpsc::{channel, Receiver};
         use std::sync::{Arc, Mutex};
-        use std::thread;
         use std::time::Duration;
 
         use futures::lock::Mutex as TokioMutex;
@@ -384,20 +383,16 @@ pub mod tests {
         pub(crate) fn chain_feeder_mock(
             actor_system: &ActorSystem,
             actor_name: &str,
-            shell_channel: ShellChannelRef,
         ) -> Result<(chain_feeder::ChainFeederRef, Receiver<chain_feeder::Event>), anyhow::Error>
         {
             let (block_applier_event_sender, block_applier_event_receiver) = channel();
-            let block_applier_run = Arc::new(AtomicBool::new(true));
 
             actor_system
                 .actor_of_props::<chain_feeder::ChainFeeder>(
                     actor_name,
                     Props::new_args((
-                        shell_channel,
                         Arc::new(Mutex::new(block_applier_event_sender)),
-                        block_applier_run,
-                        Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
+                        Arc::new(AtomicBool::new(true)),
                         2,
                     )),
                 )
@@ -430,7 +425,6 @@ pub mod tests {
             let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
                 actor_system.clone(),
                 log,
-                shell_channel.clone(),
                 persistent_storage.clone(),
                 current_mempool_state_storage.clone(),
                 tezos_readonly_api_pool.clone(),

@@ -581,12 +581,9 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let shell_channel =
-            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777, &log);
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system, "mocked_chain_feeder")?;
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -654,13 +651,10 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let shell_channel =
-            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage =
             TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block_operations")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777, &log);
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system, "mocked_chain_feeder")?;
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -799,8 +793,7 @@ mod tests {
             NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_one")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel.clone())?;
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system, "mocked_chain_feeder")?;
         let chain_manager_mock = Arc::new(chain_manager_mock(
             actor_system,
             log,

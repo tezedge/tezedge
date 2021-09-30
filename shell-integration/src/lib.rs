@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-mod connector;
 pub use connector::*;
-
-mod oneshot;
-pub use oneshot::*;
-
-mod messages;
 pub use messages::*;
-
-mod streaming_state;
+pub use oneshot::*;
 pub use streaming_state::*;
+pub use threads::*;
+
+mod connector;
+mod messages;
+mod oneshot;
+mod streaming_state;
+mod threads;
 
 #[derive(Debug)]
 pub struct UnsupportedMessageError;
