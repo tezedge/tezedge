@@ -47,10 +47,7 @@ pub struct AutomatonSyncSender {
 }
 
 impl AutomatonSyncSender {
-    pub fn send(
-        &self,
-        msg: ActorsMessageFrom,
-    ) -> Result<(), mpsc::SendError<ActorsMessageFrom>> {
+    pub fn send(&self, msg: ActorsMessageFrom) -> Result<(), mpsc::SendError<ActorsMessageFrom>> {
         let _ = self.mio_waker.wake();
         self.sender.send(msg)
     }

@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::thread;
 
 use storage::{
-    BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionStorage, ShellAutomatonStateStorage,
-    StorageError,
+    BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionStorage,
+    ShellAutomatonStateStorage, StorageError,
 };
 
 use crate::action::Action;

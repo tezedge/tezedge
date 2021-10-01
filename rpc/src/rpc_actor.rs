@@ -13,6 +13,7 @@ use tokio::runtime::Handle;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
+use shell_automaton::service::rpc_service::{RpcShellAutomatonChannel, RpcShellAutomatonSender};
 use shell_integration::ShellConnectorRef;
 use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
@@ -54,6 +55,7 @@ impl RpcServer {
         log: Logger,
         shell_channel: ShellChannelRef,
         shell_connector: ShellConnectorRef,
+        shell_automaton_channel: RpcShellAutomatonChannel,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
@@ -75,6 +77,7 @@ impl RpcServer {
             Arc::new(tokio_executor),
             shell_channel,
             shell_connector,
+            shell_automaton_channel,
             tezos_env,
             network_version,
             persistent_storage,

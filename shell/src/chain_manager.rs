@@ -47,7 +47,7 @@ use crate::mempool::mempool_prevalidator::{MempoolPrevalidatorBasicRef, MempoolP
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
-use crate::shell_automaton_manager::{ShellAutomatonSender, ShellAutomatonMsg};
+use crate::shell_automaton_manager::{ShellAutomatonMsg, ShellAutomatonSender};
 use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };

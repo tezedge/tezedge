@@ -254,7 +254,7 @@ fn block_on_actors(
         ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize tezedge state
-    let mut tezedge_state_manager = ShellAutomatonManager::new(
+    let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
         persistent_storage.clone(),
         network_channel.clone(),
         log.clone(),
@@ -334,7 +334,7 @@ fn block_on_actors(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
-        tezedge_state_manager.shell_automaton_sender(),
+        shell_automaton_manager.shell_automaton_sender(),
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
@@ -380,6 +380,7 @@ fn block_on_actors(
         log.clone(),
         shell_channel.clone(),
         Box::new(shell_connector),
+        rpc_shell_automaton_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
         &persistent_storage,
@@ -411,8 +412,7 @@ fn block_on_actors(
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
 
-    // start tezedge_state machine with p2p
-    tezedge_state_manager.start();
+    shell_automaton_manager.start();
 
     info!(log, "Actors initialized");
 
@@ -451,7 +451,7 @@ fn block_on_actors(
         debug!(log, "Protocol runners completed");
 
         info!(log, "Shutting down tezedge state (4/6)");
-        drop(tezedge_state_manager);
+        drop(shell_automaton_manager);
 
         info!(log, "Flushing databases (5/6)");
         drop(persistent_storage);

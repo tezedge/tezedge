@@ -21,11 +21,11 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::chain_manager::ChainManagerRef;
+use crate::shell_automaton_manager::ShellAutomatonMsg;
 use crate::state::bootstrap_state::{AddBranchState, BootstrapState, InnerBlockState};
 use crate::state::data_requester::DataRequesterRef;
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
-use crate::shell_automaton_manager::ShellAutomatonMsg;
 
 /// After this interval, we will check peers, if no activity is done on any pipeline
 /// So if peer does not change any branch bootstrap, we will disconnect it

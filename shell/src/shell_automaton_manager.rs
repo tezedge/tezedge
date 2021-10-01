@@ -9,24 +9,26 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
+use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
 use slog::{info, warn, Logger};
 use storage::PersistentStorage;
 
 use crypto::hash::ChainId;
-use networking::network_channel::{
-    NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
-};
+use networking::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived};
 use tezos_identity::Identity;
 
 use crate::PeerConnectionThreshold;
 
-use shell_automaton::service::{ServiceDefault, RpcServiceDefault, ActorsServiceDefault, StorageServiceDefault, DnsServiceDefault, MioServiceDefault};
-use shell_automaton::{Port, ShellAutomaton};
 pub use shell_automaton::service::actors_service::{
     ActorsMessageFrom as ShellAutomatonMsg, AutomatonSyncSender as ShellAutomatonSender,
 };
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
+use shell_automaton::service::{
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, RpcServiceDefault, ServiceDefault,
+    StorageServiceDefault,
+};
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
+use shell_automaton::{Port, ShellAutomaton};
 
 #[derive(Debug, Clone)]
 pub struct P2p {
@@ -87,7 +89,7 @@ impl ShellAutomatonManager {
         p2p_config: P2p,
         pow_target: f64,
         chain_id: ChainId,
-    ) -> Self {
+    ) -> (Self, RpcShellAutomatonChannel) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
             p2p_config
@@ -112,7 +114,7 @@ impl ShellAutomatonManager {
         });
 
         let mio_service = MioServiceDefault::new(listener_addr);
-        let rpc_service = RpcServiceDefault::init(mio_service.waker(), persistent_storage.clone());
+        let (rpc_service, rpc_channel) = RpcServiceDefault::new(mio_service.waker(), 128);
 
         let storage_service =
             StorageServiceDefault::init(mio_service.waker(), persistent_storage.clone());
@@ -145,7 +147,7 @@ impl ShellAutomatonManager {
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);
 
-        Self {
+        let this = Self {
             log,
             shell_automaton_sender: automaton_sender,
             shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(
@@ -153,12 +155,17 @@ impl ShellAutomatonManager {
                 shell_automaton,
                 bootstrap_addresses,
             )),
-        }
+        };
+
+        (this, rpc_channel)
     }
 
     pub fn start(&mut self) {
-        if let Some(ShellAutomatonThreadHandle::NotRunning(config, mut shell_automaton, bootstrap_addresses)) =
-            self.shell_automaton_thread_handle.take()
+        if let Some(ShellAutomatonThreadHandle::NotRunning(
+            config,
+            mut shell_automaton,
+            bootstrap_addresses,
+        )) = self.shell_automaton_thread_handle.take()
         {
             let log = self.log.clone();
 
@@ -174,8 +181,9 @@ impl ShellAutomatonManager {
                 })
                 .expect("failed to spawn shell-automaton-thread");
 
-            self.shell_automaton_thread_handle =
-                Some(ShellAutomatonThreadHandle::Running(shell_automaton_thread_handle));
+            self.shell_automaton_thread_handle = Some(ShellAutomatonThreadHandle::Running(
+                shell_automaton_thread_handle,
+            ));
         }
     }
 

@@ -259,3 +259,33 @@ pub async fn dev_version(
 ) -> ServiceResult {
     make_json_response(&dev_services::get_dev_version())
 }
+
+pub async fn dev_shell_automaton_state_get(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    match params.get_u64("action_id") {
+        Some(target_action_id) => make_json_response(
+            &dev_services::get_shell_automaton_state_after_action(&env, target_action_id).await?,
+        ),
+        None => make_json_response(&dev_services::get_shell_automaton_state_current(&env).await?),
+    }
+}
+
+pub async fn dev_shell_automaton_actions_get(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(
+        &dev_services::get_shell_automaton_actions(
+            &env,
+            params.get_u64("cursor"),
+            params.get_u64("limit"),
+        )
+        .await?,
+    )
+}
