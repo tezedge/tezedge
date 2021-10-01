@@ -12,6 +12,7 @@ use crypto::seeded_step::{Seed, Step};
 use networking::PeerId;
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
+use storage::predecessor_storage::PredecessorSearch;
 use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,

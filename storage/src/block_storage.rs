@@ -13,7 +13,11 @@ use crate::commit_log::{CommitLogWithSchema, Location};
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema};
-use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
+use crate::predecessor_storage::PredecessorSearch;
+use crate::{
+    BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, PredecessorStorage,
+    StorageError,
+};
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
@@ -23,12 +27,13 @@ use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, Sto
 #[derive(Clone)]
 pub struct BlockStorage {
     primary_index: BlockPrimaryIndex,
-    by_level_index: BlockByLevelIndex,
+    predecessor_storage: PredecessorStorage,
     by_context_hash_index: BlockByContextHashIndex,
     clog: Arc<BlockStorageCommitLog>,
 }
 
 pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + Send;
+pub type BlockLevel = i32;
 
 #[derive(Clone, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockJsonData {
@@ -56,6 +61,12 @@ impl BlockJsonData {
 
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
+    fn get_by_level(
+        &self,
+        head: &BlockHeaderWithHash,
+        level: BlockLevel,
+    ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn get_location(
         &self,
@@ -109,7 +120,7 @@ impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
             primary_index: BlockPrimaryIndex::new(persistent_storage.main_db()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
+            predecessor_storage: PredecessorStorage::new(persistent_storage),
             by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
@@ -137,10 +148,6 @@ impl BlockStorage {
                 };
                 self.primary_index
                     .put(&block_header.hash, &location)
-                    .and(
-                        self.by_level_index
-                            .put(block_header.header.level(), &location),
-                    )
                     .and(Ok(true))
             })
     }
@@ -167,10 +174,6 @@ impl BlockStorage {
         // update indexes
         self.primary_index
             .put(&block_header.hash, &updated_column_location)
-            .and(
-                self.by_level_index
-                    .put(block_header.header.level(), &updated_column_location),
-            )
     }
 
     pub fn assign_to_context(
@@ -255,6 +258,31 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_by_level(
+        &self,
+        head: &BlockHeaderWithHash,
+        level: BlockLevel,
+    ) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        let distance = head.header.level() - level;
+
+        // distance cannot be negative
+        if distance < 0 {
+            return Err(StorageError::NegativeDistanceError);
+        }
+
+        if let Some(target_hash) =
+            self.find_block_at_distance(head.hash.clone(), distance as u32)?
+        {
+            self.get(&target_hash)
+        } else {
+            // TODO: I think this should be a custom error
+            Err(StorageError::MissingKey {
+                when: "get_by_level".into(),
+            })
+        }
+    }
+
+    #[inline]
     fn get_location(
         &self,
         block_hash: &BlockHash,
@@ -293,11 +321,15 @@ impl BlockStorageReader for BlockStorage {
         block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        let locations = self.get(block_hash)?.map_or_else(
-            || Ok(Vec::new()),
-            |block| self.by_level_index.get_blocks(block.header.level(), limit),
-        )?;
-        self.get_blocks_with_json_data_by_location(locations)
+        // TODO: use predecessor storage
+
+        // let locations = self.get(block_hash)?.map_or_else(
+        //     || Ok(Vec::new()),
+        //     |block| self.by_level_index.get_blocks(block.header.level(), limit),
+        // )?;
+        // self.get_blocks_with_json_data_by_location(locations)
+
+        Ok(vec![])
     }
 
     #[inline]
@@ -307,14 +339,18 @@ impl BlockStorageReader for BlockStorage {
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        let locations = self.get(from_block_hash)?.map_or_else(
-            || Ok(Vec::new()),
-            |block| {
-                self.by_level_index
-                    .get_blocks_by_nth_level(every_nth, block.header.level(), limit)
-            },
-        )?;
-        self.get_blocks_with_json_data_by_location(locations)
+        // TODO: use predecessor storage
+
+        // let locations = self.get(from_block_hash)?.map_or_else(
+        //     || Ok(Vec::new()),
+        //     |block| {
+        //         self.by_level_index
+        //             .get_blocks_by_nth_level(every_nth, block.header.level(), limit)
+        //     },
+        // )?;
+        // self.get_blocks_with_json_data_by_location(locations)
+
+        Ok(vec![])
     }
 
     #[inline]
@@ -324,20 +360,24 @@ impl BlockStorageReader for BlockStorage {
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
-        self.get(from_block_hash)?
-            .map_or_else(
-                || Ok(Vec::new()),
-                |block| {
-                    self.by_level_index.get_blocks_by_nth_level(
-                        every_nth,
-                        block.header.level(),
-                        limit,
-                    )
-                },
-            )?
-            .into_iter()
-            .map(|location| self.get_block_header_by_location(&location))
-            .collect()
+        // TODO: use predecessor storage
+
+        // self.get(from_block_hash)?
+        //     .map_or_else(
+        //         || Ok(Vec::new()),
+        //         |block| {
+        //             self.by_level_index.get_blocks_by_nth_level(
+        //                 every_nth,
+        //                 block.header.level(),
+        //                 limit,
+        //             )
+        //         },
+        //     )?
+        //     .into_iter()
+        //     .map(|location| self.get_block_header_by_location(&location))
+        //     .collect()
+
+        Ok(vec![])
     }
 
     #[inline]
@@ -346,20 +386,24 @@ impl BlockStorageReader for BlockStorage {
         block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
-        self.get(block_hash)?
-            .map_or_else(
-                || Ok(Vec::new()),
-                |block| {
-                    self.by_level_index.get_blocks_directed(
-                        block.header.level(),
-                        limit,
-                        Direction::Forward,
-                    )
-                },
-            )?
-            .into_iter()
-            .map(|location| self.get_block_header_by_location(&location))
-            .collect()
+        // TODO: use predecessor storage
+
+        // self.get(block_hash)?
+        //     .map_or_else(
+        //         || Ok(Vec::new()),
+        //         |block| {
+        //             self.by_level_index.get_blocks_directed(
+        //                 block.header.level(),
+        //                 limit,
+        //                 Direction::Forward,
+        //             )
+        //         },
+        //     )?
+        //     .into_iter()
+        //     .map(|location| self.get_block_header_by_location(&location))
+        //     .collect()
+
+        Ok(vec![])
     }
 
     #[inline]
@@ -381,6 +425,12 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
         self.primary_index.iterator()
+    }
+}
+
+impl PredecessorSearch for BlockStorage {
+    fn get_predecessor_storage(&self) -> PredecessorStorage {
+        self.predecessor_storage.clone()
     }
 }
 
@@ -478,108 +528,6 @@ impl KVStoreKeyValueSchema for BlockPrimaryIndex {
 
 /// Index block data as `level -> location`.
 #[derive(Clone)]
-pub struct BlockByLevelIndex {
-    kv: Arc<BlockByLevelIndexKV>,
-}
-
-pub type BlockByLevelIndexKV = dyn TezedgeDatabaseWithIterator<BlockByLevelIndex> + Sync + Send;
-pub type BlockLevel = i32;
-
-impl BlockByLevelIndex {
-    fn new(kv: Arc<BlockByLevelIndexKV>) -> Self {
-        Self { kv }
-    }
-
-    fn put(
-        &self,
-        level: BlockLevel,
-        location: &BlockStorageColumnsLocation,
-    ) -> Result<(), StorageError> {
-        self.kv.put(&level, location).map_err(StorageError::from)
-    }
-
-    fn get_blocks(
-        &self,
-        from_level: BlockLevel,
-        limit: usize,
-    ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .find(IteratorMode::From(
-                Cow::Owned(from_level),
-                Direction::Reverse,
-            ))?
-            .take(limit)
-            .map(|result| Ok(<Self as KeyValueSchema>::Value::decode(&result?.1)?))
-            .collect()
-    }
-
-    fn get_blocks_directed(
-        &self,
-        from_level: BlockLevel,
-        limit: usize,
-        direction: Direction,
-    ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .find(IteratorMode::From(Cow::Owned(from_level), direction))?
-            .take(limit)
-            .map(|result| Ok(<Self as KeyValueSchema>::Value::decode(&result?.1)?))
-            .collect()
-    }
-
-    fn get_blocks_by_nth_level(
-        &self,
-        every_nth: BlockLevel,
-        from_level: BlockLevel,
-        limit: usize,
-    ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .find(IteratorMode::From(
-                Cow::Owned(from_level),
-                Direction::Reverse,
-            ))?
-            .filter_map(|result| {
-                let (key, value) = match result {
-                    Ok(v) => v,
-                    Err(err) => return Some(Err(err)),
-                };
-
-                let level = match <BlockLevel as crate::persistent::codec::Decoder>::decode(&key) {
-                    Ok(v) => v,
-                    Err(err) => return Some(Err(err.into())),
-                };
-
-                if level % every_nth == 0 {
-                    Some(BlockStorageColumnsLocation::decode(&value).map_err(|err| err.into()))
-                } else {
-                    None
-                }
-            })
-            .map(|res| Ok(res?))
-            .take(limit)
-            .collect()
-    }
-}
-
-impl KeyValueSchema for BlockByLevelIndex {
-    type Key = BlockLevel;
-    type Value = BlockStorageColumnsLocation;
-}
-
-impl RocksDbKeyValueSchema for BlockByLevelIndex {
-    #[inline]
-    fn name() -> &'static str {
-        "block_by_level_storage"
-    }
-}
-
-impl KVStoreKeyValueSchema for BlockByLevelIndex {
-    fn column_name() -> &'static str {
-        Self::name()
-    }
-}
-
-/// Index block data as `level -> location`.
-#[derive(Clone)]
 pub struct BlockByContextHashIndex {
     kv: Arc<BlockByContextHashIndexKV>,
 }
@@ -632,70 +580,67 @@ impl KVStoreKeyValueSchema for BlockByContextHashIndex {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
+// TODO: implement test.
+// Note: this test becomes redundant once the level index is removed
+// #[cfg(test)]
+// mod tests {
+//     use std::path::Path;
 
-    use anyhow::Error;
+//     use anyhow::Error;
 
-    use crate::persistent::database::open_kv;
-    use crate::persistent::DbConfiguration;
+//     use crate::persistent::database::open_kv;
+//     use crate::persistent::DbConfiguration;
 
-    use super::*;
-    use crate::database;
-    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
-    use crate::tests_common;
+//     use super::*;
+//     use crate::database;
+//     use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
 
-    #[test]
-    fn block_storage_level_index_order() -> Result<(), Error> {
-        use rocksdb::{Cache, Options, DB};
+//     #[test]
+//     fn block_storage_level_index_order() -> Result<(), Error> {
+//         use rocksdb::{Cache, Options, DB};
 
-        // logger
-        let log_level = tests_common::log_level();
-        let log = tests_common::create_logger(log_level);
+//         let path = "__block_level_index_test";
+//         if Path::new(path).exists() {
+//             std::fs::remove_dir_all(path).unwrap();
+//         }
 
-        let path = "__block_level_index_test";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
-        }
+//         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+//         {
+//             let db = open_kv(
+//                 path,
+//                 vec![BlockByLevelIndex::descriptor(&cache)],
+//                 &DbConfiguration::default(),
+//             )
+//             .unwrap();
+//             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
+//             let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+//             let index = BlockByLevelIndex::new(Arc::new(maindb));
 
-        {
-            let db = open_kv(
-                path,
-                vec![BlockByLevelIndex::descriptor(&cache)],
-                &DbConfiguration::default(),
-            )
-            .unwrap();
-            let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend), log);
-            let index = BlockByLevelIndex::new(Arc::new(maindb));
+//             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
+//                 index.put(
+//                     *i,
+//                     &BlockStorageColumnsLocation {
+//                         block_header: Location::new(*i as u64),
+//                         block_json_data: None,
+//                     },
+//                 )?;
+//             }
 
-            for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
-                index.put(
-                    *i,
-                    &BlockStorageColumnsLocation {
-                        block_header: Location::new(*i as u64),
-                        block_json_data: None,
-                    },
-                )?;
-            }
-
-            let res = index
-                .get_blocks(649, 2)?
-                .iter()
-                .map(|location| location.block_header.offset())
-                .collect::<Vec<_>>();
-            assert_eq!(vec![649, 393], res);
-            let res = index
-                .get_blocks(65673, 100)?
-                .iter()
-                .map(|location| location.block_header.offset())
-                .collect::<Vec<_>>();
-            assert_eq!(vec![65673, 1161, 905, 649, 393], res);
-        }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
-        Ok(())
-    }
-}
+//             let res = index
+//                 .get_blocks(649, 2)?
+//                 .iter()
+//                 .map(|location| location.block_header.offset())
+//                 .collect::<Vec<_>>();
+//             assert_eq!(vec![649, 393], res);
+//             let res = index
+//                 .get_blocks(65673, 100)?
+//                 .iter()
+//                 .map(|location| location.block_header.offset())
+//                 .collect::<Vec<_>>();
+//             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
+//         }
+//         assert!(DB::destroy(&Options::default(), path).is_ok());
+//         Ok(())
+//     }
+// }

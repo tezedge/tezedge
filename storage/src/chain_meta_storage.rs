@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use std::convert::TryFrom;
@@ -31,6 +32,12 @@ pub trait ChainMetaStorageReader: Sync + Send {
 
     /// Load genesis for chain_id from dedicated storage
     fn get_genesis(&self, chain_id: &ChainId) -> Result<Option<Head>, StorageError>;
+
+    /// Load checkpoint from storage
+    fn get_checkpoint(&self, chain_id: &ChainId) -> Result<Option<Head>, StorageError>;
+
+    /// Load alternate heads from storage
+    fn get_alternate_heads(&self, chain_id: &ChainId) -> Result<Option<Vec<Head>>, StorageError>;
 }
 
 /// Represents storage of the chain metadata (current_head, test_chain, ...).
@@ -123,6 +130,31 @@ impl ChainMetaStorage {
             .delete(&MetaKey::key_test_chain_id(chain_id.clone()))
             .map_err(StorageError::from)
     }
+
+    #[inline]
+    pub fn set_checkpoint(&self, chain_id: &ChainId, checkpoint: Head) -> Result<(), StorageError> {
+        self.kv
+            .put(
+                &MetaKey::key_checkpoint(chain_id.clone()),
+                &MetadataValue::Head(checkpoint),
+            )
+            .map_err(StorageError::from)
+    }
+
+    #[inline]
+    pub fn set_alternate_heads(
+        &self,
+        chain_id: &ChainId,
+        alternate_heads: HashSet<Head>,
+    ) -> Result<(), StorageError> {
+        let alternate_heads: Vec<Head> = alternate_heads.into_iter().collect();
+        self.kv
+            .put(
+                &MetaKey::key_alternate_heads(chain_id.clone()),
+                &MetadataValue::AlternateHeads(alternate_heads.to_vec()),
+            )
+            .map_err(StorageError::from)
+    }
 }
 
 impl ChainMetaStorageReader for ChainMetaStorage {
@@ -154,6 +186,28 @@ impl ChainMetaStorageReader for ChainMetaStorage {
             .get(&MetaKey::key_genesis(chain_id.clone()))
             .map(|result| match result {
                 Some(MetadataValue::Head(value)) => Some(value),
+                _ => None,
+            })
+            .map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn get_checkpoint(&self, chain_id: &ChainId) -> Result<Option<Head>, StorageError> {
+        self.kv
+            .get(&MetaKey::key_checkpoint(chain_id.clone()))
+            .map(|result| match result {
+                Some(MetadataValue::Head(value)) => Some(value),
+                _ => None,
+            })
+            .map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn get_alternate_heads(&self, chain_id: &ChainId) -> Result<Option<Vec<Head>>, StorageError> {
+        self.kv
+            .get(&MetaKey::key_alternate_heads(chain_id.clone()))
+            .map(|result| match result {
+                Some(MetadataValue::AlternateHeads(value)) => Some(value),
                 _ => None,
             })
             .map_err(StorageError::from)
@@ -198,6 +252,8 @@ impl MetaKey {
     const KEY_CABOOSE: &'static str = "cbs";
     const KEY_GENESIS: &'static str = "gns";
     const KEY_TEST_CHAIN_ID: &'static str = "tcid";
+    const KEY_CHECKPOINT: &'static str = "chcpt";
+    const KEY_ALTERNATE_HEADS: &'static str = "ahs";
 
     fn key_current_head(chain_id: ChainId) -> MetaKey {
         MetaKey {
@@ -224,6 +280,20 @@ impl MetaKey {
         MetaKey {
             chain_id,
             key: Self::KEY_TEST_CHAIN_ID.to_string(),
+        }
+    }
+
+    fn key_checkpoint(chain_id: ChainId) -> MetaKey {
+        MetaKey {
+            chain_id,
+            key: Self::KEY_CHECKPOINT.to_string(),
+        }
+    }
+
+    fn key_alternate_heads(chain_id: ChainId) -> MetaKey {
+        MetaKey {
+            chain_id,
+            key: Self::KEY_ALTERNATE_HEADS.to_string(),
         }
     }
 }
@@ -257,6 +327,7 @@ impl Decoder for MetaKey {
 pub enum MetadataValue {
     Head(Head),
     TestChainId(ChainId),
+    AlternateHeads(Vec<Head>),
 }
 
 impl BincodeEncoded for MetadataValue {}

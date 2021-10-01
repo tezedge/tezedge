@@ -18,7 +18,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
-use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
+use crate::predecessor_storage::{PredecessorKey, PredecessorSearch, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
@@ -36,11 +36,11 @@ pub trait BlockMetaStorageReader: Sync + Send {
     /// Returns n-th predecessor for block_hash
     ///
     /// /// requested_distance - cannot be negative, because we cannot go to top throught successors, because in case of reorg, we dont know which way to choose
-    fn find_block_at_distance(
-        &self,
-        block_hash: BlockHash,
-        distance: u32,
-    ) -> Result<Option<BlockHash>, StorageError>;
+    // fn find_block_at_distance(
+    //     &self,
+    //     block_hash: BlockHash,
+    //     distance: u32,
+    // ) -> Result<Option<BlockHash>, StorageError>;
 
     /// Return ancestors of requested [block_hash] according to max_ttl (something like limit) sorted by [BlockHash] bytes
     fn get_live_blocks(
@@ -226,51 +226,6 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         }
     }
 
-    /// NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
-    ///
-    /// Returns n-th predecessor for block_hash
-    ///
-    /// /// requested_distance - cannot be negative, because we cannot go to top throught successors, because in case of reorg, we dont know which way to choose
-    fn find_block_at_distance(
-        &self,
-        block_hash: BlockHash,
-        requested_distance: u32,
-    ) -> Result<Option<BlockHash>, StorageError> {
-        if requested_distance == 0 {
-            return Ok(Some(block_hash));
-        }
-
-        let mut distance = requested_distance;
-        let mut block_hash = block_hash;
-        const BASE: u32 = 2;
-        loop {
-            if distance == 1 {
-                // distance is 1, return the direct prdecessor
-                let key = PredecessorKey::new(block_hash, 0);
-                return self.predecessors_index.get(&key);
-            } else {
-                let (mut power, mut rest) = closest_power_two_and_rest(distance);
-
-                if power >= Self::STORED_PREDECESSORS_SIZE {
-                    power = Self::STORED_PREDECESSORS_SIZE - 1;
-                    rest = distance - BASE.pow(power);
-                }
-
-                let key = PredecessorKey::new(block_hash.clone(), power);
-                if let Some(pred) = self.predecessors_index.get(&key)? {
-                    if rest == 0 {
-                        return Ok(Some(pred));
-                    } else {
-                        block_hash = pred;
-                        distance = rest;
-                    }
-                } else {
-                    return Ok(None); // reached genesis
-                }
-            }
-        }
-    }
-
     fn get_live_blocks(
         &self,
         block_hash: BlockHash,
@@ -317,21 +272,10 @@ impl BlockMetaStorageReader for BlockMetaStorage {
     }
 }
 
-/// Function to find the closest power of 2 value to the distance. Returns the closest power
-/// and the rest (distance = 2^closest_power + rest)
-fn closest_power_two_and_rest(distance: u32) -> (u32, u32) {
-    let base: u32 = 2;
-
-    let mut closest_power: u32 = 0;
-    let mut rest: u32 = 0;
-    let mut distance: u32 = distance;
-
-    while distance > 1 {
-        rest += base.pow(closest_power) * (distance % 2);
-        distance /= 2;
-        closest_power += 1;
+impl PredecessorSearch for BlockMetaStorage {
+    fn get_predecessor_storage(&self) -> PredecessorStorage {
+        self.predecessors_index.clone()
     }
-    (closest_power, rest)
 }
 
 const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
@@ -1117,10 +1061,11 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_closest_power_two_and_rest() {
-        for i in 0..1_000_000 {
-            closest_power_two_and_rest(i);
-        }
-    }
+    // TODO: FIXME
+    // #[test]
+    // fn test_closest_power_two_and_rest() {
+    //     for i in 0..1_000_000 {
+    //         closest_power_two_and_rest(i);
+    //     }
+    // }
 }

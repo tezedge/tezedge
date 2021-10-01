@@ -9,8 +9,9 @@ use crypto::hash::BlockHash;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use storage::block_meta_storage::Meta;
+use storage::predecessor_storage::PredecessorSearch;
 use storage::tests_common::TmpStorage;
-use storage::{BlockMetaStorage, BlockMetaStorageReader, StorageError};
+use storage::{BlockMetaStorage, StorageError};
 
 /// Old naive implementation of find_block_at_distance kept only for benchmarking resons
 fn find_block_at_distance_old(
@@ -115,8 +116,8 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
             idx.try_into()?,
             vec![44; 4].try_into()?,
         );
-        storage.put(&block_hash, &v)?;
-        storage.store_predecessors(&block_hash, &v)?;
+        storage.put(block_hash, &v)?;
+        storage.store_predecessors(block_hash, &v)?;
         predecessor = block_hash.clone();
     }
 

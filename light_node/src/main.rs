@@ -9,6 +9,7 @@ use std::time::Duration;
 use slog::{debug, error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
+use shell::state::head_state::HeadState;
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
@@ -304,13 +305,24 @@ fn block_on_actors(
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
     info!(log, "Hydrating current head... (7/8)");
-    let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
-        hydrate_current_head(&init_storage_data, &persistent_storage)
-            .expect("Failed to load current_head from database");
-    let hydrated_current_head = Head::new(
-        hydrated_current_head_block.hash.clone(),
-        hydrated_current_head_block.header.level(),
-        hydrated_current_head_block.header.fitness().clone(),
+    let (
+        hydrated_current_head_block,
+        hydrated_current_head,
+        hydrated_checkpoint,
+        hydrated_alternate_heads,
+    ) = hydrate_current_head(&init_storage_data, &persistent_storage)
+        .expect("Failed to load current_head from database");
+    // let hydrated_current_head = Head::new(
+    //     hydrated_current_head_block.hash.clone(),
+    //     hydrated_current_head_block.header.level(),
+    //     hydrated_current_head_block.header.fitness().clone(),
+    // );
+    let hydrated_current_head_state = HeadState::new(
+        &persistent_storage,
+        hydrated_current_head.clone(),
+        hydrated_checkpoint,
+        hydrated_alternate_heads,
+        Arc::new(init_storage_data.chain_id.clone()),
     );
     {
         let (head, level, fitness) = hydrated_current_head.to_debug_info();
@@ -336,7 +348,7 @@ fn block_on_actors(
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
         is_sandbox,
-        hydrated_current_head,
+        hydrated_current_head_state,
         current_mempool_state_storage.clone(),
         env.p2p
             .peer_threshold

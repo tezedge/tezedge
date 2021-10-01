@@ -17,6 +17,8 @@ use crate::{PersistentStorage, StorageError};
 pub type PredecessorsIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<PredecessorStorage> + Sync + Send;
 
+pub const STORED_PREDECESSORS_SIZE: u32 = 12;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PredecessorKey {
     block_hash: BlockHash,
@@ -120,4 +122,70 @@ impl KVStoreKeyValueSchema for PredecessorStorage {
     fn column_name() -> &'static str {
         Self::name()
     }
+}
+
+pub trait PredecessorSearch {
+    fn get_predecessor_storage(&self) -> PredecessorStorage;
+
+    /// NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
+    ///
+    /// Returns n-th predecessor for block_hash
+    ///
+    /// /// requested_distance - cannot be negative, because we cannot go to top throught successors, because in case of reorg, we dont know which way to choose
+    fn find_block_at_distance(
+        &self,
+        block_hash: BlockHash,
+        requested_distance: u32,
+    ) -> Result<Option<BlockHash>, StorageError> {
+        if requested_distance == 0 {
+            return Ok(Some(block_hash));
+        }
+
+        let mut distance = requested_distance;
+        let mut block_hash = block_hash;
+        const BASE: u32 = 2;
+        loop {
+            if distance == 1 {
+                // distance is 1, return the direct prdecessor
+                let key = PredecessorKey::new(block_hash, 0);
+                return self.get_predecessor_storage().get(&key);
+            } else {
+                let (mut power, mut rest) = closest_power_two_and_rest(distance);
+
+                if power >= STORED_PREDECESSORS_SIZE {
+                    power = STORED_PREDECESSORS_SIZE - 1;
+                    rest = distance - BASE.pow(power);
+                }
+
+                let key = PredecessorKey::new(block_hash.clone(), power);
+                if let Some(pred) = self.get_predecessor_storage().get(&key)? {
+                    if rest == 0 {
+                        return Ok(Some(pred));
+                    } else {
+                        block_hash = pred;
+                        distance = rest;
+                    }
+                } else {
+                    return Ok(None); // reached genesis
+                }
+            }
+        }
+    }
+}
+
+/// Function to find the closest power of 2 value to the distance. Returns the closest power
+/// and the rest (distance = 2^closest_power + rest)
+fn closest_power_two_and_rest(distance: u32) -> (u32, u32) {
+    let base: u32 = 2;
+
+    let mut closest_power: u32 = 0;
+    let mut rest: u32 = 0;
+    let mut distance: u32 = distance;
+
+    while distance > 1 {
+        rest += base.pow(closest_power) * (distance % 2);
+        distance /= 2;
+        closest_power += 1;
+    }
+    (closest_power, rest)
 }
