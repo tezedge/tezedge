@@ -553,9 +553,12 @@ pub fn peer_handshaking_effects<S>(
                     PeerStatus::Handshaking(PeerHandshaking {
                         status: PeerHandshakingStatus::AckMessageReady { .. },
                         ..
-                    }) => store.dispatch(PeerHandshakingFinishAction {
-                        address: action.address,
-                    }.into()),
+                    }) => store.dispatch(
+                        PeerHandshakingFinishAction {
+                            address: action.address,
+                        }
+                        .into(),
+                    ),
                     _ => {}
                 }
             }

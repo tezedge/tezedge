@@ -2794,6 +2794,7 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "shell",
+ "shell_automaton",
  "shell_integration",
  "slog",
  "storage",

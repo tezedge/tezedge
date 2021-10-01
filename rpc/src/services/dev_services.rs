@@ -6,15 +6,19 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::vec;
 
 use crypto::hash::ContractKt1Hash;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use shell_automaton::{Action, ActionWithId};
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
+use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use shell_automaton::ActionId;
 use storage::cycle_eras_storage::CycleEra;
 //use tezos_context::actions::context_action_storage::{
 //    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
@@ -22,7 +26,7 @@ use storage::cycle_eras_storage::CycleEra;
 //};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
-    CycleErasStorage, PersistentStorage,
+    CycleErasStorage, PersistentStorage, ShellAutomatonActionStorage, ShellAutomatonStateStorage,
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
@@ -369,4 +373,119 @@ pub(crate) fn contract_id_to_contract_address_for_index(
     };
 
     Ok(contract_address)
+}
+
+pub(crate) async fn get_shell_automaton_state_current(
+    env: &RpcServiceEnvironment,
+) -> Result<shell_automaton::State, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetCurrentGlobalState { channel: tx })
+        .await;
+    rx.await
+}
+
+pub(crate) async fn get_shell_automaton_action(
+    env: &RpcServiceEnvironment,
+    action_id: u64,
+) -> anyhow::Result<Option<ActionWithId<Action>>> {
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+    tokio::task::spawn_blocking(move || {
+        Ok(action_storage
+            .get::<Action>(&action_id)?
+            .map(|action| ActionWithId {
+                id: ActionId::new_unchecked(action_id),
+                action,
+            }))
+    })
+    .await?
+}
+
+pub(crate) async fn get_shell_automaton_state_before_action(
+    env: &RpcServiceEnvironment,
+    target_action_id: u64,
+) -> anyhow::Result<shell_automaton::State> {
+    let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
+
+    let closest_snapshot_action_id = target_action_id / 10000;
+    let mut state = match snapshot_storage.get(&closest_snapshot_action_id)? {
+        Some(v) => v,
+        None => return Err(anyhow::anyhow!("snapshot not available")),
+    };
+
+    if target_action_id > closest_snapshot_action_id {
+        for action_id in (closest_snapshot_action_id + 1)..target_action_id {
+            let action = match get_shell_automaton_action(env, action_id).await? {
+                Some(v) => v,
+                None => break,
+            };
+            shell_automaton::reducer(&mut state, &action);
+        }
+    }
+
+    Ok(state)
+}
+
+pub(crate) async fn get_shell_automaton_state_after_action(
+    env: &RpcServiceEnvironment,
+    target_action_id: u64,
+) -> anyhow::Result<shell_automaton::State> {
+    let mut state = get_shell_automaton_state_before_action(env, target_action_id).await?;
+
+    if let Some(action) = get_shell_automaton_action(env, target_action_id).await? {
+        shell_automaton::reducer(&mut state, &action);
+    };
+
+    Ok(state)
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ActionWithState {
+    #[serde(flatten)]
+    action: ActionWithId<Action>,
+    state: shell_automaton::State,
+}
+
+pub(crate) async fn get_shell_automaton_actions(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<u64>,
+) -> anyhow::Result<VecDeque<ActionWithState>> {
+    let limit = limit.unwrap_or(20).max(1).min(1000);
+
+    let end = match cursor {
+        Some(v) => v,
+        None => {
+            // TODO: optimize by getting just part of state, instead of whole state.
+            let state = get_shell_automaton_state_current(env).await?;
+            state.last_action_id.into()
+        }
+    };
+    let start = end.checked_sub(limit - 1).unwrap_or(0);
+
+    let mut state = get_shell_automaton_state_before_action(env, start).await?;
+
+    let mut actions_with_state = VecDeque::new();
+
+    let start = match start {
+        // Actions start from 1.
+        0 => 1,
+        v => v,
+    };
+
+    for action_id in start..=end {
+        let action = match get_shell_automaton_action(env, action_id).await? {
+            Some(v) => v,
+            None => break,
+        };
+        shell_automaton::reducer(&mut state, &action);
+        actions_with_state.push_front(ActionWithState {
+            action,
+            state: state.clone(),
+        });
+    }
+
+    Ok(actions_with_state)
 }

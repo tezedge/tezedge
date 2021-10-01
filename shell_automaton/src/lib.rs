@@ -6,7 +6,7 @@ pub mod event;
 use event::Event;
 
 pub mod action;
-use action::Action;
+pub use action::{Action, ActionId, ActionWithId};
 
 pub mod config;
 pub use config::Config;
@@ -35,8 +35,8 @@ use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 pub mod rpc;
 
 pub mod service;
-pub use service::{Service, ServiceDefault};
 use service::MioService;
+pub use service::{Service, ServiceDefault};
 pub type Port = u16;
 
 pub struct ShellAutomaton<Serv, Events> {

@@ -158,7 +158,7 @@ fn block_on_actors(
         ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize shell automaton manager
-    let mut shell_automaton_manager = ShellAutomatonManager::new(
+    let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
         persistent_storage.clone(),
         network_channel.clone(),
         log.clone(),
@@ -268,10 +268,10 @@ fn block_on_actors(
     let shell_connector =
         ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory.clone());
 
-    // initialize rpc server
     let mut rpc_server = RpcServer::new(
         log.clone(),
         Box::new(shell_connector),
+        rpc_shell_automaton_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
         &persistent_storage,

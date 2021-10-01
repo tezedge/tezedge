@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
+use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
 use slog::{info, warn, Logger};
 use storage::PersistentStorage;
 
@@ -88,7 +89,7 @@ impl ShellAutomatonManager {
         p2p_config: P2p,
         pow_target: f64,
         chain_id: ChainId,
-    ) -> Self {
+    ) -> (Self, RpcShellAutomatonChannel) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
             p2p_config
@@ -113,7 +114,7 @@ impl ShellAutomatonManager {
         });
 
         let mio_service = MioServiceDefault::new(listener_addr);
-        let rpc_service = RpcServiceDefault::init(mio_service.waker(), persistent_storage.clone());
+        let (rpc_service, rpc_channel) = RpcServiceDefault::new(mio_service.waker(), 128);
 
         let storage_service =
             StorageServiceDefault::init(mio_service.waker(), persistent_storage.clone());
@@ -146,7 +147,7 @@ impl ShellAutomatonManager {
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);
 
-        Self {
+        let this = Self {
             log,
             shell_automaton_sender: automaton_sender,
             shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(
@@ -154,7 +155,9 @@ impl ShellAutomatonManager {
                 shell_automaton,
                 bootstrap_addresses,
             )),
-        }
+        };
+
+        (this, rpc_channel)
     }
 
     pub fn start(&mut self) {
