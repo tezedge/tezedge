@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{BlockAdditionalData, BlockHeaderWithHash, PersistentStorage};
+use storage::{
+    BlockAdditionalData, BlockHeaderWithHash, ChainMetaStorage, ChainMetaStorageReader,
+    PersistentStorage,
+};
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
@@ -56,6 +59,47 @@ pub(crate) fn get_block_hashes(
     .into_iter()
     .map(|block_header| block_header.hash)
     .collect::<Vec<BlockHash>>())
+}
+
+pub(crate) fn get_known_heads(
+    chain_id: ChainId,
+    head_param: Option<&str>,
+    persistent_storage: &PersistentStorage,
+) -> Result<Vec<Vec<String>>, RpcServiceError> {
+    let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
+
+    if let Some(head) = head_param {
+        // TODO
+        Ok(vec![])
+    } else {
+        // TODO: Get the current head from the shared state, not the storage
+        let current_head =
+            if let Some(current_head) = chain_meta_storage.get_current_head(&chain_id)? {
+                current_head.block_hash().to_base58_check()
+            } else {
+                return Err(RpcServiceError::NoDataFoundError {
+                    reason: "No current head in storage".into(),
+                });
+            };
+
+        // TODO: Get the current head from the shared state, not the storage
+        // TODO: add the alternate heads to the rpc state?
+        let mut alternate_heads =
+            if let Some(alternate_heads) = chain_meta_storage.get_alternate_heads(&chain_id)? {
+                alternate_heads
+                    .into_iter()
+                    .map(|v| vec![v.block_hash().to_base58_check()])
+                    .collect::<Vec<_>>()
+            } else {
+                return Err(RpcServiceError::NoDataFoundError {
+                    reason: "No alternate heads in storage".into(),
+                });
+            };
+
+        // combine alternate heads and current_head
+        alternate_heads.insert(0, vec![current_head]);
+        Ok(alternate_heads)
+    }
 }
 
 /// Get block metadata

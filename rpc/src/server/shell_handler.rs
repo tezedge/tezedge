@@ -148,33 +148,15 @@ pub async fn blocks(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let length = query.get_str("length").unwrap_or("0");
-    let head_param = query.get_str("head").unwrap_or("head");
     // TODO: mutliparameter
-    let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
+    let head_param = query.get_str("head");
     // TODO: implement min_date query arg
-
-    // Quick hack to handle the normal case that is not working right now (returns an empty array
-    // instead of an array with the hash of the head)
-    if head_param == "head" {
-        return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
-    }
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
 
-    let block_hashes = base_services::get_block_hashes(
-        chain_id,
-        head,
-        None,
-        length.parse::<usize>()?,
-        env.persistent_storage(),
-    )
-    .map(|hashes| {
-        hashes
-            .iter()
-            .map(|block| block.to_base58_check())
-            .collect::<Vec<String>>()
-    });
+    let block_hashes =
+        base_services::get_known_heads(chain_id, head_param, env.persistent_storage());
 
     result_to_json_response(block_hashes, env.log())
 }
