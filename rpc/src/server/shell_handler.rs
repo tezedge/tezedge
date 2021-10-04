@@ -153,7 +153,7 @@ pub async fn blocks(
     let length_param: u32 = query.get_u64("length").unwrap_or(1).try_into()?;
     // TODO: mutliparameter
     let head_param = query.get_multiple_str("head");
-    // TODO: implement min_date query arg
+    let min_date_param = query.get_i64("min_date");
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
@@ -162,6 +162,7 @@ pub async fn blocks(
         chain_id,
         length_param,
         head_param,
+        min_date_param,
         env.persistent_storage(),
     );
 

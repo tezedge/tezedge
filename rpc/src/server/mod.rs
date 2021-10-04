@@ -273,6 +273,11 @@ pub trait HasSingleValue {
             .and_then(|value| value.parse::<u64>().ok())
     }
 
+    fn get_i64(&self, key: &str) -> Option<i64> {
+        self.get_str(key)
+            .and_then(|value| value.parse::<i64>().ok())
+    }
+
     fn get_usize(&self, key: &str) -> Option<usize> {
         self.get_str(key)
             .and_then(|value| value.parse::<usize>().ok())

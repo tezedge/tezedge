@@ -73,6 +73,7 @@ pub(crate) fn get_known_heads(
     chain_id: ChainId,
     length_param: u32,
     head_param: Option<Vec<&str>>,
+    min_date_param: Option<i64>,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<Vec<String>>, RpcServiceError> {
     let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
@@ -126,6 +127,11 @@ pub(crate) fn get_known_heads(
                 reason: "No alternate heads in storage".into(),
             });
         };
+
+        // filter out older heads, if min_date query arg is present
+        if let Some(min_date) = min_date_param {
+            result_heads.retain(|head| min_date <= head.header.timestamp());
+        }
         result_heads
     };
 
@@ -136,7 +142,10 @@ pub(crate) fn get_known_heads(
 
     // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
     // this avoids duplication)
-    let to_ignore: HashSet<String> = heads_to_process.iter().map(|block| block.hash.to_base58_check()).collect();
+    let to_ignore: HashSet<String> = heads_to_process
+        .iter()
+        .map(|block| block.hash.to_base58_check())
+        .collect();
 
     // 3. collect head hashes and predecessors if necessary
     for head in heads_to_process {
@@ -144,7 +153,9 @@ pub(crate) fn get_known_heads(
             let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
             let mut block_hash = head.hash.clone();
             for _ in 0..length_param - 1 {
-                if let Some(direct_predecessor) = block_storage.find_block_at_distance(block_hash.clone(), 1)? {
+                if let Some(direct_predecessor) =
+                    block_storage.find_block_at_distance(block_hash.clone(), 1)?
+                {
                     let direct_predecessor_hash = direct_predecessor.to_base58_check();
                     head_with_predecessors.push(direct_predecessor_hash.clone());
                     if to_ignore.contains(&direct_predecessor_hash) {
