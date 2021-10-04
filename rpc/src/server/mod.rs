@@ -14,6 +14,7 @@ use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use slog::{error, Logger};
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
@@ -23,7 +24,6 @@ use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_context_ipc_client::TezedgeContextClient;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
 
 use crate::{error_with_message, not_found, options};
@@ -88,11 +88,13 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezedge_context: TezedgeContextClient,
     #[get = "pub(crate)"]
-    tezos_readonly_api: Arc<TezosApiConnectionPool>,
-    #[get = "pub(crate)"]
-    tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-    #[get = "pub(crate)"]
-    tezos_without_context_api: Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
+    //#[get = "pub(crate)"]
+    //tezos_readonly_api: Arc<TezosApiConnectionPool>,
+    //#[get = "pub(crate)"]
+    //tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+    //#[get = "pub(crate)"]
+    //tezos_without_context_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     context_stats_db_path: Option<PathBuf>,
     pub tezedge_is_enabled: bool,
@@ -106,16 +108,17 @@ impl RpcServiceEnvironment {
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        tezos_readonly_api: Arc<TezosApiConnectionPool>,
-        tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        tezos_without_context_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
+        //tezos_readonly_api: Arc<TezosApiConnectionPool>,
+        //tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+        //tezos_without_context_api: Arc<TezosApiConnectionPool>,
         main_chain_id: ChainId,
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
         tezedge_is_enabled: bool,
         log: Logger,
     ) -> Self {
-        let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
+        let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_protocol_api));
         Self {
             tokio_executor,
             shell_connector,
@@ -127,9 +130,10 @@ impl RpcServiceEnvironment {
             state,
             log,
             tezedge_context,
-            tezos_readonly_api,
-            tezos_readonly_prevalidation_api,
-            tezos_without_context_api,
+            tezos_protocol_api,
+            //tezos_readonly_api,
+            //tezos_readonly_prevalidation_api,
+            //tezos_without_context_api,
             context_stats_db_path,
             tezedge_is_enabled,
         }

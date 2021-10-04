@@ -68,7 +68,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
                 let res = Proto::change_runtime_configuration(params);
-                tx.send(&NodeMessage::ChangeRuntimeConfigurationResult(res))?;
+                tx.send(&NodeMessage::ChangeRuntimeConfigurationResult)?;
             }
             ProtocolMessage::InitProtocolContextCall(params) => {
                 let context_config = TezosContextConfiguration {

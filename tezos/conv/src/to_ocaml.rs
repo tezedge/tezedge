@@ -351,7 +351,7 @@ impl_to_ocaml_record! {
 
 impl_to_ocaml_record! {
     ProtocolOverrides => OCamlProtocolOverrides{
-        user_activated_upgrades: OCamlList<(OCamlInt, String)>,
+        user_activated_upgrades: OCamlList<(OCamlInt32, String)>,
         user_activated_protocol_overrides: OCamlList<(String, String)>,
     }
 }
@@ -367,12 +367,12 @@ impl_to_ocaml_record! {
     InitProtocolContextParams => OCamlInitProtocolContextParams {
         storage: OCamlTezosContextStorageConfiguration,
         genesis: OCamlGenesisChain,
-        genesis_max_operations_ttl: OCamlInt => *genesis_max_operations_ttl as i32,
+        //genesis_max_operations_ttl: OCamlInt => *genesis_max_operations_ttl as i32,
         protocol_overrides: OCamlProtocolOverrides,
         commit_genesis: bool,
         enable_testchain: bool,
         readonly: bool,
-        turn_off_context_raw_inspector: bool,
+        //turn_off_context_raw_inspector: bool,
         patch_context: Option<OCamlPatchContext>,
         context_stats_db_path: Option<String> =>
             context_stats_db_path.clone().map(|path| path.to_string_lossy().to_string()),

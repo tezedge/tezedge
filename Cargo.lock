@@ -250,6 +250,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "async_ipc"
+version = "1.9.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "libc",
+ "rand 0.7.3",
+ "serde 1.0.130",
+ "serial_test",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -753,7 +767,7 @@ version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19c6cedffdc8c03a3346d723eb20bd85a13362bb96dc2ac000842c6381ec7bf"
 dependencies = [
- "nix",
+ "nix 0.23.0",
  "winapi",
 ]
 
@@ -1725,7 +1739,7 @@ dependencies = [
  "tezos_context_api",
  "tezos_identity",
  "tezos_messages",
- "tezos_wrapper",
+ "tezos_protocol_ipc_client",
  "thiserror",
  "tokio",
 ]
@@ -1755,7 +1769,7 @@ version = "1.10.0"
 dependencies = [
  "chrono",
  "libflate",
- "nix",
+ "nix 0.23.0",
  "serde 1.0.130",
  "slog",
  "slog-async",
@@ -1950,6 +1964,18 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
+]
+
+[[package]]
+name = "nix"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -2381,7 +2407,6 @@ dependencies = [
  "tezos_context_api",
  "tezos_interop",
  "tezos_messages",
- "tezos_wrapper",
  "thiserror",
 ]
 
@@ -2617,6 +2642,7 @@ version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
+ "async_ipc",
  "bincode",
  "cached",
  "chrono",
@@ -2643,8 +2669,8 @@ dependencies = [
  "tezos_context_api",
  "tezos_context_ipc_client",
  "tezos_messages",
+ "tezos_protocol_ipc_client",
  "tezos_timing",
- "tezos_wrapper",
  "thiserror",
  "tokio",
  "url",
@@ -2725,7 +2751,7 @@ dependencies = [
  "colored",
  "hex",
  "itertools 0.10.1",
- "nix",
+ "nix 0.23.0",
  "os_type",
  "rand 0.7.3",
  "serde 1.0.130",
@@ -2914,7 +2940,7 @@ dependencies = [
  "itertools 0.10.1",
  "lazy_static",
  "networking",
- "nix",
+ "nix 0.23.0",
  "nom",
  "page_size",
  "r2d2",
@@ -2934,7 +2960,7 @@ dependencies = [
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
- "tezos_wrapper",
+ "tezos_protocol_ipc_client",
  "thiserror",
  "tokio",
  "zip",
@@ -3385,9 +3411,10 @@ dependencies = [
 name = "tezos_context_ipc_client"
 version = "1.8.0"
 dependencies = [
+ "async_ipc",
  "crypto",
  "tezos_context_api",
- "tezos_wrapper",
+ "tezos_protocol_ipc_client",
  "thiserror",
 ]
 
@@ -3506,6 +3533,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos_protocol_ipc_client"
+version = "1.9.0"
+dependencies = [
+ "async_ipc",
+ "crypto",
+ "nix 0.19.1",
+ "slog",
+ "tezos_api",
+ "tezos_context_api",
+ "tezos_messages",
+ "tezos_protocol_ipc_messages",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "tezos_protocol_ipc_messages"
 version = "1.8.0"
 dependencies = [
@@ -3533,28 +3576,6 @@ dependencies = [
  "rusqlite",
  "serde 1.0.130",
  "thiserror",
-]
-
-[[package]]
-name = "tezos_wrapper"
-version = "1.10.0"
-dependencies = [
- "crypto",
- "getset",
- "ipc",
- "lazy_static",
- "nix",
- "r2d2",
- "rand 0.7.3",
- "serde 1.0.130",
- "slog",
- "strum_macros",
- "tezos_api",
- "tezos_context_api",
- "tezos_messages",
- "tezos_protocol_ipc_messages",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

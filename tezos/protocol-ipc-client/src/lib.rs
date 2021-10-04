@@ -621,11 +621,9 @@ impl ProtocolRunnerConnection {
         &mut self,
         settings: TezosRuntimeConfiguration,
     ) -> Result<(), ProtocolServiceError> {
-        println!("@@@@@ sending change runtime conf");
         self.io
             .send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))
             .await?;
-        println!("@@@@@ receiving result of change runtime conf");
         match self.io.try_receive(Some(Self::DEFAULT_TIMEOUT)).await? {
             NodeMessage::ChangeRuntimeConfigurationResult => Ok(()),
             message => Err(ProtocolServiceError::UnexpectedMessage {
@@ -712,13 +710,11 @@ impl ProtocolRunnerConnection {
         patch_context: &Option<PatchContext>,
         context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        println!("@@@@@@ change runtime conf");
         self.change_runtime_configuration(
             self.instance.configuration.runtime_configuration.clone(),
         )
         .await?;
         let environment = self.instance.configuration.environment.clone();
-        println!("@@@@@@ init protocol context");
         self.init_protocol_context(
             self.instance.configuration.storage.clone(),
             &environment,

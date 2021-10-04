@@ -31,7 +31,7 @@ storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_wrapper = { path = "../tezos/wrapper" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 
 [dev-dependencies]
 r2d2 = "0.8.9"

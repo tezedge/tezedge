@@ -12,7 +12,7 @@ use thiserror::Error;
 use crypto::hash::ChainId;
 use shell_integration::*;
 use storage::PersistentStorage;
-use tezos_wrapper::TezosApiConnectionPool;
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
 
 use crate::chain_manager::ChainManagerRef;
 use crate::mempool::mempool_prevalidator::{
@@ -44,7 +44,8 @@ pub struct MempoolPrevalidatorFactory {
     log: Logger,
     persistent_storage: PersistentStorage,
     current_mempool_state: CurrentMempoolStateStorageRef,
-    tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
+    tokio_runtime: tokio::runtime::Handle,
     /// Indicates if mempool is disabled to propagate to p2p
     pub p2p_disable_mempool: bool,
     mempool_thread_watchers: Arc<Mutex<HashMap<ActorUri, ThreadWatcher>>>,
@@ -56,7 +57,8 @@ impl MempoolPrevalidatorFactory {
         log: Logger,
         persistent_storage: PersistentStorage,
         current_mempool_state: CurrentMempoolStateStorageRef,
-        tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
+        tokio_runtime: &tokio::runtime::Handle,
         p2p_disable_mempool: bool,
     ) -> Self {
         Self {
@@ -64,7 +66,8 @@ impl MempoolPrevalidatorFactory {
             log,
             persistent_storage,
             current_mempool_state,
-            tezos_readonly_mempool_api,
+            tezos_protocol_api,
+            tokio_runtime: tokio_runtime.clone(),
             p2p_disable_mempool,
             mempool_thread_watchers: Arc::new(Mutex::new(Default::default())),
         }
@@ -111,7 +114,8 @@ impl MempoolPrevalidatorFactory {
                     self.persistent_storage.clone(),
                     self.current_mempool_state.clone(),
                     chain_id,
-                    self.tezos_readonly_mempool_api.clone(),
+                    Arc::clone(&self.tezos_protocol_api),
+                    &self.tokio_runtime,
                     self.log.clone(),
                 )
                 .map_err(|e| MempoolPrevalidatorInitError::CreateError {

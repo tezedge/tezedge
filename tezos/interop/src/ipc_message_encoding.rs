@@ -12,6 +12,7 @@ fn encode_response<'gc>(
     let rust_response: NodeMessage = response.to_rust(cr);
     let bytes =
         bincode::serialize(&rust_response).map_err(|err| format!("Serialization failure: {}", err));
+    println!("Encoded message length={}", bytes.clone().unwrap().len());
     bytes.to_ocaml(cr)
 }
 
@@ -20,8 +21,9 @@ fn decode_request<'gc>(
     bytes: OCamlRef<OCamlBytes>,
 ) -> OCaml<'gc, Result<OCamlProtocolMessage, String>> {
     let ocaml_bytes = cr.get(bytes);
-    let rust_bytes = ocaml_bytes.as_bytes();
-    let result = bincode::deserialize::<ProtocolMessage>(rust_bytes)
+    let rust_bytes: Vec<u8> = ocaml_bytes.to_rust();
+
+    let result = bincode::deserialize::<ProtocolMessage>(&rust_bytes)
         .map_err(|err| format!("Deserialization failure: {}", err));
 
     result.to_ocaml(cr)

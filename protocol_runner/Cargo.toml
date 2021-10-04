@@ -19,5 +19,4 @@ tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_context_api = { path = "../tezos/context-api" }
 tezos_interop = { path = "../tezos/interop" }
-tezos_wrapper = { path = "../tezos/wrapper" }
 tezos_messages = { path = "../tezos/messages" }

@@ -116,7 +116,7 @@ pub enum NodeMessage {
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
     RpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
-    ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
+    ChangeRuntimeConfigurationResult,
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     InitProtocolContextIpcServerResult(Result<(), String>), // TODO - TE-261: use actual error result
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
@@ -126,6 +126,9 @@ pub enum NodeMessage {
     ContextGetKeyFromHistoryResult(Result<Option<ContextValue>, String>),
     ContextGetKeyValuesByPrefixResult(Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, String>),
     ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
+
+    // TODO: generic error response instead with error types?
+    IpcResponseEncodingFailure(String),
 
     ShutdownResult,
 }

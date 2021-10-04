@@ -13,14 +13,15 @@ use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::VotesError;
 use tezos_context_api::context_key_owned;
 
-pub fn get_votes_listings(
+pub async fn get_votes_listings(
     env: &RpcServiceEnvironment,
     context_hash: &ContextHash,
 ) -> Result<Option<serde_json::Value>, VotesError> {
     // filter out the listings data
     let listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))?
+        .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))
+        .await?
     {
         val
     } else {

@@ -8,12 +8,12 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use crypto::hash::ProtocolHash;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData,
-    RustBytes, TezosRuntimeConfiguration,
+    RustBytes,
 };
 
 use ocaml_interop::{OCamlRuntime, ToOCaml};
 use tezos_interop::runtime;
-use tezos_interop::{ffi, runtime::OCamlBlockPanic};
+use tezos_interop::runtime::OCamlBlockPanic;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -37,12 +37,12 @@ mod tezos_ffi {
 
 fn init_bench_runtime() {
     // init runtime and turn on/off ocaml logging
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: false,
-    })
-    .unwrap();
+    //ffi::change_runtime_configuration(TezosRuntimeConfiguration {
+    //    debug_mode: false,
+    //    compute_context_action_tree_hashes: false,
+    //    log_enabled: false,
+    //})
+    //.unwrap();
 }
 
 fn block_operations_from_hex(

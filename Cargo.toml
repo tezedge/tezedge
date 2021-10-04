@@ -3,6 +3,7 @@ cargo-features = ["named-profiles"]
 [workspace]
 members = [
     "ipc",
+    "async-ipc",
     "logging",
     "crypto",
     "tezos/sys",
@@ -13,10 +14,10 @@ members = [
     "tezos/interop",
     "tezos/encoding",
     "tezos/encoding-derive",
-    "tezos/wrapper",
     "tezos/context",
     "tezos/context-api",
     "tezos/context-ipc-client",
+    "tezos/protocol-ipc-client",
     "tezos/protocol-ipc-messages",
     "tezos/spsc",
     "tezos/timing",

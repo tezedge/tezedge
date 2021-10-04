@@ -17,6 +17,10 @@ use std::thread;
 use anyhow::{format_err, Error};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
+use tezos_protocol_ipc_client::{
+    handle_protocol_service_error, ProtocolRunnerApi, ProtocolRunnerConnection,
+    ProtocolServiceError,
+};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
@@ -33,8 +37,6 @@ use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
 };
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
-use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
-use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{AdvertiseToP2pNewMempool, ChainManagerRef};
 use crate::mempool::mempool_state::collect_mempool;
@@ -67,7 +69,8 @@ impl MempoolPrevalidator {
         persistent_storage: PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
-        tezos_readonly_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
+        tokio_runtime: &tokio::runtime::Handle,
         log: Logger,
     ) -> Result<(MempoolPrevalidatorRef, ThreadWatcher), CreateError> {
         let thread_name = format!("mmpl-{}", chain_id.to_base58_check());
@@ -89,6 +92,7 @@ impl MempoolPrevalidator {
         let mempool_thread = {
             let validator_run = mempool_thread_watcher.thread_running_status().clone();
             let chain_id = chain_id.clone();
+            let tokio_runtime = tokio_runtime.clone();
 
             thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
@@ -96,8 +100,9 @@ impl MempoolPrevalidator {
                 let mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
-                    match tezos_readonly_api.pool.get() {
-                        Ok(protocol_controller) => match process_prevalidation(
+                    let result = tokio_runtime.block_on(tezos_protocol_api.readable_connection());
+                    match result {
+                        Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
                             &mempool_storage,
@@ -105,23 +110,24 @@ impl MempoolPrevalidator {
                             &chain_id,
                             &validator_run,
                             &chain_manager,
-                            &protocol_controller.api,
+                            &mut protocol_controller,
+                            &tokio_runtime,
                             &mut validator_event_receiver,
                             &log,
                         ) {
                             Ok(()) => {
-                                protocol_controller.set_release_on_return_to_pool();
+                                //protocol_controller.set_release_on_return_to_pool();
                                 info!(log, "Mempool - prevalidation process finished")
                             }
                             Err(err) => {
-                                protocol_controller.set_release_on_return_to_pool();
+                                //protocol_controller.set_release_on_return_to_pool();
                                 if validator_run.load(Ordering::Acquire) {
                                     warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                 }
                             }
                         },
-                        Err(err) => {
-                            warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "pool_name" => tezos_readonly_api.pool_name.clone(), "reason" => format!("{:?}", err))
+                        Err(_err) => {
+                            //warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "pool_name" => tezos_readonly_api.pool_name.clone(), "reason" => format!("{:?}", err))
                         }
                     }
                 }
@@ -267,15 +273,12 @@ pub enum PrevalidationError {
     #[error("Storage read/write error, reason: {error:?}")]
     StorageError { error: StorageError },
     #[error("Protocol service error, reason: {error:?}")]
-    ProtocolServiceError { error: ProtocolServiceError },
+    ProtocolServiceError {
+        #[from]
+        error: ProtocolServiceError,
+    },
     #[error("Current mempool storage lock error, reason: {reason:?}")]
     CurrentMempoolStorageLockError { reason: String },
-}
-
-impl From<ProtocolServiceError> for PrevalidationError {
-    fn from(error: ProtocolServiceError) -> Self {
-        PrevalidationError::ProtocolServiceError { error }
-    }
 }
 
 impl From<StorageError> for PrevalidationError {
@@ -300,7 +303,8 @@ fn process_prevalidation(
     chain_id: &ChainId,
     validator_run: &AtomicBool,
     chain_manager: &ChainManagerRef,
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
@@ -314,6 +318,7 @@ fn process_prevalidation(
         mempool_storage,
         current_mempool_state_storage.clone(),
         api,
+        tokio_runtime,
         chain_id,
         log,
     )?;
@@ -336,6 +341,7 @@ fn process_prevalidation(
                         // try to begin construction new context
                         let (prevalidator, head) = begin_construction(
                             api,
+                            tokio_runtime,
                             chain_id,
                             header.hash.clone(),
                             header.header.clone(),
@@ -407,6 +413,7 @@ fn process_prevalidation(
         handle_pending_operations(
             chain_manager,
             api,
+            tokio_runtime,
             current_mempool_state_storage.clone(),
             log,
         )?;
@@ -421,7 +428,8 @@ fn hydrate_state(
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     chain_id: &ChainId,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
@@ -435,7 +443,9 @@ fn hydrate_state(
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some((head, header)) => begin_construction(api, chain_id, head.into(), header, log)?,
+        Some((head, header)) => {
+            begin_construction(api, tokio_runtime, chain_id, head.into(), header, log)?
+        }
         None => (None, None),
     };
 
@@ -459,27 +469,34 @@ fn hydrate_state(
     drop(state);
 
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
-    handle_pending_operations(chain_manager, api, current_mempool_state_storage, log)?;
+    handle_pending_operations(
+        chain_manager,
+        api,
+        tokio_runtime,
+        current_mempool_state_storage,
+        log,
+    )?;
 
     Ok(())
 }
 
 fn begin_construction(
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     chain_id: &ChainId,
     block_hash: BlockHash,
     block_header: Arc<BlockHeader>,
     log: &Logger,
 ) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
     // try to begin construction
-    let result = match api.begin_construction(BeginConstructionRequest {
+    let result = match tokio_runtime.block_on(api.begin_construction(BeginConstructionRequest {
         chain_id: chain_id.clone(),
         predecessor: block_header.as_ref().clone(),
         protocol_data: None,
-    }) {
+    })) {
         Ok(prevalidator) => (Some(prevalidator), Some(block_hash)),
         Err(pse) => {
-            ProtocolServiceError::handle_protocol_service_error(
+            handle_protocol_service_error(
                 pse,
                 |e| warn!(log, "Mempool - failed to begin construction"; "block_hash" => block_hash.to_base58_check(), "error" => format!("{:?}", e)),
             )?;
@@ -491,7 +508,8 @@ fn begin_construction(
 
 fn handle_pending_operations(
     chain_manager: &ChainManagerRef,
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
@@ -522,10 +540,10 @@ fn handle_pending_operations(
                 trace!(log, "Mempool - lets validate "; "hash" => pending_op.to_base58_check());
 
                 // lets validate throught protocol
-                match api.validate_operation(ValidateOperationRequest {
+                match tokio_runtime.block_on(api.validate_operation(ValidateOperationRequest {
                     prevalidator: prevalidator.clone(),
                     operation: operation.clone(),
-                }) {
+                })) {
                     Ok(response) => {
                         debug!(log, "Mempool - validate operation response finished with success"; "hash" => pending_op.to_base58_check(), "result" => format!("{:?}", response.result));
 
@@ -536,7 +554,7 @@ fn handle_pending_operations(
                         // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
                     }
                     Err(pse) => {
-                        ProtocolServiceError::handle_protocol_service_error(
+                        handle_protocol_service_error(
                             pse,
                             |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => pending_op.to_base58_check(), "error" => format!("{:?}", e)),
                         )?

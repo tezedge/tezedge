@@ -33,9 +33,9 @@ fn main() {
         .author("TezEdge and the project contributors")
         .about("Tezos Protocol Runner")
         .arg(
-            Arg::with_name("sock-cmd")
+            Arg::with_name("socket-path")
                 .short("c")
-                .long("sock-cmd")
+                .long("socket-path")
                 .value_name("path")
                 .help("Path to a command socket")
                 .takes_value(true)
@@ -62,8 +62,8 @@ fn main() {
         .get_matches();
 
     let cmd_socket_path = matches
-        .value_of("sock-cmd")
-        .expect("Missing sock-cmd value");
+        .value_of("socket-path")
+        .expect("Missing socket-path value");
     let endpoint_name = matches
         .value_of("endpoint")
         .expect("Missing endpoint value")

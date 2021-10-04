@@ -332,8 +332,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::RpcResponse(result),
         HelpersPreapplyResponse(result: Result<OCamlHelpersPreapplyResponse, OCamlTezosErrorTrace>) =>
             NodeMessage::HelpersPreapplyResponse(result),
-        ChangeRuntimeConfigurationResult(result: Result<(), OCamlTezosErrorTrace>) =>
-            NodeMessage::ChangeRuntimeConfigurationResult(result),
+        ChangeRuntimeConfigurationResult =>
+            NodeMessage::ChangeRuntimeConfigurationResult,
         InitProtocolContextResult(result: Result<OCamlInitProtocolContextResult, OCamlTezosErrorTrace>) =>
             NodeMessage::InitProtocolContextResult(result),
         InitProtocolContextIpcServerResult(result: Result<(), String>) =>
@@ -352,6 +352,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::ContextGetKeyValuesByPrefixResult(result),
         //ContextGetTreeByPrefixResult(result: Result<OCamlStringTreeObject, String>) =>
         //    NodeMessage::ContextGetTreeByPrefixResult(result),
+
+        IpcResponseEncodingFailure(message: String) => NodeMessage::IpcResponseEncodingFailure(message),
 
         ShutdownResult => NodeMessage::ShutdownResult,
     }

@@ -41,7 +41,7 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::limits::HISTORY_MAX_SIZE;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
-use tezos_wrapper::TezosApiConnectionPool;
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::mempool::mempool_prevalidator::{MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg};
@@ -227,13 +227,16 @@ pub struct ChainManager {
     is_sandbox: bool,
 
     /// Protocol runner pool dedicated to prevalidation
-    tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
 
     /// Used just for very first initialization of ChainManager, because ChainManager subscribes to NetworkChannel in [`pre_start`], but this initialization is asynchronous,
     /// so there is possiblity, that PeerManager could open p2p socket before ChainManager is subscribed to p2p messages, this could lead to dismissed p2p messages or PeerBootstrapped messages,
     ///
     /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because tezedge_actor_system's do not loose messages when actor is restarting
     first_initialization_done_result_callback: Arc<Mutex<Option<OneshotResultCallback<()>>>>,
+
+    /// Tokio runtime handle
+    tokio_runtime: tokio::runtime::Handle,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -247,7 +250,7 @@ impl ChainManager {
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
-        tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         init_storage_data: StorageInitInfo,
         is_sandbox: bool,
         hydrated_current_head: Head,
@@ -256,6 +259,7 @@ impl ChainManager {
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
         first_initialization_done_result_callback: OneshotResultCallback<()>,
+        tokio_runtime: &tokio::runtime::Handle,
     ) -> Result<(ChainManagerRef, ThreadWatcher), CreateError> {
         let (p2p_reader_sender, p2p_reader_thread_watcher) = spawn_p2p_reader_thread(
             identity.peer_id(),
@@ -275,7 +279,7 @@ impl ChainManager {
                 shell_channel,
                 persistent_storage,
                 Arc::new(Mutex::new(p2p_reader_sender)),
-                tezos_readonly_prevalidation_api,
+                tezos_protocol_api,
                 init_storage_data,
                 is_sandbox,
                 hydrated_current_head,
@@ -283,6 +287,7 @@ impl ChainManager {
                 num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
                 Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
+                tokio_runtime.clone(),
             )),
         )
         .map(|actor| (actor, p2p_reader_thread_watcher))
@@ -320,6 +325,8 @@ impl ChainManager {
             current_head_state,
             remote_current_head_state,
             p2p_reader_sender,
+            tezos_protocol_api,
+            tokio_runtime,
             ..
         } = self;
 
@@ -531,11 +538,14 @@ impl ChainManager {
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
+                                    let mut connection = tokio_runtime
+                                        .block_on(tezos_protocol_api.readable_connection())?;
+
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
                                         message,
                                         &current_head_state,
-                                        &self.tezos_readonly_prevalidation_api.pool.get()?.api,
+                                        &mut connection,
                                     )? {
                                         BlockAcceptanceResult::AcceptBlock => {
                                             let message_current_head = BlockHeaderWithHash::new(
@@ -704,16 +714,23 @@ impl ChainManager {
 
                                 match peer.queued_mempool_operations.remove(&operation_hash) {
                                     Some(operation_type) => {
+                                        let mut connection = tokio_runtime
+                                            .block_on(tezos_protocol_api.readable_connection())?;
+
                                         // do prevalidation before add the operation to mempool
-                                        let result = match validation::prevalidate_operation(
-                                            chain_state.get_chain_id(),
-                                            &operation_hash,
-                                            operation,
-                                            &self.current_mempool_state,
-                                            &self.tezos_readonly_prevalidation_api.pool.get()?.api,
-                                            block_storage,
-                                            block_meta_storage,
-                                        ) {
+                                        let result = self.tokio_runtime.block_on(
+                                            validation::prevalidate_operation(
+                                                chain_state.get_chain_id(),
+                                                &operation_hash,
+                                                operation,
+                                                Arc::clone(&self.current_mempool_state),
+                                                &mut connection,
+                                                block_storage,
+                                                block_meta_storage,
+                                            ),
+                                        );
+
+                                        let result = match result {
                                             Ok(result) => result,
                                             Err(e) => match e {
                                                 validation::PrevalidateOperationError::UnknownBranch { .. }
@@ -1451,7 +1468,7 @@ impl
         ShellChannelRef,
         PersistentStorage,
         Arc<Mutex<P2pReaderSender>>,
-        Arc<TezosApiConnectionPool>,
+        Arc<ProtocolRunnerApi>,
         StorageInitInfo,
         bool,
         Head,
@@ -1459,6 +1476,7 @@ impl
         usize,
         Arc<MempoolPrevalidatorFactory>,
         Arc<Mutex<Option<OneshotResultCallback<()>>>>,
+        tokio::runtime::Handle,
     )> for ChainManager
 {
     fn create_args(
@@ -1468,7 +1486,7 @@ impl
             shell_channel,
             persistent_storage,
             p2p_reader_sender,
-            tezos_readonly_prevalidation_api,
+            tezos_protocol_api,
             init_storage_data,
             is_sandbox,
             hydrated_current_head,
@@ -1476,13 +1494,14 @@ impl
             num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
             first_initialization_done_result_callback,
+            tokio_runtime,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
             PersistentStorage,
             Arc<Mutex<P2pReaderSender>>,
-            Arc<TezosApiConnectionPool>,
+            Arc<ProtocolRunnerApi>,
             StorageInitInfo,
             bool,
             Head,
@@ -1490,6 +1509,7 @@ impl
             usize,
             Arc<MempoolPrevalidatorFactory>,
             Arc<Mutex<Option<OneshotResultCallback<()>>>>,
+            tokio::runtime::Handle,
         ),
     ) -> Self {
         ChainManager {
@@ -1505,6 +1525,7 @@ impl
                 &persistent_storage,
                 Arc::new(init_storage_data.chain_id.clone()),
                 Arc::new(init_storage_data.genesis_block_header_hash.clone()),
+                tokio_runtime.clone(),
             ),
             peers: HashMap::new(),
             current_head_state: HeadState::new(
@@ -1529,8 +1550,9 @@ impl
             ),
             mempool_prevalidator: None,
             mempool_prevalidator_factory,
-            tezos_readonly_prevalidation_api,
+            tezos_protocol_api,
             first_initialization_done_result_callback,
+            tokio_runtime,
         }
     }
 }

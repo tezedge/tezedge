@@ -25,7 +25,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_context_api = { path = "../tezos/context-api" }
-tezos_wrapper = { path = "../tezos/wrapper" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
