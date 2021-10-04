@@ -332,6 +332,9 @@ impl ChainManager {
                                 peer.update_current_head_level(
                                     message.current_branch().current_head().level(),
                                 );
+                                warn!(log, "[CurrentBranch] received";
+                                           "message_head_level" => message.current_branch().current_head().level(),
+                                           "peer_current_head" => peer.current_head_level);
 
                                 // at first, check if we can accept branch or just ignore it
                                 if !chain_state.can_accept_branch(message, current_head_state)? {
@@ -345,9 +348,15 @@ impl ChainManager {
                                     )?;
 
                                     // update remote heads
+                                    let current_head_before = peer.current_head_level.clone();
                                     peer.update_current_head(&message_current_head);
                                     remote_current_head_state
                                         .update_remote_head(&message_current_head);
+
+                                    warn!(log, "[CurrentBranch]";
+                                               "message_head_level" => message.current_branch().current_head().level(),
+                                               "peer_current_head_before" => current_head_before,
+                                               "peer_current_head_after" => peer.current_head_level);
 
                                     // schedule to download missing branch blocks
                                     chain_state.schedule_history_bootstrap(

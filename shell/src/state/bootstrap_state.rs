@@ -618,6 +618,9 @@ impl BootstrapState {
 
                         false
                     } else {
+                        info!(log, "[NOT finished yet] branch";
+                                   "to_level" => &branch.to_level,
+                                   "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
                         true
                     }
                 });

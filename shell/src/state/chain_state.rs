@@ -414,6 +414,7 @@ impl BlockchainState {
         // if we miss something, we will run "peer branch bootstrapper"
         if !missing_history.is_empty() {
             if self.peer_branch_bootstrapper.is_none() {
+                slog::info!(sys.log(), "[PEER_BRANCH_BOOTSTRAPPER] starting actor");
                 self.peer_branch_bootstrapper = Some(
                     PeerBranchBootstrapper::actor(
                         sys,
@@ -432,9 +433,11 @@ impl BlockchainState {
                         reason: format!("{}", e),
                     })?,
                 );
+                slog::info!(sys.log(), "[PEER_BRANCH_BOOTSTRAPPER] starting actor done");
             };
 
             if let Some(peer_branch_bootstrapper) = self.peer_branch_bootstrapper.as_ref() {
+                slog::info!(sys.log(), "[PEER_BRANCH_BOOTSTRAPPER] StartBranchBootstraping - to_level:{}", block_header.header.level());
                 peer_branch_bootstrapper.tell(
                     StartBranchBootstraping::new(
                         peer.peer_id.clone(),
