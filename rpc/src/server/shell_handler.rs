@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::sync::Arc;
 
 use hyper::body::Buf;
@@ -14,7 +15,9 @@ use crate::helpers::{
     create_rpc_request, parse_async, parse_block_hash, parse_chain_id, RpcServiceError,
     MAIN_CHAIN_ID,
 };
-use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
+use crate::server::{
+    HResult, HasMultipleValues, HasSingleValue, Params, Query, RpcServiceEnvironment,
+};
 use crate::services::{base_services, stream_services};
 use crate::{
     empty,
@@ -147,16 +150,20 @@ pub async fn blocks(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let length = query.get_str("length").unwrap_or("0");
+    let length_param: u32 = query.get_u64("length").unwrap_or(1).try_into()?;
     // TODO: mutliparameter
-    let head_param = query.get_str("head");
+    let head_param = query.get_multiple_str("head");
     // TODO: implement min_date query arg
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
 
-    let block_hashes =
-        base_services::get_known_heads(chain_id, head_param, env.persistent_storage());
+    let block_hashes = base_services::get_known_heads(
+        chain_id,
+        length_param,
+        head_param,
+        env.persistent_storage(),
+    );
 
     result_to_json_response(block_hashes, env.log())
 }

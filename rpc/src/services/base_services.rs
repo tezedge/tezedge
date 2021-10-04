@@ -1,18 +1,26 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
+use std::convert::TryInto;
 use std::sync::Arc;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash};
+use crypto::base58::FromBase58CheckError;
+use crypto::hash::{BlockHash, ChainId, ContextHash, Hash};
+use itertools::Itertools;
+use storage::predecessor_storage::PredecessorSearch;
 use storage::{
-    BlockAdditionalData, BlockHeaderWithHash, ChainMetaStorage, ChainMetaStorageReader,
-    PersistentStorage,
+    block_storage, BlockAdditionalData, BlockHeaderWithHash, ChainMetaStorage,
+    ChainMetaStorageReader, PersistentStorage,
 };
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
 };
 use tezos_context::{context_key_owned, StringTreeObject};
+use tezos_messages::base::fitness_comparator::FitnessWrapper;
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::current_head;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
@@ -63,43 +71,95 @@ pub(crate) fn get_block_hashes(
 
 pub(crate) fn get_known_heads(
     chain_id: ChainId,
-    head_param: Option<&str>,
+    length_param: u32,
+    head_param: Option<Vec<&str>>,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<Vec<String>>, RpcServiceError> {
     let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
 
-    if let Some(head) = head_param {
-        // TODO
-        Ok(vec![])
+    let mut res: Vec<Vec<String>> = vec![];
+
+    // 1. collect all the blocks we consider as heads
+    let mut heads_to_process = if let Some(head_param) = head_param {
+        let mut result_heads = vec![];
+
+        for head in head_param {
+            // The query arg head must contian a valid block hash in base58 form
+            let head_hash = match BlockHash::from_base58_check(head) {
+                Ok(hash) => hash,
+                Err(e) => {
+                    return Err(RpcServiceError::InvalidParameters {
+                        reason: e.to_string(),
+                    })
+                }
+            };
+
+            if let Some(block) = block_storage.get(&head_hash)? {
+                result_heads.push(block);
+            }
+        }
+        result_heads
     } else {
         // TODO: Get the current head from the shared state, not the storage
-        let current_head =
-            if let Some(current_head) = chain_meta_storage.get_current_head(&chain_id)? {
-                current_head.block_hash().to_base58_check()
-            } else {
-                return Err(RpcServiceError::NoDataFoundError {
-                    reason: "No current head in storage".into(),
-                });
-            };
+        let mut result_heads = vec![];
+        if let Some(current_head) = chain_meta_storage.get_current_head(&chain_id)? {
+            if let Some(block) = block_storage.get(current_head.block_hash())? {
+                result_heads.push(block)
+            }
+        } else {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: "No current head in storage".into(),
+            });
+        };
 
         // TODO: Get the current head from the shared state, not the storage
         // TODO: add the alternate heads to the rpc state?
-        let mut alternate_heads =
-            if let Some(alternate_heads) = chain_meta_storage.get_alternate_heads(&chain_id)? {
-                alternate_heads
-                    .into_iter()
-                    .map(|v| vec![v.block_hash().to_base58_check()])
-                    .collect::<Vec<_>>()
-            } else {
-                return Err(RpcServiceError::NoDataFoundError {
-                    reason: "No alternate heads in storage".into(),
-                });
-            };
+        if let Some(alternate_heads) = chain_meta_storage.get_alternate_heads(&chain_id)? {
+            for head in alternate_heads {
+                if let Some(block) = block_storage.get(head.block_hash())? {
+                    result_heads.push(block);
+                }
+            }
+        } else {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: "No alternate heads in storage".into(),
+            });
+        };
+        result_heads
+    };
 
-        // combine alternate heads and current_head
-        alternate_heads.insert(0, vec![current_head]);
-        Ok(alternate_heads)
+    // 2. sort the heads by fitness
+    heads_to_process.sort_by(|a, b| {
+        FitnessWrapper::new(a.header.fitness()).cmp(&FitnessWrapper::new(b.header.fitness()))
+    });
+
+    // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
+    // this avoids duplication)
+    let to_ignore: HashSet<String> = heads_to_process.iter().map(|block| block.hash.to_base58_check()).collect();
+
+    // 3. collect head hashes and predecessors if necessary
+    for head in heads_to_process {
+        if length_param > 1 {
+            let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
+            let mut block_hash = head.hash.clone();
+            for _ in 0..length_param - 1 {
+                if let Some(direct_predecessor) = block_storage.find_block_at_distance(block_hash.clone(), 1)? {
+                    let direct_predecessor_hash = direct_predecessor.to_base58_check();
+                    head_with_predecessors.push(direct_predecessor_hash.clone());
+                    if to_ignore.contains(&direct_predecessor_hash) {
+                        break;
+                    }
+                    block_hash = direct_predecessor;
+                }
+            }
+            res.push(head_with_predecessors);
+        } else {
+            res.push(vec![head.hash.to_base58_check()]);
+        }
     }
+
+    Ok(res)
 }
 
 /// Get block metadata
