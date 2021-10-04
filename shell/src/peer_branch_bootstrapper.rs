@@ -505,10 +505,51 @@ impl Receive<UpdateBranchBootstraping> for PeerBranchBootstrapper {
             let log = ctx.system.log();
             info!(log, "Branch bootstrapping process was updated with new block";
                        "new_block" => msg.current_head.hash.to_base58_check(),
+                       "new_block_level" => msg.current_head.header.level(),
                        "peer_id" => msg.peer_id.peer_id_marker.clone(), "peer_ip" => msg.peer_id.peer_address.to_string(), "peer" => msg.peer_id.peer_ref.name(), "peer_uri" => msg.peer_id.peer_ref.uri().to_string(),
             );
             // process
             self.process_bootstrap_pipelines(msg.peer_id, ctx, &log);
+        } else {
+            let processing_blocks_scheduled_for_apply = self.bootstrap_state.blocks_scheduled_count();
+            let (
+                processing_peer_branches,
+                (
+                    processing_block_intervals,
+                    processing_block_intervals_open,
+                    processing_block_intervals_scheduled_for_apply,
+                ),
+            ) = self.bootstrap_state.block_intervals_stats();
+
+            info!(ctx.system.log(), "[NOT] Branch bootstrapping process was not updated with new block";
+                       "new_block" => msg.current_head.hash.to_base58_check(),
+                       "new_block_level" => msg.current_head.header.level(),
+                                   "actor_received_messages_count" => self.get_and_clear_actor_received_messages_count(),
+                   "peers_count" => self.bootstrap_state.peers_count(),
+                   "peers_branches" => processing_peer_branches,
+                   "peers_branches_level" => {
+                        itertools::join(
+                            &self.bootstrap_state
+                                .peers_branches_level()
+                                .iter()
+                                .map(|(to_level, block)| format!("{} ({})", to_level, block.to_base58_check()))
+                                .collect::<HashSet<_>>(),
+                            ", ",
+                        )
+                   },
+                   "block_intervals" => processing_block_intervals,
+                   "block_intervals_open" => processing_block_intervals_open,
+                   "block_intervals_scheduled_for_apply" => processing_block_intervals_scheduled_for_apply,
+                   "block_intervals_next_lowest_missing_blocks" => {
+                        self.bootstrap_state
+                            .next_lowest_missing_blocks()
+                            .iter()
+                            .map(|(interval_idx, block)| format!("{} (i:{})", block.to_base58_check(), interval_idx))
+                            .collect::<Vec<_>>().join(", ")
+                   },
+                   "blocks_scheduled_for_apply" => processing_blocks_scheduled_for_apply,
+                       "peer_id" => msg.peer_id.peer_id_marker.clone(), "peer_ip" => msg.peer_id.peer_address.to_string(), "peer" => msg.peer_id.peer_ref.name(), "peer_uri" => msg.peer_id.peer_ref.uri().to_string(),
+            );
         }
     }
 }
@@ -651,6 +692,8 @@ impl Receive<ApplyBlockBatchDone> for PeerBranchBootstrapper {
         msg: ApplyBlockBatchDone,
         _: Option<BasicActorRef>,
     ) {
+        info!(ctx.system.log(), "[PEER_BRANCH_BOOTSTRAPPER] received ApplyBlockBatchDone");
+
         // process message
         self.bootstrap_state
             .block_applied(&msg.last_applied, &ctx.system.log());
@@ -669,6 +712,8 @@ impl Receive<ApplyBlockBatchFailed> for PeerBranchBootstrapper {
         msg: ApplyBlockBatchFailed,
         _: Option<BasicActorRef>,
     ) {
+        info!(ctx.system.log(), "[PEER_BRANCH_BOOTSTRAPPER] received ApplyBlockBatchFailed");
+
         // process message
         self.bootstrap_state
             .block_apply_failed(&msg.failed_block, &ctx.system.log());

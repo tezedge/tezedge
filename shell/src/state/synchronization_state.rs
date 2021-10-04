@@ -36,7 +36,7 @@ impl PeerBranchSynchronizationDone {
         &self.peer
     }
 
-    fn to_level(&self) -> &Level {
+    pub fn to_level(&self) -> &Level {
         &self.to_level
     }
 }

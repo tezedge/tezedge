@@ -800,6 +800,7 @@ fn feed_chain_to_protocol(
                         if let Some(last_applied) = last_applied {
                             // notify bootstrapper just on the end of the success batch
                             if let Some(bootstrapper) = bootstrapper {
+                                warn!(log, "[CHAIN_FEEDER] ApplyBlockBatchDone notify"; "last_applied" => last_applied.to_base58_check());
                                 bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
                             }
                         }

@@ -503,6 +503,9 @@ impl ChainManager {
                             }
                             PeerMessage::CurrentHead(message) => {
                                 peer.current_head_response_last = Instant::now();
+                                warn!(log, "[CurrentHead] received";
+                                               "message_head_level" => message.current_block_header().level(),
+                                               "peer_current_head" => peer.current_head_level);
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
@@ -624,14 +627,23 @@ impl ChainManager {
                                     };
                                 } else {
                                     // if not bootstraped, check if increasing
+                                    let current_head_before = peer.current_head_level.clone();
                                     let was_updated = peer.update_current_head_level(
                                         message.current_block_header().level(),
                                     );
+
+                                    warn!(log, "[CurrentHead] was_updated:{}", was_updated;
+                                               "message_head_level" => message.current_block_header().level(),
+                                               "peer_current_head_before" => current_head_before,
+                                               "peer_current_head_after" => peer.current_head_level);
 
                                     // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
                                     if was_updated {
                                         match chain_state.peer_branch_bootstrapper() {
                                             Some(peer_branch_bootstrapper) => {
+                                                warn!(log, "[CurrentHead] UpdateBranchBootstraping got bootstrapper";
+                                                           "message_head_level" => message.current_block_header().level());
+
                                                 // check if we started branch bootstrapper, try to update current_head to peer's pipelines
                                                 let message_current_head =
                                                     BlockHeaderWithHash::new(
@@ -645,8 +657,13 @@ impl ChainManager {
                                                     ),
                                                     None,
                                                 );
+
+                                                warn!(log, "[CurrentHead] UpdateBranchBootstraping fired";
+                                                           "message_head_level" => message.current_block_header().level());
                                             }
                                             None => {
+                                                warn!(log, "[CurrentHead] None bootstrapper -> GetCurrentBranchMessage";
+                                                           "message_head_level" => message.current_block_header().level());
                                                 // if not started, we need to ask for CurrentBranch of peer
                                                 tell_peer(
                                                     GetCurrentBranchMessage::new(
@@ -1027,12 +1044,13 @@ impl ChainManager {
         msg: &PeerBranchSynchronizationDone,
         log: &Logger,
     ) -> Result<(), StateError> {
+        info!(log, "[CHAIN_MANAGER] resolve_is_bootstrapped - to_level: {}", msg.to_level());
         if self.current_bootstrap_state.is_bootstrapped() {
             // TODO: TE-386 - global queue for requested operations
             if let Some(peer_state) = self.peers.get_mut(msg.peer().peer_ref.uri()) {
                 peer_state.missing_operations_for_blocks.clear();
             }
-
+            info!(log, "[CHAIN_MANAGER] already resolve_is_bootstrapped - to_level: {}", msg.to_level());
             return Ok(());
         }
 
@@ -1042,7 +1060,7 @@ impl ChainManager {
             Some(head) => *head.level(),
             None => 0,
         };
-
+        info!(log, "[CHAIN_MANAGER] resolve_is_bootstrapped - to_level: {}, chain_manager_current_level: {}, remote_best_known_level: {}", msg.to_level(), chain_manager_current_level, remote_best_known_level);
         if let Some(peer_state) = self.peers.get_mut(msg.peer().peer_ref.uri()) {
             self.current_bootstrap_state.update_by_peer_state(
                 msg,
