@@ -409,7 +409,7 @@ pub(crate) async fn get_shell_automaton_state_before_action(
 ) -> anyhow::Result<shell_automaton::State> {
     let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
 
-    let closest_snapshot_action_id = target_action_id / 10000;
+    let closest_snapshot_action_id = target_action_id / 10000 * 10000;
     let mut state = match snapshot_storage.get(&closest_snapshot_action_id)? {
         Some(v) => v,
         None => return Err(anyhow::anyhow!("snapshot not available")),
