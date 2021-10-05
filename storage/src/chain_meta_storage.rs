@@ -133,6 +133,10 @@ impl ChainMetaStorage {
 
     #[inline]
     pub fn set_checkpoint(&self, chain_id: &ChainId, checkpoint: Head) -> Result<(), StorageError> {
+        println!(
+            "[CHECKPOINT] Setting new checkpoint to: {:?}",
+            checkpoint.to_debug_info()
+        );
         self.kv
             .put(
                 &MetaKey::key_checkpoint(chain_id.clone()),

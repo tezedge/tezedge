@@ -165,6 +165,10 @@ impl HeadState {
             HeadResult::BranchSwitch
         };
 
+        // update alternate heads in storage
+        self.chain_meta_storage
+            .set_alternate_heads(&self.chain_id, self.alternate_heads.clone())?;
+
         // set new head to db
         self.chain_meta_storage
             .set_current_head(&self.chain_id, head.clone())?;

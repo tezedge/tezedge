@@ -311,7 +311,7 @@ fn block_on_actors(
         hydrated_checkpoint,
         hydrated_alternate_heads,
     ) = hydrate_current_head(&init_storage_data, &persistent_storage)
-        .expect("Failed to load current_head from database");
+        .expect("Failed to load current head state from database");
     // let hydrated_current_head = Head::new(
     //     hydrated_current_head_block.hash.clone(),
     //     hydrated_current_head_block.header.level(),
