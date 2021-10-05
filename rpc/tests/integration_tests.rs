@@ -396,6 +396,94 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     // test_rpc_compare_json("chains/main/blocks")
     //     .await
     //     .expect("test failed");
+    let block_1 = try_get_data_as_json(
+        &format!("{}/{}/{}", "chains/main/blocks", from_block, "header"),
+        false,
+    )
+    .await
+    .expect("header call failed");
+
+    let block_2 = try_get_data_as_json(
+        &format!("{}/{}/{}", "chains/main/blocks", from_block + 1, "header"),
+        false,
+    )
+    .await
+    .expect("header call failed");
+
+    let block_3 = try_get_data_as_json(
+        &format!("{}/{}/{}", "chains/main/blocks", to_block, "header"),
+        false,
+    )
+    .await
+    .expect("header call failed");
+
+    let block_4 = try_get_data_as_json(
+        &format!("{}/{}/{}", "chains/main/blocks", to_block - 1, "header"),
+        false,
+    )
+    .await
+    .expect("header call failed");
+
+    let block_hash_1 = block_1["hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("No hash_present for block_id: {}", from_block));
+    let block_hash_2 = block_2["hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("No hash_present for block_id: {}", from_block + 1));
+    let block_hash_3 = block_3["hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("No hash_present for block_id: {}", to_block));
+    let block_hash_4 = block_4["hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("No hash_present for block_id: {}", to_block - 1));
+
+    let block_hashes_for_blocks_rpc = vec![block_hash_1, block_hash_2, block_hash_3, block_hash_4];
+
+    for hash in block_hashes_for_blocks_rpc.iter() {
+        test_rpc_compare_json(&format!("{}?head={}", "chains/main/blocks", hash))
+            .await
+            .expect("test failed");
+
+        test_rpc_compare_json(&format!("{}?head={}&length=5", "chains/main/blocks", hash))
+            .await
+            .expect("test failed");
+    }
+
+    // blocks endpoint with multiple 'head' query arguments in different order
+    for perm in block_hashes_for_blocks_rpc
+        .iter()
+        .permutations(block_hashes_for_blocks_rpc.len())
+        .unique()
+    {
+        test_rpc_compare_json(&format!(
+            "{}?head={}&head={}&head={}&head={}",
+            "chains/main/blocks", perm[0], perm[1], perm[2], perm[3]
+        ))
+        .await
+        .expect("test failed");
+
+        test_rpc_compare_json(&format!(
+            "{}?head={}&head={}&head={}&head={}&length=10",
+            "chains/main/blocks", perm[0], perm[1], perm[2], perm[3]
+        ))
+        .await
+        .expect("test failed");
+
+        // the min_date should not impact this kind of call (only the simple call without query args are impacted by min_date)
+        // test to be sure
+        let min_date = chrono::Utc::now().timestamp() + 100;
+        test_rpc_compare_json(&format!(
+            "{}?head={}&head={}&head={}&head={}&length=10&min_date={}",
+            "chains/main/blocks",
+            perm[0],
+            perm[1],
+            perm[2],
+            perm[3],
+            min_date.to_string()
+        ))
+        .await
+        .expect("test failed");
+    }
 
     // Compare with double and trailing slashes
     test_rpc_compare_json("chains/main//blocks/genesis")
