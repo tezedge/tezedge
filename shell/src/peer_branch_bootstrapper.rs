@@ -692,11 +692,16 @@ impl Receive<ApplyBlockBatchDone> for PeerBranchBootstrapper {
         msg: ApplyBlockBatchDone,
         _: Option<BasicActorRef>,
     ) {
-        info!(ctx.system.log(), "[PEER_BRANCH_BOOTSTRAPPER] received ApplyBlockBatchDone");
+        let log = ctx.system.log();
+        info!(log, "[PEER_BRANCH_BOOTSTRAPPER] received ApplyBlockBatchDone, last_applied: {}", msg.last_applied.to_base58_check());
+
+        self.bootstrap_state.dump("[BOOTSTRAP_STATE_BEFORE]", &log);
 
         // process message
         self.bootstrap_state
             .block_applied(&msg.last_applied, &ctx.system.log());
+
+        self.bootstrap_state.dump("[BOOTSTRAP_STATE_AFTER]", &log);
 
         // schedule ping for other pipelines
         self.schedule_process_all_bootstrap_pipelines(ctx);

@@ -67,6 +67,42 @@ impl BootstrapState {
         }
     }
 
+    pub(crate) fn dump(&self, msg: &str, log: &Logger) {
+        info!(log, "{}", msg;
+            "block_state_db" => {
+                self.block_state_db.blocks.iter().map(|(k, v)| format!("[{}, {}]", k.to_base58_check(), v.predecessor_block_hash.to_base58_check())).collect::<Vec<_>>().join(",")
+            },
+            "peers" => {
+                self.peers.iter().map(|(a, p)| {
+                    let branches = p.branches.iter().map(|b| {
+                        format!(
+                            "Branch(to_level: {}, missing_operations: {}, blocks_to_apply: {}, intervals_count: {}, intervals: {})",
+                            b.to_level,
+                            b.missing_operations.iter().map(|b|b.to_base58_check()).collect::<Vec<_>>().join(", "),
+                            b.blocks_to_apply.iter().map(|b|b.to_base58_check()).collect::<Vec<_>>().join(", "),
+                            b.intervals.len(),
+                            b.intervals.iter().enumerate().map(|(idx, b)| {
+                                format!(
+                                    "Int_{}({}, {} - {} - {})",
+                                    idx,
+                                    match b.state {
+                                        BranchIntervalState::Open => "Open",
+                                        BranchIntervalState::Downloaded => "Downloaded",
+                                        BranchIntervalState::ScheduledForApply => "ScheduledForApply",
+                                    },
+                                    b.start.to_base58_check(),
+                                    b.seek.to_base58_check(),
+                                    b.end.to_base58_check(),
+                                )
+                            }).collect::<Vec<_>>().join(", "),
+                        )
+                    }).collect::<Vec<_>>().join(", ");
+                    format!("{}| branches_count: {}, branches: {}", a.name, p.branches.len(), branches)
+                }).collect::<Vec<_>>().join(", ")
+            }
+        );
+    }
+
     pub fn peers_count(&self) -> usize {
         self.peers.len()
     }
