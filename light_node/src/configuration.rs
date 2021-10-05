@@ -1189,7 +1189,7 @@ impl Environment {
                 // TODO - TE-261: can this conversion be made prettier without `to_string_lossy`?
                 // Path for the socket that will be used for IPC access to the context
                 let context_ipc_socket_path =
-                    ipc::temp_sock().to_string_lossy().as_ref().to_owned();
+                    async_ipc::temp_sock().to_string_lossy().as_ref().to_owned();
 
                 let context_storage_configuration = match context_storage {
                     TezosContextStorageChoice::TezEdge => {

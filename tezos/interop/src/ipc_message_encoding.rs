@@ -12,7 +12,6 @@ fn encode_response<'gc>(
     let rust_response: NodeMessage = response.to_rust(cr);
     let bytes =
         bincode::serialize(&rust_response).map_err(|err| format!("Serialization failure: {}", err));
-    println!("Encoded message length={}", bytes.clone().unwrap().len());
     bytes.to_ocaml(cr)
 }
 
@@ -46,8 +45,6 @@ pub fn initialize_callbacks() {
     }
 }
 
-// TODO: init function to set callbacks
-
 ocaml_export! {
     fn tezedge_encode_ipc_response_to_ocaml_bytes(
         cr,
@@ -59,7 +56,7 @@ ocaml_export! {
     fn tezedge_decode_ipc_message_to_ocaml(
         cr,
         bytes: OCamlRef<OCamlBytes>
-    ) -> OCaml<Result<OCamlProtocolMessage, String>>{
+    ) -> OCaml<Result<OCamlProtocolMessage, String>> {
         decode_request(cr, bytes)
     }
 }

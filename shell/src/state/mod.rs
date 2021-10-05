@@ -185,6 +185,7 @@ pub mod tests {
         use std::sync::mpsc::{channel, Receiver};
         use std::sync::{Arc, Mutex};
 
+        use async_ipc::temp_sock;
         use futures::lock::Mutex as TokioMutex;
         use slog::{Drain, Level, Logger};
         use tezedge_actor_system::actors::*;
@@ -402,7 +403,7 @@ pub mod tests {
                 enable_testchain: true,
                 patch_context_genesis_parameters: None,
             };
-            let socket_path = Path::new("/tmp/protocol-runner.sock"); // TODO: generate
+            let socket_path = temp_sock();
             let storage = TezosContextStorageConfiguration::IrminOnly(
                 TezosContextIrminStorageConfiguration {
                     data_dir: prepare_empty_dir("create_tezos_readonly_api_pool_for_test"),
@@ -422,7 +423,7 @@ pub mod tests {
             );
             let protocol_runner_instance = ProtocolRunnerInstance::new(
                 protocol_runner_configuration,
-                socket_path,
+                &socket_path,
                 "protocol-runner-for-test".into(),
                 tokio_runtime.handle(),
             );

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use async_ipc::temp_sock;
 use slog::{info, warn, Level, Logger};
 use tezedge_actor_system::actors::*;
 use tezedge_actor_system::system::SystemBuilder;
@@ -96,7 +97,7 @@ impl NodeInfrastructure {
             context_db_path.to_string()
         };
 
-        let ipc_socket_path = Some(ipc::temp_sock().to_string_lossy().as_ref().to_owned());
+        let ipc_socket_path = Some(async_ipc::temp_sock().to_string_lossy().as_ref().to_owned());
 
         let context_storage_configuration = TezosContextStorageConfiguration::Both(
             TezosContextIrminStorageConfiguration {
@@ -120,9 +121,10 @@ impl NodeInfrastructure {
         .expect("Failed to resolve init storage chain data");
 
         let tokio_runtime = create_tokio_runtime();
+        let socket_path = temp_sock();
 
-        let protocol_runner_instance =
-            ProtocolRunnerInstance::new(ProtocolRunnerConfiguration::new(
+        let protocol_runner_instance = ProtocolRunnerInstance::new(
+            ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: common::is_ocaml_log_enabled(),
                     debug_mode: false,
@@ -134,12 +136,18 @@ impl NodeInfrastructure {
                 common::protocol_runner_executable_path(),
                 log_level,
             ),
-            std::path::Path::new("/tmp/protocol-runner.sock"), // TODO
+            &socket_path,
             "writable-protocol-runner".to_string(),
             tokio_runtime.handle(),
         );
         let _child = protocol_runner_instance.spawn(log.clone()).unwrap();
+
+        tokio_runtime
+            .block_on(protocol_runner_instance.wait_for_socket(None))
+            .expect("Timeout when waiting for protocol-runner to start listening for connections");
+
         let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(protocol_runner_instance));
+
 
         let current_mempool_state_storage = init_mempool_state_storage();
 

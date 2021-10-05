@@ -205,10 +205,6 @@ where
             }
         };
 
-        // splitted receiver/sender are supposed to be blocking
-        // maybe it is enought to set non_blocking to the [`stream`], but we make sure,
-        // also On macOS and FreeBSD new sockets inherit flags from accepting fd,
-        // but we expect this to be in blocking by default.
         split(stream.0)
     }
 
@@ -220,7 +216,6 @@ where
             .await
             .map_err(|e| IpcError::ConnectionError { reason: e })?;
 
-        // see explaination at `try_accept`.
         split(stream.0)
     }
 

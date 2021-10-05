@@ -44,5 +44,5 @@ tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
-ipc = { path = "../ipc" }
+async_ipc = { path = "../async-ipc" }
 tezos_context_api = { path = "../tezos/context-api" }

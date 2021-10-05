@@ -1715,11 +1715,11 @@ dependencies = [
 name = "light-node"
 version = "1.10.0"
 dependencies = [
+ "async_ipc",
  "clap",
  "crypto",
  "fs_extra",
  "futures",
- "ipc",
  "jemallocator",
  "logging",
  "monitoring",
@@ -2929,6 +2929,7 @@ name = "shell"
 version = "1.10.0"
 dependencies = [
  "anyhow",
+ "async_ipc",
  "chrono",
  "crypto",
  "dns-lookup",
@@ -2936,7 +2937,6 @@ dependencies = [
  "futures",
  "getset",
  "hex",
- "ipc",
  "itertools 0.10.1",
  "lazy_static",
  "networking",

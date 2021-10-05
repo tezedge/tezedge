@@ -32,5 +32,5 @@ shell = { path = "../shell" }
 shell_integration = { path = "../shell-integration" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
-ipc = { path = "../ipc" }
+async_ipc = { path = "../async-ipc" }
 signal-hook = "0.3.9"

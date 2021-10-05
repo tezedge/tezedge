@@ -18,10 +18,7 @@ use slog::{info, warn, Level, Logger};
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_protocol_ipc_messages::*;
 use thiserror::Error;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::{Child, Command},
-};
+use tokio::{io::{AsyncBufReadExt, BufReader}, process::{Child, Command}, time::Instant};
 
 use tezos_api::{environment::TezosEnvironmentConfiguration, ffi::*};
 use tezos_context_api::{
@@ -36,6 +33,8 @@ pub enum ProtocolRunnerError {
         #[from]
         reason: tokio::io::Error,
     },
+    #[error("Timeout when waiting for protocol runner connection socket")]
+    SocketTimeout,
     #[error("Failed to terminate/kill tezos protocol wrapper sub-process, reason: {reason}")]
     TerminateError { reason: String },
 }
@@ -117,6 +116,25 @@ impl ProtocolRunnerInstance {
             tokio_runtime: tokio_runtime.clone(),
             log_level,
         }
+    }
+
+    pub async fn wait_for_socket(&self, timeout: Option<Duration>) -> Result<(), ProtocolRunnerError> {
+        let start = Instant::now();
+        let timeout = timeout.unwrap_or(Duration::from_secs(3));
+
+        loop {
+            if self.socket_path.exists() {
+                break;
+            }
+
+            if start.elapsed() > timeout {
+                return Err(ProtocolRunnerError::SocketTimeout);
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        Ok(())
     }
 
     pub fn spawn(&self, log: Logger) -> Result<tokio::process::Child, ProtocolRunnerError> {
@@ -322,7 +340,6 @@ impl ProtocolRunnerConnection {
         self.io
             .send(&ProtocolMessage::ApplyBlockCall(request))
             .await?;
-        println!("Called apply_block");
         // this might take a while, so we will use unusually long timeout
         match self.io.try_receive(Some(Self::APPLY_BLOCK_TIMEOUT)).await? {
             NodeMessage::ApplyBlockResult(result) => {

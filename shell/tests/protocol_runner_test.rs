@@ -6,6 +6,7 @@ extern crate test;
 use std::path::{Path, PathBuf};
 
 use anyhow::format_err;
+use async_ipc::temp_sock;
 use slog::{Level, Logger};
 
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -134,8 +135,7 @@ fn create_endpoint(
         },
     );
 
-    // TODO:
-    let socket_path = Path::new("/tmp/protocol-runner.sock");
+    let socket_path = temp_sock();
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
@@ -152,7 +152,7 @@ fn create_endpoint(
             protocol_runner.clone(),
             log_level,
         ),
-        socket_path,
+        &socket_path,
         endpoint_name.clone(),
         &tokio_runtime,
         //log.new(o!("endpoint" => endpoint_name.clone())),
@@ -169,6 +169,10 @@ fn create_endpoint(
             ));
         }
     };
+
+    tokio_runtime
+        .block_on(protocol_runner_instance.wait_for_socket(None))
+        .expect("Timeout when waiting for protocol-runner to start listening for connections");
 
     Ok((subprocess, endpoint_name))
 }
