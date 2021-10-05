@@ -82,7 +82,7 @@ pub(crate) fn get_known_heads(
     let mut res: Vec<Vec<String>> = vec![];
 
     // 1. collect all the blocks we consider as heads
-    let mut heads_to_process = if let Some(head_param) = head_param {
+    let heads_to_process = if let Some(head_param) = head_param {
         let mut result_heads = vec![];
 
         for head in head_param {
@@ -100,6 +100,7 @@ pub(crate) fn get_known_heads(
                 result_heads.push(block);
             }
         }
+        result_heads.reverse();
         result_heads
     } else {
         // TODO: Get the current head from the shared state, not the storage
@@ -132,22 +133,18 @@ pub(crate) fn get_known_heads(
         if let Some(min_date) = min_date_param {
             result_heads.retain(|head| min_date <= head.header.timestamp());
         }
+        // sort the heads by fitness
+        result_heads.sort_by(|a, b| {
+            FitnessWrapper::new(a.header.fitness()).cmp(&FitnessWrapper::new(b.header.fitness()))
+        });
         result_heads
     };
 
-    // 2. sort the heads by fitness
-    heads_to_process.sort_by(|a, b| {
-        FitnessWrapper::new(a.header.fitness()).cmp(&FitnessWrapper::new(b.header.fitness()))
-    });
-
     // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
     // this avoids duplication)
-    let to_ignore: HashSet<String> = heads_to_process
-        .iter()
-        .map(|block| block.hash.to_base58_check())
-        .collect();
+    let mut to_ignore: HashSet<String> = HashSet::new();
 
-    // 3. collect head hashes and predecessors if necessary
+    // 2. collect head hashes and predecessors if necessary
     for head in heads_to_process {
         if length_param > 1 {
             let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
@@ -157,10 +154,11 @@ pub(crate) fn get_known_heads(
                     block_storage.find_block_at_distance(block_hash.clone(), 1)?
                 {
                     let direct_predecessor_hash = direct_predecessor.to_base58_check();
-                    head_with_predecessors.push(direct_predecessor_hash.clone());
                     if to_ignore.contains(&direct_predecessor_hash) {
                         break;
                     }
+                    head_with_predecessors.push(direct_predecessor_hash.clone());
+                    to_ignore.insert(direct_predecessor_hash.clone());
                     block_hash = direct_predecessor;
                 }
             }
