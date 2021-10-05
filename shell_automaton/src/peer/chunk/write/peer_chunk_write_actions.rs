@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use tezos_messages::p2p::binary_message::BinaryChunk;
 
-use super::peer_chunk_write_state::PeerChunkWriteError;
+use super::PeerChunkWriteError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteSetContentAction {

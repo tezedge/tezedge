@@ -1,25 +1,16 @@
+use crypto::crypto_box::{CryptoKey, PublicKey};
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{
-        binary_message::{
-            read::peer_binary_message_read_state::PeerBinaryMessageReadState,
-            write::peer_binary_message_write_state::PeerBinaryMessageWriteState,
-        },
-        chunk::{
-            read::peer_chunk_read_state::PeerChunkReadState,
-            write::peer_chunk_write_state::PeerChunkWriteState,
-        },
-        connection::{
-            incoming::PeerConnectionIncomingState, outgoing::PeerConnectionOutgoingState,
-            PeerConnectionState,
-        },
-        handshaking::PeerCrypto,
-        PeerStatus,
-    },
-    State,
-};
+use crate::peer::binary_message::read::PeerBinaryMessageReadState;
+use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
+use crate::peer::chunk::read::PeerChunkReadState;
+use crate::peer::chunk::write::PeerChunkWriteState;
+use crate::peer::connection::incoming::PeerConnectionIncomingState;
+use crate::peer::connection::outgoing::PeerConnectionOutgoingState;
+use crate::peer::connection::PeerConnectionState;
+use crate::peer::message::read::PeerMessageReadState;
+use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
+use crate::{Action, State};
 
 use super::{PeerHandshaking, PeerHandshakingStatus};
 
@@ -403,6 +394,50 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                         }
                         _ => {}
                     },
+                    _ => {}
+                }
+            }
+        }
+
+        Action::PeerHandshakingFinish(action) => {
+            if let Some(peer) = state.peers.get_mut(&action.address) {
+                match &mut peer.status {
+                    PeerStatus::Handshaking(PeerHandshaking { status, token, .. }) => {
+                        match status {
+                            PeerHandshakingStatus::AckMessageReady {
+                                remote_message,
+                                crypto,
+                                remote_connection_message,
+                                remote_metadata_message,
+                            } => {
+                                // TODO: needs to happen as soon as we receive
+                                // the connection message.
+                                let public_key =
+                                    PublicKey::from_bytes(remote_connection_message.public_key())
+                                        .unwrap();
+                                let public_key_hash = public_key.public_key_hash().unwrap();
+
+                                peer.status = PeerStatus::Handshaked(PeerHandshaked {
+                                    token: token.clone(),
+                                    port: remote_connection_message.port,
+                                    // TODO: compatible version needs to be calculated
+                                    // at the beginning using shell_compatibility_version.
+                                    version: remote_connection_message.version.clone(),
+                                    public_key,
+                                    public_key_hash,
+                                    crypto: crypto.clone(),
+                                    disable_mempool: remote_metadata_message.disable_mempool(),
+                                    private_node: remote_metadata_message.private_node(),
+                                    message_read: PeerMessageReadState::Pending {
+                                        binary_message_read: PeerBinaryMessageReadState::Init {
+                                            crypto: crypto.clone().split_for_reading().0,
+                                        },
+                                    },
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 }
             }

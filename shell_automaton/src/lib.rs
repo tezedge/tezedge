@@ -1,3 +1,4 @@
+use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 use redux_rs::Store;
 
 pub mod io_error_kind;
@@ -34,6 +35,8 @@ use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub mod rpc;
 
+pub mod actors;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};
@@ -66,6 +69,8 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
             self.store
                 .dispatch(PeersDnsLookupInitAction { address, port }.into());
         }
+        self.store
+            .dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
     }
 }
 

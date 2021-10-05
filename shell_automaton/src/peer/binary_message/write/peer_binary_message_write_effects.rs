@@ -1,24 +1,15 @@
 use redux_rs::{ActionWithId, Store};
 
-use crate::{
-    action::Action,
-    peer::{
-        chunk::write::{
-            peer_chunk_write_state::{PeerChunkWrite, PeerChunkWriteState},
-            PeerChunkWriteSetContentAction,
-        },
-        handshaking::{PeerHandshaking, PeerHandshakingStatus},
-        PeerStatus,
-    },
-    service::Service,
-    State,
+use crate::peer::chunk::write::{
+    PeerChunkWrite, PeerChunkWriteSetContentAction, PeerChunkWriteState,
 };
+use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
+use crate::peer::PeerStatus;
+use crate::{Action, Service, State};
 
 use super::{
-    peer_binary_message_write_actions::{
-        PeerBinaryMessageWriteNextChunkAction, PeerBinaryMessageWriteReadyAction,
-    },
-    peer_binary_message_write_state::PeerBinaryMessageWriteState,
+    PeerBinaryMessageWriteNextChunkAction, PeerBinaryMessageWriteReadyAction,
+    PeerBinaryMessageWriteState,
 };
 
 pub fn peer_binary_message_write_effects<S>(

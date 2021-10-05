@@ -1,22 +1,15 @@
 use redux_rs::{ActionWithId, Store};
 use tezos_messages::p2p::{
     binary_message::SizeFromChunk,
-    encoding::{ack::AckMessage, metadata::MetadataMessage},
+    encoding::{ack::AckMessage, metadata::MetadataMessage, peer::PeerMessageResponse},
 };
 
-use crate::{
-    action::Action,
-    peer::{
-        chunk::read::{
-            peer_chunk_read_actions::PeerChunkReadInitAction,
-            peer_chunk_read_state::{PeerChunkRead, PeerChunkReadState},
-        },
-        handshaking::{PeerHandshaking, PeerHandshakingStatus},
-        PeerStatus,
-    },
-    service::Service,
-    State,
-};
+use crate::peer::chunk::read::{PeerChunkRead, PeerChunkReadInitAction, PeerChunkReadState};
+use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
+use crate::peer::message::read::PeerMessageReadState;
+use crate::peer::{PeerHandshaked, PeerStatus};
+use crate::service::Service;
+use crate::{Action, State};
 
 use super::{
     peer_binary_message_read_actions::{
@@ -35,7 +28,7 @@ pub fn peer_binary_message_read_effects<S>(
     match &action.action {
         Action::PeerBinaryMessageReadInit(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
+                let binary_message_state = match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
                         PeerHandshakingStatus::MetadataMessageReadPending {
                             binary_message_state,
@@ -44,19 +37,29 @@ pub fn peer_binary_message_read_effects<S>(
                         | PeerHandshakingStatus::AckMessageReadPending {
                             binary_message_state,
                             ..
-                        } => match binary_message_state {
-                            PeerBinaryMessageReadState::PendingFirstChunk { .. } => store.dispatch(
-                                PeerChunkReadInitAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            ),
-                            _ => {}
-                        },
-                        _ => {}
+                        } => binary_message_state,
+                        _ => return,
                     },
+                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
+                        match message_read {
+                            PeerMessageReadState::Pending {
+                                binary_message_read,
+                            } => binary_message_read,
+                            _ => return,
+                        }
+                    }
+                    _ => return,
+                };
+
+                match binary_message_state {
+                    PeerBinaryMessageReadState::PendingFirstChunk { .. } => store.dispatch(
+                        PeerChunkReadInitAction {
+                            address: action.address,
+                        }
+                        .into(),
+                    ),
                     _ => {}
-                }
+                };
             }
         }
         Action::PeerChunkReadReady(action) => {
@@ -145,13 +148,62 @@ pub fn peer_binary_message_read_effects<S>(
                         },
                         _ => {}
                     },
+                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
+                        match message_read {
+                            PeerMessageReadState::Pending {
+                                binary_message_read,
+                            } => match binary_message_read {
+                                PeerBinaryMessageReadState::PendingFirstChunk {
+                                    chunk:
+                                        PeerChunkRead {
+                                            state: PeerChunkReadState::Ready { chunk },
+                                            ..
+                                        },
+                                    ..
+                                } => match PeerMessageResponse::size_from_chunk(&chunk) {
+                                    Ok(size) => store.dispatch(
+                                        PeerBinaryMessageReadSizeReadyAction {
+                                            address: action.address,
+                                            size,
+                                        }
+                                        .into(),
+                                    ),
+                                    Err(err) => store.dispatch(
+                                        PeerBinaryMessageReadErrorAction {
+                                            address: action.address,
+                                            error: err.into(),
+                                        }
+                                        .into(),
+                                    ),
+                                },
+                                PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
+                                    PeerChunkReadInitAction {
+                                        address: action.address,
+                                    }
+                                    .into(),
+                                ),
+                                PeerBinaryMessageReadState::Ready { message, .. } => {
+                                    let message = message.clone();
+                                    store.dispatch(
+                                        PeerBinaryMessageReadReadyAction {
+                                            address: action.address,
+                                            message,
+                                        }
+                                        .into(),
+                                    )
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 }
             }
         }
         Action::PeerBinaryMessageReadSizeReady(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
+                let binary_message_state = match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
                         PeerHandshakingStatus::MetadataMessageReadPending {
                             binary_message_state,
@@ -160,32 +212,41 @@ pub fn peer_binary_message_read_effects<S>(
                         | PeerHandshakingStatus::AckMessageReadPending {
                             binary_message_state,
                             ..
-                        } => match binary_message_state {
-                            PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
-                                PeerChunkReadInitAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            ),
-                            PeerBinaryMessageReadState::Ready { message, .. } => {
-                                let message = message.clone();
-                                store.dispatch(
-                                    PeerBinaryMessageReadReadyAction {
-                                        address: action.address,
-                                        message,
-                                    }
-                                    .into(),
-                                )
-                            }
-                            _ => {}
-                        },
-                        _ => {}
+                        } => binary_message_state,
+                        _ => return,
                     },
+                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
+                        match message_read {
+                            PeerMessageReadState::Pending {
+                                binary_message_read,
+                            } => binary_message_read,
+                            _ => return,
+                        }
+                    }
+                    _ => return,
+                };
+
+                match binary_message_state {
+                    PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
+                        PeerChunkReadInitAction {
+                            address: action.address,
+                        }
+                        .into(),
+                    ),
+                    PeerBinaryMessageReadState::Ready { message, .. } => {
+                        let message = message.clone();
+                        store.dispatch(
+                            PeerBinaryMessageReadReadyAction {
+                                address: action.address,
+                                message,
+                            }
+                            .into(),
+                        )
+                    }
                     _ => {}
                 }
             }
         }
-
         _ => {}
     }
 }

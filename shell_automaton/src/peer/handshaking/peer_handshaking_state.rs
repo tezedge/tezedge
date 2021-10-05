@@ -9,11 +9,11 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError};
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::prelude::{AckMessage, MetadataMessage};
 
-use crate::peer::binary_message::read::peer_binary_message_read_state::PeerBinaryMessageReadState;
-use crate::peer::binary_message::write::peer_binary_message_write_state::PeerBinaryMessageWriteState;
-use crate::peer::chunk::read::peer_chunk_read_state::{PeerChunkReadState, ReadCrypto};
-use crate::peer::chunk::write::peer_chunk_write_state::{PeerChunkWriteState, WriteCrypto};
-use crate::peer::PeerToken;
+use crate::peer::binary_message::read::PeerBinaryMessageReadState;
+use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
+use crate::peer::chunk::read::{PeerChunkReadState, ReadCrypto};
+use crate::peer::chunk::write::{PeerChunkWriteState, WriteCrypto};
+use crate::peer::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerHandshakingError {
@@ -190,62 +190,4 @@ pub struct PeerHandshaking {
     pub token: PeerToken,
     pub status: PeerHandshakingStatus,
     pub incoming: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PeerCrypto {
-    pub local_nonce: Nonce,
-    pub remote_nonce: Nonce,
-    pub precomputed_key: PrecomputedKey,
-}
-
-impl PeerCrypto {
-    pub fn split_for_reading(self) -> (ReadCrypto, Nonce) {
-        (
-            ReadCrypto {
-                remote_nonce: self.remote_nonce,
-                precomputed_key: self.precomputed_key,
-            },
-            self.local_nonce,
-        )
-    }
-
-    pub fn unsplit_after_reading(read_crypto: ReadCrypto, local_nonce: Nonce) -> Self {
-        Self {
-            local_nonce,
-            remote_nonce: read_crypto.remote_nonce,
-            precomputed_key: read_crypto.precomputed_key,
-        }
-    }
-
-    pub fn split_for_writing(self) -> (WriteCrypto, Nonce) {
-        (
-            WriteCrypto {
-                local_nonce: self.local_nonce,
-                precomputed_key: self.precomputed_key,
-            },
-            self.remote_nonce,
-        )
-    }
-
-    pub fn unsplit_after_writing(write_crypto: WriteCrypto, remote_nonce: Nonce) -> Self {
-        Self {
-            local_nonce: write_crypto.local_nonce,
-            remote_nonce,
-            precomputed_key: write_crypto.precomputed_key,
-        }
-    }
-
-    pub fn split(self) -> (ReadCrypto, WriteCrypto) {
-        (
-            ReadCrypto {
-                remote_nonce: self.remote_nonce,
-                precomputed_key: self.precomputed_key.clone(),
-            },
-            WriteCrypto {
-                local_nonce: self.local_nonce,
-                precomputed_key: self.precomputed_key,
-            },
-        )
-    }
 }

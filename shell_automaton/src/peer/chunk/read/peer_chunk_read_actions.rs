@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-use super::peer_chunk_read_state::PeerChunkReadError;
+use super::PeerChunkReadError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadInitAction {

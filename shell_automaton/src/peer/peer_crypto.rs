@@ -9,6 +9,9 @@ use crypto::nonce::{generate_nonces, Nonce, NoncePair};
 use crypto::CryptoError;
 use tezos_messages::p2p::binary_message::BinaryChunk;
 
+use super::chunk::read::ReadCrypto;
+use super::chunk::write::WriteCrypto;
+
 /// PeerCrypto is responsible for encrypting/decrypting messages and
 /// managing nonces.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -55,6 +58,16 @@ impl PeerCrypto {
         std::mem::replace(&mut self.nonce_pair.remote, nonce)
     }
 
+    #[inline]
+    pub fn local_nonce(&self) -> Nonce {
+        self.nonce_pair.local.clone()
+    }
+
+    #[inline]
+    pub fn remote_nonce(&self) -> Nonce {
+        self.nonce_pair.remote.clone()
+    }
+
     /// Increments local nonce and encrypts the message.
     #[inline]
     pub fn encrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
@@ -67,5 +80,58 @@ impl PeerCrypto {
     pub fn decrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
         let nonce = self.remote_nonce_fetch_increment();
         self.precomputed_key.decrypt(data.as_ref(), &nonce)
+    }
+
+    pub fn split_for_reading(self) -> (ReadCrypto, Nonce) {
+        (
+            ReadCrypto {
+                remote_nonce: self.nonce_pair.remote,
+                precomputed_key: self.precomputed_key,
+            },
+            self.nonce_pair.local,
+        )
+    }
+
+    pub fn unsplit_after_reading(read_crypto: ReadCrypto, local_nonce: Nonce) -> Self {
+        Self {
+            precomputed_key: read_crypto.precomputed_key,
+            nonce_pair: NoncePair {
+                local: local_nonce,
+                remote: read_crypto.remote_nonce,
+            },
+        }
+    }
+
+    pub fn split_for_writing(self) -> (WriteCrypto, Nonce) {
+        (
+            WriteCrypto {
+                local_nonce: self.nonce_pair.local,
+                precomputed_key: self.precomputed_key,
+            },
+            self.nonce_pair.remote,
+        )
+    }
+
+    pub fn unsplit_after_writing(write_crypto: WriteCrypto, remote_nonce: Nonce) -> Self {
+        Self {
+            precomputed_key: write_crypto.precomputed_key,
+            nonce_pair: NoncePair {
+                local: write_crypto.local_nonce,
+                remote: remote_nonce,
+            },
+        }
+    }
+
+    pub fn split(self) -> (ReadCrypto, WriteCrypto) {
+        (
+            ReadCrypto {
+                remote_nonce: self.nonce_pair.remote,
+                precomputed_key: self.precomputed_key.clone(),
+            },
+            WriteCrypto {
+                local_nonce: self.nonce_pair.local,
+                precomputed_key: self.precomputed_key,
+            },
+        )
     }
 }

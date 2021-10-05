@@ -6,10 +6,11 @@ use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 use crate::peer::connection::incoming::accept::*;
 use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
 
-use crate::peer::binary_message::read::peer_binary_message_read_actions::*;
-use crate::peer::binary_message::write::peer_binary_message_write_actions::*;
-use crate::peer::chunk::read::peer_chunk_read_actions::*;
-use crate::peer::chunk::write::peer_chunk_write_actions::*;
+use crate::peer::binary_message::read::*;
+use crate::peer::binary_message::write::*;
+use crate::peer::chunk::read::*;
+use crate::peer::chunk::write::*;
+use crate::peer::message::read::*;
 
 use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
@@ -100,6 +101,9 @@ pub enum Action {
     PeerBinaryMessageWriteNextChunk(PeerBinaryMessageWriteNextChunkAction),
     PeerBinaryMessageWriteReady(PeerBinaryMessageWriteReadyAction),
     PeerBinaryMessageWriteError(PeerBinaryMessageWriteErrorAction),
+
+    PeerMessageReadInit(PeerMessageReadInitAction),
+    PeerMessageReadSuccess(PeerMessageReadSuccessAction),
 
     PeerHandshakingInit(PeerHandshakingInitAction),
     PeerHandshakingConnectionMessageInit(PeerHandshakingConnectionMessageInitAction),

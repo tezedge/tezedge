@@ -1,23 +1,22 @@
 use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
+use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::action::Action;
-use crate::peer::binary_message::write::peer_binary_message_write_state::PeerBinaryMessageWriteState;
-use crate::peer::chunk::read::peer_chunk_read_actions::{
-    PeerChunkReadErrorAction, PeerChunkReadPartAction,
-};
-use crate::peer::chunk::write::peer_chunk_write_state::PeerChunkWriteState;
-use crate::peer::chunk::write::{PeerChunkWriteErrorAction, PeerChunkWritePartAction};
-use crate::peer::PeerStatus;
 use crate::service::{MioService, Service};
-use crate::State;
+use crate::{Action, State};
 
-use super::binary_message::read::peer_binary_message_read_state::PeerBinaryMessageReadState;
-use super::chunk::read::peer_chunk_read_state::PeerChunkReadState;
+use super::binary_message::read::PeerBinaryMessageReadState;
+use super::binary_message::write::PeerBinaryMessageWriteState;
+use super::chunk::read::PeerChunkReadState;
+use super::chunk::read::{PeerChunkReadErrorAction, PeerChunkReadPartAction};
+use super::chunk::write::{
+    PeerChunkWriteErrorAction, PeerChunkWritePartAction, PeerChunkWriteState,
+};
 use super::disconnection::PeerDisconnectedAction;
 use super::handshaking::PeerHandshakingStatus;
-use super::{PeerTryReadAction, PeerTryWriteAction};
+use super::message::read::PeerMessageReadState;
+use super::{PeerStatus, PeerTryReadAction, PeerTryWriteAction};
 
 pub fn peer_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
 where
@@ -61,6 +60,7 @@ where
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,
+                PeerStatus::Handshaked(s) => s.token,
                 _ => return,
             };
 
@@ -126,6 +126,7 @@ where
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,
+                PeerStatus::Handshaked(s) => s.token,
                 _ => return,
             };
 
@@ -147,6 +148,16 @@ where
                         binary_message_state,
                         ..
                     } => match binary_message_state {
+                        PeerBinaryMessageReadState::PendingFirstChunk { chunk, .. }
+                        | PeerBinaryMessageReadState::Pending { chunk, .. } => &chunk.state,
+                        _ => return,
+                    },
+                    _ => return,
+                },
+                PeerStatus::Handshaked(handshaked) => match &handshaked.message_read {
+                    PeerMessageReadState::Pending {
+                        binary_message_read,
+                    } => match binary_message_read {
                         PeerBinaryMessageReadState::PendingFirstChunk { chunk, .. }
                         | PeerBinaryMessageReadState::Pending { chunk, .. } => &chunk.state,
                         _ => return,
@@ -176,7 +187,7 @@ where
                         .into(),
                     );
                 }
-                Ok(_) => todo!("handle eof"),
+                Ok(_) => {}
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
                 Err(err) => store.dispatch(
                     PeerChunkReadErrorAction {

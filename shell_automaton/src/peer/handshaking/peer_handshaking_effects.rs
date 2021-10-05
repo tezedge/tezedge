@@ -1,25 +1,28 @@
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::{generate_nonces, NoncePair};
+use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
+use std::sync::Arc;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::AckMessage;
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::action::Action;
-use crate::peer::binary_message::read::peer_binary_message_read_actions::PeerBinaryMessageReadInitAction;
-use crate::peer::binary_message::read::peer_binary_message_read_state::PeerBinaryMessageReadState;
-use crate::peer::binary_message::write::peer_binary_message_write_actions::PeerBinaryMessageWriteSetContentAction;
-use crate::peer::chunk::read::peer_chunk_read_actions::PeerChunkReadInitAction;
-use crate::peer::chunk::read::peer_chunk_read_state::PeerChunkReadState;
+use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
+use crate::peer::binary_message::read::PeerBinaryMessageReadState;
+use crate::peer::binary_message::write::PeerBinaryMessageWriteSetContentAction;
+use crate::peer::chunk::read::PeerChunkReadInitAction;
+use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteSetContentAction;
 use crate::peer::handshaking::{
-    PeerCrypto, PeerHandshakingConnectionMessageEncodeAction,
-    PeerHandshakingConnectionMessageInitAction, PeerHandshakingConnectionMessageWriteAction,
-    PeerHandshakingMetadataMessageInitAction,
+    PeerHandshakingConnectionMessageEncodeAction, PeerHandshakingConnectionMessageInitAction,
+    PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
 };
-use crate::peer::PeerStatus;
-use crate::service::{RandomnessService, Service};
+use crate::peer::message::read::PeerMessageReadInitAction;
+use crate::peer::{PeerCrypto, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
+use crate::service::actors_service::ActorsMessageTo;
+use crate::service::{ActorsService, RandomnessService, Service};
 use crate::State;
 
 use super::{
@@ -211,7 +214,7 @@ pub fn peer_handshaking_effects<S>(
                             },
                         ..
                     }) => {
-                        let NoncePair { local, remote } =
+                        let nonce_pair =
                             match generate_nonces(local_chunk.raw(), remote_chunk.raw(), false) {
                                 Ok(v) => v,
                                 Err(err) => {
@@ -245,11 +248,7 @@ pub fn peer_handshaking_effects<S>(
                             &store.state.get().config.identity.secret_key,
                         );
 
-                        let crypto = PeerCrypto {
-                            local_nonce: local,
-                            remote_nonce: remote,
-                            precomputed_key,
-                        };
+                        let crypto = PeerCrypto::new(precomputed_key, nonce_pair);
 
                         store.dispatch(
                             PeerHandshakingEncryptionInitAction {
@@ -545,8 +544,7 @@ pub fn peer_handshaking_effects<S>(
                 }
             }
         }
-        // see above
-        // Action::PeerBinaryMessageReadReady(action) => {}
+
         Action::PeerHandshakingAckMessageDecode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
                 match &peer.status {
@@ -562,6 +560,40 @@ pub fn peer_handshaking_effects<S>(
                     _ => {}
                 }
             }
+        }
+
+        Action::PeerHandshakingFinish(action) => {
+            let peer_handshaked = match store.state.get().peers.get(&action.address) {
+                Some(peer) => match &peer.status {
+                    PeerStatus::Handshaked(v) => v,
+                    _ => return,
+                },
+                None => return,
+            };
+            store.service.actors().send(ActorsMessageTo::PeerHandshaked(
+                Arc::new(PeerId {
+                    address: action.address,
+                    public_key_hash: peer_handshaked.public_key_hash.clone(),
+                }),
+                MetadataMessage::new(
+                    peer_handshaked.disable_mempool,
+                    peer_handshaked.private_node,
+                ),
+                Arc::new(peer_handshaked.version.clone()),
+            ));
+            store.dispatch(
+                PeerTryWriteAction {
+                    address: action.address,
+                }
+                .into(),
+            );
+
+            store.dispatch(
+                PeerMessageReadInitAction {
+                    address: action.address,
+                }
+                .into(),
+            );
         }
 
         _ => {}

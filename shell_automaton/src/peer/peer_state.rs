@@ -1,15 +1,16 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-use crypto::crypto_box::PublicKey;
+use crypto::{crypto_box::PublicKey, hash::CryptoboxPublicKeyHash};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::Port;
 
-use super::{
-    connection::PeerConnectionState, disconnection::PeerDisconnecting,
-    handshaking::PeerHandshaking, PeerCrypto, PeerToken,
-};
+use super::connection::PeerConnectionState;
+use super::disconnection::PeerDisconnecting;
+use super::handshaking::PeerHandshaking;
+use super::message::read::PeerMessageReadState;
+use super::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshaked {
@@ -17,9 +18,12 @@ pub struct PeerHandshaked {
     pub port: Port,
     pub version: NetworkVersion,
     pub public_key: PublicKey,
+    pub public_key_hash: CryptoboxPublicKeyHash,
     pub crypto: PeerCrypto,
     pub disable_mempool: bool,
     pub private_node: bool,
+
+    pub message_read: PeerMessageReadState,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
@@ -33,6 +37,15 @@ pub enum PeerStatus {
 
     Disconnecting(PeerDisconnecting),
     Disconnected,
+}
+
+impl PeerStatus {
+    pub fn as_handshaked(&self) -> Option<&PeerHandshaked> {
+        match self {
+            Self::Handshaked(v) => Some(v),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
