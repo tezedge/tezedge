@@ -266,7 +266,7 @@ pub async fn dev_shell_automaton_state_get(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    match params.get_u64("action_id") {
+    match query.get_u64("action_id") {
         Some(target_action_id) => make_json_response(
             &dev_services::get_shell_automaton_state_after_action(&env, target_action_id).await?,
         ),
@@ -283,8 +283,8 @@ pub async fn dev_shell_automaton_actions_get(
     make_json_response(
         &dev_services::get_shell_automaton_actions(
             &env,
-            params.get_u64("cursor"),
-            params.get_u64("limit"),
+            query.get_u64("cursor"),
+            query.get_u64("limit"),
         )
         .await?,
     )
