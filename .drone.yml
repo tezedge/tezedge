@@ -3391,6 +3391,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp drone-cache/build_files/protocol-runner /data/cache
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
@@ -3622,6 +3623,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -4075,6 +4077,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -4305,6 +4308,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"

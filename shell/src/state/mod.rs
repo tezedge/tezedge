@@ -421,17 +421,18 @@ pub mod tests {
                 "we-dont-need-protocol-runner-here".into(),
                 slog::Level::Debug,
             );
-            let protocol_runner_instance = ProtocolRunnerInstance::new(
+            let protocol_runner_instance = ProtocolRunnerInstance::without_spawn(
                 protocol_runner_configuration,
                 &socket_path,
                 "protocol-runner-for-test".into(),
                 tokio_runtime.handle(),
-            );
-            // TODO: revise this, is this spawn needed? if so, wait until ready and return
-            // let child = protocol_runner_instance
-            //     .spawn(log.clone())
-            //     .expect("Failed to launch protocol runner");
-            let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(protocol_runner_instance));
+                log.clone(),
+            )
+            .unwrap();
+            let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
+                protocol_runner_instance,
+                log.clone(),
+            ));
 
             tezos_protocol_api
         }

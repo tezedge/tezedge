@@ -225,7 +225,7 @@ pub async fn inject_operation(
         &chain_id,
         &operation_hash,
         &operation,
-        Arc::clone(env.current_mempool_state_storage()),
+        env.current_mempool_state_storage(),
         &mut connection,
         &block_storage,
         &block_meta_storage,

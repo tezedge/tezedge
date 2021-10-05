@@ -6,27 +6,43 @@ use std::convert::TryFrom;
 use crypto::hash::ProtocolHash;
 use serial_test::serial;
 use tezos_api::environment::{self, TezosEnvironment};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
-use tezos_client::client;
-use tezos_context_api::{
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+use tezos_api::ffi::{
+    InitProtocolContextResult, ProtocolDataError, RustBytes, TezosRuntimeConfiguration,
 };
-use tezos_interop::ffi;
+use tezos_context_api::{
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
+};
+use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
+use tezos_protocol_ipc_messages::{InitProtocolContextParams, NodeMessage, ProtocolMessage};
 
 mod common;
+
+fn assert_encoding_for_protocol_data(
+    protocol_hash: ProtocolHash,
+    protocol_data: RustBytes,
+) -> Result<(), ProtocolDataError> {
+    let result = apply_encoded_message(ProtocolMessage::AssertEncodingForProtocolDataCall(
+        protocol_hash,
+        protocol_data,
+    ))
+    .unwrap();
+    expect_response!(AssertEncodingForProtocolDataResult, result)
+}
 
 #[test]
 #[serial]
 fn test_init_protocol_context() {
     // change cfg
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: common::is_ocaml_log_enabled(),
-    })
+    apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
+        TezosRuntimeConfiguration {
+            debug_mode: false,
+            compute_context_action_tree_hashes: false,
+            log_enabled: common::is_ocaml_log_enabled(),
+        },
+    ))
     .unwrap();
 
     let storage_dir = "test_storage_01";
@@ -79,22 +95,22 @@ fn test_assert_encoding_for_protocol_data() {
             .expect("Failed to decode protocol hash");
 
     // check
-    assert!(client::assert_encoding_for_protocol_data(
+    assert!(assert_encoding_for_protocol_data(
         protocol_hash_1.clone(),
         block_header_1.protocol_data().clone(),
     )
     .is_ok());
-    assert!(client::assert_encoding_for_protocol_data(
+    assert!(assert_encoding_for_protocol_data(
         protocol_hash_1,
         block_header_2.protocol_data().clone(),
     )
     .is_err());
-    assert!(client::assert_encoding_for_protocol_data(
+    assert!(assert_encoding_for_protocol_data(
         protocol_hash_2.clone(),
         block_header_1.protocol_data().clone(),
     )
     .is_err());
-    assert!(client::assert_encoding_for_protocol_data(
+    assert!(assert_encoding_for_protocol_data(
         protocol_hash_2,
         block_header_2.protocol_data().clone(),
     )
@@ -122,16 +138,20 @@ fn prepare_protocol_context(
             ipc_socket_path: None,
         },
     );
-    let context_config = TezosContextConfiguration {
+    let context_config = InitProtocolContextParams {
         storage,
         genesis: cfg.genesis.clone(),
         protocol_overrides: cfg.protocol_overrides.clone(),
         commit_genesis,
         enable_testchain: false,
         readonly: false,
-        sandbox_json_patch_context: None,
+        patch_context: None,
         context_stats_db_path: None,
+        genesis_max_operations_ttl: cfg.genesis_additional_data().unwrap().max_operations_ttl,
+        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
     };
 
-    ffi::init_protocol_context(context_config).unwrap()
+    let result =
+        apply_encoded_message(ProtocolMessage::InitProtocolContextCall(context_config)).unwrap();
+    expect_response!(InitProtocolContextResult, result).unwrap()
 }

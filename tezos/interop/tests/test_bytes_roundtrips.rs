@@ -3,17 +3,19 @@
 #![feature(test)]
 extern crate test;
 
-use std::{convert::TryFrom, env};
+use std::convert::TryFrom;
 
 use ocaml_interop::{OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ChainId};
-use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::RustBytes;
 use tezos_conv::*;
 use tezos_interop::runtime;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
+
+mod common;
 
 const CHAIN_ID: &str = "8eceda2f";
 const HEADER_HASH: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f0179caf4b9f673";
@@ -37,23 +39,12 @@ mod tezos_ffi {
     }
 }
 
-fn init_test_runtime() {
-    // init runtime and turn on/off ocaml logging
-    // TODO: still needed?
-    //ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-    //    debug_mode: false,
-    //    compute_context_action_tree_hashes: false,
-    //    log_enabled: is_ocaml_log_enabled(),
-    //})
-    //.expect("Call to change_runtime_configuration failed");
-}
-
 macro_rules! roundtrip_test {
     ($test_name:ident, $test_fn:expr, $counts:expr) => {
         #[test]
         #[serial]
         fn $test_name() {
-            init_test_runtime();
+            common::init_test_runtime();
 
             for i in 0..$counts {
                 let result = $test_fn(i);
@@ -203,7 +194,7 @@ fn test_operation_roundtrip(iteration: i32) -> Result<(), anyhow::Error> {
 #[test]
 #[serial]
 fn test_operations_list_list_roundtrip_one() {
-    init_test_runtime();
+    common::init_test_runtime();
 
     assert!(test_operations_list_list_roundtrip(1, sample_operations(), 4, 1).is_ok());
     assert!(test_operations_list_list_roundtrip(1, sample_operations2(), 4, 0).is_ok());
@@ -283,13 +274,6 @@ fn assert_eq_hash(expected: &str, hash: String) {
     assert_eq!(expected, hash_ocaml.as_str());
 }
 
-fn is_ocaml_log_enabled() -> bool {
-    env::var("OCAML_LOG_ENABLED")
-        .unwrap_or("false".to_string())
-        .parse::<bool>()
-        .unwrap()
-}
-
 fn assert_eq_hash_and_header(
     expected_hash: &str,
     expected_header: &str,
@@ -326,7 +310,7 @@ mod benches {
         ($test_name:ident, $f:expr) => {
             #[bench]
             fn $test_name(b: &mut Bencher) {
-                init_test_runtime();
+                common::init_test_runtime();
 
                 let mut counter = 0;
                 let mut counter_failed = 0;

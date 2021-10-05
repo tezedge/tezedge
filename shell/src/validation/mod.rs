@@ -213,7 +213,7 @@ pub async fn prevalidate_operation(
     chain_id: &ChainId,
     operation_hash: &OperationHash,
     operation: &Operation,
-    current_mempool_state: CurrentMempoolStateStorageRef,
+    current_mempool_state: &CurrentMempoolStateStorageRef,
     api: &mut ProtocolRunnerConnection,
     block_storage: &Box<dyn BlockStorageReader>,
     block_meta_storage: &Box<dyn BlockMetaStorageReader>,

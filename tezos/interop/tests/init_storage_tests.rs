@@ -7,23 +7,54 @@ use strum::IntoEnumIterator;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{default_networks, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_client::client;
+use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration, TezosStorageInitError};
 use tezos_context_api::{
     PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
 };
+use tezos_interop::apply_encoded_message;
+use tezos_protocol_ipc_messages::{InitProtocolContextParams, NodeMessage, ProtocolMessage};
 
 mod common;
+
+fn init_protocol_context(
+    context_config: TezosContextConfiguration,
+    tezos_env: &TezosEnvironmentConfiguration,
+) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+    let cfg = InitProtocolContextParams {
+        storage: context_config.storage,
+        genesis: context_config.genesis.clone(),
+        genesis_max_operations_ttl: tezos_env
+            .genesis_additional_data()
+            .unwrap()
+            .max_operations_ttl,
+        protocol_overrides: context_config.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
+        patch_context: context_config.sandbox_json_patch_context.clone(),
+        context_stats_db_path: None,
+    };
+    let result = apply_encoded_message(ProtocolMessage::InitProtocolContextCall(cfg)).unwrap();
+    let result = expect_response!(InitProtocolContextResult, result);
+    result.map_err(|e| {
+        TezosStorageInitError::InitializeError {
+            message: format!("FFI 'init_protocol_context' failed! Initialization of Tezos context failed, this storage is required, we can do nothing without that, reason: {:?}", e)
+        }
+    })
+}
 
 #[test]
 fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: common::is_ocaml_log_enabled(),
-    })
+    apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
+        TezosRuntimeConfiguration {
+            debug_mode: false,
+            compute_context_action_tree_hashes: false,
+            log_enabled: common::is_ocaml_log_enabled(),
+        },
+    ))
     .unwrap();
 
     // prepare data
@@ -64,7 +95,7 @@ fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
                 context_stats_db_path: None,
             };
 
-            match client::init_protocol_context(context_config) {
+            match init_protocol_context(context_config, tezos_env) {
                 Err(e) => panic!(
                     "Failed to initialize storage for: {:?}, Reason: {:?}",
                     net, e
@@ -91,12 +122,7 @@ fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
 #[test]
 fn test_init_empty_context_for_custom_network() {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: common::is_ocaml_log_enabled(),
-    })
-    .unwrap();
+    common::init_test_runtime();
 
     // prepare data
     let storage_data_dir = "init_storage_tests_04";
@@ -146,7 +172,7 @@ fn test_init_empty_context_for_custom_network() {
         context_stats_db_path: None,
     };
 
-    match client::init_protocol_context(context_config) {
+    match init_protocol_context(context_config, &tezos_env) {
         Err(e) => panic!(
             "Failed to initialize storage for: {:?}, Reason: {:?}",
             net, e
@@ -168,12 +194,7 @@ fn test_init_empty_context_for_custom_network() {
 #[test]
 fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::Error> {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: common::is_ocaml_log_enabled(),
-    })
-    .unwrap();
+    common::init_test_runtime();
 
     // prepare data
     let storage_data_dir = "init_storage_tests_02";
@@ -212,7 +233,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::E
         context_stats_db_path: None,
     };
 
-    match client::init_protocol_context(context_config) {
+    match init_protocol_context(context_config, tezos_env) {
         Err(e) => panic!(
             "Failed to initialize storage for: {:?}, Reason: {:?}",
             net, e
@@ -235,12 +256,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::E
 #[test]
 fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), anyhow::Error> {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: common::is_ocaml_log_enabled(),
-    })
-    .unwrap();
+    common::init_test_runtime();
 
     // prepare data
     let storage_data_dir = "init_storage_tests_03";
@@ -272,7 +288,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), anyhow
         context_stats_db_path: None,
     };
 
-    match client::init_protocol_context(context_config) {
+    match init_protocol_context(context_config, tezos_env) {
         Err(e) => panic!(
             "Failed to initialize storage for: {:?}, Reason: {:?}",
             net, e

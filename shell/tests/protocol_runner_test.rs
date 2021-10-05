@@ -110,72 +110,72 @@ pub mod common;
 //    Ok(())
 //}
 
-fn create_endpoint(
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-    log_level: Level,
-    endpoint_name: String,
-    context_db_path: PathBuf,
-) -> Result<(tokio::process::Child, String), anyhow::Error> {
-    // environement
-    let tezos_env: &TezosEnvironmentConfiguration = test_data::TEZOS_ENV
-        .get(&test_data::TEZOS_NETWORK)
-        .expect("no environment configuration");
-
-    let storage = TezosContextStorageConfiguration::Both(
-        TezosContextIrminStorageConfiguration {
-            data_dir: context_db_path
-                .to_str()
-                .expect("Invalid context_db_path value")
-                .to_string(),
-        },
-        TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
-            ipc_socket_path: None,
-        },
-    );
-
-    let socket_path = temp_sock();
-
-    // init protocol runner endpoint
-    let protocol_runner = common::protocol_runner_executable_path();
-    let protocol_runner_instance = ProtocolRunnerInstance::new(
-        ProtocolRunnerConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: common::is_ocaml_log_enabled(),
-                debug_mode: false,
-                compute_context_action_tree_hashes: false,
-            },
-            tezos_env.clone(),
-            false,
-            storage,
-            protocol_runner.clone(),
-            log_level,
-        ),
-        &socket_path,
-        endpoint_name.clone(),
-        &tokio_runtime,
-        //log.new(o!("endpoint" => endpoint_name.clone())),
-    );
-
-    // start subprocess
-    let subprocess = match protocol_runner_instance.spawn(log.clone()) {
-        Ok(subprocess) => subprocess,
-        Err(e) => {
-            return Err(format_err!(
-                "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
-                protocol_runner.as_os_str().to_str().unwrap_or("-none-"),
-                e
-            ));
-        }
-    };
-
-    tokio_runtime
-        .block_on(protocol_runner_instance.wait_for_socket(None))
-        .expect("Timeout when waiting for protocol-runner to start listening for connections");
-
-    Ok((subprocess, endpoint_name))
-}
+//fn create_endpoint(
+//    tokio_runtime: tokio::runtime::Handle,
+//    log: Logger,
+//    log_level: Level,
+//    endpoint_name: String,
+//    context_db_path: PathBuf,
+//) -> Result<(tokio::process::Child, String), anyhow::Error> {
+//    // environement
+//    let tezos_env: &TezosEnvironmentConfiguration = test_data::TEZOS_ENV
+//        .get(&test_data::TEZOS_NETWORK)
+//        .expect("no environment configuration");
+//
+//    let storage = TezosContextStorageConfiguration::Both(
+//        TezosContextIrminStorageConfiguration {
+//            data_dir: context_db_path
+//                .to_str()
+//                .expect("Invalid context_db_path value")
+//                .to_string(),
+//        },
+//        TezosContextTezEdgeStorageConfiguration {
+//            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+//            ipc_socket_path: None,
+//        },
+//    );
+//
+//    let socket_path = temp_sock();
+//
+//    // init protocol runner endpoint
+//    let protocol_runner = common::protocol_runner_executable_path();
+//    let protocol_runner_instance = ProtocolRunnerInstance::spawn(
+//        ProtocolRunnerConfiguration::new(
+//            TezosRuntimeConfiguration {
+//                log_enabled: common::is_ocaml_log_enabled(),
+//                debug_mode: false,
+//                compute_context_action_tree_hashes: false,
+//            },
+//            tezos_env.clone(),
+//            false,
+//            storage,
+//            protocol_runner.clone(),
+//            log_level,
+//        ),
+//        &socket_path,
+//        endpoint_name.clone(),
+//        &tokio_runtime,
+//        log.new(slog::o!("endpoint" => endpoint_name.clone())),
+//    ).unwrap();
+//
+//    // start subprocess
+//    //let subprocess = match protocol_runner_instance.spawn(log.clone()) {
+//    //    Ok(subprocess) => subprocess,
+//    //    Err(e) => {
+//    //        return Err(format_err!(
+//    //            "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
+//    //            protocol_runner.as_os_str().to_str().unwrap_or("-none-"),
+//    //            e
+//    //        ));
+//    //    }
+//    //};
+//
+//    tokio_runtime
+//        .block_on(protocol_runner_instance.wait_for_socket(None))
+//        .expect("Timeout when waiting for protocol-runner to start listening for connections");
+//
+//    Ok((subprocess, endpoint_name))
+//}
 
 // TODO: reimplement with new async IPC architecture
 //#[ignore]

@@ -18,7 +18,11 @@ use slog::{info, warn, Level, Logger};
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_protocol_ipc_messages::*;
 use thiserror::Error;
-use tokio::{io::{AsyncBufReadExt, BufReader}, process::{Child, Command}, time::Instant};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+    time::Instant,
+};
 
 use tezos_api::{environment::TezosEnvironmentConfiguration, ffi::*};
 use tezos_context_api::{
@@ -82,43 +86,122 @@ impl ProtocolRunnerConfiguration {
 }
 
 // TODO: differentiate between writable and readonly?
-#[derive(Clone)]
 pub struct ProtocolRunnerInstance {
     // TODO: child handle here?
     configuration: ProtocolRunnerConfiguration,
     socket_path: PathBuf,
-    executable_path: PathBuf,
     endpoint_name: String,
     tokio_runtime: tokio::runtime::Handle,
-    log_level: Level,
+    child_process_handle: Option<Child>,
+    log: Logger,
+}
+
+impl Drop for ProtocolRunnerInstance {
+    fn drop(&mut self) {
+        let mut child_process_handle =
+            if let Some(child) = std::mem::take(&mut self.child_process_handle) {
+                child
+            } else {
+                return;
+            };
+
+        info!(
+            self.log,
+            "Shutting down protocol runner: {}", self.endpoint_name
+        );
+        if let Err(err) = tokio::task::block_in_place(|| {
+            let tokio_runtime = self.tokio_runtime.clone();
+            tokio_runtime.block_on(async {
+                if let Ok(mut conn) = self.writable_connection().await {
+                    if let Err(err) = conn.shutdown().await {
+                        warn!(
+                            self.log,
+                            "Failed to send shutdown message to protocol runner: {}", err
+                        );
+                    }
+                }
+                Self::wait_and_terminate_ref(
+                    &mut child_process_handle,
+                    Duration::from_secs(3),
+                    &self.log,
+                )
+                .await
+            })
+        }) {
+            warn!(self.log, "Failed to stop protocol runner: {}", err);
+        }
+        Self::log_exit_status(&mut child_process_handle, &self.log);
+    }
 }
 
 impl ProtocolRunnerInstance {
     pub const PROCESS_TERMINATE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
-    pub fn new(
+    pub fn without_spawn(
         configuration: ProtocolRunnerConfiguration,
         socket_path: &Path,
         endpoint_name: String,
         tokio_runtime: &tokio::runtime::Handle,
-    ) -> Self {
+        log: Logger,
+    ) -> Result<Self, ProtocolRunnerError> {
+        Ok(Self {
+            configuration,
+            socket_path: socket_path.to_path_buf(),
+            endpoint_name,
+            tokio_runtime: tokio_runtime.clone(),
+            child_process_handle: None,
+            log,
+        })
+    }
+
+    pub fn spawn(
+        configuration: ProtocolRunnerConfiguration,
+        socket_path: &Path,
+        endpoint_name: String,
+        tokio_runtime: &tokio::runtime::Handle,
+        log: Logger,
+    ) -> Result<Self, ProtocolRunnerError> {
         let ProtocolRunnerConfiguration {
             executable_path,
             log_level,
             ..
-        } = configuration.clone();
+        } = &configuration;
+        let child_process_handle = Some(Self::spawn_process(
+            executable_path,
+            socket_path,
+            &endpoint_name,
+            log_level,
+            log.clone(),
+            tokio_runtime,
+        )?);
+
         // TODO: duplicating stuff from configuration
-        Self {
+        Ok(Self {
             configuration,
             socket_path: socket_path.to_path_buf(),
-            executable_path,
             endpoint_name,
             tokio_runtime: tokio_runtime.clone(),
-            log_level,
-        }
+            child_process_handle,
+            log,
+        })
     }
 
-    pub async fn wait_for_socket(&self, timeout: Option<Duration>) -> Result<(), ProtocolRunnerError> {
+    pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
+        // TODO: pool connections
+        let ipc_client = async_ipc::IpcClient::new(&self.socket_path);
+        let (rx, tx) = ipc_client.connect().await?;
+        let io = IpcIO { rx, tx };
+
+        Ok(ProtocolRunnerConnection {
+            configuration: self.configuration.clone(),
+            io,
+        })
+    }
+
+    pub async fn wait_for_socket(
+        &self,
+        timeout: Option<Duration>,
+    ) -> Result<(), ProtocolRunnerError> {
         let start = Instant::now();
         let timeout = timeout.unwrap_or(Duration::from_secs(3));
 
@@ -137,20 +220,27 @@ impl ProtocolRunnerInstance {
         Ok(())
     }
 
-    pub fn spawn(&self, log: Logger) -> Result<tokio::process::Child, ProtocolRunnerError> {
-        let _guard = self.tokio_runtime.enter();
-        let mut process = Command::new(&self.executable_path)
+    fn spawn_process(
+        executable_path: &PathBuf,
+        socket_path: &Path,
+        endpoint_name: &str,
+        log_level: &Level,
+        log: Logger,
+        tokio_runtime: &tokio::runtime::Handle,
+    ) -> Result<tokio::process::Child, ProtocolRunnerError> {
+        let _guard = tokio_runtime.enter();
+        let mut process = Command::new(executable_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .arg("--socket-path")
-            .arg(&self.socket_path)
+            .arg(socket_path)
             .arg("--endpoint")
-            .arg(&self.endpoint_name)
+            .arg(endpoint_name)
             .arg("--log-level")
-            .arg(&self.log_level.as_str().to_lowercase())
+            .arg(log_level.as_str().to_lowercase())
             .spawn()?;
 
-        self.log_subprocess_output(&mut process, log.clone());
+        Self::log_subprocess_output(tokio_runtime, &mut process, log.clone());
 
         Ok(process)
     }
@@ -227,13 +317,17 @@ impl ProtocolRunnerInstance {
 
     /// Spawns a tokio task that will forward STDOUT and STDERR from the child
     /// process to slog's output
-    fn log_subprocess_output(&self, process: &mut Child, log: Logger) {
+    fn log_subprocess_output(
+        tokio_runtime: &tokio::runtime::Handle,
+        process: &mut Child,
+        log: Logger,
+    ) {
         // Only launch logging task if the output port if present, otherwise log a warning.
         macro_rules! handle_output {
             ($tag:expr, $name:expr, $io:expr, $log:expr) => {{
                 if let Some(out) = $io.take() {
                     let log = $log;
-                    self.tokio_runtime.spawn(async move {
+                    tokio_runtime.spawn(async move {
                         let reader = BufReader::new(out);
                         let mut lines = reader.lines();
                         loop {
@@ -279,32 +373,59 @@ impl IpcIO {
         &mut self,
         read_timeout: Option<Duration>,
     ) -> Result<NodeMessage, async_ipc::IpcError> {
-        let result = self.rx.try_receive(read_timeout).await?;
-        Ok(result)
+        if let Some(read_timeout) = read_timeout {
+            Ok(self.rx.try_receive(read_timeout).await?)
+        } else {
+            self.rx.receive().await
+        }
     }
 }
 
 pub struct ProtocolRunnerApi {
     writable_instance: Arc<ProtocolRunnerInstance>,
+    log: Logger,
+    shutdown_done: bool,
+}
+
+impl Drop for ProtocolRunnerApi {
+    fn drop(&mut self) {
+        self.shutdown()
+    }
 }
 
 impl ProtocolRunnerApi {
-    pub fn new(writable_instance: ProtocolRunnerInstance) -> Self {
+    pub fn new(writable_instance: ProtocolRunnerInstance, log: Logger) -> Self {
         Self {
             writable_instance: Arc::new(writable_instance),
+            log,
+            shutdown_done: false,
         }
+    }
+
+    pub fn shutdown(&mut self) {
+        if self.shutdown_done {
+            return;
+        }
+        tokio::task::block_in_place(|| {
+            self.writable_instance.tokio_runtime.block_on(async {
+                if let Ok(mut conn) = self.writable_connection().await {
+                    if let Err(err) = conn.shutdown().await {
+                        warn!(
+                            self.log,
+                            "Failed to send shutdown message to protocol runner: {}", err
+                        );
+                    } else {
+                        info!(self.log, "protocol runner shutdoen message sent");
+                    }
+                }
+            })
+        });
+        self.shutdown_done = true;
     }
 
     pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
         // TODO: pool connections
-        let ipc_client = async_ipc::IpcClient::new(&self.writable_instance.socket_path);
-        let (rx, tx) = ipc_client.connect().await?;
-        let io = IpcIO { rx, tx };
-
-        Ok(ProtocolRunnerConnection {
-            instance: Arc::clone(&self.writable_instance),
-            io,
-        })
+        self.writable_instance.writable_connection().await
     }
 
     pub async fn readable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
@@ -314,7 +435,7 @@ impl ProtocolRunnerApi {
 }
 
 pub struct ProtocolRunnerConnection {
-    instance: Arc<ProtocolRunnerInstance>,
+    configuration: ProtocolRunnerConfiguration,
     io: IpcIO,
 }
 
@@ -727,16 +848,14 @@ impl ProtocolRunnerConnection {
         patch_context: &Option<PatchContext>,
         context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        self.change_runtime_configuration(
-            self.instance.configuration.runtime_configuration.clone(),
-        )
-        .await?;
-        let environment = self.instance.configuration.environment.clone();
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())
+            .await?;
+        let environment = self.configuration.environment.clone();
         self.init_protocol_context(
-            self.instance.configuration.storage.clone(),
+            self.configuration.storage.clone(),
             &environment,
             commit_genesis,
-            self.instance.configuration.enable_testchain,
+            self.configuration.enable_testchain,
             false,
             patch_context.clone(),
             context_stats_db_path,
@@ -749,16 +868,14 @@ impl ProtocolRunnerConnection {
         &mut self,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         // TODO - TE-261: should use a different message exchange for readonly contexts?
-        self.change_runtime_configuration(
-            self.instance.configuration.runtime_configuration.clone(),
-        )
-        .await?;
-        let environment = self.instance.configuration.environment.clone();
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())
+            .await?;
+        let environment = self.configuration.environment.clone();
         self.init_protocol_context(
-            self.instance.configuration.storage.clone(),
+            self.configuration.storage.clone(),
             &environment,
             false,
-            self.instance.configuration.enable_testchain,
+            self.configuration.enable_testchain,
             true,
             None,
             None,
@@ -773,7 +890,6 @@ impl ProtocolRunnerConnection {
     /// Must be called after the writable context has been initialized.
     pub async fn init_context_ipc_server(&mut self) -> Result<(), ProtocolServiceError> {
         if self
-            .instance
             .configuration
             .storage
             .get_ipc_socket_path()
@@ -781,7 +897,7 @@ impl ProtocolRunnerConnection {
         {
             self.io
                 .send(&ProtocolMessage::InitProtocolContextIpcServer(
-                    self.instance.configuration.storage.clone(),
+                    self.configuration.storage.clone(),
                 ))
                 .await?;
 
@@ -805,7 +921,7 @@ impl ProtocolRunnerConnection {
         &mut self,
         genesis_context_hash: &ContextHash,
     ) -> Result<CommitGenesisResult, ProtocolServiceError> {
-        let tezos_environment = self.instance.configuration.environment.clone();
+        let tezos_environment = self.configuration.environment.clone();
         let main_chain_id = tezos_environment.main_chain_id().map_err(|e| {
             ProtocolServiceError::InvalidDataError {
                 message: format!("{:?}", e),

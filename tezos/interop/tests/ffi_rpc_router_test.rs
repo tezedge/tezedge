@@ -6,92 +6,24 @@ use std::convert::TryInto;
 use assert_json_diff::assert_json_eq;
 use serial_test::serial;
 
-use crypto::hash::{ChainId, ProtocolHash};
+use crypto::hash::ChainId;
 use tezos_api::ffi::{
     ApplyBlockRequest, ComputePathRequest, ComputePathResponse, HelpersPreapplyBlockRequest,
-    InitProtocolContextResult, ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
+    HelpersPreapplyResponse, ProtocolRpcRequest, RpcRequest,
 };
-use tezos_api::{
-    environment::{
-        default_networks, get_empty_operation_list_list_hash, TezosEnvironmentConfiguration,
-    },
-    ffi::{ProtocolRpcResponse, RpcMethod},
-};
-use tezos_client::client;
-use tezos_context_api::{
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
-};
+use tezos_api::ffi::{ProtocolRpcResponse, RpcMethod};
+use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::{
     binary_message::{BinaryRead, MessageHash},
     encoding::operations_for_blocks::PathItem,
 };
+use tezos_protocol_ipc_messages::{NodeMessage, ProtocolMessage};
+
+use crate::common::{init_test_protocol_context, init_test_runtime};
 
 mod common;
-
-fn init_test_runtime() {
-    // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        log_enabled: common::is_ocaml_log_enabled(),
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-    })
-    .unwrap();
-}
-
-fn init_test_protocol_context(
-    dir_name: &str,
-) -> (
-    ChainId,
-    BlockHeader,
-    ProtocolHash,
-    InitProtocolContextResult,
-) {
-    let default_networks = default_networks();
-    let tezos_env: &TezosEnvironmentConfiguration = default_networks
-        .get(&test_data::TEZOS_NETWORK)
-        .expect("no tezos environment configured");
-
-    let data_dir = common::prepare_empty_dir(dir_name);
-    let storage = TezosContextStorageConfiguration::Both(
-        TezosContextIrminStorageConfiguration { data_dir },
-        TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
-            ipc_socket_path: None,
-        },
-    );
-    let context_config = TezosContextConfiguration {
-        storage,
-        genesis: tezos_env.genesis.clone(),
-        protocol_overrides: tezos_env.protocol_overrides.clone(),
-        commit_genesis: true,
-        enable_testchain: false,
-        readonly: false,
-        sandbox_json_patch_context: Some(test_data::get_patch_context()),
-        context_stats_db_path: None,
-    };
-
-    let result = client::init_protocol_context(context_config).unwrap();
-
-    let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
-        None => panic!("we needed commit_genesis and here should be result of it"),
-        Some(cr) => cr.clone(),
-    };
-
-    (
-        tezos_env.main_chain_id().expect("invalid chain id"),
-        tezos_env
-            .genesis_header(
-                genesis_commit_hash,
-                get_empty_operation_list_list_hash().unwrap(),
-            )
-            .expect("genesis header error"),
-        tezos_env.genesis_protocol().expect("protocol_hash error"),
-        result,
-    )
-}
 
 fn extract_body(r: ProtocolRpcResponse) -> Result<String, anyhow::Error> {
     match r {
@@ -103,6 +35,27 @@ fn extract_body(r: ProtocolRpcResponse) -> Result<String, anyhow::Error> {
     }
 }
 
+fn call_protocol_rpc(request: ProtocolRpcRequest) -> Result<ProtocolRpcResponse, anyhow::Error> {
+    let response = apply_encoded_message(ProtocolMessage::ProtocolRpcCall(request)).unwrap();
+    expect_response!(RpcResponse, response).map_err(Into::into)
+}
+
+fn helpers_preapply_block(
+    request: HelpersPreapplyBlockRequest,
+) -> Result<HelpersPreapplyResponse, anyhow::Error> {
+    let response =
+        apply_encoded_message(ProtocolMessage::HelpersPreapplyBlockCall(request)).unwrap();
+    expect_response!(HelpersPreapplyResponse, response).map_err(Into::into)
+}
+
+fn helpers_preapply_operations(
+    request: ProtocolRpcRequest,
+) -> Result<HelpersPreapplyResponse, anyhow::Error> {
+    let response =
+        apply_encoded_message(ProtocolMessage::HelpersPreapplyOperationsCall(request)).unwrap();
+    expect_response!(HelpersPreapplyResponse, response).map_err(Into::into)
+}
+
 #[test]
 #[serial]
 fn test_run_operations() -> Result<(), anyhow::Error> {
@@ -110,7 +63,7 @@ fn test_run_operations() -> Result<(), anyhow::Error> {
 
     // init empty context for test
     let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_run_operations_storage_01");
+        init_test_protocol_context("test_run_operations_storage_01", test_data::tezos_network());
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -131,7 +84,7 @@ fn test_run_operations() -> Result<(), anyhow::Error> {
             accept: None,
         },
     };
-    let response = client::call_protocol_rpc(request)?;
+    let response = call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
@@ -149,7 +102,7 @@ fn test_forge_operations() -> Result<(), anyhow::Error> {
 
     // init empty context for test
     let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_forge_operations_01");
+        init_test_protocol_context("test_forge_operations_01", test_data::tezos_network());
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -197,7 +150,7 @@ fn test_forge_operations() -> Result<(), anyhow::Error> {
             accept: None,
         },
     };
-    let response = client::call_protocol_rpc(request)?;
+    let response = call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
@@ -215,7 +168,7 @@ fn test_context_contract() -> Result<(), anyhow::Error> {
 
     // init empty context for test
     let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_context_contract_01");
+        init_test_protocol_context("test_context_contract_01", test_data::tezos_network());
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -245,7 +198,7 @@ fn test_context_contract() -> Result<(), anyhow::Error> {
             accept: None,
         },
     };
-    let response = client::call_protocol_rpc(request)?;
+    let response = call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
@@ -262,8 +215,10 @@ fn test_preapply_operations() -> Result<(), anyhow::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_preapply_operations_storage_02");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(
+        "test_preapply_operations_storage_02",
+        test_data::tezos_network(),
+    );
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -284,7 +239,7 @@ fn test_preapply_operations() -> Result<(), anyhow::Error> {
             accept: None,
         },
     };
-    let response = client::helpers_preapply_operations(request)?;
+    let response = helpers_preapply_operations(request)?;
 
     // assert result json
     assert_json_eq!(
@@ -299,8 +254,10 @@ fn test_preapply_operations() -> Result<(), anyhow::Error> {
 #[serial]
 fn test_current_level_call() -> Result<(), anyhow::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_current_level_call_storage");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(
+        "test_current_level_call_storage",
+        test_data::tezos_network(),
+    );
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -318,7 +275,7 @@ fn test_current_level_call() -> Result<(), anyhow::Error> {
         },
     };
 
-    let response = client::call_protocol_rpc(request)?;
+    let response = call_protocol_rpc(request)?;
 
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
@@ -332,8 +289,10 @@ fn test_current_level_call() -> Result<(), anyhow::Error> {
 #[serial]
 fn test_minimal_valid_time() -> Result<(), anyhow::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context(" test_minimal_valid_time_storage");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(
+        " test_minimal_valid_time_storage",
+        test_data::tezos_network(),
+    );
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -353,7 +312,7 @@ fn test_minimal_valid_time() -> Result<(), anyhow::Error> {
         },
     };
 
-    let response = client::call_protocol_rpc(request)?;
+    let response = call_protocol_rpc(request)?;
 
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
@@ -368,7 +327,7 @@ fn test_minimal_valid_time() -> Result<(), anyhow::Error> {
 fn test_compute_path() -> Result<(), anyhow::Error> {
     // init empty context for test
     let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_compute_path_storage");
+        init_test_protocol_context("test_compute_path_storage", test_data::tezos_network());
 
     // apply block 1
     let _ = apply_blocks_1(&chain_id, genesis_block_header);
@@ -397,7 +356,8 @@ fn test_compute_path() -> Result<(), anyhow::Error> {
             .collect(),
     };
 
-    let response = client::compute_path(request)?;
+    let response = apply_encoded_message(ProtocolMessage::ComputePathCall(request)).unwrap();
+    let response = expect_response!(ComputePathResponse, response)?;
 
     let expected_response = ComputePathResponse {
         operations_hashes_path: vec![
@@ -450,7 +410,7 @@ fn test_preapply_block() -> Result<(), anyhow::Error> {
 
     // init empty context for test
     let (chain_id, genesis_block_header, ..) =
-        init_test_protocol_context("test_preapply_block_storage_02");
+        init_test_protocol_context("test_preapply_block_storage_02", test_data::tezos_network());
 
     // preapply block 1 with activation of protocol
     // prepare encoded request to send
@@ -477,7 +437,7 @@ fn test_preapply_block() -> Result<(), anyhow::Error> {
         predecessor_ops_metadata_hash: None,
     };
 
-    let response = client::helpers_preapply_block(request)?;
+    let response = helpers_preapply_block(request)?;
 
     // assert result json
     assert_json_eq!(
@@ -492,19 +452,23 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
     // apply first block - level 1
     let block_header =
         BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap();
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
-        block_header: block_header.clone(),
-        pred_header: genesis_block_header,
-        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        )),
-        max_operations_ttl: 0,
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
-    })
-    .unwrap();
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: block_header.clone(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                ),
+            ),
+            max_operations_ttl: 0,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result).unwrap();
     assert_eq!(
         test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH),
         apply_block_result.context_hash
@@ -518,12 +482,21 @@ mod test_data {
     use std::convert::TryInto;
 
     use crypto::hash::ContextHash;
-    use tezos_api::environment::TezosEnvironment;
+    use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration};
     use tezos_context_api::PatchContext;
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Sandbox;
+
+    pub fn tezos_network() -> TezosEnvironmentConfiguration {
+        let mut tezos_env = tezos_api::environment::default_networks()
+            .get(&TEZOS_NETWORK)
+            .expect("no tezos environment configured")
+            .clone();
+        tezos_env.patch_context_genesis_parameters = Some(get_patch_context());
+        tezos_env
+    }
 
     pub fn context_hash(hash: &str) -> ContextHash {
         ContextHash::from_base58_check(hash).unwrap()

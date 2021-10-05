@@ -730,7 +730,7 @@ impl ChainManager {
                                                     chain_state.get_chain_id(),
                                                     &operation_hash,
                                                     operation,
-                                                    current_mempool_state,
+                                                    &current_mempool_state,
                                                     &mut connection,
                                                     block_storage,
                                                     block_meta_storage,

@@ -123,7 +123,7 @@ impl NodeInfrastructure {
         let tokio_runtime = create_tokio_runtime();
         let socket_path = temp_sock();
 
-        let protocol_runner_instance = ProtocolRunnerInstance::new(
+        let protocol_runner_instance = ProtocolRunnerInstance::spawn(
             ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: common::is_ocaml_log_enabled(),
@@ -139,15 +139,19 @@ impl NodeInfrastructure {
             &socket_path,
             "writable-protocol-runner".to_string(),
             tokio_runtime.handle(),
-        );
-        let _child = protocol_runner_instance.spawn(log.clone()).unwrap();
+            log.clone(),
+        )
+        .unwrap();
+        //let _child = protocol_runner_instance.spawn(log.clone()).unwrap();
 
         tokio_runtime
             .block_on(protocol_runner_instance.wait_for_socket(None))
             .expect("Timeout when waiting for protocol-runner to start listening for connections");
 
-        let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(protocol_runner_instance));
-
+        let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
+            protocol_runner_instance,
+            log.clone(),
+        ));
 
         let current_mempool_state_storage = init_mempool_state_storage();
 

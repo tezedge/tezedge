@@ -3,87 +3,24 @@
 
 use serial_test::serial;
 
-use crypto::hash::{ChainId, ProtocolHash};
-use tezos_api::environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{
-    ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
-    TezosRuntimeConfiguration, ValidateOperationRequest,
-};
-use tezos_client::client;
-use tezos_context_api::{
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
-};
+use crypto::hash::ChainId;
+use tezos_api::ffi::{ApplyBlockRequest, BeginConstructionRequest, ValidateOperationRequest};
+
+use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_protocol_ipc_messages::{NodeMessage, ProtocolMessage};
 
 mod common;
-
-fn init_test_runtime() {
-    // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration {
-        log_enabled: common::is_ocaml_log_enabled(),
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-    })
-    .unwrap();
-}
-
-fn init_test_protocol_context(
-    storage: TezosContextStorageConfiguration,
-    tezos_env: TezosEnvironmentConfiguration,
-) -> (
-    ChainId,
-    BlockHeader,
-    ProtocolHash,
-    InitProtocolContextResult,
-) {
-    let context_config = TezosContextConfiguration {
-        storage,
-        genesis: tezos_env.genesis.clone(),
-        protocol_overrides: tezos_env.protocol_overrides.clone(),
-        commit_genesis: true,
-        enable_testchain: false,
-        readonly: false,
-        sandbox_json_patch_context: tezos_env.patch_context_genesis_parameters.clone(),
-        context_stats_db_path: None,
-    };
-    let result = client::init_protocol_context(context_config).unwrap();
-
-    let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
-        None => panic!("we needed commit_genesis and here should be result of it"),
-        Some(cr) => cr.clone(),
-    };
-
-    (
-        tezos_env.main_chain_id().expect("invalid chain id"),
-        tezos_env
-            .genesis_header(
-                genesis_commit_hash,
-                get_empty_operation_list_list_hash().unwrap(),
-            )
-            .expect("genesis header error"),
-        tezos_env.genesis_protocol().expect("protocol_hash error"),
-        result,
-    )
-}
 
 #[test]
 #[serial]
 fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error> {
-    init_test_runtime();
+    common::init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(
-        TezosContextStorageConfiguration::Both(
-            TezosContextIrminStorageConfiguration {
-                data_dir: common::prepare_empty_dir("mempool_test_storage_01"),
-            },
-            TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
-                ipc_socket_path: None,
-            },
-        ),
+    let (chain_id, genesis_block_header, ..) = common::init_test_protocol_context(
+        "mempool_test_storage_01",
         test_data_protocol_v1::tezos_network(),
     );
 
@@ -91,11 +28,15 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
 
     // let's initialize prevalidator for current head
-    let prevalidator = client::begin_construction(BeginConstructionRequest {
-        chain_id: chain_id.clone(),
-        predecessor: last_block,
-        protocol_data: None,
-    })?;
+    let prevalidator = apply_encoded_message(ProtocolMessage::BeginConstructionCall(
+        BeginConstructionRequest {
+            chain_id: chain_id.clone(),
+            predecessor: last_block,
+            protocol_data: None,
+        },
+    ))
+    .unwrap();
+    let prevalidator = expect_response!(BeginConstructionResult, prevalidator)?;
     assert_eq!(prevalidator.chain_id, chain_id);
     assert_eq!(
         prevalidator.context_fitness,
@@ -105,10 +46,14 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     let operation =
         test_data_protocol_v1::operation_from_hex(test_data_protocol_v1::OPERATION_LEVEL_3);
 
-    let result = client::validate_operation(ValidateOperationRequest {
-        prevalidator,
-        operation,
-    })?;
+    let result = apply_encoded_message(ProtocolMessage::ValidateOperationCall(
+        ValidateOperationRequest {
+            prevalidator,
+            operation,
+        },
+    ))
+    .unwrap();
+    let result = expect_response!(ValidateOperationResponse, result)?;
     assert_eq!(result.prevalidator.chain_id, chain_id);
     assert_eq!(result.result.applied.len(), 1);
     assert_eq!(
@@ -121,24 +66,26 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
 
 fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {
     // apply first block - level 1
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
-        block_header: BlockHeader::from_bytes(
-            hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_1).unwrap(),
-        )
-        .unwrap(),
-        pred_header: genesis_block_header,
-        operations: ApplyBlockRequest::convert_operations(
-            test_data_protocol_v1::block_operations_from_hex(
-                test_data_protocol_v1::BLOCK_HEADER_HASH_LEVEL_1,
-                test_data_protocol_v1::block_header_level1_operations(),
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(
+                hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_1).unwrap(),
+            )
+            .unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                test_data_protocol_v1::block_operations_from_hex(
+                    test_data_protocol_v1::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data_protocol_v1::block_header_level1_operations(),
+                ),
             ),
-        ),
-        max_operations_ttl: 0,
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
-    })
-    .unwrap();
+            max_operations_ttl: 0,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result).unwrap();
     assert_eq!(
         test_data_protocol_v1::context_hash(
             test_data_protocol_v1::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH
@@ -148,27 +95,29 @@ fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bl
     assert_eq!(1, apply_block_result.max_operations_ttl);
 
     // apply second block - level 2
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
-        block_header: BlockHeader::from_bytes(
-            hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap(),
-        )
-        .unwrap(),
-        pred_header: BlockHeader::from_bytes(
-            hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_1).unwrap(),
-        )
-        .unwrap(),
-        operations: ApplyBlockRequest::convert_operations(
-            test_data_protocol_v1::block_operations_from_hex(
-                test_data_protocol_v1::BLOCK_HEADER_HASH_LEVEL_2,
-                test_data_protocol_v1::block_header_level2_operations(),
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(
+                hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap(),
+            )
+            .unwrap(),
+            pred_header: BlockHeader::from_bytes(
+                hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_1).unwrap(),
+            )
+            .unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                test_data_protocol_v1::block_operations_from_hex(
+                    test_data_protocol_v1::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data_protocol_v1::block_header_level2_operations(),
+                ),
             ),
-        ),
-        max_operations_ttl: apply_block_result.max_operations_ttl,
-        predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
-        predecessor_ops_metadata_hash: None,
-    })
-    .unwrap();
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+            predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result).unwrap();
     assert_eq!(
         test_data_protocol_v1::context_hash(
             test_data_protocol_v1::BLOCK_HEADER_LEVEL_2_CONTEXT_HASH
