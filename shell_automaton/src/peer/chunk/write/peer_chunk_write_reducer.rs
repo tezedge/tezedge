@@ -1,15 +1,10 @@
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{
-        binary_message::write::peer_binary_message_write_state::PeerBinaryMessageWriteState,
-        chunk::write::peer_chunk_write_state::PeerChunkWriteState,
-        handshaking::{PeerHandshaking, PeerHandshakingStatus},
-        PeerStatus,
-    },
-    State,
-};
+use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
+use crate::peer::chunk::write::PeerChunkWriteState;
+use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
+use crate::peer::PeerStatus;
+use crate::{Action, State};
 
 pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {

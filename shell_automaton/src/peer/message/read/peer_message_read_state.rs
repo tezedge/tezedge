@@ -1,8 +1,14 @@
+use crypto::nonce::Nonce;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::peer::chunk::read::{PeerChunkRead, PeerChunkReadError, ReadCrypto};
+use crate::peer::{
+    binary_message::read::PeerBinaryMessageReadState,
+    chunk::read::{PeerChunkRead, PeerChunkReadError, ReadCrypto},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBinaryMessageReadError {
@@ -17,23 +23,12 @@ impl From<BinaryReaderError> for PeerBinaryMessageReadError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PeerBinaryMessageReadState {
-    Init {
-        crypto: ReadCrypto,
-    },
-    PendingFirstChunk {
-        chunk: PeerChunkRead,
-    },
+pub enum PeerMessageReadState {
     Pending {
-        buffer: Vec<u8>,
-        size: usize,
-        chunk: PeerChunkRead,
+        binary_message_read: PeerBinaryMessageReadState,
     },
-    Ready {
-        crypto: ReadCrypto,
-        message: Vec<u8>,
-    },
-    Error {
-        error: PeerBinaryMessageReadError,
+    Success {
+        read_crypto: ReadCrypto,
+        message: Arc<PeerMessageResponse>,
     },
 }

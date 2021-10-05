@@ -6,7 +6,9 @@ use tezos_messages::p2p::{
     encoding::{ack::AckMessage, connection::ConnectionMessage, metadata::MetadataMessage},
 };
 
-use super::{PeerCrypto, PeerHandshakingError};
+use crate::peer::PeerCrypto;
+
+use super::PeerHandshakingError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingInitAction {

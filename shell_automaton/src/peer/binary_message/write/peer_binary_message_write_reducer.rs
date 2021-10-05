@@ -2,17 +2,12 @@ use std::cmp;
 
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{
-        chunk::write::peer_chunk_write_state::{PeerChunkWrite, PeerChunkWriteState},
-        handshaking::{PeerHandshaking, PeerHandshakingStatus},
-        PeerStatus,
-    },
-    State,
-};
+use crate::peer::chunk::write::{PeerChunkWrite, PeerChunkWriteState};
+use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
+use crate::peer::PeerStatus;
+use crate::{Action, State};
 
-use super::peer_binary_message_write_state::PeerBinaryMessageWriteState;
+use super::PeerBinaryMessageWriteState;
 
 const MAX_UNENCRYPTED_CHUNK_SIZE: usize =
     tezos_messages::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;

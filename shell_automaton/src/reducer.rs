@@ -3,15 +3,16 @@ use redux_rs::{chain_reducers, ActionWithId};
 use crate::action::Action;
 use crate::State;
 
-use crate::peer::binary_message::read::peer_binary_message_read_reducer::peer_binary_message_read_reducer;
-use crate::peer::binary_message::write::peer_binary_message_write_reducer::peer_binary_message_write_reducer;
-use crate::peer::chunk::read::peer_chunk_read_reducer::peer_chunk_read_reducer;
-use crate::peer::chunk::write::peer_chunk_write_reducer::peer_chunk_write_reducer;
+use crate::peer::binary_message::read::peer_binary_message_read_reducer;
+use crate::peer::binary_message::write::peer_binary_message_write_reducer;
+use crate::peer::chunk::read::peer_chunk_read_reducer;
+use crate::peer::chunk::write::peer_chunk_write_reducer;
 use crate::peer::connection::incoming::accept::peer_connection_incoming_accept_reducer;
 use crate::peer::connection::incoming::peer_connection_incoming_reducer;
 use crate::peer::connection::outgoing::peer_connection_outgoing_reducer;
 use crate::peer::disconnection::peer_disconnection_reducer;
 use crate::peer::handshaking::peer_handshaking_reducer;
+use crate::peer::message::read::peer_message_read_reducer;
 
 use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
@@ -40,6 +41,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         peer_connection_incoming_accept_reducer,
         peer_connection_incoming_reducer,
         peer_handshaking_reducer,
+        peer_message_read_reducer,
         peer_binary_message_write_reducer,
         peer_binary_message_read_reducer,
         peer_chunk_write_reducer,

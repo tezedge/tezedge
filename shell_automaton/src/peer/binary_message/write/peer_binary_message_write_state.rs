@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::peer::chunk::write::peer_chunk_write_state::{
-    PeerChunkWrite, PeerChunkWriteError, WriteCrypto,
-};
+use crate::peer::chunk::write::{PeerChunkWrite, PeerChunkWriteError, WriteCrypto};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBinaryMessageWriteError {

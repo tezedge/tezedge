@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use super::peer_binary_message_write_state::PeerBinaryMessageWriteError;
+use super::PeerBinaryMessageWriteError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerBinaryMessageWriteSetContentAction {

@@ -5,7 +5,9 @@ use std::sync::{mpsc, Arc};
 use networking::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
-use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
+use tezos_messages::p2p::encoding::prelude::{
+    MetadataMessage, NetworkVersion, PeerMessageResponse,
+};
 
 use crate::peer::PeerId;
 
@@ -19,11 +21,23 @@ pub trait ActorsService {
 
 /// Message to actors.
 #[derive(Debug, Clone)]
-pub enum ActorsMessageTo {}
+pub enum ActorsMessageTo {
+    PeerHandshaked(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
+    PeerDisconnected(SocketAddr),
+    PeerBlacklisted(SocketAddr),
+    PeerMessageReceived(PeerMessageReceived),
+}
 
 impl From<ActorsMessageTo> for NetworkChannelMsg {
     fn from(msg: ActorsMessageTo) -> Self {
-        todo!()
+        match msg {
+            ActorsMessageTo::PeerHandshaked(id, metadata, version) => {
+                Self::PeerBootstrapped(id, metadata, version)
+            }
+            ActorsMessageTo::PeerDisconnected(address) => Self::PeerDisconnected(address),
+            ActorsMessageTo::PeerBlacklisted(address) => Self::PeerBlacklisted(address),
+            ActorsMessageTo::PeerMessageReceived(address) => Self::PeerMessageReceived(address),
+        }
     }
 }
 
