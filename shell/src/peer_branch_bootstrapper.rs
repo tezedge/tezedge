@@ -394,7 +394,10 @@ impl Actor for PeerBranchBootstrapper {
             PeerBranchBootstrapperMsg::SystemEvent(_) => "SystemEvent",
         };
 
+        let log = ctx.system.log();
+        self.bootstrap_state.dump(&format!("[BOOTSTRAP_STATE_BEFORE]:{}", msg_type), &log);
         self.receive(ctx, msg, sender);
+        self.bootstrap_state.dump(&format!("[BOOTSTRAP_STATE_AFTER]:{}", msg_type), &log);
 
         if timer.elapsed() > Duration::from_secs(1) {
             warn!(
@@ -695,13 +698,9 @@ impl Receive<ApplyBlockBatchDone> for PeerBranchBootstrapper {
         let log = ctx.system.log();
         info!(log, "[PEER_BRANCH_BOOTSTRAPPER] received ApplyBlockBatchDone, last_applied: {}", msg.last_applied.to_base58_check());
 
-        self.bootstrap_state.dump("[BOOTSTRAP_STATE_BEFORE]", &log);
-
         // process message
         self.bootstrap_state
             .block_applied(&msg.last_applied, &ctx.system.log());
-
-        self.bootstrap_state.dump("[BOOTSTRAP_STATE_AFTER]", &log);
 
         // schedule ping for other pipelines
         self.schedule_process_all_bootstrap_pipelines(ctx);

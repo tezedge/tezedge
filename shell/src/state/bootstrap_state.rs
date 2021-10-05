@@ -552,6 +552,7 @@ impl BootstrapState {
                     chain_id,
                     chain_manager,
                     peer_branch_bootstrapper,
+                    log,
                 ) {
                     warn!(log, "Failed to schedule blocks for apply";
                                "reason" => error,
@@ -872,6 +873,7 @@ impl BranchState {
         chain_id: &Arc<ChainId>,
         chain_manager: &Arc<ChainManagerRef>,
         peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
+        log: &Logger,
     ) -> Result<(), StateError> {
         // we can apply blocks just from the first "scheduled" interval
         // interval is removed all the time, when the last block of the interval is applied
@@ -960,6 +962,9 @@ impl BranchState {
                             if let Some(mut batch) = batch_for_apply {
                                 batch.add_successor(block_ref);
                                 if batch.successors_size() >= max_block_apply_batch {
+                                    info!(log, "[BOOTSTRAP_STATE] apply1";
+                                               "block_to_apply" => batch.block_to_apply.to_base58_check(),
+                                               "successors" => batch.successors.iter().map(|b| b.to_base58_check()).collect::<Vec<_>>().join(", "));
                                     // schedule batch
                                     data_requester.call_schedule_apply_block(
                                         chain_id.clone(),
@@ -995,6 +1000,9 @@ impl BranchState {
         }
 
         if let Some(batch) = batch_for_apply {
+            info!(log, "[BOOTSTRAP_STATE] apply2";
+                       "block_to_apply" => batch.block_to_apply.to_base58_check(),
+                       "successors" => batch.successors.iter().map(|b| b.to_base58_check()).collect::<Vec<_>>().join(", "));
             // schedule last batch
             data_requester.call_schedule_apply_block(
                 chain_id.clone(),
