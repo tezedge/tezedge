@@ -47,26 +47,28 @@ fn last_action_effects<S: Service>(
 }
 
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    // these two effects must be first!
+    // these three effects must be first!
     log_effects(store, action);
     last_action_effects(store, action);
-
     storage_state_snapshot_create_effects(store, action);
 
     peers_dns_lookup_effects(store, action);
     peers_add_multi_effects(store, action);
 
     peer_effects(store, action);
+
     peer_connection_outgoing_effects(store, action);
     peer_connection_incoming_accept_effects(store, action);
     peer_connection_incoming_effects(store, action);
-    peer_handshaking_effects(store, action);
+    peer_disconnection_effects(store, action);
+
     peer_message_read_effects(store, action);
     peer_binary_message_write_effects(store, action);
     peer_binary_message_read_effects(store, action);
     peer_chunk_write_effects(store, action);
     peer_chunk_read_effects(store, action);
-    peer_disconnection_effects(store, action);
+
+    peer_handshaking_effects(store, action);
 
     storage_block_header_put_effects(store, action);
     storage_request_effects(store, action);

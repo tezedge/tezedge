@@ -43,7 +43,9 @@ pub fn peer_message_read_effects<S>(
                     }
                     .into(),
                 ),
-                Err(err) => todo!("handle PeerMessageResponse decode error"),
+                Err(err) => {
+                    eprintln!("TODO: encountered PeerMessageResponse decode error handling of which not implemented!");
+                }
             }
         }
         Action::PeerMessageReadSuccess(action) => {
