@@ -47,8 +47,8 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
-    depends_on:
-      - "tezedge-memprof"
+    # depends_on:
+    #   - "tezedge-memprof"
 
   # ocaml-node:
   #   image: tezos/tezos:v9-release
