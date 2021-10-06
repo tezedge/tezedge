@@ -256,6 +256,10 @@ impl NodeInfrastructure {
         };
         info!(log, "Chain manager initialized");
 
+        // there is a possibility, even the chain_manager actor has controlled startup, but we cannot controll (with default riker) asynchronous channel subscribtion
+        info!(log, "TODO: waiting 1500ms to give a chance for `subscribe_to_network_events(&self.network_channel, ctx.myself());` to finish");
+        std::thread::sleep(Duration::from_millis(1500));
+
         // and than open p2p and others - if configured
         let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
             let peer_manager = PeerManager::actor(

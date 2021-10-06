@@ -29,7 +29,7 @@ pub const DEFAULT_POW_TARGET: f64 = 24.0;
 
 lazy_static! {
     pub static ref SHELL_COMPATIBILITY_VERSION: ShellCompatibilityVersion = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![0], vec![0]);
-    pub static ref NODE_P2P_PORT: u16 = 1234; // TODO: maybe some logic to verify and get free port
+    pub static ref NODE_P2P_PORT: u16 = 1236; // TODO: maybe some logic to verify and get free port
     pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
             listener_port: *NODE_P2P_PORT,
