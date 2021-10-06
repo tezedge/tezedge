@@ -284,6 +284,7 @@ pub mod tests {
         use networking::p2p::network_channel::NetworkChannelRef;
         use networking::p2p::peer::{BootstrapOutput, Peer};
         use networking::PeerId;
+        use shell_integration::OneshotResultCallback;
         use storage::{PersistentStorage, StorageInitInfo};
         use tezos_api::environment::*;
         use tezos_api::ffi::{
@@ -431,26 +432,32 @@ pub mod tests {
                 true,
             ));
 
-            ChainManager::actor(
-                &actor_system,
-                block_applier,
-                network_channel,
-                shell_channel,
-                persistent_storage,
-                tezos_readonly_api_pool,
-                init_data,
-                false,
-                Head::new(
-                    "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
-                    1,
-                    vec![],
-                ),
-                current_mempool_state_storage,
-                0,
-                mempool_prevalidator_factory,
-                Arc::new(Identity::generate(0f64)?),
-            )
-            .map_err(|e| e.into())
+            let initialize_result: Option<OneshotResultCallback<()>> = None;
+
+            actor_system
+                .actor_of_props::<ChainManager>(
+                    "chain_manager_mock",
+                    Props::new_args((
+                        block_applier,
+                        network_channel,
+                        shell_channel,
+                        persistent_storage,
+                        tezos_readonly_api_pool,
+                        init_data,
+                        false,
+                        Head::new(
+                            "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
+                            1,
+                            vec![],
+                        ),
+                        current_mempool_state_storage,
+                        0,
+                        mempool_prevalidator_factory,
+                        Identity::generate(0f64)?.peer_id(),
+                        Arc::new(Mutex::new(initialize_result)),
+                    )),
+                )
+                .map_err(|e| e.into())
         }
 
         fn create_tezos_readonly_api_pool(

@@ -994,8 +994,6 @@ impl BranchState {
     }
 
     /// Notify state requested_block_hash has been applied
-    ///
-    /// <BM> callback wchic return (bool as downloaded, bool as applied, bool as are_operations_complete)
     pub fn block_applied(
         &mut self,
         applied_blocks: &mut HashSet<BlockRef>,
@@ -1021,15 +1019,15 @@ impl BranchState {
         }
 
         // 2. remove intervals, if contained in applied_blocks
-        // find first interval with the applied block block
+        // find the highest interval with the applied blocks
         let mut interval_to_handle = None;
         for (interval_idx, interval) in self.intervals.iter_mut().enumerate() {
             if applied_blocks.contains(&interval.start)
                 || applied_blocks.contains(&interval.seek)
                 || applied_blocks.contains(&interval.end)
             {
+                // we want to find the highest interval
                 interval_to_handle = Some((interval_idx, interval));
-                break;
             }
         }
 
@@ -1043,6 +1041,13 @@ impl BranchState {
                     .extend(block_state_db.remove_with_all_predecessors(&removed_interval.seek));
                 applied_blocks
                     .extend(block_state_db.remove_with_all_predecessors(&removed_interval.end));
+            } else if applied_blocks.contains(&interval.seek) {
+                // collect predecessors from seek/and start
+                applied_blocks.extend(block_state_db.remove_with_all_predecessors(&interval.start));
+                applied_blocks.extend(block_state_db.remove_with_all_predecessors(&interval.seek));
+
+                // we just reset seek to start
+                interval.start = interval.seek.clone();
             }
 
             // here we also need to remove all previous interval, because we dont need them anymore, when higher block was applied
@@ -1525,9 +1530,13 @@ impl BlockStateDb {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use serial_test::serial;
 
     use networking::p2p::network_channel::NetworkChannel;
+    use storage::tests_common::TmpStorage;
+    use storage::{BlockMetaStorage, OperationsMetaStorage};
 
     use crate::state::peer_state::DataQueuesLimits;
     use crate::state::tests::block;
@@ -1537,20 +1546,6 @@ mod tests {
     };
 
     use super::*;
-    use storage::tests_common::TmpStorage;
-    use storage::{BlockMetaStorage, OperationsMetaStorage};
-
-    // macro_rules! hash_set {
-    //     ( $( $x:expr ),* ) => {
-    //         {
-    //             let mut temp_set = HashSet::new();
-    //             $(
-    //                 temp_set.insert($x);
-    //             )*
-    //             temp_set
-    //         }
-    //     };
-    // }
 
     fn assert_interval(
         tested: &BranchInterval,
@@ -1559,6 +1554,52 @@ mod tests {
         assert_eq!(tested.start.as_ref(), &expected_left);
         assert_eq!(tested.seek.as_ref(), &expected_right);
         assert_eq!(tested.end.as_ref(), &expected_right);
+    }
+
+    fn assert_peer_branch_intervals(
+        peer_state: &PeerBootstrapState,
+        expected_intervals: Vec<BranchInterval>,
+    ) {
+        if expected_intervals.is_empty() {
+            assert!(peer_state.branches.is_empty());
+            return;
+        } else {
+            assert!(!peer_state.branches.is_empty());
+        }
+
+        let intervals = &peer_state.branches[0].intervals;
+        assert_eq!(intervals.len(), expected_intervals.len());
+
+        intervals
+            .iter()
+            .zip(expected_intervals)
+            .enumerate()
+            .for_each(|(idx, (interval, expected_interval))| {
+                assert_eq!(
+                    interval.start,
+                    expected_interval.start,
+                    "Interval {} start mismatch: {} vs {}",
+                    idx,
+                    interval.start.to_base58_check(),
+                    expected_interval.start.to_base58_check()
+                );
+                assert_eq!(
+                    interval.seek,
+                    expected_interval.seek,
+                    "Interval {} seek mismatch: {} vs {}",
+                    idx,
+                    interval.seek.to_base58_check(),
+                    expected_interval.seek.to_base58_check()
+                );
+                assert_eq!(
+                    interval.end,
+                    expected_interval.end,
+                    "Interval {} end mismatch: {} vs {}",
+                    idx,
+                    interval.end.to_base58_check(),
+                    expected_interval.end.to_base58_check()
+                );
+            });
     }
 
     #[test]
@@ -1790,6 +1831,360 @@ mod tests {
         assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
         assert_eq!(2, peer_bootstrap_state.branches.len());
     }
+
+    #[test]
+    #[serial]
+    fn test_bootstrap_state_block_applied_remove_previous_intervals() {
+        // actors stuff
+        let log = create_logger(slog::Level::Info);
+        let sys = create_test_actor_system(log.clone());
+        let runtime = create_test_tokio_runtime();
+        let network_channel =
+            NetworkChannel::actor(&sys).expect("Failed to create network channel");
+        let storage = TmpStorage::create_to_out_dir(
+            "__test_bootstrap_state_block_applied_remove_previous_intervals",
+        )
+        .expect("failed to create tmp storage");
+        let (chain_feeder_mock, _) = chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state")
+            .expect("failed to create chain_feeder_mock");
+        let data_requester = Arc::new(DataRequester::new(
+            BlockMetaStorage::new(storage.storage()),
+            OperationsMetaStorage::new(storage.storage()),
+            chain_feeder_mock,
+        ));
+
+        let is_bootstrapped = Arc::new(AtomicBool::new(false));
+        let peer_branch_synchronization_done_callback = {
+            let is_bootstrapped = is_bootstrapped.clone();
+            Box::new(move |_msg: PeerBranchSynchronizationDone| {
+                is_bootstrapped.store(true, Ordering::Release);
+            })
+        };
+
+        // peer1
+        let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
+        let peer_queues = Arc::new(DataQueues::new(DataQueuesLimits {
+            max_queued_block_headers_count: 10,
+            max_queued_block_operations_count: 10,
+        }));
+
+        let interval = |db: &BlockStateDb,
+                        state: BranchIntervalState,
+                        start: &BlockHash,
+                        seek: &BlockHash,
+                        end: &BlockHash|
+         -> BranchInterval {
+            BranchInterval {
+                state,
+                start: db.get_block_ref(start.clone()),
+                seek: db.get_block_ref(seek.clone()),
+                end: db.get_block_ref(end.clone()),
+            }
+        };
+
+        // empty state
+        let mut state =
+            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
+        state.block_state_db = BlockStateDb::new(2);
+
+        // init block_state_db:
+        // [BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ, BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR],
+        // [BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR, BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9]
+        // [BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9, BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi]
+        // [BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi, BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc]
+        // [BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc, BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog]
+        // [BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog, BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh]
+        // [BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh, BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7]
+        let block_0 =
+            BlockHash::from_base58_check("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")
+                .expect("Failed to create BlockHash");
+        let block_1 =
+            BlockHash::from_base58_check("BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh")
+                .expect("Failed to create BlockHash");
+        let block_2 =
+            BlockHash::from_base58_check("BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog")
+                .expect("Failed to create BlockHash");
+        let block_3 =
+            BlockHash::from_base58_check("BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc")
+                .expect("Failed to create BlockHash");
+        let block_4 =
+            BlockHash::from_base58_check("BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi")
+                .expect("Failed to create BlockHash");
+        let block_5 =
+            BlockHash::from_base58_check("BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9")
+                .expect("Failed to create BlockHash");
+        let block_6 =
+            BlockHash::from_base58_check("BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR")
+                .expect("Failed to create BlockHash");
+        let block_7 =
+            BlockHash::from_base58_check("BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ")
+                .expect("Failed to create BlockHash");
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_7.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_6.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_6.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_5.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_5.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_4.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_4.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_3.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_3.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_2.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_2.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_1.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_1.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_0.clone()),
+            },
+        );
+
+        // init peer maps:
+        // Interval_0(ScheduledForApply, BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7 - BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7 - BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh),
+        // Interval_1(ScheduledForApply, BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh - BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog - BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc),
+        // Interval_2(ScheduledForApply, BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc - BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi - BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9),
+        // Interval_3(ScheduledForApply, BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9 - BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9 - BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR),
+        // Interval_4(ScheduledForApply, BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR - BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR - BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ)),
+        state.peers.insert(
+            peer_id.peer_ref.uri().clone(),
+            PeerBootstrapState {
+                peer_id: peer_id.clone(),
+                peer_queues,
+                branches: vec![BranchState {
+                    to_level: 7,
+                    missing_operations: Default::default(),
+                    blocks_to_apply: vec![],
+                    intervals: vec![
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_0,
+                            &block_0,
+                            &block_1,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_1,
+                            &block_2,
+                            &block_3,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_3,
+                            &block_4,
+                            &block_5,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_5,
+                            &block_5,
+                            &block_6,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_6,
+                            &block_6,
+                            &block_7,
+                        ),
+                    ],
+                }],
+                empty_bootstrap_state: None,
+                is_bootstrapped: false,
+                is_already_scheduled_ping_for_process_all_bootstrap_pipelines: false,
+            },
+        );
+
+        // block_applied 2 - should remove first interval and move seek to start
+        state.block_applied(&block_2, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_2,
+                    &block_2,
+                    &block_3,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_0));
+        assert!(!state.block_state_db.blocks.contains_key(&block_1));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 3 - should remove just first interval
+        state.block_applied(&block_3, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_2));
+        assert!(!state.block_state_db.blocks.contains_key(&block_3));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 3 (once more) - nothing changes, because 3 is just a begining of interval
+        state.block_applied(&block_3, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 4 - should just move seek to start
+        state.block_applied(&block_4, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_4,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_3));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 5 - just remove the first interval
+        state.block_applied(&block_5, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_4));
+        assert!(!state.block_state_db.blocks.contains_key(&block_5));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 7 - hitting the end of branch, should remove everything
+        state.block_applied(&block_7, &log);
+        assert_peer_branch_intervals(state.peers.get(peer_id.peer_ref.uri()).unwrap(), vec![]);
+        assert!(state.block_state_db.blocks.is_empty());
+        assert!(is_bootstrapped.load(Ordering::Acquire));
+    }
+
     //
     // #[test]
     // fn test_bootstrap_state_split_to_intervals() {

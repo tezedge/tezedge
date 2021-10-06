@@ -255,11 +255,8 @@ pub async fn inject_operation(
         (None, None)
     } else {
         // if not async, means sync and we wait till operations is added to pendings
-        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
-        (
-            Some(Arc::new(result_callback_sender)),
-            Some(result_callback_receiver),
-        )
+        let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
+        (Some(result_callback_sender), Some(result_callback_receiver))
     };
 
     let start_async = Instant::now();
@@ -396,11 +393,8 @@ pub async fn inject_block(
         (None, None)
     } else {
         // if not async, means sync and we wait till operations is added to pendings
-        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
-        (
-            Some(Arc::new(result_callback_sender)),
-            Some(result_callback_receiver),
-        )
+        let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
+        (Some(result_callback_sender), Some(result_callback_receiver))
     };
 
     let start_async = Instant::now();

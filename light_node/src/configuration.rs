@@ -156,6 +156,12 @@ pub struct Environment {
     /// This flag is used, just for to stop node immediatelly after generate identity,
     /// to prevent and initialize actors and create data (except identity)
     pub validate_cfg_identity_and_stop: bool,
+
+    pub initialize_chain_manager_timeout: Duration,
+}
+
+impl Environment {
+    const DEFAULT_INITIALIZE_CHAIN_MANAGER_TIMEOUT_IN_SECONDS: u64 = 10;
 }
 
 impl slog::Value for Environment {
@@ -291,6 +297,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .required(false)
             .help("Panic if the context initialization of application took longer than this number of seconds")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+        )
+        .arg(Arg::with_name("initialize-chain-manager-timeout")
+            .long("initialize-chain-manager-timeout")
+            .takes_value(true)
+            .value_name("NUM")
+            .required(false)
+            .help("Panic if the chain manager first initialization of application took longer than this number of seconds")
             .validator(parse_validator_fn!(u64, "Value must be a valid number"))
         )
         .arg(Arg::with_name("db-cfg-max-threads")
@@ -1335,6 +1349,15 @@ impl Environment {
                 .parse::<bool>()
                 .expect("Provided value cannot be converted to bool"),
             validate_cfg_identity_and_stop: args.is_present("validate-cfg-identity-and-stop"),
+            initialize_chain_manager_timeout: std::time::Duration::from_secs(
+                args.value_of("initialize-chain-manager-timeout")
+                    .unwrap_or(&format!(
+                        "{}",
+                        Environment::DEFAULT_INITIALIZE_CHAIN_MANAGER_TIMEOUT_IN_SECONDS
+                    ))
+                    .parse::<u64>()
+                    .expect("Provided value cannot be converted to number"),
+            ),
         }
     }
 

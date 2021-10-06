@@ -12,7 +12,7 @@
 //! -- ...
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{format_err, Error};
@@ -26,7 +26,7 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Net
 use networking::PeerId;
 use shell_integration::{
     dispatch_oneshot_result, InjectBlock, InjectBlockError, InjectBlockOneshotResultCallback,
-    MempoolOperationReceived, ResetMempool,
+    MempoolOperationReceived, OneshotResultCallback, ResetMempool,
 };
 use storage::mempool_storage::MempoolOperationType;
 use storage::PersistentStorage;
@@ -216,6 +216,12 @@ pub struct ChainManager {
 
     /// Protocol runner pool dedicated to prevalidation
     tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+
+    /// Used just for very first initialization of ChainManager, because ChainManager subscribes to NetworkChannel in [`pre_start`], but this initialization is asynchronous,
+    /// so there is possiblity, that PeerManager could open p2p socket before ChainManager is subscribed to p2p messages, this could lead to dismissed p2p messages or PeerBootstrapped messages,
+    ///
+    /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because riker's do not loose messages when actor is restarting
+    first_initialization_done_result_callback: Arc<Mutex<Option<OneshotResultCallback<()>>>>,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -237,6 +243,7 @@ impl ChainManager {
         num_of_peers_for_bootstrap_threshold: usize,
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
+        first_initialization_done_result_callback: OneshotResultCallback<()>,
     ) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
@@ -253,6 +260,7 @@ impl ChainManager {
                 num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
                 identity.peer_id(),
+                Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
             )),
         )
     }
@@ -1389,6 +1397,7 @@ impl
         usize,
         Arc<MempoolPrevalidatorFactory>,
         CryptoboxPublicKeyHash,
+        Arc<Mutex<Option<OneshotResultCallback<()>>>>,
     )> for ChainManager
 {
     fn create_args(
@@ -1405,6 +1414,7 @@ impl
             num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
             identity_peer_id,
+            first_initialization_done_result_callback,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
@@ -1418,6 +1428,7 @@ impl
             usize,
             Arc<MempoolPrevalidatorFactory>,
             CryptoboxPublicKeyHash,
+            Arc<Mutex<Option<OneshotResultCallback<()>>>>,
         ),
     ) -> Self {
         ChainManager {
@@ -1458,6 +1469,7 @@ impl
             mempool_prevalidator: None,
             mempool_prevalidator_factory,
             tezos_readonly_prevalidation_api,
+            first_initialization_done_result_callback,
         }
     }
 }
@@ -1466,6 +1478,11 @@ impl Actor for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        // subscribe chain_manager to all required channels
+        subscribe_to_network_events(&self.network_channel, ctx.myself());
+        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
+
         let log = ctx.system.log();
 
         // just rehydrate and check mempool if needed refresh for current_head (in case of ChainManager's restart - can happen?)
@@ -1507,12 +1524,6 @@ impl Actor for ChainManager {
             }
         }
 
-        // subscribe chain_manager to all required channels
-        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
-        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_commands(&self.shell_channel, ctx.myself());
-
         ctx.schedule::<Self::Msg, _>(
             ASK_CURRENT_HEAD_INITIAL_DELAY,
             ASK_CURRENT_HEAD_INTERVAL,
@@ -1549,6 +1560,28 @@ impl Actor for ChainManager {
 
         info!(log, "Chain manager started";
                    "main_chain_id" => self.chain_state.get_chain_id().to_base58_check());
+    }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        // lets handle first initialization
+        match self.first_initialization_done_result_callback.lock() {
+            Ok(mut first_initialization_done_result_callback) => {
+                // here we take out the callback to be used just once
+                if let Some(first_initialization_done_result_callback) =
+                    first_initialization_done_result_callback.take()
+                {
+                    if let Err(e) = dispatch_oneshot_result(
+                        Some(first_initialization_done_result_callback),
+                        || (),
+                    ) {
+                        warn!(ctx.system.log(), "Failed to dispatch initialization result for ChainManager"; "reason" => format!("{}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to lock first_initialization_done_result_callback"; "reason" => format!("{}", e));
+            }
+        }
     }
 
     fn sys_recv(

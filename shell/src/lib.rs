@@ -168,23 +168,6 @@ pub mod subscription {
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_shell_commands<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellCommands.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
     pub fn subscribe_to_shell_shutdown<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
     where
         M: Message,

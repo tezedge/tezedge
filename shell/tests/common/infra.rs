@@ -28,7 +28,7 @@ use shell::mempool::{
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::PeerConnectionThreshold;
-use shell_integration::ThreadWatcher;
+use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
@@ -193,11 +193,8 @@ impl NodeInfrastructure {
             p2p_disable_mempool,
         ));
 
-        let (initialize_context_result_callback, initialize_context_result_callback_receiver) = {
-            let (result_callback_sender, result_callback_receiver) =
-                std::sync::mpsc::sync_channel(1);
-            (Arc::new(result_callback_sender), result_callback_receiver)
-        };
+        let (initialize_context_result_callback, initialize_context_result_callback_receiver) =
+            create_oneshot_callback();
         let (block_applier, block_applier_thread_watcher) = ChainFeeder::actor(
             actor_system.as_ref(),
             persistent_storage.clone(),
@@ -228,6 +225,12 @@ impl NodeInfrastructure {
             hydrated_current_head_block.header.fitness().clone(),
         );
 
+        info!(log, "Initializing chain manager...");
+        let (
+            initialize_chain_manager_result_callback,
+            initialize_chain_manager_result_callback_receiver,
+        ) = create_oneshot_callback();
+
         let chain_manager = ChainManager::actor(
             &actor_system,
             block_applier.clone(),
@@ -242,8 +245,20 @@ impl NodeInfrastructure {
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
             mempool_prevalidator_factory.clone(),
             identity.clone(),
+            initialize_chain_manager_result_callback,
         )
         .expect("Failed to create chain manager");
+
+        if let Err(e) =
+            initialize_chain_manager_result_callback_receiver.recv_timeout(Duration::from_secs(10))
+        {
+            panic!("Chain manager was not initialized within 10 timeout, check logs for errors, reason: {}", e)
+        };
+        info!(log, "Chain manager initialized");
+
+        // there is a possibility, even the chain_manager actor has controlled startup, but we cannot controll (with default riker) asynchronous channel subscribtion
+        info!(log, "TODO: waiting 1500ms to give a chance for `subscribe_to_network_events(&self.network_channel, ctx.myself());` to finish");
+        std::thread::sleep(Duration::from_millis(1500));
 
         // and than open p2p and others - if configured
         let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
