@@ -9,6 +9,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use slog::Logger;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -139,22 +140,34 @@ impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabas
 
 pub struct TezedgeDatabase {
     backend: Arc<TezedgeDatabaseBackend>,
+    log: slog::Logger,
 }
 
 impl TezedgeDatabase {
-    pub fn new(backend_option: TezedgeDatabaseBackendOptions) -> Self {
+    pub fn new(backend_option: TezedgeDatabaseBackendOptions, log: Logger) -> Self {
         match backend_option {
             TezedgeDatabaseBackendOptions::SledDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
+                log: log.clone(),
             },
             TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
+                log: log.clone(),
             },
         }
     }
 
     pub fn flush(&self) -> Result<usize, Error> {
         self.backend.flush()
+    }
+}
+
+impl Drop for TezedgeDatabase {
+    fn drop(&mut self) {
+        match self.flush() {
+            Err(e) => slog::error!(&self.log, "Failed to flush database, reason: {:?}", e),
+            Ok(_) => slog::info!(&self.log, "Successfully flush database"),
+        }
     }
 }
 

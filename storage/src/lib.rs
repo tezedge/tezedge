@@ -595,7 +595,7 @@ pub mod initializer {
         expected_main_chain: &MainChain,
         backend_config: TezedgeDatabaseBackendConfiguration,
     ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
-        let db = Arc::new(open_main_db(kv, config, backend_config)?);
+        let db = Arc::new(open_main_db(kv, config, backend_config, log.clone())?);
 
         match check_database_compatibility(db.clone(), db_version, expected_main_chain, log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
@@ -726,6 +726,8 @@ pub mod tests_common {
 
     use anyhow::Error;
 
+    use slog::{Logger, Level, Drain};
+
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
     use crate::mempool_storage::MempoolStorage;
@@ -738,8 +740,13 @@ pub mod tests_common {
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
+        path: TmpStoragePath,
+    }
+
+    struct TmpStoragePath {
         path: PathBuf,
         remove_on_destroy: bool,
+        log: Logger,
     }
 
     impl TmpStorage {
@@ -758,6 +765,10 @@ pub mod tests_common {
             remove_if_exists: bool,
             remove_on_destroy: bool,
         ) -> Result<Self, Error> {
+            // logger
+            let log_level = log_level();
+            let log = create_logger(log_level);
+
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists
             if Path::new(&path).exists() && remove_if_exists {
@@ -825,9 +836,9 @@ pub mod tests_common {
             };
             // db storage - is used for db and sequences
 
-            let maindb = Arc::new(TezedgeDatabase::new(backend));
+            let maindb = Arc::new(TezedgeDatabase::new(backend, log.clone()));
             // commit log storage
-            let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
+            let clog = open_cl(&path, vec![BlockStorage::descriptor()], log.clone())?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
@@ -835,8 +846,11 @@ pub mod tests_common {
                     Arc::new(clog),
                     Arc::new(Sequences::new(maindb, 1000)),
                 ),
-                path,
-                remove_on_destroy,
+                path: TmpStoragePath {
+                    path,
+                    remove_on_destroy,
+                    log: log.clone(),
+                },
             })
         }
 
@@ -845,16 +859,86 @@ pub mod tests_common {
         }
 
         pub fn path(&self) -> &PathBuf {
-            &self.path
+            &self.path.path
         }
     }
 
-    impl Drop for TmpStorage {
+    impl Drop for TmpStoragePath {
         fn drop(&mut self) {
             let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
             if self.remove_on_destroy {
                 let _ = fs::remove_dir_all(&self.path);
+                slog::info!(&self.log, "Temporal storage removed: {:?}", self.path);
             }
+        }
+    }
+
+    pub fn create_logger(level: Level) -> Logger {
+        let drain = slog_async::Async::new(
+            slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+                .build()
+                .fuse(),
+        )
+        .build()
+        .filter_level(level)
+        .fuse();
+
+        Logger::root(drain, slog::o!())
+    }
+
+    pub fn log_level() -> Level {
+        env::var("LOG_LEVEL")
+            .unwrap_or_else(|_| "info".to_string())
+            .parse::<Level>()
+            .unwrap()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::{
+            thread,
+            convert::{TryInto, TryFrom},
+            sync::{Arc, atomic::{Ordering, AtomicBool}},
+            time::Duration,
+        };
+        use super::TmpStorage;
+        use crate::{ChainMetaStorage, Head, ChainId};
+
+        #[test]
+        fn test_storage_stuck() {
+            let tmp_storage = TmpStorage::create("target/tmp_storage").expect("create a storage");
+            let index = ChainMetaStorage::new(tmp_storage.storage());
+            let running = Arc::new(AtomicBool::new(true));
+            let num_threads = 4;
+            let threads = (0..num_threads).map(|i| {
+                let running = running.clone();
+                let index = index.clone();
+                thread::spawn(move || {
+                    let chain_id = |x: u32| ChainId::try_from(x.to_be_bytes().to_vec()).unwrap();
+                    let block = |level| Head::new(
+                        "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into().unwrap(),
+                        level * 2,
+                        vec![],
+                    );
+
+                    let mut level = i as i32;
+                    let mut id = 0x123456 + i;
+                    while running.load(Ordering::SeqCst) {
+                        index.set_current_head(&chain_id(id), block(level)).unwrap();
+                        id += num_threads;
+                        level += num_threads as i32;
+                    }
+                })
+            }).collect::<Vec<_>>();
+
+            thread::sleep(Duration::from_secs(1));
+            running.store(false, Ordering::SeqCst);
+
+            for thread in threads {
+                thread.join().unwrap();
+            }
+
+            drop(tmp_storage);
         }
     }
 }

@@ -646,10 +646,15 @@ mod tests {
     use super::*;
     use crate::database;
     use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+    use crate::tests_common;
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
         use rocksdb::{Cache, Options, DB};
+
+        // logger
+        let log_level = tests_common::log_level();
+        let log = tests_common::create_logger(log_level);
 
         let path = "__block_level_index_test";
         if Path::new(path).exists() {
@@ -666,7 +671,7 @@ mod tests {
             )
             .unwrap();
             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend), log);
             let index = BlockByLevelIndex::new(Arc::new(maindb));
 
             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {

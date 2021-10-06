@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 
+use slog::Logger;
+
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
 const DATA_FILE_NAME: &str = "table.data";
@@ -226,10 +228,11 @@ pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
 pub struct CommitLogs {
     base_path: PathBuf,
     commit_log_map: RwLock<HashMap<String, CommitLogRef>>,
+    log: Logger,
 }
 
 impl CommitLogs {
-    pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
+    pub(crate) fn new<P, I>(path: P, cfs: I, log: Logger) -> Result<Self, CommitLogError>
     where
         P: AsRef<Path>,
         I: IntoIterator<Item = CommitLogDescriptor>,
@@ -237,6 +240,7 @@ impl CommitLogs {
         let myself = Self {
             base_path: path.as_ref().into(),
             commit_log_map: RwLock::new(HashMap::new()),
+            log,
         };
 
         for descriptor in cfs.into_iter() {
@@ -294,9 +298,7 @@ impl CommitLogs {
                     })?;
             match commit_log.flush() {
                 Ok(_) => {}
-                Err(error) => {
-                    println!("Failed to flush commit logs, reason: {:?}", error)
-                }
+                Err(e) => slog::error!(&self.log, "Failed to flush commit logs, reason: {:?}", e),
             }
         }
 
@@ -306,8 +308,9 @@ impl CommitLogs {
 
 impl Drop for CommitLogs {
     fn drop(&mut self) {
-        if let Err(e) = self.flush() {
-            println!("Failed to flush commit logs, reason: {:?}", e);
+        match self.flush() {
+            Err(e) => slog::error!(&self.log, "Failed to flush commit logs, reason: {:?}", e),
+            Ok(_) => slog::info!(&self.log, "Successfully flush commit logs"),
         }
     }
 }

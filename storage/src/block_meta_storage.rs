@@ -799,6 +799,7 @@ mod tests {
     use super::*;
     use crate::database;
     use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+    use crate::tests_common;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -926,6 +927,10 @@ mod tests {
     fn merge_meta_value_test() {
         use rocksdb::{Cache, Options, DB};
 
+        // logger
+        let log_level = tests_common::log_level();
+        let log = tests_common::create_logger(log_level);
+
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
@@ -940,7 +945,7 @@ mod tests {
             )
             .unwrap();
             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend), log);
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
