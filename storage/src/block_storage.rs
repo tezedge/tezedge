@@ -430,7 +430,7 @@ impl BlockPrimaryIndex {
         location: &BlockStorageColumnsLocation,
     ) -> Result<(), StorageError> {
         self.kv
-            .put(block_hash, &location)
+            .put(block_hash, location)
             .map_err(StorageError::from)
     }
 

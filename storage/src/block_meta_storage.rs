@@ -123,7 +123,7 @@ impl BlockMetaStorage {
         };
 
         // create/update record for block predecessor
-        match self.get(&block_header.header.predecessor())?.as_mut() {
+        match self.get(block_header.header.predecessor())?.as_mut() {
             Some(meta) => {
                 let block_hash = &block_header.hash;
 
@@ -133,7 +133,7 @@ impl BlockMetaStorage {
                     false => {
                         // here we have some previous successors
                         // if does not contains block_hash, means that we detected reorg or new branch
-                        if !meta.successors.contains(&block_hash) {
+                        if !meta.successors.contains(block_hash) {
                             warn!(
                                 log, "Extending successors - means detected reorg or new branch";
                                 "block_hash_predecessor" => block_header.header.predecessor().to_base58_check(),
@@ -155,7 +155,7 @@ impl BlockMetaStorage {
 
                 if need_change {
                     meta.successors.push(block_hash.clone());
-                    self.put(block_header.header.predecessor(), &meta)?;
+                    self.put(block_header.header.predecessor(), meta)?;
                 }
             }
             None => {

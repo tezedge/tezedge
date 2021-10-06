@@ -61,13 +61,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
     fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         let tree = self.get_tree(column)?;
         tree.get(key)
-            .map(|value| {
-                if let Some(value) = value {
-                    Some(value.to_vec())
-                } else {
-                    None
-                }
-            })
+            .map(|value| value.map(|v| v.to_vec()))
             .map_err(Error::from)
     }
 

@@ -62,7 +62,7 @@ impl OperationsMetaStorage {
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         let block_hash = message.operations_for_block().hash();
 
-        match self.get(&block_hash)? {
+        match self.get(block_hash)? {
             Some(mut meta) => {
                 let validation_pass = message.operations_for_block().validation_pass() as u8;
 
@@ -73,7 +73,7 @@ impl OperationsMetaStorage {
                     .iter()
                     .all(|v| *v == (true as u8));
 
-                self.put(&block_hash, &meta)
+                self.put(block_hash, &meta)
                     .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
             None => Err(StorageError::MissingKey {
@@ -294,8 +294,7 @@ impl Decoder for Meta {
 impl Encoder for Meta {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         if (self.validation_passes as usize) == self.is_validation_pass_present.len() {
-            let mut value = vec![];
-            value.push(self.validation_passes);
+            let mut value = vec![self.validation_passes];
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
             debug_assert_eq!(
