@@ -67,9 +67,6 @@ pub enum ShellChannelTopic {
     /// Dedicated channel for new current head
     ShellNewCurrentHead,
 
-    /// Control event
-    ShellCommands,
-
     /// Shutdown event
     ShellShutdown,
 }
@@ -79,7 +76,6 @@ impl From<ShellChannelTopic> for Topic {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
             ShellChannelTopic::ShellNewCurrentHead => Topic::from("shell.new_current_head"),
-            ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
             ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }
     }

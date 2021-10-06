@@ -1478,6 +1478,11 @@ impl Actor for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        // subscribe chain_manager to all required channels
+        subscribe_to_network_events(&self.network_channel, ctx.myself());
+        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
+
         let log = ctx.system.log();
 
         // just rehydrate and check mempool if needed refresh for current_head (in case of ChainManager's restart - can happen?)
@@ -1518,12 +1523,6 @@ impl Actor for ChainManager {
                 }
             }
         }
-
-        // subscribe chain_manager to all required channels
-        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
-        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_commands(&self.shell_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
             ASK_CURRENT_HEAD_INITIAL_DELAY,
