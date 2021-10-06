@@ -23,7 +23,7 @@ use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
-use shell_integration::ThreadWatcher;
+use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -181,7 +181,7 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    info!(log, "Initializing protocol runners... (4/7)");
+    info!(log, "Initializing protocol runners... (4/8)");
 
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
@@ -226,7 +226,7 @@ fn block_on_actors(
 
     info!(log, "Protocol runners initialized");
 
-    info!(log, "Initializing actors... (5/7)";
+    info!(log, "Initializing actors... (5/8)";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
@@ -265,11 +265,9 @@ fn block_on_actors(
     ));
 
     // start chain_feeder with controlled startup and wait for ok initialized context
-    info!(log, "Initializing context... (6/7)");
-    let (initialize_context_result_callback, initialize_context_result_callback_receiver) = {
-        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
-        (Arc::new(result_callback_sender), result_callback_receiver)
-    };
+    info!(log, "Initializing context... (6/8)");
+    let (initialize_context_result_callback, initialize_context_result_callback_receiver) =
+        create_oneshot_callback();
 
     let (block_applier, mut block_applier_thread_watcher) = ChainFeeder::actor(
         actor_system.as_ref(),
@@ -297,10 +295,10 @@ fn block_on_actors(
             panic!("Context was not initialized within {:?} timeout, e.g. try increase [--initialize-context-timeout], reason: {}", env.storage.initialize_context_timeout, e)
         }
     };
-    info!(log, "Context initialized (6/7)");
+    info!(log, "Context initialized (6/8)");
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
-    info!(log, "Hydrating current head... (7/7)");
+    info!(log, "Hydrating current head... (7/8)");
     let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
         hydrate_current_head(&init_storage_data, &persistent_storage)
             .expect("Failed to load current_head from database");
@@ -311,13 +309,19 @@ fn block_on_actors(
     );
     {
         let (head, level, fitness) = hydrated_current_head.to_debug_info();
-        info!(log, "Current head hydrated (7/7)";
+        info!(log, "Current head hydrated (7/8)";
                    "block_hash" => head,
                    "level" => level,
                    "fitness" => fitness);
     }
 
-    // start chain_manager with controlled startup and wait for current_head initialization (at least genesis should be here)
+    // start chain_manager with controlled startup and wait for initialization
+    info!(log, "Initializing chain manager... (8/8)");
+    let (
+        initialize_chain_manager_result_callback,
+        initialize_chain_manager_result_callback_receiver,
+    ) = create_oneshot_callback();
+
     let chain_manager = ChainManager::actor(
         actor_system.as_ref(),
         block_applier.clone(),
@@ -334,8 +338,16 @@ fn block_on_actors(
             .num_of_peers_for_bootstrap_threshold(),
         mempool_prevalidator_factory.clone(),
         identity.clone(),
+        initialize_chain_manager_result_callback,
     )
     .expect("Failed to create chain manager");
+
+    if let Err(e) = initialize_chain_manager_result_callback_receiver
+        .recv_timeout(env.initialize_chain_manager_timeout)
+    {
+        panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
+    };
+    info!(log, "Chain manager initialized (8/8)");
 
     let shell_connector =
         ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory.clone());
@@ -543,10 +555,7 @@ fn schedule_replay_blocks(
 ) {
     let chain_manager = Arc::new(chain_manager);
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
-    let (result_callback_sender, result_callback_receiver) = {
-        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-        (Arc::new(sender), receiver)
-    };
+    let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
     let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
     let nblocks = blocks.len();
     let now = std::time::Instant::now();
@@ -738,7 +747,7 @@ fn main() {
     check_deprecated_network(&env, &log);
 
     // Validate zcash-params
-    info!(log, "Checking zcash-params for sapling... (1/7)");
+    info!(log, "Checking zcash-params for sapling... (1/8)");
     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
         let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
         error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
@@ -749,7 +758,7 @@ fn main() {
     }
 
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    info!(log, "Loading identity... (2/7)");
+    info!(log, "Loading identity... (2/8)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
             info!(log, "Identity loaded from file";
@@ -775,7 +784,7 @@ fn main() {
     };
 
     // create/initialize databases
-    info!(log, "Loading databases... (3/7)");
+    info!(log, "Loading databases... (3/8)");
 
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
