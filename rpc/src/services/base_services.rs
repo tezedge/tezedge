@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::convert::TryInto;
+use std::num::TryFromIntError;
 use std::sync::Arc;
 
 use crypto::base58::FromBase58CheckError;
@@ -60,6 +61,12 @@ pub(crate) fn get_block_hashes(
 ) -> Result<Vec<BlockHash>, RpcServiceError> {
     Ok(match every_nth_level {
         Some(every_nth_level) => {
+            let every_nth_level: u32 =
+                every_nth_level.try_into().map_err(|e: TryFromIntError| {
+                    RpcServiceError::UnexpectedError {
+                        reason: e.to_string(),
+                    }
+                })?;
             BlockStorage::new(persistent_storage).get_every_nth(every_nth_level, &block_hash, limit)
         }
         None => BlockStorage::new(persistent_storage).get_multiple_without_json(&block_hash, limit),

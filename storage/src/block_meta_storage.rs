@@ -18,7 +18,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
-use crate::predecessor_storage::{PredecessorKey, PredecessorSearch, PredecessorStorage};
+use crate::predecessor_storage::{PredecessorSearch, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
@@ -63,8 +63,6 @@ pub struct BlockMetaStorage {
 }
 
 impl BlockMetaStorage {
-    const STORED_PREDECESSORS_SIZE: u32 = 12;
-
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
             kv: persistent_storage.main_db(),
@@ -176,13 +174,10 @@ impl BlockMetaStorage {
     pub fn store_predecessors(
         &self,
         block_hash: &BlockHash,
-        block_meta: &Meta,
+        direct_predecessor: &BlockHash,
     ) -> Result<(), StorageError> {
-        self.predecessors_index.store_predecessors(
-            block_hash,
-            block_meta,
-            Self::STORED_PREDECESSORS_SIZE,
-        )?;
+        self.predecessors_index
+            .store_predecessors(block_hash, direct_predecessor)?;
         Ok(())
     }
 
@@ -990,7 +985,6 @@ mod tests {
                 vec![44; 4].try_into().unwrap(),
             );
             storage.put(block_hash, &v)?;
-            storage.store_predecessors(block_hash, &v)?;
             predecessor = block_hash.clone();
         }
 

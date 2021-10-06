@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
-use crate::block_meta_storage::Meta;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
@@ -46,36 +45,34 @@ impl PredecessorStorage {
         }
     }
 
+    const STORED_PREDECESSORS_SIZE: u32 = 12;
+
     pub fn store_predecessors(
         &self,
         block_hash: &BlockHash,
-        block_meta: &Meta,
-        stored_predecessors_size: u32,
+        direct_predecessor: &BlockHash,
     ) -> Result<(), StorageError> {
-        if let Some(direct_predecessor) = block_meta.predecessor() {
-            // genesis
-            if direct_predecessor == block_hash {
-                return Ok(());
-            } else {
-                // put the direct predecessor to slot 0
-                self.put(
-                    &PredecessorKey::new(block_hash.clone(), 0),
-                    direct_predecessor,
-                )?;
+        // genesis
+        if direct_predecessor == block_hash {
+            return Ok(());
+        } else {
+            // put the direct predecessor to slot 0
+            self.put(
+                &PredecessorKey::new(block_hash.clone(), 0),
+                direct_predecessor,
+            )?;
 
-                // fill other slots
-                let mut predecessor = direct_predecessor.clone();
-                for predecessor_exponent_slot in 1..stored_predecessors_size {
-                    let predecessor_key =
-                        PredecessorKey::new(predecessor, predecessor_exponent_slot - 1);
-                    if let Some(p) = self.get(&predecessor_key)? {
-                        let key =
-                            PredecessorKey::new(block_hash.clone(), predecessor_exponent_slot);
-                        self.put(&key, &p)?;
-                        predecessor = p;
-                    } else {
-                        return Ok(());
-                    }
+            // fill other slots
+            let mut predecessor = direct_predecessor.clone();
+            for predecessor_exponent_slot in 1..Self::STORED_PREDECESSORS_SIZE {
+                let predecessor_key =
+                    PredecessorKey::new(predecessor, predecessor_exponent_slot - 1);
+                if let Some(p) = self.get(&predecessor_key)? {
+                    let key = PredecessorKey::new(block_hash.clone(), predecessor_exponent_slot);
+                    self.put(&key, &p)?;
+                    predecessor = p;
+                } else {
+                    return Ok(());
                 }
             }
         }
@@ -84,11 +81,7 @@ impl PredecessorStorage {
     }
 
     #[inline]
-    pub fn put(
-        &self,
-        key: &PredecessorKey,
-        predeccessor_hash: &BlockHash,
-    ) -> Result<(), StorageError> {
+    fn put(&self, key: &PredecessorKey, predeccessor_hash: &BlockHash) -> Result<(), StorageError> {
         self.kv
             .put(key, predeccessor_hash)
             .map_err(StorageError::from)

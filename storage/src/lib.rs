@@ -154,6 +154,8 @@ pub enum StorageError {
     SerdeJsonError { error: serde_json::Error },
     #[error("Calculated distance between head and target level cannot be negative")]
     NegativeDistanceError,
+    #[error("Requested predecessor at distance not found")]
+    PredecessorNotFound,
 }
 
 impl From<DBError> for StorageError {
@@ -328,7 +330,9 @@ pub fn store_applied_block_result(
     // TODO: check context checksum or context_hash
 
     // populate predecessor storage
-    block_meta_storage.store_predecessors(block_hash, block_metadata)?;
+    if let Some(predecessor) = block_metadata.predecessor() {
+        block_storage.store_predecessors(block_hash, predecessor)?;
+    }
 
     // populate cycle data if is present in the response
     for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {

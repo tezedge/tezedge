@@ -15,8 +15,7 @@ use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema};
 use crate::predecessor_storage::PredecessorSearch;
 use crate::{
-    BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, PredecessorStorage,
-    StorageError,
+    BlockHeaderWithHash, IteratorMode, PersistentStorage, PredecessorStorage, StorageError,
 };
 
 /// Store block header data in a key-value store and into commit log.
@@ -94,14 +93,14 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_every_nth_with_json_data(
         &self,
-        every_nth: BlockLevel,
+        every_nth: u32,
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
     fn get_every_nth(
         &self,
-        every_nth: BlockLevel,
+        every_nth: u32,
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
@@ -189,6 +188,16 @@ impl BlockStorage {
         }
     }
 
+    pub fn store_predecessors(
+        &self,
+        block_hash: &BlockHash,
+        direct_predecessor: &BlockHash,
+    ) -> Result<(), StorageError> {
+        self.predecessor_storage
+            .store_predecessors(block_hash, direct_predecessor)?;
+        Ok(())
+    }
+
     #[inline]
     fn get_block_header_by_location(
         &self,
@@ -221,31 +230,6 @@ impl BlockStorage {
             None => Ok(None),
         }
     }
-
-    #[inline]
-    fn get_blocks_with_json_data_by_location<I>(
-        &self,
-        locations: I,
-    ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>
-    where
-        I: IntoIterator<Item = BlockStorageColumnsLocation>,
-    {
-        locations
-            .into_iter()
-            .filter_map(|location| {
-                self.get_block_json_data_by_location(&location)
-                    .and_then(|json_data_opt| {
-                        json_data_opt
-                            .map(|json_data| {
-                                self.get_block_header_by_location(&location)
-                                    .map(|block_header| (block_header, json_data))
-                            })
-                            .transpose()
-                    })
-                    .transpose()
-            })
-            .collect()
-    }
 }
 
 impl BlockStorageReader for BlockStorage {
@@ -275,10 +259,7 @@ impl BlockStorageReader for BlockStorage {
         {
             self.get(&target_hash)
         } else {
-            // TODO: I think this should be a custom error
-            Err(StorageError::MissingKey {
-                when: "get_by_level".into(),
-            })
+            Err(StorageError::PredecessorNotFound)
         }
     }
 
@@ -321,63 +302,81 @@ impl BlockStorageReader for BlockStorage {
         block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        // TODO: use predecessor storage
+        let mut res: Vec<(BlockHeaderWithHash, BlockJsonData)> = vec![];
+        let mut hash = block_hash.clone();
+        for _ in 0..limit {
+            if let Some((block, json_data)) = self.get_with_json_data(&hash)? {
+                res.push((block, json_data))
+            } else {
+                return Err(StorageError::MissingKey {
+                    when: "get_multiple_with_json_data".into(),
+                });
+            }
+            hash = if let Some(hash) = self.find_block_at_distance(hash, 1)? {
+                hash
+            } else {
+                // if there are no more predecessors, we reached genesis
+                break;
+            }
+        }
 
-        // let locations = self.get(block_hash)?.map_or_else(
-        //     || Ok(Vec::new()),
-        //     |block| self.by_level_index.get_blocks(block.header.level(), limit),
-        // )?;
-        // self.get_blocks_with_json_data_by_location(locations)
-
-        Ok(vec![])
+        Ok(res)
     }
 
     #[inline]
     fn get_every_nth_with_json_data(
         &self,
-        every_nth: BlockLevel,
+        every_nth: u32,
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        // TODO: use predecessor storage
+        let mut res: Vec<(BlockHeaderWithHash, BlockJsonData)> = vec![];
+        let mut hash = from_block_hash.clone();
+        for _ in 0..limit {
+            if let Some((block, json_data)) = self.get_with_json_data(&hash)? {
+                res.push((block, json_data))
+            } else {
+                return Err(StorageError::MissingKey {
+                    when: "get_multiple_with_json_data".into(),
+                });
+            }
+            hash = if let Some(hash) = self.find_block_at_distance(hash, every_nth)? {
+                hash
+            } else {
+                // if there are no more predecessors, we reached genesis
+                break;
+            }
+        }
 
-        // let locations = self.get(from_block_hash)?.map_or_else(
-        //     || Ok(Vec::new()),
-        //     |block| {
-        //         self.by_level_index
-        //             .get_blocks_by_nth_level(every_nth, block.header.level(), limit)
-        //     },
-        // )?;
-        // self.get_blocks_with_json_data_by_location(locations)
-
-        Ok(vec![])
+        Ok(res)
     }
 
     #[inline]
     fn get_every_nth(
         &self,
-        every_nth: BlockLevel,
+        every_nth: u32,
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
-        // TODO: use predecessor storage
+        let mut res: Vec<BlockHeaderWithHash> = vec![];
+        let mut hash = from_block_hash.clone();
+        for _ in 0..limit {
+            if let Some(block) = self.get(&hash)? {
+                res.push(block)
+            } else {
+                return Err(StorageError::MissingKey {
+                    when: "get_multiple_with_json_data".into(),
+                });
+            }
+            hash = if let Some(hash) = self.find_block_at_distance(hash, every_nth)? {
+                hash
+            } else {
+                // if there are no more predecessors, we reached genesis
+                break;
+            }
+        }
 
-        // self.get(from_block_hash)?
-        //     .map_or_else(
-        //         || Ok(Vec::new()),
-        //         |block| {
-        //             self.by_level_index.get_blocks_by_nth_level(
-        //                 every_nth,
-        //                 block.header.level(),
-        //                 limit,
-        //             )
-        //         },
-        //     )?
-        //     .into_iter()
-        //     .map(|location| self.get_block_header_by_location(&location))
-        //     .collect()
-
-        Ok(vec![])
+        Ok(res)
     }
 
     #[inline]
@@ -386,24 +385,25 @@ impl BlockStorageReader for BlockStorage {
         block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
-        // TODO: use predecessor storage
+        let mut res: Vec<BlockHeaderWithHash> = vec![];
+        let mut hash = block_hash.clone();
+        for _ in 0..limit {
+            if let Some(block) = self.get(&hash)? {
+                res.push(block)
+            } else {
+                return Err(StorageError::MissingKey {
+                    when: "get_multiple_with_json_data".into(),
+                });
+            }
+            hash = if let Some(hash) = self.find_block_at_distance(hash, 1)? {
+                hash
+            } else {
+                // if there are no more predecessors, we reached genesis
+                break;
+            }
+        }
 
-        // self.get(block_hash)?
-        //     .map_or_else(
-        //         || Ok(Vec::new()),
-        //         |block| {
-        //             self.by_level_index.get_blocks_directed(
-        //                 block.header.level(),
-        //                 limit,
-        //                 Direction::Forward,
-        //             )
-        //         },
-        //     )?
-        //     .into_iter()
-        //     .map(|location| self.get_block_header_by_location(&location))
-        //     .collect()
-
-        Ok(vec![])
+        Ok(res)
     }
 
     #[inline]
@@ -580,67 +580,427 @@ impl KVStoreKeyValueSchema for BlockByContextHashIndex {
     }
 }
 
-// TODO: implement test.
-// Note: this test becomes redundant once the level index is removed
-// #[cfg(test)]
-// mod tests {
-//     use std::path::Path;
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
 
-//     use anyhow::Error;
+    use anyhow::Error;
+    use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
-//     use crate::persistent::database::open_kv;
-//     use crate::persistent::DbConfiguration;
+    use crate::persistent::database::open_kv;
+    use crate::persistent::open_cl;
+    use crate::persistent::DbConfiguration;
+    use crate::BlockStorageReader;
+    use crate::tests_common;
 
-//     use super::*;
-//     use crate::database;
-//     use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+    use super::*;
+    use crate::database;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+    use crate::Sequences;
+    use tezos_messages::p2p::binary_message::BinaryRead;
 
-//     #[test]
-//     fn block_storage_level_index_order() -> Result<(), Error> {
-//         use rocksdb::{Cache, Options, DB};
+    fn mocked_block_storage(path: &str) -> Result<(Vec<BlockHeaderWithHash>, BlockStorage), Error> {
+        use rocksdb::Cache;
 
-//         let path = "__block_level_index_test";
-//         if Path::new(path).exists() {
-//             std::fs::remove_dir_all(path).unwrap();
-//         }
+        let headers_str = vec![
+            ("BMPpsdYyqRPUx4bPM187UguF29NUAxNhh5tXXrSNMbb6UKZf2iM", "00000001008fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424418da9c100000000000000060176f52f440c8e4ab99a2a4ef76474c4bcf4ee09238150ed77fd73fb3be1fe4af30000000c0000000800000000000000016ae39b9a0de0eff1d52ae16a9282747edf61f89e4bc72b943221ca94fd3b9b48000000024131"),
+            ("BLq4AAun3eFcHWA8BJZgnUy6DEkSRZde69MziAh2ct4wCE1weCY", "0000000200dd7c2bbc9594cd39fe49f29637f6bff5ca9d50f11dd341508bfacf714b7e28e300000000000000100107eb8155a0827d5ef666e43b15acdea8adb58e3817aa6ca7ac4a9c55eb41ebd20000000c000000080000000000000002514aa7bfad26b4289f9225f722803ad5d62294c931e8ccd8d237ea7e87afb236000000024132"),
+            ("BLMw95k8rwLf2aZmGiRh9jFMuKGgQXipKUMHk4WLE8YM4Z2WJ86", "000000030093131926e0640848ba856c0dd8efd864f7d9a0b5c263a5e03f869f5dc598943b000000000000001801fc2bb2c1c5997df6928a6dc2099f44125464dd8dc38fcf24b67db2a79fc82c0f0000000c000000080000000000000003f1acd04bbdb7838be6b8f74d74963cbb6b89633114e986ae1674eb80f0a6420c000000024133"),
+            ("BME4s6XySdprEvUwyG9A5YvcgsDnKzBKKSVQ6UoZ6mk3rBR7jNt", "0000000400557e36cf1cae93bda2831222102b7c4ce19a131c3d3d01aec176a7b00d1ee98a000000000000001a01db7daffe2c9e790d589a6b3ce96dc49efbb10fbb50f1e636707f751a5ae1f30b0000000c000000080000000000000004109c7826a2c620d2c5cac965b853a9bc98d6385ace6601a3a1515d518143f9af000000024134"),
+            ("BKjP9MgvzqEDCdXaVvy2Yt5C52UtpUa9puUQ6konopdi9UKFFWp", "0000000500c7539814cb12b4fc92c3768ad7dc7322e6abeb3b9b563b556ecb69d341b260040000000000000022019cc9c998792c4ef6eb7c797cc8aa6c3dddd360d611746a3e827fc1dbecb5fe850000000c00000008000000000000000560bb24813522ffed0aabe1b776e9a2317639e4c57cf51ceb4145d8d75976447f000000024135"),
+            ("BKm9XUEw7yWXEF8ERb9QQXncRe44smMJy8hgkpE57Pv2U6mLNtn", "0000000600027f8016df677b17a3b62d9f4e34ce9544289554a546ce5d1db87cbe2a4f927b00000000000000230184569a705486fd7bb7231ae792a28a499d94be7240d69671a5bc72ad1d1b65b60000000c00000008000000000000000669497732182ffb3e538a9e25c1443b7d1a989daae42e435edcd3ff3ef2ef7d12000000024136"),
+        ];
 
-//         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let blocks_in_mem: Vec<BlockHeaderWithHash> = headers_str
+            .iter()
+            .map(|(_, header_str)| {
+                let block_header: BlockHeader = BlockHeader::from_bytes(
+                    hex::decode(header_str).expect("Failed to decode hex header"),
+                )
+                .expect("Failed to deserialze header");
 
-//         {
-//             let db = open_kv(
-//                 path,
-//                 vec![BlockByLevelIndex::descriptor(&cache)],
-//                 &DbConfiguration::default(),
-//             )
-//             .unwrap();
-//             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-//             let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
-//             let index = BlockByLevelIndex::new(Arc::new(maindb));
+                BlockHeaderWithHash::new(block_header)
+                    .expect("Failed to create BlockHeaderWithHash")
+            })
+            .collect();
 
-//             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
-//                 index.put(
-//                     *i,
-//                     &BlockStorageColumnsLocation {
-//                         block_header: Location::new(*i as u64),
-//                         block_json_data: None,
-//                     },
-//                 )?;
-//             }
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
 
-//             let res = index
-//                 .get_blocks(649, 2)?
-//                 .iter()
-//                 .map(|location| location.block_header.offset())
-//                 .collect::<Vec<_>>();
-//             assert_eq!(vec![649, 393], res);
-//             let res = index
-//                 .get_blocks(65673, 100)?
-//                 .iter()
-//                 .map(|location| location.block_header.offset())
-//                 .collect::<Vec<_>>();
-//             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
-//         }
-//         assert!(DB::destroy(&Options::default(), path).is_ok());
-//         Ok(())
-//     }
-// }
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+
+        // logger
+        let log_level = tests_common::log_level();
+        let log = tests_common::create_logger(log_level);
+
+        let db = open_kv(
+            path,
+            vec![
+                BlockPrimaryIndex::descriptor(&cache),
+                PredecessorStorage::descriptor(&cache),
+            ],
+            &DbConfiguration::default(),
+        )
+        .unwrap();
+        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
+        let maindb = Arc::new(TezedgeDatabase::new(
+            TezedgeDatabaseBackendOptions::RocksDB(backend),
+            log.clone()
+        ));
+        let commit_logs = Arc::new(
+            open_cl(&path, vec![BlockStorage::descriptor()], log)
+                .expect("Failed to open plain block_header storage"),
+        );
+        let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
+        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
+
+        let block_storage = BlockStorage::new(&persistent_storage);
+
+        // initialize storage with a few blocks
+        let mut predecessor_hash: BlockHash = blocks_in_mem[0].hash.clone();
+        for block in blocks_in_mem.iter() {
+            block_storage
+                .put_block_header(block)
+                .expect("Failed to store block");
+            block_storage
+                .put_block_json_data(
+                    &block.hash,
+                    BlockJsonData::new("".to_string(), vec![], vec![]),
+                )
+                .expect("Failed to store block json data");
+            block_storage
+                .store_predecessors(&block.hash, &predecessor_hash)
+                .expect("Failed to store predecessors");
+            predecessor_hash = block.hash.clone();
+        }
+
+        Ok((blocks_in_mem, block_storage))
+    }
+
+    fn destroy_db(path: &str) {
+        use rocksdb::{Options, DB};
+        use std::fs;
+        assert!(DB::destroy(&Options::default(), path).is_ok());
+        fs::remove_dir_all(path).expect("Failed to remove mocked db dirs");
+    }
+
+    #[test]
+    fn block_storage_reader_get_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get";
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            // test geting by block hash
+            println!("\nTesting get");
+            for block in blocks_in_mem.iter() {
+                println!("Testing for block hash: {}", block.hash.to_base58_check());
+                assert_eq!(
+                    block.hash,
+                    block_storage
+                        .get(&block.hash)
+                        .expect("Failed to get block")
+                        .unwrap()
+                        .hash
+                );
+            }
+        }
+        destroy_db(path);
+        Ok(())
+    }
+
+    #[test]
+    fn block_storage_reader_get_by_level_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get_by_level";
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            println!("\nTesting get_by_level");
+            // test getting by level
+            for i in 1..=6 {
+                println!("Testing for level : {}", i);
+                assert_eq!(
+                    // Note: level 1 is stored as on index 0
+                    blocks_in_mem[i - 1],
+                    block_storage
+                        .get_by_level(blocks_in_mem.last().unwrap(), i as i32)
+                        .expect("Failed to get block")
+                        .unwrap()
+                );
+            }
+        }
+        destroy_db(path);
+        Ok(())
+    }
+
+    #[test]
+    fn block_storage_reader_get_multiple_with_json_data_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get_multiple_with_json_data";
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_with_json_data with limit 2 from head");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(), blocks_in_mem[4].hash.clone()],
+                block_storage
+                    .get_multiple_with_json_data(&blocks_in_mem.last().unwrap().hash, 2)
+                    .expect("Faled to get_multiple_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_with_json_data with limit 6 from head (all blocks should be recieved)");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_multiple_with_json_data(&blocks_in_mem.last().unwrap().hash, 6)
+                    .expect("Faled to get_multiple_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_with_json_data with limit greater than the count of the predecessors from head (all blocks should be recieved)");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_multiple_with_json_data(&blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_multiple_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+        }
+
+        destroy_db(path);
+        Ok(())
+    }
+
+    #[test]
+    fn block_storage_reader_get_every_nth_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get_multiple_with_json_data";
+
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            // test every_nth
+            println!("\nTesting get_every_nth: 2 limit: 10");
+            assert_eq!(
+                vec![
+                    blocks_in_mem[5].hash.clone(),
+                    blocks_in_mem[3].hash.clone(),
+                    blocks_in_mem[1].hash.clone()
+                ],
+                block_storage
+                    .get_every_nth(2, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth: 1 limit: 10");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_every_nth(1, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth: 3 limit: 10");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(), blocks_in_mem[2].hash.clone(),],
+                block_storage
+                    .get_every_nth(3, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth: 2 limit: 1");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(),],
+                block_storage
+                    .get_every_nth(2, &blocks_in_mem.last().unwrap().hash, 1)
+                    .expect("Faled to get_every_nth")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth where the step is too big
+            println!("\nTesting get_every_nth with step too big");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(),],
+                block_storage
+                    .get_every_nth(10, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+        }
+
+        destroy_db(path);
+        Ok(())
+    }
+
+    #[test]
+    fn block_storage_reader_get_multiple_without_json_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get_multiple_without_json_test";
+
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_without_json with limit 2 from head");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(), blocks_in_mem[4].hash.clone()],
+                block_storage
+                    .get_multiple_without_json(&blocks_in_mem.last().unwrap().hash, 2)
+                    .expect("Faled to get_multiple_without_json")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_without_json with limit 6 from head (all blocks should be recieved)");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_multiple_without_json(&blocks_in_mem.last().unwrap().hash, 6)
+                    .expect("Faled to get_multiple_without_json")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test get multiple with json data
+            println!("\nTesting get_multiple_without_json with limit greater than the count of the predecessors from head (all blocks should be recieved)");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_multiple_without_json(&blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_multiple_without_json")
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+        }
+
+        destroy_db(path);
+        Ok(())
+    }
+
+    #[test]
+    fn block_storage_reader_get_every_nth_with_json_data_test() -> Result<(), Error> {
+        let path = "__block_storage_reader_get_every_nth_with_json_data_test";
+
+        {
+            let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
+
+            // test every_nth
+            println!("\nTesting get_every_nth_with_json_data: 2 limit: 10");
+            assert_eq!(
+                vec![
+                    blocks_in_mem[5].hash.clone(),
+                    blocks_in_mem[3].hash.clone(),
+                    blocks_in_mem[1].hash.clone()
+                ],
+                block_storage
+                    .get_every_nth_with_json_data(2, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth_with_json_data: 1 limit: 10");
+            assert_eq!(
+                blocks_in_mem
+                    .iter()
+                    .rev()
+                    .map(|v| v.hash.clone())
+                    .collect::<Vec<BlockHash>>(),
+                block_storage
+                    .get_every_nth_with_json_data(1, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth_with_json_data: 3 limit: 10");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(), blocks_in_mem[2].hash.clone(),],
+                block_storage
+                    .get_every_nth_with_json_data(3, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth
+            println!("\nTesting get_every_nth_with_json_data: 2 limit: 1");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(),],
+                block_storage
+                    .get_every_nth_with_json_data(2, &blocks_in_mem.last().unwrap().hash, 1)
+                    .expect("Faled to get_every_nth_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+
+            // test every_nth where the step is too big
+            println!("\nTesting get_every_nth_with_json_data with step too big");
+            assert_eq!(
+                vec![blocks_in_mem[5].hash.clone(),],
+                block_storage
+                    .get_every_nth_with_json_data(10, &blocks_in_mem.last().unwrap().hash, 10)
+                    .expect("Faled to get_every_nth_with_json_data")
+                    .iter()
+                    .map(|(b, _)| b.hash.clone())
+                    .collect::<Vec<BlockHash>>()
+            );
+        }
+
+        destroy_db(path);
+        Ok(())
+    }
+}
