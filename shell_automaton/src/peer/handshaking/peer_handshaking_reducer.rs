@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use redux_rs::ActionWithId;
 
@@ -9,6 +11,7 @@ use crate::peer::connection::incoming::PeerConnectionIncomingState;
 use crate::peer::connection::outgoing::PeerConnectionOutgoingState;
 use crate::peer::connection::PeerConnectionState;
 use crate::peer::message::read::PeerMessageReadState;
+use crate::peer::message::write::PeerMessageWriteState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
 use crate::{Action, State};
 
@@ -417,6 +420,8 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                                         .unwrap();
                                 let public_key_hash = public_key.public_key_hash().unwrap();
 
+                                let (read_crypto, write_crypto) = crypto.clone().split();
+
                                 peer.status = PeerStatus::Handshaked(PeerHandshaked {
                                     token: token.clone(),
                                     port: remote_connection_message.port,
@@ -430,7 +435,13 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                                     private_node: remote_metadata_message.private_node(),
                                     message_read: PeerMessageReadState::Pending {
                                         binary_message_read: PeerBinaryMessageReadState::Init {
-                                            crypto: crypto.clone().split_for_reading().0,
+                                            crypto: read_crypto,
+                                        },
+                                    },
+                                    message_write: PeerMessageWriteState {
+                                        queue: VecDeque::new(),
+                                        current: PeerBinaryMessageWriteState::Init {
+                                            crypto: write_crypto,
                                         },
                                     },
                                 });

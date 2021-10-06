@@ -16,7 +16,7 @@ use super::chunk::write::{
 use super::disconnection::PeerDisconnectedAction;
 use super::handshaking::PeerHandshakingStatus;
 use super::message::read::PeerMessageReadState;
-use super::{PeerStatus, PeerTryReadAction, PeerTryWriteAction};
+use super::{PeerHandshaked, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
 
 pub fn peer_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
 where
@@ -87,6 +87,12 @@ where
                     },
                     _ => return,
                 },
+                PeerStatus::Handshaked(PeerHandshaked { message_write, .. }) => {
+                    match &message_write.current {
+                        PeerBinaryMessageWriteState::Pending { chunk, .. } => &chunk.state,
+                        _ => return,
+                    }
+                }
                 _ => return,
             };
 

@@ -10,6 +10,7 @@ use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnecting;
 use super::handshaking::PeerHandshaking;
 use super::message::read::PeerMessageReadState;
+use super::message::write::PeerMessageWriteState;
 use super::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -24,6 +25,7 @@ pub struct PeerHandshaked {
     pub private_node: bool,
 
     pub message_read: PeerMessageReadState,
+    pub message_write: PeerMessageWriteState,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]

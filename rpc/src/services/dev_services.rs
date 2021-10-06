@@ -620,6 +620,10 @@ pub enum GenAction {
     PeerMessageReadInit,
     PeerMessageReadSuccess,
 
+    PeerMessageWriteNext,
+    PeerMessageWriteInit,
+    PeerMessageWriteSuccess,
+
     PeerHandshakingInit,
     PeerHandshakingConnectionMessageInit,
     PeerHandshakingConnectionMessageEncode,
@@ -718,6 +722,9 @@ impl From<Action> for GenAction {
             Action::PeerBinaryMessageWriteError(_) => GenAction::PeerBinaryMessageWriteError,
             Action::PeerMessageReadInit(_) => GenAction::PeerMessageReadInit,
             Action::PeerMessageReadSuccess(_) => GenAction::PeerMessageReadSuccess,
+            Action::PeerMessageWriteNext(_) => GenAction::PeerMessageWriteNext,
+            Action::PeerMessageWriteInit(_) => GenAction::PeerMessageWriteInit,
+            Action::PeerMessageWriteSuccess(_) => GenAction::PeerMessageWriteSuccess,
             Action::PeerHandshakingInit(_) => GenAction::PeerHandshakingInit,
             Action::PeerHandshakingConnectionMessageInit(_) => {
                 GenAction::PeerHandshakingConnectionMessageInit
