@@ -1,5 +1,6 @@
 use redux_rs::{ActionWithId, Store};
 
+use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::{Action, State};
@@ -14,6 +15,7 @@ use crate::peer::connection::outgoing::peer_connection_outgoing_effects;
 use crate::peer::disconnection::peer_disconnection_effects;
 use crate::peer::handshaking::peer_handshaking_effects;
 use crate::peer::message::read::peer_message_read_effects;
+use crate::peer::message::write::peer_message_write_effects;
 use crate::peer::peer_effects;
 
 use crate::peers::add::multi::peers_add_multi_effects;
@@ -63,6 +65,7 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peer_disconnection_effects(store, action);
 
     peer_message_read_effects(store, action);
+    peer_message_write_effects(store, action);
     peer_binary_message_write_effects(store, action);
     peer_binary_message_read_effects(store, action);
     peer_chunk_write_effects(store, action);
@@ -73,5 +76,6 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     storage_block_header_put_effects(store, action);
     storage_request_effects(store, action);
 
+    actors_effects(store, action);
     rpc_effects(store, action);
 }

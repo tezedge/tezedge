@@ -563,24 +563,6 @@ pub fn peer_handshaking_effects<S>(
         }
 
         Action::PeerHandshakingFinish(action) => {
-            let peer_handshaked = match store.state.get().peers.get(&action.address) {
-                Some(peer) => match &peer.status {
-                    PeerStatus::Handshaked(v) => v,
-                    _ => return,
-                },
-                None => return,
-            };
-            store.service.actors().send(ActorsMessageTo::PeerHandshaked(
-                Arc::new(PeerId {
-                    address: action.address,
-                    public_key_hash: peer_handshaked.public_key_hash.clone(),
-                }),
-                MetadataMessage::new(
-                    peer_handshaked.disable_mempool,
-                    peer_handshaked.private_node,
-                ),
-                Arc::new(peer_handshaked.version.clone()),
-            ));
             store.dispatch(
                 PeerTryWriteAction {
                     address: action.address,

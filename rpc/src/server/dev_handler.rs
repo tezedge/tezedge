@@ -296,10 +296,5 @@ pub async fn dev_shell_automaton_actions_graph_get(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    make_json_response(
-        &dev_services::get_shell_automaton_actions_graph(
-            &env,
-        )
-        .await?,
-    )
+    make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)
 }

@@ -11,6 +11,7 @@ use crate::peer::binary_message::write::*;
 use crate::peer::chunk::read::*;
 use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
+use crate::peer::message::write::*;
 
 use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
@@ -104,6 +105,10 @@ pub enum Action {
 
     PeerMessageReadInit(PeerMessageReadInitAction),
     PeerMessageReadSuccess(PeerMessageReadSuccessAction),
+
+    PeerMessageWriteNext(PeerMessageWriteNextAction),
+    PeerMessageWriteInit(PeerMessageWriteInitAction),
+    PeerMessageWriteSuccess(PeerMessageWriteSuccessAction),
 
     PeerHandshakingInit(PeerHandshakingInitAction),
     PeerHandshakingConnectionMessageInit(PeerHandshakingConnectionMessageInitAction),
