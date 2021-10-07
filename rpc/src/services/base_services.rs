@@ -149,7 +149,7 @@ pub(crate) fn get_known_heads(
 
     // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
     // this avoids duplication)
-    let mut to_ignore: HashSet<String> = HashSet::new();
+    let mut to_ignore: HashSet<String> = heads_to_process.iter().map(|head| head.hash.to_base58_check()).collect();
 
     // 2. collect head hashes and predecessors if necessary
     for head in heads_to_process {
