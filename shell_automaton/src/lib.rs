@@ -65,6 +65,16 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         self.store
             .dispatch(StorageStateSnapshotCreateAction {}.into());
 
+        // TODO: create action for it.
+        if let Err(err) = self
+            .store
+            .service
+            .mio()
+            .peer_connection_incoming_listen_start()
+        {
+            eprintln!("P2p: failed to start server. Error: {:?}", err);
+        }
+
         for (address, port) in peers_dns_lookup_addrs.into_iter() {
             self.store
                 .dispatch(PeersDnsLookupInitAction { address, port }.into());
