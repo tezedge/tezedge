@@ -43,7 +43,7 @@ impl OperationsStorage {
             block_hash: message.operations_for_block().hash().clone(),
             validation_pass: message.operations_for_block().validation_pass() as u8,
         };
-        self.put(&key, &message)
+        self.put(&key, message)
     }
 
     #[inline]

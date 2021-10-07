@@ -308,7 +308,7 @@ impl<S: RocksDbKeyValueSchema> KeyValueStoreBackend<S> for DB {
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
+        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[self]), None)?;
         let mut usage: usize = 0;
 
         usage = usage

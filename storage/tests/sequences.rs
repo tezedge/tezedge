@@ -13,10 +13,15 @@ use storage::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBacken
 use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::DbConfiguration;
+use storage::tests_common;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
     use rocksdb::{Options, DB};
+
+    // logger
+    let log_level = tests_common::log_level();
+    let log = tests_common::create_logger(log_level);
 
     let path = out_dir_path("__sequence_multigen");
     if path.exists() {
@@ -34,6 +39,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
         let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
         let maindb = Arc::new(TezedgeDatabase::new(
             TezedgeDatabaseBackendOptions::RocksDB(backend),
+            log,
         ));
 
         let sequences = Sequences::new(maindb, 1);
@@ -54,6 +60,10 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 fn generator_test_cloned_gen() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
+    // logger
+    let log_level = tests_common::log_level();
+    let log = tests_common::create_logger(log_level);
+
     let path = out_dir_path("__sequence_multiseq");
     if path.exists() {
         std::fs::remove_dir_all(&path).unwrap();
@@ -70,6 +80,7 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
         let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
         let maindb = Arc::new(TezedgeDatabase::new(
             TezedgeDatabaseBackendOptions::RocksDB(backend),
+            log,
         ));
         let sequences = Sequences::new(maindb, 3);
         let gen_a = sequences.generator("gen");
@@ -90,6 +101,10 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
 #[test]
 fn generator_test_batch() -> Result<(), Error> {
     use rocksdb::{Options, DB};
+
+    // logger
+    let log_level = tests_common::log_level();
+    let log = tests_common::create_logger(log_level);
 
     let path = out_dir_path("__sequence_batch");
     if path.exists() {
@@ -122,7 +137,7 @@ fn generator_test_batch() -> Result<(), Error> {
             )
         };
 
-        let maindb = Arc::new(TezedgeDatabase::new(backend));
+        let maindb = Arc::new(TezedgeDatabase::new(backend, log));
         let sequences = Sequences::new(maindb, 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
@@ -136,6 +151,10 @@ fn generator_test_batch() -> Result<(), Error> {
 #[test]
 fn generator_test_continuation_after_persist() -> Result<(), Error> {
     use rocksdb::{Options, DB};
+
+    // logger
+    let log_level = tests_common::log_level();
+    let log = tests_common::create_logger(log_level);
 
     let path = out_dir_path("__sequence_continuation");
     if path.exists() {
@@ -168,7 +187,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             )
         };
 
-        let maindb = Arc::new(TezedgeDatabase::new(backend));
+        let maindb = Arc::new(TezedgeDatabase::new(backend, log));
 
         // First run
         {

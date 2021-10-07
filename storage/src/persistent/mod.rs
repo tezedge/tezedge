@@ -17,6 +17,7 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 use rocksdb::DB;
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
+use slog::Logger;
 use std::sync::Arc;
 
 pub mod codec;
@@ -39,12 +40,12 @@ impl Default for DbConfiguration {
 }
 
 /// Open commit log at a given path.
-pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
+pub fn open_cl<P, I>(path: P, cfs: I, log: Logger) -> Result<CommitLogs, CommitLogError>
 where
     P: AsRef<Path>,
     I: IntoIterator<Item = CommitLogDescriptor>,
 {
-    CommitLogs::new(path, cfs)
+    CommitLogs::new(path, cfs, log)
 }
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement
@@ -84,6 +85,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
     rocks_db: Option<Arc<DB>>,
     config: &RocksDbConfig<C>,
     backend_config: TezedgeDatabaseBackendConfiguration,
+    log: Logger,
 ) -> Result<TezedgeDatabase, DatabaseError> {
     // TODO - TE-498: Todo Change this
     let backend = match backend_config {
@@ -98,7 +100,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             }
         }
     };
-    Ok(TezedgeDatabase::new(backend))
+    Ok(TezedgeDatabase::new(backend, log))
 }
 
 #[derive(Debug, Clone)]
