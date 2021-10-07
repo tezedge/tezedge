@@ -3,7 +3,8 @@ use redux_rs::{ActionWithId, Store};
 use crate::peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 use crate::peer::PeerStatus;
 use crate::peers::remove::PeersRemoveAction;
-use crate::service::{MioService, Service};
+use crate::service::actors_service::ActorsMessageTo;
+use crate::service::{ActorsService, MioService, Service};
 use crate::{action::Action, State};
 
 use super::PeerDisconnectedAction;
@@ -38,6 +39,11 @@ pub fn peer_disconnection_effects<S>(
             if let Some(peer) = store.state.get().peers.get(&action.address) {
                 if matches!(&peer.status, PeerStatus::Disconnected) {
                     let address = action.address;
+
+                    store
+                        .service
+                        .actors()
+                        .send(ActorsMessageTo::PeerDisconnected(address));
 
                     store.dispatch(PeersRemoveAction { address }.into());
                     store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
