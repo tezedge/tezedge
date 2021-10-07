@@ -7,6 +7,7 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::AckMessage;
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
+use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 
 use crate::action::Action;
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
@@ -20,6 +21,7 @@ use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
 };
 use crate::peer::message::read::PeerMessageReadInitAction;
+use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
@@ -563,6 +565,14 @@ pub fn peer_handshaking_effects<S>(
         }
 
         Action::PeerHandshakingFinish(action) => {
+            store.dispatch(
+                PeerMessageWriteInitAction {
+                    address: action.address,
+                    message: PeerMessageResponse::from(PeerMessage::Bootstrap).into(),
+                }
+                .into(),
+            );
+
             store.dispatch(
                 PeerTryWriteAction {
                     address: action.address,

@@ -29,6 +29,19 @@ pub fn peer_connection_outgoing_effects<S>(
                 .map(|(addr, _)| *addr)
                 .collect::<Vec<_>>();
 
+            // TMP hardcoded threshold
+            if store
+                .state
+                .get()
+                .peers
+                .len()
+                .checked_sub(addresses.len())
+                .unwrap_or(0)
+                > 80
+            {
+                return;
+            }
+
             if let Some(address) = store.service.randomness().choose_peer(&addresses) {
                 store.dispatch(PeerConnectionOutgoingInitAction { address }.into());
             }
