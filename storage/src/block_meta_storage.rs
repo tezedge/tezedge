@@ -731,40 +731,40 @@ impl BlockAdditionalData {
     }
 }
 
-impl
-    Into<(
+impl From<BlockAdditionalData>
+    for (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
-    )> for BlockAdditionalData
+    )
 {
-    fn into(
-        self,
+    fn from(
+        data: BlockAdditionalData,
     ) -> (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
     ) {
-        (self.block_metadata_hash, self.ops_metadata_hash)
+        (data.block_metadata_hash, data.ops_metadata_hash)
     }
 }
 
-impl
-    Into<(
+impl From<BlockAdditionalData>
+    for (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
         u16,
-    )> for BlockAdditionalData
+    )
 {
-    fn into(
-        self,
+    fn from(
+        data: BlockAdditionalData,
     ) -> (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
         u16,
     ) {
         (
-            self.block_metadata_hash,
-            self.ops_metadata_hash,
-            self.max_operations_ttl,
+            data.block_metadata_hash,
+            data.ops_metadata_hash,
+            data.max_operations_ttl,
         )
     }
 }
@@ -1045,8 +1045,8 @@ mod tests {
                 idx.try_into()?,
                 vec![44; 4].try_into().unwrap(),
             );
-            storage.put(&block_hash, &v)?;
-            storage.store_predecessors(&block_hash, &v)?;
+            storage.put(block_hash, &v)?;
+            storage.store_predecessors(block_hash, &v)?;
             predecessor = block_hash.clone();
         }
 

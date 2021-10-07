@@ -701,15 +701,8 @@ impl PersistentStorage {
     }
 
     pub fn flush_dbs(&mut self) {
-        let clog = self.clog.flush();
-        let db = self.main_db.flush();
-
-        if clog.is_err() || db.is_err() {
-            println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}",
-                clog, db,
-            );
-        }
+        self.clog.flush_checked();
+        self.main_db.flush_checked();
     }
 }
 
@@ -726,7 +719,7 @@ pub mod tests_common {
 
     use anyhow::Error;
 
-    use slog::{Logger, Level, Drain};
+    use slog::{Drain, Level, Logger};
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
@@ -895,14 +888,17 @@ pub mod tests_common {
 
     #[cfg(test)]
     mod tests {
+        use super::TmpStorage;
+        use crate::{ChainId, ChainMetaStorage, Head};
         use std::{
+            convert::{TryFrom, TryInto},
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
             thread,
-            convert::{TryInto, TryFrom},
-            sync::{Arc, atomic::{Ordering, AtomicBool}},
             time::Duration,
         };
-        use super::TmpStorage;
-        use crate::{ChainMetaStorage, Head, ChainId};
 
         #[test]
         fn test_storage_stuck() {
@@ -910,26 +906,33 @@ pub mod tests_common {
             let index = ChainMetaStorage::new(tmp_storage.storage());
             let running = Arc::new(AtomicBool::new(true));
             let num_threads = 4;
-            let threads = (0..num_threads).map(|i| {
-                let running = running.clone();
-                let index = index.clone();
-                thread::spawn(move || {
-                    let chain_id = |x: u32| ChainId::try_from(x.to_be_bytes().to_vec()).unwrap();
-                    let block = |level| Head::new(
-                        "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into().unwrap(),
-                        level * 2,
-                        vec![],
-                    );
+            let threads = (0..num_threads)
+                .map(|i| {
+                    let running = running.clone();
+                    let index = index.clone();
+                    thread::spawn(move || {
+                        let chain_id =
+                            |x: u32| ChainId::try_from(x.to_be_bytes().to_vec()).unwrap();
+                        let block = |level| {
+                            Head::new(
+                                "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe"
+                                    .try_into()
+                                    .unwrap(),
+                                level * 2,
+                                vec![],
+                            )
+                        };
 
-                    let mut level = i as i32;
-                    let mut id = 0x123456 + i;
-                    while running.load(Ordering::SeqCst) {
-                        index.set_current_head(&chain_id(id), block(level)).unwrap();
-                        id += num_threads;
-                        level += num_threads as i32;
-                    }
+                        let mut level = i as i32;
+                        let mut id = 0x123456 + i;
+                        while running.load(Ordering::SeqCst) {
+                            index.set_current_head(&chain_id(id), block(level)).unwrap();
+                            id += num_threads;
+                            level += num_threads as i32;
+                        }
+                    })
                 })
-            }).collect::<Vec<_>>();
+                .collect::<Vec<_>>();
 
             thread::sleep(Duration::from_secs(1));
             running.store(false, Ordering::SeqCst);

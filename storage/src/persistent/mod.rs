@@ -17,8 +17,8 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 use rocksdb::DB;
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
-use std::sync::Arc;
 use slog::Logger;
+use std::sync::Arc;
 
 pub mod codec;
 pub mod database;

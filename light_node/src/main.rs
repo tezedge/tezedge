@@ -827,8 +827,12 @@ fn main() {
     };
 
     let commit_logs = Arc::new(
-        open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()], log.clone())
-            .expect("Failed to open plain block_header storage"),
+        open_cl(
+            &env.storage.db_path,
+            vec![BlockStorage::descriptor()],
+            log.clone(),
+        )
+        .expect("Failed to open plain block_header storage"),
     );
     let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 

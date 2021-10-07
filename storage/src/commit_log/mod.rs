@@ -282,14 +282,14 @@ impl CommitLogs {
     }
 
     /// Flush all registered commit logs.
-    pub fn flush(&self) -> Result<(), CommitLogError> {
+    fn flush(&self) -> Result<(), CommitLogError> {
         let commit_log_map =
             self.commit_log_map
                 .read()
                 .map_err(|e| CommitLogError::RwLockPoisonError {
                     error: e.to_string(),
                 })?;
-        for commit_log in commit_log_map.values() {
+        for (commit_log_idx, (commit_log_name, commit_log)) in commit_log_map.iter().enumerate() {
             let mut commit_log =
                 commit_log
                     .write()
@@ -297,21 +297,30 @@ impl CommitLogs {
                         error: e.to_string(),
                     })?;
             match commit_log.flush() {
-                Ok(_) => {}
-                Err(e) => slog::error!(&self.log, "Failed to flush commit logs, reason: {:?}", e),
+                Ok(_) => {
+                    slog::debug!(&self.log, "Successfully flushed commit log"; "commit_log_num" => (commit_log_idx + 1), "commit_log_name" => commit_log_name, "data_file_path" => format!("{:?}", commit_log.data_file_path))
+                }
+                Err(e) => {
+                    slog::error!(&self.log, "Failed to flush commit log"; "commit_log_name" => commit_log_name, "data_file_path" => format!("{:?}", commit_log.data_file_path), "reason" =>  e)
+                }
             }
         }
-
         Ok(())
+    }
+
+    pub fn flush_checked(&self) {
+        match self.flush() {
+            Ok(_) => slog::info!(&self.log, "Successfully flushed all commit logs"),
+            Err(e) => {
+                slog::error!(&self.log, "Failed to flush commit logs"; "reason" => format!("{:?}", e))
+            }
+        }
     }
 }
 
 impl Drop for CommitLogs {
     fn drop(&mut self) {
-        match self.flush() {
-            Err(e) => slog::error!(&self.log, "Failed to flush commit logs, reason: {:?}", e),
-            Ok(_) => slog::info!(&self.log, "Successfully flush commit logs"),
-        }
+        self.flush_checked();
     }
 }
 

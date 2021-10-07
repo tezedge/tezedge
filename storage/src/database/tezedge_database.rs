@@ -5,11 +5,11 @@ use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::IteratorMode;
 use serde::{Deserialize, Serialize};
+use slog::Logger;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
-use slog::Logger;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -157,17 +157,23 @@ impl TezedgeDatabase {
         }
     }
 
-    pub fn flush(&self) -> Result<usize, Error> {
+    fn flush(&self) -> Result<usize, Error> {
         self.backend.flush()
+    }
+
+    pub fn flush_checked(&self) {
+        match self.flush() {
+            Err(e) => {
+                slog::error!(&self.log, "Failed to flush database"; "reason" => format!("{:?}", e))
+            }
+            Ok(_) => slog::info!(&self.log, "Successfully flushed main database"),
+        }
     }
 }
 
 impl Drop for TezedgeDatabase {
     fn drop(&mut self) {
-        match self.flush() {
-            Err(e) => slog::error!(&self.log, "Failed to flush database, reason: {:?}", e),
-            Ok(_) => slog::info!(&self.log, "Successfully flush database"),
-        }
+        self.flush_checked();
     }
 }
 
