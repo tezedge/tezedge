@@ -985,6 +985,7 @@ mod tests {
                 vec![44; 4].try_into().unwrap(),
             );
             storage.put(block_hash, &v)?;
+            storage.store_predecessors(block_hash, &predecessor)?;
             predecessor = block_hash.clone();
         }
 
