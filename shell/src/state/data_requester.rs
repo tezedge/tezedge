@@ -578,7 +578,7 @@ mod tests {
         // prerequizities
         let log = create_logger(Level::Debug);
         let tokio_runtime = create_test_tokio_runtime();
-        let actor_system = create_test_actor_system(log.clone());
+        let actor_system = create_test_actor_system(log.clone(), tokio_runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block")?;
@@ -648,7 +648,7 @@ mod tests {
         // prerequizities
         let log = create_logger(Level::Debug);
         let tokio_runtime = create_test_tokio_runtime();
-        let actor_system = create_test_actor_system(log.clone());
+        let actor_system = create_test_actor_system(log.clone(), tokio_runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage =
@@ -785,8 +785,11 @@ mod tests {
     fn test_call_apply_block() -> Result<(), anyhow::Error> {
         // prerequizities
         let log = create_logger(Level::Debug);
-        let actor_system = Arc::new(create_test_actor_system(log.clone()));
         let tokio_runtime = create_test_tokio_runtime();
+        let actor_system = Arc::new(create_test_actor_system(
+            log.clone(),
+            tokio_runtime.handle().clone(),
+        ));
         let shell_channel =
             ShellChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
         let network_channel =

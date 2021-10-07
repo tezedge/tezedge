@@ -177,6 +177,7 @@ impl NodeInfrastructure {
             SystemBuilder::new()
                 .name(name)
                 .log(log.clone())
+                .exec(tokio_runtime.handle().clone().into())
                 .create()
                 .expect("Failed to create actor system"),
         );
@@ -255,10 +256,6 @@ impl NodeInfrastructure {
             panic!("Chain manager was not initialized within 10 timeout, check logs for errors, reason: {}", e)
         };
         info!(log, "Chain manager initialized");
-
-        // there is a possibility, even the chain_manager actor has controlled startup, but we cannot controll (with default riker) asynchronous channel subscribtion
-        info!(log, "TODO: waiting 1500ms to give a chance for `subscribe_to_network_events(&self.network_channel, ctx.myself());` to finish");
-        std::thread::sleep(Duration::from_millis(1500));
 
         // and than open p2p and others - if configured
         let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {

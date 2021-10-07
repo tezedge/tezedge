@@ -833,7 +833,7 @@ impl Receive<ConnectToPeer> for PeerManager {
         let peers = self.peers.clone();
 
         self.tokio_executor.spawn(async move {
-            let log: riker::system::LoggingSystem = system.log();
+            let log = system.log();
             debug!(log, "(Outgoing) Connecting to IP"; "ip" => msg.address);
             match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                 Ok(Ok(stream)) => {
@@ -1250,7 +1250,7 @@ pub mod tests {
         // prerequisities
         let log = create_logger(Level::Debug);
         let tokio_runtime = create_test_tokio_runtime();
-        let actor_system = create_test_actor_system(log.clone());
+        let actor_system = create_test_actor_system(log.clone(), tokio_runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
 

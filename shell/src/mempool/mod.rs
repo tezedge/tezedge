@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
-use chrono::SecondsFormat;
+use chrono::{DateTime, SecondsFormat, Utc};
 use riker::actors::*;
 use slog::{info, warn, Logger};
 use thiserror::Error;
@@ -36,10 +36,7 @@ pub enum MempoolPrevalidatorInitError {
     #[error("Mempool is disabled by configuration")]
     MempoolDisabled,
     #[error("Failed to create mempool prevalidator, reason: {reason}")]
-    CreateError {
-        #[from]
-        reason: riker::actors::CreateError,
-    },
+    CreateError { reason: String },
 }
 
 pub struct MempoolPrevalidatorFactory {
@@ -99,9 +96,8 @@ impl MempoolPrevalidatorFactory {
             let mut mempool_thread_watchers = match self.mempool_thread_watchers.lock() {
                 Ok(mempool_thread_watchers) => mempool_thread_watchers,
                 Err(e) => {
-                    warn!(self.log, "Failed to lock mempool thread registry"; "reason" => format!("{}", e));
                     return Err(MempoolPrevalidatorInitError::CreateError {
-                        reason: CreateError::System,
+                        reason: format!("{}", e),
                     });
                 }
             };
@@ -118,7 +114,9 @@ impl MempoolPrevalidatorFactory {
                     self.tezos_readonly_mempool_api.clone(),
                     self.log.clone(),
                 )
-                .map_err(MempoolPrevalidatorInitError::from)?;
+                .map_err(|e| MempoolPrevalidatorInitError::CreateError {
+                    reason: format!("{}", e),
+                })?;
 
             // add thread watcher to registry
             let _ = mempool_thread_watchers.insert(
@@ -183,10 +181,11 @@ impl MempoolPrevalidatorFactory {
                                             since.to_rfc3339_opts(SecondsFormat::Millis, true)
                                         }
                                         // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
-                                        None => self
-                                            .actor_system
-                                            .start_date()
-                                            .to_rfc3339_opts(SecondsFormat::Millis, true),
+                                        None => {
+                                            let start_date = self.actor_system.start_date();
+                                            let start_date: DateTime<Utc> = start_date.into();
+                                            start_date.to_rfc3339_opts(SecondsFormat::Millis, true)
+                                        }
                                     }
                                 },
                             },

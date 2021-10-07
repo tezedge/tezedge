@@ -353,10 +353,14 @@ pub mod tests {
             )
         }
 
-        pub(crate) fn create_test_actor_system(log: Logger) -> ActorSystem {
+        pub(crate) fn create_test_actor_system(
+            log: Logger,
+            handle: tokio::runtime::Handle,
+        ) -> ActorSystem {
             SystemBuilder::new()
                 .name("create_actor_system")
                 .log(log)
+                .exec(handle.into())
                 .create()
                 .expect("Failed to create test actor system")
         }
@@ -398,7 +402,9 @@ pub mod tests {
                     )),
                 )
                 .map(|feeder| (feeder, block_applier_event_receiver))
-                .map_err(|e| e.into())
+                .map_err(|e| {
+                    anyhow::format_err!("Failed to create chain_feeder actor mock: {:?}", e)
+                })
         }
 
         pub(crate) fn chain_manager_mock(

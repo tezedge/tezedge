@@ -119,6 +119,25 @@ pub mod subscription {
     }
 
     #[inline]
+    pub fn subscribe_with_response_to_network_events<M, E>(
+        network_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+        response: M,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        network_channel.tell(
+            SubscribeWithResponse {
+                actor: Box::new(myself.clone()),
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+                response: AnyMessage::new(response, true),
+            },
+            Some(myself.into()),
+        );
+    }
+
+    #[inline]
     pub(crate) fn subscribe_to_network_commands<M, E>(
         network_channel: &ChannelRef<E>,
         myself: ActorRef<M>,

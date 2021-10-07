@@ -233,23 +233,16 @@ fn block_on_actors(
     // create partial (global) states for sharing between threads/actors
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    let mut actor_system_cfg = riker::load_config();
-    if env.riker_threads > 0 {
-        let thread_count = env.riker_threads.min(num_cpus::get());
-        actor_system_cfg
-            .set("dispatcher.pool_size", thread_count as i64)
-            .expect("Failed to set custom thread pool size for riker(actor system).");
-    }
-
     // create riker's actor system
     let actor_system = Arc::new(
         SystemBuilder::new()
             .name("light-node")
             .log(log.clone())
-            .cfg(actor_system_cfg)
+            .exec(tokio_runtime.handle().clone().into())
             .create()
             .expect("Failed to create actor system"),
     );
+    info!(log, "Riker configuration"; "cfg" => actor_system.config());
 
     let network_channel =
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
@@ -406,6 +399,7 @@ fn block_on_actors(
             &init_storage_data,
             chain_manager,
             block_applier,
+            block_applier_thread_watcher,
             shell_channel,
             log.clone(),
         );
@@ -499,6 +493,7 @@ fn block_on_actors(
         );
 
         // give actors some time to shut down
+        info!(log, "Waiting 2s for shutdown of actors (2/6)");
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         info!(log, "Shutting down actors (4/8)");
@@ -550,6 +545,7 @@ fn schedule_replay_blocks(
     init_storage_data: &StorageInitInfo,
     chain_manager: ChainManagerRef,
     block_applier: ChainFeederRef,
+    block_applier_thread_watcher: ThreadWatcher,
     shell_channel: ShellChannelRef,
     log: Logger,
 ) {
@@ -586,13 +582,13 @@ fn schedule_replay_blocks(
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
         if result.as_ref().is_err() {
-            replay_shutdown(shell_channel);
+            replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
                 index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
-            replay_shutdown(shell_channel);
+            replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
             panic!(
                 "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
                 index, percent, hash, time, fail_above, result
@@ -617,10 +613,20 @@ fn schedule_replay_blocks(
         now.elapsed()
     );
 
-    replay_shutdown(shell_channel);
+    replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
 }
 
-fn replay_shutdown(shell_channel: ShellChannelRef) {
+fn replay_shutdown(
+    log: &Logger,
+    shell_channel: ShellChannelRef,
+    mut block_applier_thread_watcher: ThreadWatcher,
+) {
+    if let Err(e) = block_applier_thread_watcher.stop() {
+        warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => block_applier_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+    }
+
     shell_channel.tell(
         Publish {
             msg: ShuttingDown.into(),
@@ -631,6 +637,13 @@ fn replay_shutdown(shell_channel: ShellChannelRef) {
 
     // give actors some time to shut down
     std::thread::sleep(Duration::from_secs(2));
+
+    if let Some(thread) = block_applier_thread_watcher.thread() {
+        thread.thread().unpark();
+        if let Err(e) = thread.join() {
+            warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+        }
+    }
 }
 
 fn collect_replayed_blocks(
