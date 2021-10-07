@@ -3,8 +3,6 @@
 #![feature(test)]
 extern crate test;
 
-// TODO - TE-281: some tests here use wait_for_context, fix that once not required anymore
-
 /// Simple integration test for chain actors
 ///
 ///(Tests are ignored, because they need protocol-runner binary)
@@ -29,6 +27,7 @@ use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
+use tezos_messages::p2p::encoding::current_branch::{CurrentBranch, CurrentBranchMessage};
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
 
@@ -173,6 +172,10 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
 
+    // initialize test data current head to None, that means, after bootstrap is sent no CurrentBranch
+    // anyway, we cannot guarantee deterministic order of messages to send
+    common::test_cases_data::moving_current_branch_that_needs_to_be_set::set_current_branch(None);
+
     // connect mocked node peer with test data set
     let clocks = Instant::now();
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
@@ -183,9 +186,27 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         SIMPLE_POW_TARGET,
         node.log.clone(),
         &node.tokio_runtime,
-        common::test_cases_data::current_branch_on_level_3::serve_data,
+        common::test_cases_data::moving_current_branch_that_needs_to_be_set::serve_data,
     );
 
+    // reset current head to level 3
+    let level_3 = 3;
+    common::test_cases_data::moving_current_branch_that_needs_to_be_set::set_current_branch(Some(
+        level_3,
+    ));
+
+    // now we send CurrentBranch -> CurrentHeads without waiting for new current head
+
+    // send current_branch with level 3
+    let block_header_3 = db.block_header(level_3)?;
+    let block_header_3_history = vec![
+        db.block_hash(level_3)?,
+        block_header_3.predecessor().clone(),
+    ];
+    mocked_peer_node.send_msg(CurrentBranchMessage::new(
+        node.tezos_env.main_chain_id()?,
+        CurrentBranch::new(block_header_3, block_header_3_history),
+    ))?;
     // send current_head with level4
     mocked_peer_node.send_msg(CurrentHeadMessage::new(
         node.tezos_env.main_chain_id()?,

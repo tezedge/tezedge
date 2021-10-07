@@ -60,6 +60,38 @@ pub mod dont_serve_current_branch_messages {
     }
 }
 
+pub mod moving_current_branch_that_needs_to_be_set {
+    use slog::Logger;
+    use std::sync::{Arc, Mutex};
+
+    use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
+
+    use crate::common::test_data::Db;
+
+    use super::*;
+
+    lazy_static! {
+        pub static ref MOVING_CURRENT_BRANCH: Arc<Mutex<Option<Level>>> =
+            Arc::new(Mutex::new(None));
+    }
+
+    pub fn set_current_branch(new_current_branch: Option<Level>) {
+        let mut actual_current_branch = MOVING_CURRENT_BRANCH.lock().unwrap();
+        *actual_current_branch = new_current_branch;
+    }
+
+    pub fn init_data(log: &Logger) -> &'static Db {
+        init_data_db_1326_carthagenet(log)
+    }
+
+    pub fn serve_data(
+        message: PeerMessageResponse,
+    ) -> Result<Vec<PeerMessageResponse>, anyhow::Error> {
+        let actual_current_branch = *MOVING_CURRENT_BRANCH.lock().unwrap();
+        full_data(message, actual_current_branch, &super::DB_1326_CARTHAGENET)
+    }
+}
+
 pub mod current_branch_on_level_3 {
     use slog::Logger;
 
