@@ -168,6 +168,7 @@ impl Stats {
     ProcessValidatedBlock,
     InjectBlockRequest,
     AdvertiseToP2pNewMempool,
+    SubscribedResponse,
     SystemEvent
 )]
 pub struct ChainManager {
@@ -1381,6 +1382,28 @@ impl ChainManager {
 
         Ok(())
     }
+
+    pub(crate) fn handle_first_initialization_done(&self, log: Logger) {
+        // lets handle first initialization
+        match self.first_initialization_done_result_callback.lock() {
+            Ok(mut first_initialization_done_result_callback) => {
+                // here we take out the callback to be used just once
+                if let Some(first_initialization_done_result_callback) =
+                    first_initialization_done_result_callback.take()
+                {
+                    if let Err(e) = dispatch_oneshot_result(
+                        Some(first_initialization_done_result_callback),
+                        || (),
+                    ) {
+                        warn!(log, "Failed to dispatch initialization result for ChainManager"; "reason" => format!("{}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock first_initialization_done_result_callback"; "reason" => format!("{}", e));
+            }
+        }
+    }
 }
 
 impl
@@ -1479,7 +1502,14 @@ impl Actor for ChainManager {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         // subscribe chain_manager to all required channels
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
+        subscribe_with_response_to_network_events(
+            &self.network_channel,
+            ctx.myself(),
+            SubscribedResponse {
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+            }
+            .into(),
+        );
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
 
@@ -1560,28 +1590,6 @@ impl Actor for ChainManager {
 
         info!(log, "Chain manager started";
                    "main_chain_id" => self.chain_state.get_chain_id().to_base58_check());
-    }
-
-    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        // lets handle first initialization
-        match self.first_initialization_done_result_callback.lock() {
-            Ok(mut first_initialization_done_result_callback) => {
-                // here we take out the callback to be used just once
-                if let Some(first_initialization_done_result_callback) =
-                    first_initialization_done_result_callback.take()
-                {
-                    if let Err(e) = dispatch_oneshot_result(
-                        Some(first_initialization_done_result_callback),
-                        || (),
-                    ) {
-                        warn!(ctx.system.log(), "Failed to dispatch initialization result for ChainManager"; "reason" => format!("{}", e));
-                    }
-                }
-            }
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to lock first_initialization_done_result_callback"; "reason" => format!("{}", e));
-            }
-        }
     }
 
     fn sys_recv(
@@ -1876,6 +1884,16 @@ impl Receive<AdvertiseToP2pNewMempool> for ChainManager {
             Err(e) => {
                 warn!(ctx.system.log(), "Failed to spread mempool to p2p - blockHeader ({}) was not retrieved", mempool_head.to_base58_check(); "reason" => e)
             }
+        }
+    }
+}
+
+impl Receive<SubscribedResponse> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SubscribedResponse, _: Sender) {
+        if msg.topic == NetworkChannelTopic::NetworkEvents.into() {
+            self.handle_first_initialization_done(ctx.system.log());
         }
     }
 }

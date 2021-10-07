@@ -2541,8 +2541,8 @@ dependencies = [
 
 [[package]]
 name = "riker"
-version = "0.4.2-cleanup-unsafe-3"
-source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-5#63a45555873fa2bf0094d074095897c5720d4bfa"
+version = "0.4.2-cleanup-unsafe-6"
+source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-6#dbc8281a55e82c14e347021f5ebe2b208b39f383"
 dependencies = [
  "riker-macros",
  "slog",
@@ -2554,7 +2554,7 @@ dependencies = [
 [[package]]
 name = "riker-macros"
 version = "0.2.0"
-source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-5#63a45555873fa2bf0094d074095897c5720d4bfa"
+source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-6#dbc8281a55e82c14e347021f5ebe2b208b39f383"
 dependencies = [
  "proc-macro2 1.0.29",
  "quote 1.0.9",
