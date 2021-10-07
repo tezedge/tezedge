@@ -1,10 +1,11 @@
 use networking::network_channel::PeerMessageReceived;
 use redux_rs::{ActionWithId, Store};
 use tezos_messages::p2p::binary_message::BinaryRead;
-use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
+use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
 use crate::peer::PeerStatus;
+use crate::peers::add::multi::PeersAddMultiAction;
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::Service;
 use crate::{Action, State};
@@ -56,6 +57,18 @@ pub fn peer_message_read_effects<S>(
                     peer_address: action.address,
                     message: action.message.clone(),
                 }));
+
+            match &action.message.message() {
+                PeerMessage::Advertise(msg) => {
+                    store.dispatch(
+                        PeersAddMultiAction {
+                            addresses: msg.id().iter().filter_map(|x| x.parse().ok()).collect(),
+                        }
+                        .into(),
+                    );
+                }
+                _ => {}
+            }
 
             // try to read next message.
             store.dispatch(
