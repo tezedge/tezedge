@@ -803,7 +803,7 @@ mod tests {
             shell_channel,
             network_channel,
             chain_feeder_mock.clone(),
-            storage.storage().clone(),
+            storage.storage_ref(),
             &tokio_runtime,
         )?);
 

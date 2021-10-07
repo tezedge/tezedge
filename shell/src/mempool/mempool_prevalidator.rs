@@ -27,7 +27,7 @@ use shell_integration::{
 use shell_integration::{StreamCounter, ThreadRunningStatus, ThreadWatcher};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
-use storage::{BlockHeaderWithHash, PersistentStorage};
+use storage::{BlockHeaderWithHash, PersistentStorageRef};
 use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError};
 use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
@@ -66,7 +66,7 @@ impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
         chain_manager: ChainManagerRef,
-        persistent_storage: PersistentStorage,
+        persistent_storage: PersistentStorageRef,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,

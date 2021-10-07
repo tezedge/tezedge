@@ -28,7 +28,7 @@ use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
     hydrate_current_head, resolve_storage_init_chain_data, BlockHeaderWithHash, BlockStorage,
-    PersistentStorage, StorageInitInfo,
+    PersistentStorage, PersistentStorageRef, StorageInitInfo,
 };
 use storage::{
     initializer::{initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache},
@@ -168,7 +168,7 @@ fn block_on_actors(
     env: crate::configuration::Environment,
     init_storage_data: StorageInitInfo,
     identity: Arc<Identity>,
-    persistent_storage: PersistentStorage,
+    persistent_storage: PersistentStorageRef,
     mut blocks_replay: Option<Vec<Arc<BlockHash>>>,
     log: Logger,
 ) {
@@ -850,7 +850,7 @@ fn main() {
     let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
     {
-        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
+        let persistent_storage = Arc::new(PersistentStorage::new(maindb, commit_logs, sequences));
 
         match resolve_storage_init_chain_data(
             &env.tezos_network_config,

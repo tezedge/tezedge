@@ -86,7 +86,7 @@ impl NodeInfrastructure {
         let identity = Arc::new(identity);
 
         // storage
-        let persistent_storage = tmp_storage.storage();
+        let persistent_storage = tmp_storage.storage_ref();
         let context_db_path = if !PathBuf::from(context_db_path).exists() {
             common::prepare_empty_dir(context_db_path)
         } else {
@@ -218,7 +218,7 @@ impl NodeInfrastructure {
         };
 
         let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
-            hydrate_current_head(&init_storage_data, persistent_storage)
+            hydrate_current_head(&init_storage_data, &persistent_storage)
                 .expect("Failed to load current_head from database");
         let hydrated_current_head = Head::new(
             hydrated_current_head_block.hash.clone(),

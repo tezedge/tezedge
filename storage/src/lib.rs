@@ -670,6 +670,8 @@ pub mod initializer {
     }
 }
 
+pub type PersistentStorageRef = Arc<PersistentStorage>;
+
 #[derive(Clone)]
 pub struct PersistentStorage {
     /// key-value store for main db
@@ -732,7 +734,7 @@ pub mod tests_common {
     use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
 
     pub struct TmpStorage {
-        persistent_storage: PersistentStorage,
+        persistent_storage: PersistentStorageRef,
         path: TmpStoragePath,
     }
 
@@ -834,11 +836,11 @@ pub mod tests_common {
             let clog = open_cl(&path, vec![BlockStorage::descriptor()], log.clone())?;
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(
+                persistent_storage: Arc::new(PersistentStorage::new(
                     maindb.clone(),
                     Arc::new(clog),
                     Arc::new(Sequences::new(maindb, 1000)),
-                ),
+                )),
                 path: TmpStoragePath {
                     path,
                     remove_on_destroy,
@@ -849,6 +851,10 @@ pub mod tests_common {
 
         pub fn storage(&self) -> &PersistentStorage {
             &self.persistent_storage
+        }
+
+        pub fn storage_ref(&self) -> PersistentStorageRef {
+            self.persistent_storage.clone()
         }
 
         pub fn path(&self) -> &PathBuf {
