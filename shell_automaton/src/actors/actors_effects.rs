@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerId, PeerStatus};
 use crate::service::actors_service::{ActorsMessageFrom, ActorsMessageTo};
@@ -40,11 +41,23 @@ pub fn actors_effects<S: Service>(
                     ActorsMessageFrom::Shutdown => {
                         // TODO
                     }
-                    ActorsMessageFrom::PeerStalled(_) => {
-                        // TODO
+                    ActorsMessageFrom::PeerStalled(peer_id) => {
+                        // TODO: blacklist as well.
+                        store.dispatch(
+                            PeerDisconnectAction {
+                                address: peer_id.address,
+                            }
+                            .into(),
+                        );
                     }
-                    ActorsMessageFrom::BlacklistPeer(_, _) => {
-                        // TODO
+                    ActorsMessageFrom::BlacklistPeer(peer_id, _) => {
+                        // TODO: blacklist as well.
+                        store.dispatch(
+                            PeerDisconnectAction {
+                                address: peer_id.address,
+                            }
+                            .into(),
+                        );
                     }
                     ActorsMessageFrom::SendMessage(peer_id, message) => {
                         store.dispatch(
