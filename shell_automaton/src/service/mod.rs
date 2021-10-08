@@ -1,3 +1,5 @@
+use redux_rs::TimeService;
+
 pub mod service_async_channel;
 pub mod service_channel;
 
@@ -19,7 +21,7 @@ pub use rpc_service::{RpcService, RpcServiceDefault};
 pub mod actors_service;
 pub use actors_service::{ActorsService, ActorsServiceDefault};
 
-pub trait Service {
+pub trait Service: TimeService {
     type Randomness: RandomnessService;
     type Dns: DnsService;
     type Mio: MioService;
@@ -48,6 +50,8 @@ pub struct ServiceDefault {
     pub rpc: RpcServiceDefault,
     pub actors: ActorsServiceDefault,
 }
+
+impl TimeService for ServiceDefault {}
 
 impl Service for ServiceDefault {
     type Randomness = RandomnessServiceDefault;
