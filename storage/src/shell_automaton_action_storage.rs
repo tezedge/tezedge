@@ -10,8 +10,8 @@ use crypto::hash::BlockHash;
 
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema};
-use crate::{PersistentStorage, StorageError};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
 
 pub type ShellAutomatonActionIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<ShellAutomatonActionStorage> + Sync + Send;
@@ -52,6 +52,64 @@ impl ShellAutomatonActionStorage {
         } else {
             None
         })
+    }
+
+    #[inline]
+    pub fn actions_before<T, F>(
+        &self,
+        action_id: u64,
+        limit: Option<usize>,
+        filter: F,
+    ) -> Result<impl DoubleEndedIterator<Item = (u64, T)>, StorageError>
+    where
+        T: Decoder,
+        F: 'static + Fn(u64, &T) -> bool,
+    {
+        let results = self.kv.find(
+            IteratorMode::From(&action_id, Direction::Reverse),
+            limit,
+            Box::new(move |(k, v)| {
+                let key = u64::decode(k)?;
+                let value = T::decode(v)?;
+                Ok(filter(key, &value))
+            }),
+        )?;
+
+        Ok(results
+            .into_iter()
+            .map(|(k, v)| Result::<_, SchemaError>::Ok((u64::decode(&k)?, T::decode(&v)?)))
+            // in `find` filter method, we do decoding, so decoding cant
+            // fail here.
+            .filter_map(Result::ok))
+    }
+
+    #[inline]
+    pub fn actions_after<T, F>(
+        &self,
+        action_id: u64,
+        limit: Option<usize>,
+        filter: F,
+    ) -> Result<impl DoubleEndedIterator<Item = (u64, T)>, StorageError>
+    where
+        T: Decoder,
+        F: 'static + Fn(u64, &T) -> bool,
+    {
+        let results = self.kv.find(
+            IteratorMode::From(&action_id, Direction::Forward),
+            limit,
+            Box::new(move |(k, v)| {
+                let key = u64::decode(k)?;
+                let value = T::decode(v)?;
+                Ok(filter(key, &value))
+            }),
+        )?;
+
+        Ok(results
+            .into_iter()
+            .map(|(k, v)| Result::<_, SchemaError>::Ok((u64::decode(&k)?, T::decode(&v)?)))
+            // in `find` filter method, we do decoding, so decoding cant
+            // fail here.
+            .filter_map(Result::ok))
     }
 }
 

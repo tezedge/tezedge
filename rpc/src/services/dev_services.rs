@@ -403,26 +403,80 @@ pub(crate) async fn get_shell_automaton_action(
     .await?
 }
 
+pub(crate) async fn get_shell_automaton_actions_before<F>(
+    env: &RpcServiceEnvironment,
+    action_id: u64,
+    limit: Option<usize>,
+    filter: F,
+) -> anyhow::Result<impl DoubleEndedIterator<Item = ActionWithId<Action>>>
+where
+    F: 'static + Send + Fn(u64, &Action) -> bool,
+{
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+    tokio::task::spawn_blocking(move || {
+        Ok(action_storage
+            .actions_before(action_id, limit, filter)?
+            .map(|(id, action)| ActionWithId {
+                id: ActionId::new_unchecked(id),
+                action,
+            }))
+    })
+    .await?
+}
+
+pub(crate) async fn get_shell_automaton_actions_after<F>(
+    env: &RpcServiceEnvironment,
+    action_id: u64,
+    limit: Option<usize>,
+    filter: F,
+) -> anyhow::Result<impl DoubleEndedIterator<Item = ActionWithId<Action>>>
+where
+    F: 'static + Send + Fn(u64, &Action) -> bool,
+{
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+    tokio::task::spawn_blocking(move || {
+        Ok(action_storage
+            .actions_after(action_id, limit, filter)?
+            .map(|(id, action)| ActionWithId {
+                id: ActionId::new_unchecked(id),
+                action,
+            }))
+    })
+    .await?
+}
+
 pub(crate) async fn get_shell_automaton_state_before_action(
     env: &RpcServiceEnvironment,
     target_action_id: u64,
 ) -> anyhow::Result<shell_automaton::State> {
     let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
 
-    let closest_snapshot_action_id = target_action_id / 10000 * 10000;
-    let mut state = match snapshot_storage.get(&closest_snapshot_action_id)? {
-        Some(v) => v,
-        None => return Err(anyhow::anyhow!("snapshot not available")),
-    };
+    let mut state: shell_automaton::State =
+        match snapshot_storage.get_closest_before(&target_action_id)? {
+            Some(v) => v,
+            None => return Err(anyhow::anyhow!("snapshot not available")),
+        };
 
-    if target_action_id > closest_snapshot_action_id {
-        for action_id in (closest_snapshot_action_id + 1)..target_action_id {
-            let action = match get_shell_automaton_action(env, action_id).await? {
-                Some(v) => v,
-                None => break,
-            };
-            shell_automaton::reducer(&mut state, &action);
+    loop {
+        let last_action_id = u64::from(state.last_action_id);
+
+        if target_action_id <= last_action_id {
+            break;
         }
+        let action =
+            match get_shell_automaton_actions_after(env, last_action_id + 1, Some(1), |_, _| true)
+                .await?
+                .next()
+            {
+                Some(v) => v,
+                None => {
+                    return Err(anyhow::format_err!(
+                        "Action after: {}, not found!",
+                        last_action_id
+                    ))
+                }
+            };
+        shell_automaton::reducer(&mut state, &action);
     }
 
     Ok(state)
@@ -451,40 +505,36 @@ pub(crate) struct ActionWithState {
 pub(crate) async fn get_shell_automaton_actions(
     env: &RpcServiceEnvironment,
     cursor: Option<u64>,
-    limit: Option<u64>,
+    limit: Option<usize>,
 ) -> anyhow::Result<VecDeque<ActionWithState>> {
     let limit = limit.unwrap_or(20).max(1).min(1000);
 
-    let end = match cursor {
-        Some(v) => v,
-        None => {
-            // TODO: optimize by getting just part of state, instead of whole state.
-            let state = get_shell_automaton_state_current(env).await?;
-            state.last_action_id.into()
-        }
-    };
-    let start = end.checked_sub(limit - 1).unwrap_or(0);
-
-    let mut state = get_shell_automaton_state_before_action(env, start).await?;
+    let mut actions_iter = get_shell_automaton_actions_before(
+        env,
+        cursor.unwrap_or(u64::MAX),
+        Some(limit as usize),
+        |_, _| true,
+    )
+    .await?
+    .rev();
 
     let mut actions_with_state = VecDeque::new();
 
-    let start = match start {
-        // Actions start from 1.
-        0 => 1,
-        v => v,
-    };
+    if let Some(action) = actions_iter.next() {
+        let mut state = get_shell_automaton_state_after_action(env, action.id.into()).await?;
 
-    for action_id in start..=end {
-        let action = match get_shell_automaton_action(env, action_id).await? {
-            Some(v) => v,
-            None => break,
-        };
-        shell_automaton::reducer(&mut state, &action);
         actions_with_state.push_front(ActionWithState {
             action,
             state: state.clone(),
         });
+
+        for action in actions_iter {
+            shell_automaton::reducer(&mut state, &action);
+            actions_with_state.push_front(ActionWithState {
+                action,
+                state: state.clone(),
+            });
+        }
     }
 
     Ok(actions_with_state)
@@ -501,23 +551,11 @@ pub struct ActionGraphNode {
 pub(crate) async fn get_shell_automaton_actions_graph(
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<Vec<ActionGraphNode>> {
-    let mut actions = Vec::new();
-    let mut last_action_id = get_shell_automaton_state_current(env)
-        .await?
-        .last_action_id
-        .into();
-    while let Some(action_and_state) = get_shell_automaton_action(env, last_action_id).await? {
-        let action = GenAction::from(action_and_state.action);
-        actions.push(action);
-        if last_action_id == 0 {
-            break;
-        }
-        last_action_id -= 1;
-    }
-
     let mut action_indices = HashMap::new();
     let mut next_actions = Vec::new();
-    let mut action_it = actions.into_iter().rev();
+    let mut action_it = get_shell_automaton_actions_after(env, 0, None, |_, _| true)
+        .await?
+        .map(|action| GenAction::from(action.action));
     let action = action_it.next().unwrap();
     action_indices.insert(action, 0);
     next_actions.push(HashSet::new());

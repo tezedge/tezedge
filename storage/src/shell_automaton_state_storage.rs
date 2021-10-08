@@ -11,7 +11,7 @@ use crypto::hash::BlockHash;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema};
-use crate::{PersistentStorage, StorageError};
+use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
 
 pub type ShellAutomatonStateIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<ShellAutomatonStateStorage> + Sync + Send;
@@ -52,6 +52,24 @@ impl ShellAutomatonStateStorage {
         } else {
             None
         })
+    }
+
+    /// Get closest state snapshot, where `state.last_action_id` <= `action_id`.
+    #[inline]
+    pub fn get_closest_before<T>(&self, action_id: &u64) -> Result<Option<T>, StorageError>
+    where
+        T: Decoder,
+    {
+        let results = self.kv.find(
+            IteratorMode::From(action_id, Direction::Reverse),
+            Some(1),
+            Box::new(|_| Ok(true)),
+        )?;
+
+        Ok(results
+            .get(0)
+            .map(|(_, encoded)| T::decode(encoded))
+            .transpose()?)
     }
 }
 

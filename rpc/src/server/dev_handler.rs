@@ -284,7 +284,7 @@ pub async fn dev_shell_automaton_actions_get(
         &dev_services::get_shell_automaton_actions(
             &env,
             query.get_u64("cursor"),
-            query.get_u64("limit"),
+            query.get_usize("limit"),
         )
         .await?,
     )
