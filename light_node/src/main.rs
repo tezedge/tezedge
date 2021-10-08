@@ -238,6 +238,12 @@ fn block_on_actors(
         SystemBuilder::new()
             .name("light-node")
             .log(log.clone())
+            .cfg({
+                let mut cfg = riker::load_config();
+                cfg.scheduler.frequency_millis =
+                    if env.rpc.websocket_cfg.is_some() { 500 } else { 5000 };
+                cfg
+            })
             .exec(tokio_runtime.handle().clone().into())
             .create()
             .expect("Failed to create actor system"),
