@@ -50,9 +50,13 @@ pub struct ShellAutomaton<Serv, Events> {
 
 impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
     pub fn new(initial_state: State, service: Serv, events: Events) -> Self {
-        let mut store = Store::new(reducer, service, initial_state);
-
-        store.add_middleware(effects);
+        let mut store = Store::new(
+            reducer,
+            effects,
+            service,
+            initial_state.config.initial_time,
+            initial_state,
+        );
 
         Self { events, store }
     }

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
@@ -137,6 +138,8 @@ impl ShellAutomatonManager {
         let events = MioInternalEventsContainer::with_capacity(1024);
 
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
+            initial_time: SystemTime::now(),
+
             port: p2p_config.listener_port,
             disable_mempool: p2p_config.disable_mempool,
             private_node: p2p_config.private_node,

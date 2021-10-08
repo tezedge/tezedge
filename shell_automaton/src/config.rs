@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +36,8 @@ pub fn identity_1() -> Identity {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
+    pub initial_time: SystemTime,
+
     pub port: Port,
     pub disable_mempool: bool,
     pub private_node: bool,
@@ -45,6 +49,8 @@ pub struct Config {
 pub fn default_config() -> Config {
     let pow_target = 26.0;
     Config {
+        initial_time: SystemTime::now(),
+
         port: 9732,
         disable_mempool: false,
         private_node: false,
@@ -62,6 +68,8 @@ pub fn default_config() -> Config {
 pub fn test_config() -> Config {
     let pow_target = 0.0;
     Config {
+        initial_time: SystemTime::now(),
+
         port: 19732,
         disable_mempool: false,
         private_node: false,
