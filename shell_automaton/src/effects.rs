@@ -30,7 +30,7 @@ use crate::storage::state_snapshot::create::{
 use crate::rpc::rpc_effects;
 
 fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    // eprintln!("[+] Action: {:#?}", &action);
+    eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 }
 
@@ -38,20 +38,26 @@ fn last_action_effects<S: Service>(
     store: &mut Store<State, S, Action>,
     action: &ActionWithId<Action>,
 ) {
-    let last_action_id_num: u64 = store.state().last_action_id.into();
-    if last_action_id_num % 10000 == 0 {
-        store.dispatch(StorageStateSnapshotCreateAction {}.into());
-    }
     store.service.storage().request_send(StorageRequest {
         id: None,
         payload: StorageRequestPayload::ActionPut(Box::new(action.clone())),
     });
 }
 
+fn applied_actions_count_effects<S: Service>(
+    store: &mut Store<State, S, Action>,
+    action: &ActionWithId<Action>,
+) {
+    if store.state().applied_actions_count % 10000 == 0 {
+        store.dispatch(StorageStateSnapshotCreateAction {}.into());
+    }
+}
+
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    // these three effects must be first!
+    // these four effects must be first!
     log_effects(store, action);
     last_action_effects(store, action);
+    applied_actions_count_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
 
     peers_dns_lookup_effects(store, action);

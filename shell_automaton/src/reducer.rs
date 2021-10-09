@@ -28,6 +28,10 @@ pub fn last_action_id_reducer(state: &mut State, action: &ActionWithId<Action>) 
     state.last_action_id = action.id;
 }
 
+pub fn applied_actions_count_reducer(state: &mut State, action: &ActionWithId<Action>) {
+    state.applied_actions_count += 1;
+}
+
 pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
     chain_reducers!(
         state,
@@ -52,6 +56,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         storage_block_header_put_reducer,
         storage_request_reducer,
         // needs to be last!
+        applied_actions_count_reducer,
         last_action_id_reducer
     );
 }

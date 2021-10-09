@@ -18,7 +18,9 @@ pub struct State {
     pub peers_dns_lookup: Option<PeersDnsLookupState>,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
+
     pub last_action_id: ActionId,
+    pub applied_actions_count: u64,
 }
 
 impl State {
@@ -29,7 +31,9 @@ impl State {
             peers_dns_lookup: None,
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle,
             storage: StorageState::new(),
+
             last_action_id: ActionId::ZERO,
+            applied_actions_count: 0,
         }
     }
 }
