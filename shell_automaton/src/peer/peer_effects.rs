@@ -103,7 +103,6 @@ where
             {
                 match peer_stream.write(&chunk.raw()[*prev_written..]) {
                     Ok(written) if written > 0 => {
-                        eprintln!("<<< {}", hex::encode(&chunk.raw()[*prev_written..written]));
                         store.dispatch(
                             PeerChunkWritePartAction {
                                 address: action.address,
@@ -182,9 +181,10 @@ where
             };
 
             let mut buff = vec![0; bytes_to_read];
+            assert_ne!(buff.len(), 0);
+            assert_ne!(bytes_to_read, 0);
             match peer_stream.read(&mut buff) {
                 Ok(bytes) if bytes > 0 => {
-                    eprintln!(">>> {}", hex::encode(&buff));
                     store.dispatch(
                         PeerChunkReadPartAction {
                             address: action.address,

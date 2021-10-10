@@ -565,13 +565,15 @@ pub fn peer_handshaking_effects<S>(
         }
 
         Action::PeerHandshakingFinish(action) => {
-            store.dispatch(
-                PeerMessageWriteInitAction {
-                    address: action.address,
-                    message: PeerMessageResponse::from(PeerMessage::Bootstrap).into(),
-                }
-                .into(),
-            );
+            if store.state().peers.len() <= 60 {
+                store.dispatch(
+                    PeerMessageWriteInitAction {
+                        address: action.address,
+                        message: PeerMessageResponse::from(PeerMessage::Bootstrap).into(),
+                    }
+                    .into(),
+                );
+            }
 
             store.dispatch(
                 PeerTryWriteAction {

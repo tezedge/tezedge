@@ -457,25 +457,14 @@ pub(crate) async fn get_shell_automaton_state_before_action(
             None => return Err(anyhow::anyhow!("snapshot not available")),
         };
 
-    loop {
-        let last_action_id = u64::from(state.last_action_id);
+    let last_action_id = u64::from(state.last_action_id);
+    let actions_iter = get_shell_automaton_actions_after(env, last_action_id + 1, None, |_, _| true).await?;
 
-        if target_action_id <= last_action_id {
+    for action in actions_iter {
+        if target_action_id <= u64::from(action.id) {
             break;
         }
-        let action =
-            match get_shell_automaton_actions_after(env, last_action_id + 1, Some(1), |_, _| true)
-                .await?
-                .next()
-            {
-                Some(v) => v,
-                None => {
-                    return Err(anyhow::format_err!(
-                        "Action after: {}, not found!",
-                        last_action_id
-                    ))
-                }
-            };
+
         shell_automaton::reducer(&mut state, &action);
     }
 
