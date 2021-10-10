@@ -37,7 +37,7 @@ pub fn peer_connection_outgoing_effects<S>(
                 .len()
                 .checked_sub(addresses.len())
                 .unwrap_or(0)
-                > 10
+                > 60
             {
                 return;
             }
