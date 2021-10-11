@@ -9,6 +9,7 @@ use crate::peer::binary_message::read::peer_binary_message_read_effects;
 use crate::peer::binary_message::write::peer_binary_message_write_effects;
 use crate::peer::chunk::read::peer_chunk_read_effects;
 use crate::peer::chunk::write::peer_chunk_write_effects;
+use crate::peer::connection::closed::peer_connection_closed_effects;
 use crate::peer::connection::incoming::accept::peer_connection_incoming_accept_effects;
 use crate::peer::connection::incoming::peer_connection_incoming_effects;
 use crate::peer::connection::outgoing::peer_connection_outgoing_effects;
@@ -68,6 +69,7 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peer_connection_outgoing_effects(store, action);
     peer_connection_incoming_accept_effects(store, action);
     peer_connection_incoming_effects(store, action);
+    peer_connection_closed_effects(store, action);
     peer_disconnection_effects(store, action);
 
     peer_message_read_effects(store, action);
