@@ -19,9 +19,9 @@ use thiserror::Error;
 use crypto::hash::{BlockHash, ChainId};
 use shell_integration::{
     dispatch_oneshot_result, InjectBlockError, InjectBlockOneshotResultCallback,
-    OneshotResultCallback, ThreadRunningStatus, ThreadWatcher,
+    InjectBlockOneshotResultCallbackResult, OneshotResultCallback, ThreadRunningStatus,
+    ThreadWatcher,
 };
-use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
     CycleErasStorage, CycleMetaStorage, PersistentStorageRef,
@@ -34,9 +34,7 @@ use storage::{
 };
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
-use tezos_wrapper::service::{
-    handle_protocol_service_error, ProtocolController, ProtocolServiceError,
-};
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
@@ -418,30 +416,67 @@ impl Receive<LogStats> for ChainFeeder {
 /// Possible errors for feeding chain
 #[derive(Debug, Error)]
 pub enum FeedChainError {
-    #[error("Cannot resolve current head, no genesis was commited")]
-    UnknownCurrentHeadError,
-    #[error("Context is not stored, context_hash: {context_hash}, reason: {reason}")]
-    MissingContextError {
-        context_hash: String,
-        reason: String,
-    },
-    #[error("Storage read/write error, reason: {error:?}")]
-    StorageError { error: StorageError },
-    #[error("Protocol service error error, reason: {error:?}")]
-    ProtocolServiceError { error: ProtocolServiceError },
-    #[error("Block apply processing error, reason: {reason:?}")]
-    ProcessingError { reason: String },
+    #[error("{reason:?}")]
+    InitializeContextError { reason: InitializeContextError },
+    #[error("{reason:?}")]
+    RequiredContextRestartError { reason: RequiredContextRestartError },
 }
 
-impl From<StorageError> for FeedChainError {
-    fn from(error: StorageError) -> Self {
-        FeedChainError::StorageError { error }
+impl From<InitializeContextError> for FeedChainError {
+    fn from(reason: InitializeContextError) -> Self {
+        FeedChainError::InitializeContextError { reason }
     }
 }
 
-impl From<ProtocolServiceError> for FeedChainError {
-    fn from(error: ProtocolServiceError) -> Self {
-        FeedChainError::ProtocolServiceError { error }
+impl From<RequiredContextRestartError> for FeedChainError {
+    fn from(reason: RequiredContextRestartError) -> Self {
+        FeedChainError::RequiredContextRestartError { reason }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Detected request for restarting context, reason: {reason}")]
+pub struct RequiredContextRestartError {
+    reason: String,
+}
+
+#[derive(Debug, Error)]
+pub enum InitializeContextError {
+    #[error("Failed to initialize context because of storage error, reason: {reason}")]
+    StorageError { reason: StorageError },
+    #[error("Failed to initialize context because of protocol error, reason: {reason}")]
+    ProtocolServiceError { reason: ProtocolServiceError },
+}
+
+impl From<StorageError> for InitializeContextError {
+    fn from(reason: StorageError) -> Self {
+        InitializeContextError::StorageError { reason }
+    }
+}
+
+impl From<ProtocolServiceError> for InitializeContextError {
+    fn from(reason: ProtocolServiceError) -> Self {
+        InitializeContextError::ProtocolServiceError { reason }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ApplyBlockBatchError {
+    #[error("Storage read/write error, reason: {reason:?}")]
+    StorageError { reason: StorageError },
+    #[error("Protocol service error error, reason: {reason:?}")]
+    ProtocolServiceError { reason: ProtocolServiceError },
+}
+
+impl From<StorageError> for ApplyBlockBatchError {
+    fn from(reason: StorageError) -> Self {
+        ApplyBlockBatchError::StorageError { reason }
+    }
+}
+
+impl From<ProtocolServiceError> for ApplyBlockBatchError {
+    fn from(reason: ProtocolServiceError) -> Self {
+        ApplyBlockBatchError::ProtocolServiceError { reason }
     }
 }
 
@@ -510,8 +545,8 @@ impl BlockApplierThreadSpawner {
                 let cycle_eras_storage = CycleErasStorage::new(&persistent_storage);
                 let constants_storage = ConstantsStorage::new(&persistent_storage);
 
-                info!(log, "Chain feeder started processing");
                 while apply_block_run.load(Ordering::Acquire) {
+                    info!(log, "Chain feeder thread starting");
                     match tezos_writeable_api.pool.get() {
                         Ok(protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
@@ -535,6 +570,7 @@ impl BlockApplierThreadSpawner {
                                 debug!(log, "Feed chain to protocol finished")
                             }
                             Err(err) => {
+                                // this will restart protocol-runner on error
                                 protocol_controller.set_release_on_return_to_pool();
                                 if apply_block_run.load(Ordering::Acquire) {
                                     warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
@@ -555,6 +591,7 @@ impl BlockApplierThreadSpawner {
     }
 }
 
+#[inline]
 fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
@@ -573,7 +610,7 @@ fn feed_chain_to_protocol(
     log: &Logger,
 ) -> Result<(), FeedChainError> {
     // at first we initialize protocol runtime and ffi context
-    if let Err(e) = initialize_protocol_context(
+    match initialize_protocol_context(
         block_storage,
         block_meta_storage,
         chain_meta_storage,
@@ -583,20 +620,7 @@ fn feed_chain_to_protocol(
         tezos_env,
         init_storage_data,
     ) {
-        if let Some(initialize_context_result_callback) = initialize_context_result_callback.take()
-        {
-            let _ = dispatch_oneshot_result(Some(initialize_context_result_callback), || {
-                Err(InitializeContextOneshotResultCallbackError {
-                    reason: format!("{}", e),
-                })
-            });
-        }
-        return Err(e);
-    }
-
-    // now just check current head (at least genesis should be there)
-    match chain_meta_storage.get_current_head(&init_storage_data.chain_id) {
-        Ok(Some(_)) => {
+        Ok(_) => {
             // if we came here, everything is ok, and context is initialized ok
             if let Some(initialize_context_result_callback) =
                 initialize_context_result_callback.take()
@@ -605,205 +629,41 @@ fn feed_chain_to_protocol(
                     dispatch_oneshot_result(Some(initialize_context_result_callback), || Ok(()));
             }
         }
-        _ => {
-            // this should not happen here (None or Err), we applied at least genesis before
+        Err(e) => {
             if let Some(initialize_context_result_callback) =
                 initialize_context_result_callback.take()
             {
                 let _ = dispatch_oneshot_result(Some(initialize_context_result_callback), || {
                     Err(InitializeContextOneshotResultCallbackError {
-                    reason: "Unknown current head after context initialization, at least genesis should be here".to_string(),
-                })
+                        reason: format!("{}", e),
+                    })
                 });
             }
-            return Err(FeedChainError::UnknownCurrentHeadError);
+            return Err(e.into());
         }
-    };
+    }
 
     // now we can start applying block
+    // now we can start and listen for new applying block requests from queue
     while apply_block_run.load(Ordering::Acquire) {
         // let's handle event, if any
         if let Ok(event) = block_applier_event_receiver.recv() {
             match event {
                 Event::ApplyBlock(request, chain_feeder) => {
-                    // lets apply block batch
-                    let ApplyBlock {
-                        batch,
-                        bootstrapper,
-                        chain_manager,
-                        chain_id,
-                        result_callback,
-                        permit,
-                    } = request;
-
-                    let mut last_applied: Option<Arc<BlockHash>> = None;
-                    let mut batch_stats = Some(ApplyBlockStats::default());
-                    let mut oneshot_result: Option<Result<(), InjectBlockError>> = None;
-                    let mut previous_block_data_cache: Option<(
-                        Arc<BlockHeaderWithHash>,
-                        BlockAdditionalData,
-                    )> = None;
-
-                    // lets apply blocks in order
-                    for block_to_apply in batch.take_all_blocks_to_apply() {
-                        debug!(log, "Applying block";
-                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
-
-                        if !apply_block_run.load(Ordering::Acquire) {
-                            info!(log, "Shutdown detected, so stopping block batch apply immediately";
-                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
-                            return Ok(());
-                        }
-
-                        let validated_at_timer = Instant::now();
-
-                        // prepare request and data for block
-                        // collect all required data for apply
-                        let load_metadata_timer = Instant::now();
-                        let apply_block_request_data = prepare_apply_request(
-                            &block_to_apply,
-                            chain_id.as_ref().clone(),
-                            block_storage,
-                            block_meta_storage,
-                            operations_storage,
-                            previous_block_data_cache,
-                        );
-                        let load_metadata_elapsed = load_metadata_timer.elapsed();
-
-                        // apply block and handle result
-                        match _apply_block(
-                            chain_id.clone(),
-                            block_to_apply.clone(),
-                            apply_block_request_data,
-                            validated_at_timer,
-                            load_metadata_elapsed,
-                            block_storage,
-                            block_meta_storage,
-                            cycle_meta_storage,
-                            cycle_eras_storage,
-                            constants_storage,
-                            protocol_controller,
-                            init_storage_data,
-                            log,
-                        ) {
-                            Ok(result) => {
-                                match result {
-                                    Some((
-                                        validated_block,
-                                        block_additional_data,
-                                        block_validation_timer,
-                                    )) => {
-                                        last_applied = Some(block_to_apply);
-                                        if result_callback.is_some() {
-                                            oneshot_result = Some(Ok(()));
-                                        }
-                                        previous_block_data_cache = Some((
-                                            validated_block.block.clone(),
-                                            block_additional_data,
-                                        ));
-
-                                        // update state
-                                        if let Some(stats) = batch_stats.as_mut() {
-                                            stats.set_applied_block_level(
-                                                validated_block.block.header.level(),
-                                            );
-                                            stats.add_block_validation_stats(
-                                                &block_validation_timer,
-                                            );
-                                        }
-
-                                        // notify  chain manager (only for new applied block)
-                                        chain_manager.tell(validated_block, None);
-                                    }
-                                    None => {
-                                        last_applied = Some(block_to_apply);
-                                        if result_callback.is_some() {
-                                            oneshot_result = Some(Err(InjectBlockError {
-                                                reason: "Block/batch is already applied"
-                                                    .to_string(),
-                                            }));
-                                        }
-                                        previous_block_data_cache = None;
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                warn!(log, "Block apply processing failed"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{}", e));
-
-                                // handle condvar immediately
-                                if let Err(e) =
-                                    dispatch_oneshot_result(result_callback.clone(), || {
-                                        Err(InjectBlockError {
-                                            reason: format!("{}", e),
-                                        })
-                                    })
-                                {
-                                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
-                                }
-                                if result_callback.is_some() {
-                                    // dont process next time
-                                    oneshot_result = None;
-                                }
-
-                                // notify bootstrapper with failed + last_applied
-                                if apply_block_run.load(Ordering::Acquire) {
-                                    if let Some(bootstrapper) = bootstrapper.as_ref() {
-                                        bootstrapper.tell(
-                                            ApplyBlockBatchFailed {
-                                                failed_block: block_to_apply.clone(),
-                                            },
-                                            None,
-                                        );
-                                    }
-                                }
-
-                                // we need to fire stats here (because we can throw error potentialy)
-                                if let Some(stats) = batch_stats.take() {
-                                    chain_feeder.tell(ApplyBlockDone { stats }, None);
-                                }
-
-                                // handle protocol error - continue or restart protocol runner?
-                                if let FeedChainError::ProtocolServiceError { error } = e {
-                                    handle_protocol_service_error(
-                                        error,
-                                        |e| warn!(log, "Failed to apply block"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{:?}", e)),
-                                    )?;
-                                }
-
-                                // just break processing and wait for another event
-                                break;
-                            }
-                        }
-                    }
-
-                    // allow others as soon as possible
-                    if let Some(permit) = permit {
-                        drop(permit);
-                    }
-
-                    // notify condvar
-                    if let Some(oneshot_result) = oneshot_result {
-                        // notify condvar
-                        if let Err(e) = dispatch_oneshot_result(result_callback, || oneshot_result)
-                        {
-                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
-                        }
-                    }
-
-                    // notify after batch success done
-                    if apply_block_run.load(Ordering::Acquire) {
-                        // fire stats
-                        if let Some(stats) = batch_stats.take() {
-                            chain_feeder.tell(ApplyBlockDone { stats }, None);
-                        }
-
-                        if let Some(last_applied) = last_applied {
-                            // notify bootstrapper just on the end of the success batch
-                            if let Some(bootstrapper) = bootstrapper {
-                                bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
-                            }
-                        }
-                    }
+                    _handle_apply_block_request(
+                        request,
+                        chain_feeder,
+                        block_storage,
+                        block_meta_storage,
+                        operations_storage,
+                        cycle_meta_storage,
+                        cycle_eras_storage,
+                        constants_storage,
+                        protocol_controller,
+                        init_storage_data,
+                        apply_block_run,
+                        log,
+                    )?;
                 }
                 Event::ShuttingDown => {
                     // just finish the loop
@@ -820,9 +680,223 @@ fn feed_chain_to_protocol(
     Ok(())
 }
 
+#[inline]
+fn _handle_apply_block_request(
+    request: ApplyBlock,
+    chain_feeder: ChainFeederRef,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    operations_storage: &OperationsStorage,
+    cycle_meta_storage: &CycleMetaStorage,
+    cycle_eras_storage: &CycleErasStorage,
+    constants_storage: &ConstantsStorage,
+    protocol_controller: &ProtocolController,
+    init_storage_data: &StorageInitInfo,
+    apply_block_run: &ThreadRunningStatus,
+    log: &Logger,
+) -> Result<(), RequiredContextRestartError> {
+    // lets apply block batch
+    let ApplyBlock {
+        batch,
+        bootstrapper,
+        chain_manager,
+        chain_id,
+        result_callback,
+        permit,
+    } = request;
+
+    // callback for notify chain_feeder about new stats
+    let notify_stats = |mut stats: Option<ApplyBlockStats>| {
+        if apply_block_run.load(Ordering::Acquire) {
+            // fire stats
+            if let Some(stats) = stats.take() {
+                chain_feeder.tell(ApplyBlockDone { stats }, None);
+            }
+        }
+    };
+    // callback for notify bootstrapper about some successfulyl last_applied block
+    let notify_last_applied = |last_applied: Option<Arc<BlockHash>>| {
+        if apply_block_run.load(Ordering::Acquire) {
+            if let Some(last_applied) = last_applied {
+                // notify bootstrapper just on the end of the success batch
+                if let Some(bootstrapper) = bootstrapper.as_ref() {
+                    bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
+                }
+            }
+        }
+    };
+    // callback for notify bootstrapper about some failed batch block
+    let notify_last_failed = |last_failed: Arc<BlockHash>| {
+        if apply_block_run.load(Ordering::Acquire) {
+            // notify bootstrapper just on the end of the success batch
+            if let Some(bootstrapper) = bootstrapper.as_ref() {
+                // TODO: posunut sem aj zvysok batchu, ze nebude naaplikovany
+                bootstrapper.tell(
+                    ApplyBlockBatchFailed {
+                        failed_block: last_failed,
+                    },
+                    None,
+                );
+            }
+        }
+    };
+    // callback for notify condvar
+    let notify_oneshot_result =
+        |oneshot_callback: Option<InjectBlockOneshotResultCallback>,
+         oneshot_result: InjectBlockOneshotResultCallbackResult| {
+            // notify condvar, if some result
+            if oneshot_callback.is_some() {
+                if let Err(e) = dispatch_oneshot_result(oneshot_callback, || oneshot_result) {
+                    warn!(log, "Failed to dispatch result (chain_feeder)"; "reason" => format!("{}", e));
+                }
+            }
+        };
+
+    let mut last_applied: Option<Arc<BlockHash>> = None;
+    let mut batch_stats = Some(ApplyBlockStats::default());
+    let mut oneshot_result: Option<InjectBlockOneshotResultCallbackResult> = None;
+    let mut previous_block_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)> =
+        None;
+
+    // lets apply blocks in order
+    for block_to_apply in batch.take_all_blocks_to_apply() {
+        debug!(log, "Applying block";
+                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
+
+        if !apply_block_run.load(Ordering::Acquire) {
+            info!(log, "Shutdown detected, so stopping block batch apply immediately";
+                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
+            return Ok(());
+        }
+
+        let validated_at_timer = Instant::now();
+
+        // prepare request and data for block
+        // collect all required data for apply
+        let load_metadata_timer = Instant::now();
+        let apply_block_request_data = prepare_apply_request(
+            &block_to_apply,
+            chain_id.as_ref().clone(),
+            block_storage,
+            block_meta_storage,
+            operations_storage,
+            previous_block_data_cache,
+        );
+        let load_metadata_elapsed = load_metadata_timer.elapsed();
+
+        // apply block and handle result
+        match _apply_block(
+            chain_id.clone(),
+            block_to_apply.clone(),
+            apply_block_request_data,
+            validated_at_timer,
+            load_metadata_elapsed,
+            block_storage,
+            block_meta_storage,
+            cycle_meta_storage,
+            cycle_eras_storage,
+            constants_storage,
+            protocol_controller,
+            init_storage_data,
+            log,
+        ) {
+            Ok(result) => {
+                match result {
+                    Some((validated_block, block_additional_data, block_validation_timer)) => {
+                        last_applied = Some(block_to_apply);
+                        if result_callback.is_some() {
+                            oneshot_result = Some(Ok(()));
+                        }
+                        previous_block_data_cache =
+                            Some((validated_block.block.clone(), block_additional_data));
+
+                        // update state
+                        if let Some(stats) = batch_stats.as_mut() {
+                            stats.set_applied_block_level(validated_block.block.header.level());
+                            stats.add_block_validation_stats(&block_validation_timer);
+                        }
+
+                        // notify  chain manager (only for new applied block)
+                        chain_manager.tell(validated_block, None);
+                    }
+                    None => {
+                        last_applied = Some(block_to_apply);
+                        if result_callback.is_some() {
+                            oneshot_result = Some(Err(InjectBlockError {
+                                reason: "Block/batch is already applied".to_string(),
+                            }));
+                        }
+                        previous_block_data_cache = None;
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(log, "Block apply processing failed"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{}", e));
+
+                // now we need to analyse error:
+                // 1. or if protocol_runner just failed (OOM killer, some unexpected ipc error, ...) and restart could be enougth
+                // 2. or if we need to stop the batch processing and report wrong batch without restarting
+                let need_to_restart_context = match &e {
+                    ApplyBlockBatchError::ProtocolServiceError { reason } => {
+                        reason.is_restart_required()
+                    }
+                    _ => false,
+                };
+
+                if need_to_restart_context {
+                    // we need to restart, but we handle some stuff at first
+
+                    notify_stats(batch_stats);
+                    notify_last_applied(last_applied);
+
+                    // reschedule the rest
+                    // now throw error to restart and process optional retry
+                    return Err(RequiredContextRestartError {
+                        reason: format!("{:?}", e),
+                    });
+                } else {
+                    // we dont need to rest, so we just stop the batch processing
+
+                    notify_oneshot_result(
+                        result_callback,
+                        Err(InjectBlockError {
+                            reason: format!("{}", e),
+                        }),
+                    );
+                    notify_stats(batch_stats);
+                    notify_last_applied(last_applied);
+                    notify_last_failed(block_to_apply);
+
+                    // just break processing and wait for another event - nothing more to do
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // now handle successfull batch application
+
+    // allow others as soon as possible
+    if let Some(permit) = permit {
+        // not needed, just to be explicit
+        drop(permit);
+    }
+
+    // notify other actors after batch success done
+    if let Some(oneshot_result) = oneshot_result {
+        notify_oneshot_result(result_callback, oneshot_result);
+    }
+    notify_stats(batch_stats);
+    notify_last_applied(last_applied);
+
+    // if we came here, everything is ok
+    Ok(())
+}
+
 /// Call protocol runner to apply block
 ///
 /// Return ProcessValidatedBlock - if block was applied or None if was already previosly applied else Err
+#[inline]
 fn _apply_block(
     chain_id: Arc<ChainId>,
     block_hash: Arc<BlockHash>,
@@ -832,7 +906,7 @@ fn _apply_block(
             block_meta_storage::Meta,
             Arc<BlockHeaderWithHash>,
         ),
-        FeedChainError,
+        StorageError,
     >,
     validated_at_timer: Instant,
     load_metadata_elapsed: Duration,
@@ -850,7 +924,7 @@ fn _apply_block(
         BlockAdditionalData,
         BlockValidationTimer,
     )>,
-    FeedChainError,
+    ApplyBlockBatchError,
 > {
     // unwrap result
     let (block_request, mut block_meta, block) = apply_block_request_data?;
@@ -920,6 +994,7 @@ fn _apply_block(
 }
 
 /// Collects complete data for applying block, if not complete, return None
+#[inline]
 fn prepare_apply_request(
     block_hash: &BlockHash,
     chain_id: ChainId,
@@ -933,16 +1008,17 @@ fn prepare_apply_request(
         block_meta_storage::Meta,
         Arc<BlockHeaderWithHash>,
     ),
-    FeedChainError,
+    StorageError,
 > {
     // get block header
     let block = match block_storage.get(block_hash)? {
         Some(block) => Arc::new(block),
         None => {
-            return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey {
-                    when: "prepare_apply_request".into(),
-                },
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "prepare_apply_request (block header not found, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
             });
         }
     };
@@ -951,8 +1027,11 @@ fn prepare_apply_request(
     let block_meta = match block_meta_storage.get(block_hash)? {
         Some(meta) => meta,
         None => {
-            return Err(FeedChainError::ProcessingError {
-                reason: "Block metadata not found".to_string(),
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "prepare_apply_request (block header metadata not, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
             });
         }
     };
@@ -991,12 +1070,13 @@ fn prepare_apply_request(
     ))
 }
 
+#[inline]
 fn resolve_block_data(
     block_hash: &BlockHash,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     block_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
-) -> Result<(Arc<BlockHeaderWithHash>, BlockAdditionalData), FeedChainError> {
+) -> Result<(Arc<BlockHeaderWithHash>, BlockAdditionalData), StorageError> {
     // check cache at first
     if let Some(cached) = block_data_cache {
         // if cached data are the same as requested, then use it from cache
@@ -1008,10 +1088,11 @@ fn resolve_block_data(
     let block = match block_storage.get(block_hash)? {
         Some(header) => Arc::new(header),
         None => {
-            return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey {
-                    when: "resolve_block_data (block_storage)".into(),
-                },
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "resolve_block_data (block header not found, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
             });
         }
     };
@@ -1020,11 +1101,9 @@ fn resolve_block_data(
     let additional_data = match block_meta_storage.get_additional_data(block_hash)? {
         Some(additional_data) => additional_data,
         None => {
-            return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey {
-                    when: "resolve_block_data (block_meta_storage)".into(),
-                },
-            });
+            return Err(StorageError::MissingKey {
+                    when: format!("resolve_block_data (block header metadata not found (block was not applied), block_hash: {}", block_hash.to_base58_check()),
+                });
         }
     };
 
@@ -1034,6 +1113,7 @@ fn resolve_block_data(
 /// This initializes ocaml runtime and protocol context,
 /// if we start with new databazes without genesis,
 /// it ensures correct initialization of storage with genesis and his data.
+#[inline]
 pub(crate) fn initialize_protocol_context(
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
@@ -1043,7 +1123,7 @@ pub(crate) fn initialize_protocol_context(
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
-) -> Result<(), FeedChainError> {
+) -> Result<(), InitializeContextError> {
     let validated_at_timer = Instant::now();
 
     // we must check if genesis is applied, if not then we need "commit_genesis" to context

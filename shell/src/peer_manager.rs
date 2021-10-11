@@ -922,7 +922,7 @@ impl Receive<AcceptPeer> for PeerManager {
                     "Cannot accept incoming peer connection because peer limit was reached - dropping incoming connection"
                 );
                 // TODO: TE-490 - better handle Nack TooManyConnetions here instead of drop
-                // not needed, just wanted to be explicit here
+                // not needed, just to be explicit
                 drop(msg.stream);
                 drop(msg.permit);
             }
@@ -932,7 +932,7 @@ impl Receive<AcceptPeer> for PeerManager {
                     "Failed to resolve `max_connections_exceeded` - dropping incoming connection";
                     "reason" => format!("{:?}", e)
                 );
-                // not needed, just wanted to be explicit here
+                // not needed, just to be explicit
                 drop(msg.stream);
                 drop(msg.permit);
             }
@@ -1002,7 +1002,7 @@ async fn begin_listen_incoming(
                                 "No more permits (exceeded) for incoming connection - dropping incoming connection";
                                 "socket_addr" => address.to_string(),
                             );
-                            // not needed, just wanted to be explicit here
+                            // not needed, just to be explicit
                             drop(stream);
                         }
                         Err(e) => {
@@ -1012,7 +1012,7 @@ async fn begin_listen_incoming(
                                 "socket_addr" => address.to_string(),
                                 "reason" => format!("{:?}", e),
                             );
-                            // not needed, just wanted to be explicit here
+                            // not needed, just to be explicit
                             drop(stream);
                         }
                     }
