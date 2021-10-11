@@ -10,7 +10,7 @@ anyhow = "1.0"
 clap = "2.33"
 thiserror = "1.0"
 itertools = "0.10"
-nix = "0.19"
+nix = "0.23"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

@@ -169,13 +169,6 @@ steps:
 - name: build-artifacts
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
   environment:
     RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
@@ -480,9 +473,6 @@ steps:
 volumes:
   - name: cache
     temp: {}
-  - name: tests
-    host:
-      path: /usr/local/etc/tezedge-ci/tests
 
 trigger:
   branch:
@@ -610,11 +600,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -631,11 +616,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -652,11 +632,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -674,11 +649,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -695,11 +665,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -717,11 +682,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -739,11 +699,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -761,11 +716,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -783,11 +733,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -805,11 +750,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -827,11 +767,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
@@ -848,14 +783,6 @@ depends_on:
 
 image_pull_secrets:
   - docker_pull_secret
-
-volumes:
-  - name: build
-    host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: tests
-    host:
-      path: /usr/local/etc/tezedge-ci/tests/
 
 trigger:
   branch:
@@ -2748,8 +2675,6 @@ steps:
   image: alpine/git
   user: root
   volumes:
-    - name: build
-      path: /artifacts
     - name: sandbox-data
       path: /data/sandbox
   commands:
@@ -3525,9 +3450,6 @@ steps:
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
-  volumes:
-    - name: tests
-      path: /tests
   environment:
     RUST_BACKTRACE: 1
   commands:
@@ -5098,8 +5020,6 @@ steps:
     user: root
     detach: true
     volumes:
-      - name: build
-        path: /build
       - name: cache
         path: /cache
       - name: tezos-data
@@ -6151,8 +6071,6 @@ steps:
   image: tezos/tezos:v9-release
   detach: true
   volumes:
-    # - name: build
-    #   path: /artifacts
     - name: data
       path: /home/tezos/data
     - name: cache
