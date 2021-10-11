@@ -1677,7 +1677,6 @@ dependencies = [
  "monitoring",
  "networking",
  "num_cpus",
- "riker",
  "rlimit",
  "rpc",
  "serde_json",
@@ -1687,6 +1686,7 @@ dependencies = [
  "slog",
  "storage",
  "strum",
+ "tezedge-actor-system",
  "tezos_api",
  "tezos_context",
  "tezos_identity",
@@ -1861,13 +1861,13 @@ dependencies = [
  "futures",
  "networking",
  "rand 0.7.3",
- "riker",
  "serde 1.0.130",
  "serde_json",
  "shell",
  "slog",
  "slog_derive",
  "storage",
+ "tezedge-actor-system",
  "tezos_messages",
  "tokio",
  "tokio-stream",
@@ -1905,11 +1905,11 @@ dependencies = [
  "futures",
  "hex",
  "lazy_static",
- "riker",
  "slog",
  "slog-async",
  "slog-envlogger",
  "slog-term",
+ "tezedge-actor-system",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
@@ -2551,28 +2551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "riker"
-version = "0.4.2-cleanup-unsafe-7"
-source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-7#52560d518ac50e489ea536c7c45d53e9452d33af"
-dependencies = [
- "riker-macros",
- "slog",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "riker-macros"
-version = "0.2.0"
-source = "git+https://github.com/tezedge/riker.git?tag=v0.4.2-cleanup-unsafe-7#52560d518ac50e489ea536c7c45d53e9452d33af"
-dependencies = [
- "proc-macro2 1.0.29",
- "quote 1.0.10",
- "syn 1.0.80",
-]
-
-[[package]]
 name = "rle-decode-fast"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2905,7 +2883,6 @@ dependencies = [
  "r2d2",
  "rand 0.7.3",
  "regex",
- "riker",
  "serde 1.0.130",
  "serde_json",
  "serial_test",
@@ -2914,6 +2891,7 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezedge-actor-system",
  "tezos-sys",
  "tezos_api",
  "tezos_context",
@@ -3253,6 +3231,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
+]
+
+[[package]]
+name = "tezedge-actor-system"
+version = "0.5.0"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#025f1fadc0eea0413fbd82b4b6c55d11a29ad579"
+dependencies = [
+ "slog",
+ "tezedge-actor-system-macros",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "tezedge-actor-system-macros"
+version = "0.2.0"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#025f1fadc0eea0413fbd82b4b6c55d11a29ad579"
+dependencies = [
+ "proc-macro2 1.0.29",
+ "quote 1.0.10",
+ "syn 1.0.80",
 ]
 
 [[package]]

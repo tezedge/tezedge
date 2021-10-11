@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{format_err, Error};
 use itertools::{Itertools, MinMaxResult};
-use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
@@ -221,7 +221,7 @@ pub struct ChainManager {
     /// Used just for very first initialization of ChainManager, because ChainManager subscribes to NetworkChannel in [`pre_start`], but this initialization is asynchronous,
     /// so there is possiblity, that PeerManager could open p2p socket before ChainManager is subscribed to p2p messages, this could lead to dismissed p2p messages or PeerBootstrapped messages,
     ///
-    /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because riker's do not loose messages when actor is restarting
+    /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because tezedge_actor_system's do not loose messages when actor is restarting
     first_initialization_done_result_callback: Arc<Mutex<Option<OneshotResultCallback<()>>>>,
 }
 

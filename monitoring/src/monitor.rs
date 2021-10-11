@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{debug, info, trace, warn, Logger};
+use tezedge_actor_system::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};

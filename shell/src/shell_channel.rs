@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use riker::actors::*;
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::BlockHash;
 use shell_integration::notifications::NewCurrentHeadNotificationRef;

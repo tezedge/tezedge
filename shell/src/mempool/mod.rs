@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use riker::actors::*;
 use slog::{info, warn, Logger};
+use tezedge_actor_system::actors::*;
 use thiserror::Error;
 
 use crypto::hash::ChainId;

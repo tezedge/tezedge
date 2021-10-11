@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use riker::actors::*;
-use riker::system::SystemBuilder;
 use slog::{info, warn, Level, Logger};
+use tezedge_actor_system::actors::*;
+use tezedge_actor_system::system::SystemBuilder;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tokio::runtime::Runtime;
 
@@ -509,7 +509,7 @@ pub mod test_actor {
     use std::sync::{Arc, RwLock};
     use std::time::{Duration, Instant};
 
-    use riker::actors::*;
+    use tezedge_actor_system::actors::*;
 
     use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};

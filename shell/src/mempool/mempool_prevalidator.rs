@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
 use anyhow::{format_err, Error};
-use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
+use tezedge_actor_system::actors::*;
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};

@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use riker::actors::*;
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, OperationHash};
 use networking::p2p::peer::SendMessage;

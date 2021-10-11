@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::lock::Mutex;
-use riker::actors::*;
 use slog::{debug, info, o, trace, warn, Logger};
+use tezedge_actor_system::actors::*;
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -723,11 +723,11 @@ mod tests {
 
     use crypto::hash::CryptoboxPublicKeyHash;
     use futures::lock::Mutex;
-    use riker::{
+    use slog::{Drain, Level, Logger, KV};
+    use tezedge_actor_system::{
         actor::ActorRefFactory,
         actors::{ActorSystem, SystemBuilder, Tell},
     };
-    use slog::{Drain, Level, Logger, KV};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::{
         metadata::MetadataMessage,

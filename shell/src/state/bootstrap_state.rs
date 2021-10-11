@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use riker::actors::*;
 use slog::{info, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::PeerId;
