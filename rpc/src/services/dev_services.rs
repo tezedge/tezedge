@@ -458,7 +458,8 @@ pub(crate) async fn get_shell_automaton_state_before_action(
         };
 
     let last_action_id = u64::from(state.last_action_id);
-    let actions_iter = get_shell_automaton_actions_after(env, last_action_id + 1, None, |_, _| true).await?;
+    let actions_iter =
+        get_shell_automaton_actions_after(env, last_action_id + 1, None, |_, _| true).await?;
 
     for action in actions_iter {
         if target_action_id <= u64::from(action.id) {
@@ -606,6 +607,8 @@ pub enum GenAction {
     PeerConnectionOutgoingError,
     PeerConnectionOutgoingSuccess,
 
+    PeerConnectionClosed,
+
     PeerDisconnect,
     PeerDisconnected,
 
@@ -714,6 +717,7 @@ impl From<Action> for GenAction {
             Action::PeerConnectionOutgoingPending(_) => GenAction::PeerConnectionOutgoingPending,
             Action::PeerConnectionOutgoingError(_) => GenAction::PeerConnectionOutgoingError,
             Action::PeerConnectionOutgoingSuccess(_) => GenAction::PeerConnectionOutgoingSuccess,
+            Action::PeerConnectionClosed(_) => GenAction::PeerConnectionClosed,
             Action::PeerDisconnect(_) => GenAction::PeerDisconnect,
             Action::PeerDisconnected(_) => GenAction::PeerDisconnected,
             Action::P2pServerEvent(_) => GenAction::P2pServerEvent,
