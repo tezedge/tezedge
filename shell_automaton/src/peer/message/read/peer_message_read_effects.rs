@@ -37,13 +37,20 @@ pub fn peer_message_read_effects<S>(
             };
 
             match PeerMessageResponse::from_bytes(&action.message) {
-                Ok(message) => store.dispatch(
-                    PeerMessageReadSuccessAction {
-                        address: action.address,
-                        message: message.into(),
-                    }
-                    .into(),
-                ),
+                Ok(mut message) => {
+                    // Set size hint to unencrypted encoded message size.
+                    // Maybe we should set encrypted size instead? Since
+                    // that's the actual size of data transmitted.
+                    message.set_size_hint(action.message.len());
+
+                    store.dispatch(
+                        PeerMessageReadSuccessAction {
+                            address: action.address,
+                            message: message.into(),
+                        }
+                        .into(),
+                    );
+                }
                 Err(err) => {
                     eprintln!("TODO: encountered PeerMessageResponse decode error handling of which not implemented!");
                 }
