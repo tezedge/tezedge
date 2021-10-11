@@ -348,16 +348,19 @@ impl ChainManager {
                 // store peer
                 self.peers.insert(peer_id.address, peer);
 
-                // retrieve mutable reference and use it as `tell_peer()` parameter
-                if let Some(peer) = self.peers.get_mut(&peer_id.address) {
-                    tell_peer(
-                        &shell_automaton,
-                        &peer_id,
-                        GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
-                            .into(),
-                        &ctx.system.log(),
-                    );
-                }
+                let log = ctx
+                    .system
+                    .log()
+                    .new(slog::o!("peer" => peer_id.address.to_string()));
+
+                tell_peer(
+                    &shell_automaton,
+                    &peer_id,
+                    GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
+                        .into(),
+                    &log,
+                );
+
             }
             NetworkChannelMsg::PeerDisconnected(peer)
             | NetworkChannelMsg::PeerBlacklisted(peer) => {
