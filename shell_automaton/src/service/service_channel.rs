@@ -77,7 +77,7 @@ impl From<mpsc::RecvError> for RequestRecvError {
 /// It is used to send requests to the worker.
 #[derive(Debug)]
 pub struct ServiceWorkerRequester<Req, Resp> {
-    sender: mpsc::Sender<Req>,
+    sender: mpsc::SyncSender<Req>,
     receiver: mpsc::Receiver<Resp>,
 }
 
@@ -93,7 +93,7 @@ impl<Req, Resp> ServiceWorkerRequester<Req, Resp> {
 
 #[inline(always)]
 fn responder_send<T>(
-    sender: &mpsc::Sender<T>,
+    sender: &mpsc::SyncSender<T>,
     mio_waker: &Arc<mio::Waker>,
     msg: T,
 ) -> Result<(), ResponseSendError<T>> {
@@ -102,7 +102,7 @@ fn responder_send<T>(
 }
 
 pub struct ServiceWorkerResponderSender<Resp> {
-    sender: mpsc::Sender<Resp>,
+    sender: mpsc::SyncSender<Resp>,
     mio_waker: Arc<mio::Waker>,
 }
 
@@ -125,7 +125,7 @@ impl<Resp> Clone for ServiceWorkerResponderSender<Resp> {
 ///
 /// It is used by worker to send responses to the requester.
 pub struct ServiceWorkerResponder<Req, Resp> {
-    sender: mpsc::Sender<Resp>,
+    sender: mpsc::SyncSender<Resp>,
     receiver: mpsc::Receiver<Req>,
     mio_waker: Arc<mio::Waker>,
 }
@@ -149,12 +149,13 @@ impl<Req, Resp> ServiceWorkerResponder<Req, Resp> {
 
 pub fn worker_channel<Req, Resp>(
     mio_waker: Arc<mio::Waker>,
+    bound: usize,
 ) -> (
     ServiceWorkerRequester<Req, Resp>,
     ServiceWorkerResponder<Req, Resp>,
 ) {
-    let (requester_tx, responder_rx) = mpsc::channel();
-    let (responder_tx, requester_rx) = mpsc::channel();
+    let (requester_tx, responder_rx) = mpsc::sync_channel(bound);
+    let (responder_tx, requester_rx) = mpsc::sync_channel(bound);
 
     (
         ServiceWorkerRequester {
