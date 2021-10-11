@@ -31,7 +31,7 @@ use crate::storage::state_snapshot::create::{
 use crate::rpc::rpc_effects;
 
 fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    eprintln!("[+] Action: {:#?}", &action);
+    // eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 }
 
