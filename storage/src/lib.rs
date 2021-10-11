@@ -742,8 +742,6 @@ pub mod tests_common {
 
     struct TmpStoragePath {
         path: PathBuf,
-        remove_on_destroy: bool,
-        log: Logger,
     }
 
     impl TmpStorage {
@@ -754,14 +752,10 @@ pub mod tests_common {
         }
 
         pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-            Self::initialize(path, true, true)
+            Self::initialize(path, true)
         }
 
-        pub fn initialize<P: AsRef<Path>>(
-            path: P,
-            remove_if_exists: bool,
-            remove_on_destroy: bool,
-        ) -> Result<Self, Error> {
+        pub fn initialize<P: AsRef<Path>>(path: P, remove_if_exists: bool) -> Result<Self, Error> {
             // logger
             let log_level = log_level();
             let log = create_logger(log_level);
@@ -835,7 +829,7 @@ pub mod tests_common {
 
             let maindb = Arc::new(TezedgeDatabase::new(backend, log.clone()));
             // commit log storage
-            let clog = open_cl(&path, vec![BlockStorage::descriptor()], log.clone())?;
+            let clog = open_cl(&path, vec![BlockStorage::descriptor()], log)?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
@@ -843,11 +837,7 @@ pub mod tests_common {
                     Arc::new(clog),
                     Arc::new(Sequences::new(maindb, 1000)),
                 ),
-                path: TmpStoragePath {
-                    path,
-                    remove_on_destroy,
-                    log: log.clone(),
-                },
+                path: TmpStoragePath { path },
             })
         }
 
@@ -857,16 +847,6 @@ pub mod tests_common {
 
         pub fn path(&self) -> &PathBuf {
             &self.path.path
-        }
-    }
-
-    impl Drop for TmpStoragePath {
-        fn drop(&mut self) {
-            let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
-            if self.remove_on_destroy {
-                let _ = fs::remove_dir_all(&self.path);
-                slog::info!(&self.log, "Temporal storage removed: {:?}", self.path);
-            }
         }
     }
 

@@ -47,19 +47,19 @@ use crate::common;
 
 pub struct NodeInfrastructure {
     name: String,
-    pub log: Logger,
     pub peer_manager: Option<PeerManagerRef>,
     pub block_applier: ChainFeederRef,
     pub chain_manager: ChainManagerRef,
     pub shell_channel: ShellChannelRef,
     pub network_channel: NetworkChannelRef,
-    pub actor_system: Arc<ActorSystem>,
-    pub tmp_storage: TmpStorage,
+    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    pub actor_system: Arc<ActorSystem>,
+    block_applier_thread_watcher: ThreadWatcher,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
-    block_applier_thread_watcher: ThreadWatcher,
-    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
+    pub tmp_storage: TmpStorage,
+    pub log: Logger,
 }
 
 impl NodeInfrastructure {
@@ -237,7 +237,7 @@ impl NodeInfrastructure {
             block_applier.clone(),
             network_channel.clone(),
             shell_channel.clone(),
-            persistent_storage.clone(),
+            persistent_storage,
             tezos_readonly_api_pool,
             init_storage_data,
             is_sandbox,
