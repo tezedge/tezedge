@@ -61,7 +61,7 @@ pub fn peer_message_write_effects<S>(
                         .into(),
                     ),
                     Err(err) => {
-                        eprintln!("TODO: encountered PeerMessageResponse encode error handling of which not implemented!");
+                        eprintln!("TODO: encountered PeerMessageResponse encode error handling of which not implemented! {}", err);
                     }
                 }
             }

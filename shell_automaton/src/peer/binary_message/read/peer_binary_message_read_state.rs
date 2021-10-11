@@ -16,7 +16,7 @@ impl From<BinaryReaderError> for PeerBinaryMessageReadError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
 pub enum PeerBinaryMessageReadState {
     Init {
         crypto: ReadCrypto,

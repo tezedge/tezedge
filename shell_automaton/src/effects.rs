@@ -31,6 +31,7 @@ use crate::storage::state_snapshot::create::{
 use crate::rpc::rpc_effects;
 
 fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
+    eprintln!("[+] Action: {}", action.action.as_ref());
     // eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 }
@@ -56,7 +57,7 @@ fn applied_actions_count_effects<S: Service>(
 
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
     // these four effects must be first!
-    log_effects(store, action);
+    // log_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
     storage_state_snapshot_create_effects(store, action);

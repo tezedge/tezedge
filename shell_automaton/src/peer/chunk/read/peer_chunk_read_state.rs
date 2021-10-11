@@ -43,7 +43,7 @@ pub struct PeerChunkRead {
     pub state: PeerChunkReadState,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
 pub enum PeerChunkReadState {
     Init,
     PendingSize { buffer: Vec<u8> },

@@ -22,7 +22,7 @@ impl From<BinaryReaderError> for PeerBinaryMessageReadError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
 pub enum PeerMessageReadState {
     Pending {
         binary_message_read: PeerBinaryMessageReadState,
