@@ -13,7 +13,7 @@ use super::chunk::read::{PeerChunkReadErrorAction, PeerChunkReadPartAction};
 use super::chunk::write::{
     PeerChunkWriteErrorAction, PeerChunkWritePartAction, PeerChunkWriteState,
 };
-use super::disconnection::PeerDisconnectedAction;
+use super::connection::closed::PeerConnectionClosedAction;
 use super::handshaking::PeerHandshakingStatus;
 use super::message::read::PeerMessageReadState;
 use super::{PeerHandshaked, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
@@ -27,7 +27,7 @@ where
         Action::P2pPeerEvent(event) => {
             if event.is_closed() {
                 return store.dispatch(
-                    PeerDisconnectedAction {
+                    PeerConnectionClosedAction {
                         address: event.address(),
                     }
                     .into(),
@@ -102,15 +102,13 @@ where
             } = chunk_state
             {
                 match peer_stream.write(&chunk.raw()[*prev_written..]) {
-                    Ok(written) if written > 0 => {
-                        store.dispatch(
-                            PeerChunkWritePartAction {
-                                address: action.address,
-                                written,
-                            }
-                            .into(),
-                        )
-                    }
+                    Ok(written) if written > 0 => store.dispatch(
+                        PeerChunkWritePartAction {
+                            address: action.address,
+                            written,
+                        }
+                        .into(),
+                    ),
                     Ok(_) => {}
                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {}
                     Err(err) => store.dispatch(

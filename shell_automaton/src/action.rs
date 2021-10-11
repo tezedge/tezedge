@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
+use crate::peer::connection::closed::PeerConnectionClosedAction;
 use crate::peer::connection::incoming::accept::*;
 use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
 
@@ -64,6 +65,8 @@ pub enum Action {
     PeerConnectionOutgoingPending(PeerConnectionOutgoingPendingAction),
     PeerConnectionOutgoingError(PeerConnectionOutgoingErrorAction),
     PeerConnectionOutgoingSuccess(PeerConnectionOutgoingSuccessAction),
+
+    PeerConnectionClosed(PeerConnectionClosedAction),
 
     PeerDisconnect(PeerDisconnectAction),
     PeerDisconnected(PeerDisconnectedAction),
