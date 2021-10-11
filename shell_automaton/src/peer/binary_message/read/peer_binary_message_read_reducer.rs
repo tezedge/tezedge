@@ -81,9 +81,9 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithId
                                 state: PeerChunkReadState::Ready { chunk },
                             },
                     } => {
-                        if action.size < chunk.len() {
+                        if action.size > chunk.len() {
                             *binary_message_state = PeerBinaryMessageReadState::Pending {
-                                buffer: Vec::new(),
+                                buffer: chunk.clone(),
                                 size: action.size,
                                 chunk: PeerChunkRead {
                                     crypto: crypto.clone(),
@@ -130,18 +130,21 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithId
                     PeerBinaryMessageReadState::Pending {
                         buffer,
                         size,
-                        chunk:
-                            PeerChunkRead {
-                                crypto,
-                                state: PeerChunkReadState::Ready { chunk },
-                            },
+                        chunk: PeerChunkRead { crypto, state },
                     } => {
-                        if buffer.len() + chunk.len() <= *size {
-                            buffer.extend_from_slice(&chunk);
-                            if buffer.len() == *size {
-                                *binary_message_state = PeerBinaryMessageReadState::Ready {
-                                    crypto: crypto.clone(),
-                                    message: buffer.clone(),
+                        if let PeerChunkReadState::Ready {
+                            chunk: chunk_content,
+                        } = state
+                        {
+                            if buffer.len() + chunk_content.len() <= *size {
+                                buffer.extend_from_slice(&chunk_content);
+                                if buffer.len() == *size {
+                                    *binary_message_state = PeerBinaryMessageReadState::Ready {
+                                        crypto: crypto.clone(),
+                                        message: buffer.clone(),
+                                    }
+                                } else {
+                                    *state = PeerChunkReadState::Init;
                                 }
                             }
                         }
