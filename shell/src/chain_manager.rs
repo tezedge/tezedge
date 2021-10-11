@@ -314,6 +314,20 @@ impl ChainManager {
                 );
                 // store peer
                 self.peers.insert(peer_id.address, peer);
+
+                let log = ctx
+                    .system
+                    .log()
+                    .new(slog::o!("peer" => peer_id.address.to_string()));
+
+                tell_peer(
+                    &shell_automaton,
+                    &peer_id,
+                    GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
+                        .into(),
+                    &log,
+                );
+
             }
             NetworkChannelMsg::PeerDisconnected(peer)
             | NetworkChannelMsg::PeerBlacklisted(peer) => {

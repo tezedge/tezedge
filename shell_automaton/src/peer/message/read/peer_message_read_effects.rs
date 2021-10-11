@@ -52,7 +52,7 @@ pub fn peer_message_read_effects<S>(
                     );
                 }
                 Err(err) => {
-                    eprintln!("TODO: encountered PeerMessageResponse decode error handling of which not implemented!");
+                    eprintln!("TODO: encountered PeerMessageResponse decode error handling of which not implemented! {}", err);
                 }
             }
         }
