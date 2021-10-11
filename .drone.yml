@@ -53,79 +53,88 @@ workspace:
 
 steps:
 
-#- name: build-artifacts
-#  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-#  pull: if-not-exists
-#  user: root
-#  environment:
-#    RUST_BACKTRACE: 1
-#    SODIUM_USE_PKG_CONFIG: 1
-#    OCAML_BUILD_CHAIN: remote
-#    LOG_LEVEL: info
-#    OCAML_LOG_ENABLED: false
-#  commands:
-#    # prepare rust toolchain dir
-#    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
-#    # build and unit-test
-#    - cargo clean
-#    - cargo build --release --workspace
-#    - cargo test --release --workspace --no-run
-#    # collect binary artefacts
-#    # directory in the workspace to cache all the binary artefacts
-#    # TODO: use snake-case for directories
-#    - mkdir -p drone-cache/build_files/ffi
-#    - mkdir -p drone-cache/build_files/tezedge
-#    - mkdir -p drone-cache/build_files/identities
-#    - mkdir -p drone-cache/test_data/tests/resources
-#    - mkdir -p drone-cache/tests
-#    - mkdir -p drone-cache/sandbox_files
-#    # - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
-#    # copy binaries
-#    - cp ./target/release/light-node drone-cache/build_files
-#    - cp ./target/release/sandbox drone-cache/build_files
-#    - cp ./target/release/protocol-runner drone-cache/build_files
-#    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so drone-cache/build_files/ffi
-#    - cp ./sandbox/artifacts/tezos-client drone-cache/build_files
-#    # copy sapling init files
-#    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params drone-cache/build_files/ffi
-#    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params drone-cache/build_files/ffi
-#    # copy sandbox resources
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sandbox_files
-#    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sandbox_files
-#    # copy other resources
-#    - cp ./light_node/etc/drone/assert_equals.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_equals.sh
-#    - cp ./light_node/etc/drone/assert_contains.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_contains.sh
-#    - cp ./light_node/etc/drone/wait_file.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/wait_file.sh
-#    - cp ./light_node/etc/drone/assert_cyclic_test_result.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_cyclic_test_result.sh
-#    - cp ./light_node/etc/drone/identities/* drone-cache/build_files/identities/
-#    - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
-#    # copy test binaries
-#    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
-#    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` drone-cache/tests/shell_chain_test
-#    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` drone-cache/tests/protocol_runner_test
-#    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` drone-cache/tests/p2p_test
-#    # copy test resources
-#    - cp ./shell/tests/resources/apply_block_request_until_1326.zip drone-cache/test_data/tests/resources
-#    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip drone-cache/test_data/tests/resources
-#    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip drone-cache/test_data/tests/resources
-#    - cp ./shell/tests/resources/sandbox-patch-context.json drone-cache/test_data/tests/resources
-#    # collect modified python tests stuff
-#    - mkdir -p drone-cache/python-tests/daemons
-#    - mkdir -p drone-cache/python-tests/launchers
-#    - mkdir -p drone-cache/python-tests/tools
-#    - cp -r ./tezos/python-tests/daemons/node.py drone-cache/python-tests/daemons/node.py
-#    - cp -r ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/sandbox.py
-#    - cp -r ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/constants.py
+- name: build-artifacts
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # TODO: check missing stuff
+    - whoami
+    - su "appuser"
+    - whoami
+    - echo "`dstat -h -d 0`"
+    - echo "`free -m`"
+    - echo "`ps -ef`"
+    - apt-get install dstat
+      apt-get install stressapptest
+    # prepare rust toolchain dir
+    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
+    # build and unit-test
+    - cargo clean
+    - cargo build --release --workspace
+    - cargo test --release --workspace --no-run
+    # collect binary artefacts
+    # directory in the workspace to cache all the binary artefacts
+    # TODO: use snake-case for directories
+    - mkdir -p drone-cache/build_files/ffi
+    - mkdir -p drone-cache/build_files/tezedge
+    - mkdir -p drone-cache/build_files/identities
+    - mkdir -p drone-cache/test_data/tests/resources
+    - mkdir -p drone-cache/tests
+    - mkdir -p drone-cache/sandbox_files
+    # - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
+    # copy binaries
+    - cp ./target/release/light-node drone-cache/build_files
+    - cp ./target/release/sandbox drone-cache/build_files
+    - cp ./target/release/protocol-runner drone-cache/build_files
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so drone-cache/build_files/ffi
+    - cp ./sandbox/artifacts/tezos-client drone-cache/build_files
+    # copy sapling init files
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params drone-cache/build_files/ffi
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params drone-cache/build_files/ffi
+    # copy sandbox resources
+    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sandbox_files
+    # copy other resources
+    - cp ./light_node/etc/drone/assert_equals.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_equals.sh
+    - cp ./light_node/etc/drone/assert_contains.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_contains.sh
+    - cp ./light_node/etc/drone/wait_file.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/wait_file.sh
+    - cp ./light_node/etc/drone/assert_cyclic_test_result.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_cyclic_test_result.sh
+    - cp ./light_node/etc/drone/identities/* drone-cache/build_files/identities/
+    - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
+    # copy test binaries
+    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
+    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` drone-cache/tests/shell_chain_test
+    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` drone-cache/tests/protocol_runner_test
+    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` drone-cache/tests/p2p_test
+    # copy test resources
+    - cp ./shell/tests/resources/apply_block_request_until_1326.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip drone-cache/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox-patch-context.json drone-cache/test_data/tests/resources
+    # collect modified python tests stuff
+    - mkdir -p drone-cache/python-tests/daemons
+    - mkdir -p drone-cache/python-tests/launchers
+    - mkdir -p drone-cache/python-tests/tools
+    - cp -r ./tezos/python-tests/daemons/node.py drone-cache/python-tests/daemons/node.py
+    - cp -r ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/sandbox.py
+    - cp -r ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/constants.py
 
 - name: rebuild-artifacts-cache
   image: meltwater/drone-cache
@@ -142,15 +151,13 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-#    TODO:
-#    cache_key: 'build-{{ .Build.Number }}'
-    cache_key: 'build-2655'
+    cache_key: 'build-{{ .Build.Number }}'
     mount:
       - 'drone-cache' # <- builds a cache from this directory
 
 trigger:
   branch:
-    - batching
+    - batching-drone
 
 ---
 ##############################################################################################################
@@ -164,7 +171,7 @@ name: perf/bootstrap-time-009-florence
 
 trigger:
   branch:
-    - batching
+    - batching-drone
 
 volumes:
   - name: snapshots
@@ -204,9 +211,7 @@ steps:
       restore: true
       debug: true
       backend: "sftp"
-#      TODO:
-#      cache_key: 'build-{{ .Build.Number }}'
-      cache_key: 'build-2655'
+      cache_key: 'build-{{ .Build.Number }}'
       mount:
         - 'drone-cache' # <- builds a cache from this directory
 
