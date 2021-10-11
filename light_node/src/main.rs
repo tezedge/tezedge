@@ -240,8 +240,14 @@ fn block_on_actors(
             .log(log.clone())
             .cfg({
                 let mut cfg = riker::load_config();
-                cfg.scheduler.frequency_millis =
-                    if env.rpc.websocket_cfg.is_some() { 500 } else { 5000 };
+                // websocket uses [`ctx.schedule`] with cca 1.5s delay,
+                // and without websocket, the lowest scheduled delay is about 15s
+                // so default 50ms for riker's schedule thread is too low
+                cfg.scheduler.frequency_millis = if env.rpc.websocket_cfg.is_some() {
+                    500
+                } else {
+                    5000
+                };
                 cfg
             })
             .exec(tokio_runtime.handle().clone().into())
