@@ -29,7 +29,7 @@ use shell_integration::{
     MempoolOperationReceived, OneshotResultCallback, ResetMempool,
 };
 use storage::mempool_storage::MempoolOperationType;
-use storage::PersistentStorageRef;
+use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError,
@@ -235,7 +235,7 @@ impl ChainManager {
         block_applier: ChainFeederRef,
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
-        persistent_storage: PersistentStorageRef,
+        persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         is_sandbox: bool,
@@ -1411,7 +1411,7 @@ impl
         ChainFeederRef,
         NetworkChannelRef,
         ShellChannelRef,
-        PersistentStorageRef,
+        PersistentStorage,
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
         bool,
@@ -1442,7 +1442,7 @@ impl
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
-            PersistentStorageRef,
+            PersistentStorage,
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
             bool,

@@ -86,7 +86,7 @@ impl NodeInfrastructure {
         let identity = Arc::new(identity);
 
         // storage
-        let persistent_storage = tmp_storage.storage_ref();
+        let persistent_storage = tmp_storage.storage().clone();
         let context_db_path = if !PathBuf::from(context_db_path).exists() {
             common::prepare_empty_dir(context_db_path)
         } else {
