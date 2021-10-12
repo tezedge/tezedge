@@ -19,8 +19,8 @@ use thiserror::Error;
 use crypto::hash::{BlockHash, ChainId};
 use shell_integration::{
     dispatch_oneshot_result, InjectBlockError, InjectBlockOneshotResultCallback,
-    InjectBlockOneshotResultCallbackResult, OneshotResultCallback, ThreadRunningStatus,
-    ThreadWatcher,
+    InjectBlockOneshotResultCallbackResult, OneshotResultCallback, RetryPolicy,
+    ThreadRunningStatus, ThreadWatcher,
 };
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
@@ -61,6 +61,9 @@ const LOG_INTERVAL: Duration = Duration::from_secs(60);
 /// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
 const BLOCK_APPLY_BATCH_MAX_TICKETS: usize = 2;
 
+/// For restarting scenario, retry policy max retries for one block
+const DEFAULT_MAX_RETRIES: u8 = 2;
+
 pub type ApplyBlockPermit = OwnedSemaphorePermit;
 
 /// Message commands [`ChainFeeder`] to apply completed block.
@@ -75,6 +78,9 @@ pub struct ApplyBlock {
 
     /// Simple lock guard, for easy synchronization
     permit: Option<Arc<ApplyBlockPermit>>,
+
+    /// Retry policy - used for restarting scenario
+    retry_policy: Option<RetryPolicy<Arc<BlockHash>>>,
 }
 
 impl ApplyBlock {
@@ -93,6 +99,7 @@ impl ApplyBlock {
             result_callback,
             bootstrapper,
             permit: permit.map(Arc::new),
+            retry_policy: None,
         }
     }
 }
@@ -438,6 +445,8 @@ impl From<RequiredContextRestartError> for FeedChainError {
 #[error("Detected request for restarting context, reason: {reason}")]
 pub struct RequiredContextRestartError {
     reason: String,
+    /// We have possibility, to retry block application, in case of some errors, after restarting
+    apply_block_request_to_retry: Option<(ApplyBlock, ChainFeederRef)>,
 }
 
 #[derive(Debug, Error)]
@@ -536,6 +545,7 @@ impl BlockApplierThreadSpawner {
             let mut initialize_context_result_callback = Some(initialize_context_result_callback);
 
             thread::Builder::new().name(thread_name).spawn(move || {
+                info!(log, "Chain feeder thread starting");
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
@@ -545,8 +555,11 @@ impl BlockApplierThreadSpawner {
                 let cycle_eras_storage = CycleErasStorage::new(&persistent_storage);
                 let constants_storage = ConstantsStorage::new(&persistent_storage);
 
+                // restart/retry feature
+                let mut apply_block_request_to_retry: Option<(ApplyBlock, ChainFeederRef)> = None;
+
                 while apply_block_run.load(Ordering::Acquire) {
-                    info!(log, "Chain feeder thread starting");
+                    info!(log, "Chain feeding starting");
                     match tezos_writeable_api.pool.get() {
                         Ok(protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
@@ -563,6 +576,7 @@ impl BlockApplierThreadSpawner {
                             &protocol_controller.api,
                             &mut block_applier_event_receiver,
                             &mut initialize_context_result_callback,
+                            &mut apply_block_request_to_retry,
                             &log,
                         ) {
                             Ok(()) => {
@@ -573,7 +587,19 @@ impl BlockApplierThreadSpawner {
                                 // this will restart protocol-runner on error
                                 protocol_controller.set_release_on_return_to_pool();
                                 if apply_block_run.load(Ordering::Acquire) {
-                                    warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
+                                    match &err {
+                                        FeedChainError::InitializeContextError {reason} => {
+                                            warn!(log, "Failed to intialize context and continue feeding chain to protocol"; "reason" => format!("{:?}", reason));
+                                        }
+                                        FeedChainError::RequiredContextRestartError {reason} => {
+                                            warn!(log, "Error while feeding chain to protocol"; "reason" => &reason.reason, "has_apply_block_request_to_retry" => reason.apply_block_request_to_retry.is_some());
+                                        }
+                                    }
+                                }
+
+                                // handle possible retry
+                                if let FeedChainError::RequiredContextRestartError {reason} = err {
+                                    apply_block_request_to_retry = reason.apply_block_request_to_retry;
                                 }
                             }
                         },
@@ -607,6 +633,7 @@ fn feed_chain_to_protocol(
     protocol_controller: &ProtocolController,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     initialize_context_result_callback: &mut Option<InitializeContextOneshotResultCallback>,
+    apply_block_request_to_retry: &mut Option<(ApplyBlock, ChainFeederRef)>,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
     // at first we initialize protocol runtime and ffi context
@@ -643,7 +670,27 @@ fn feed_chain_to_protocol(
         }
     }
 
-    // now we can start applying block
+    let replay_mode = init_storage_data.replay.is_some();
+
+    // lets retry a last batch before restart
+    if let Some((request, chain_feeder)) = apply_block_request_to_retry.take() {
+        info!(log, "Retrying block application"; "from_block" => request.batch.block_to_apply.to_base58_check(), "successors_count" => request.batch.successors_size(), "retry_policy" => format!("{:?}", request.retry_policy));
+        _handle_apply_block_request(
+            request,
+            chain_feeder,
+            block_storage,
+            block_meta_storage,
+            operations_storage,
+            cycle_meta_storage,
+            cycle_eras_storage,
+            constants_storage,
+            protocol_controller,
+            replay_mode,
+            apply_block_run,
+            log,
+        )?;
+    }
+
     // now we can start and listen for new applying block requests from queue
     while apply_block_run.load(Ordering::Acquire) {
         // let's handle event, if any
@@ -660,7 +707,7 @@ fn feed_chain_to_protocol(
                         cycle_eras_storage,
                         constants_storage,
                         protocol_controller,
-                        init_storage_data,
+                        replay_mode,
                         apply_block_run,
                         log,
                     )?;
@@ -691,7 +738,7 @@ fn _handle_apply_block_request(
     cycle_eras_storage: &CycleErasStorage,
     constants_storage: &ConstantsStorage,
     protocol_controller: &ProtocolController,
-    init_storage_data: &StorageInitInfo,
+    replay_mode: bool,
     apply_block_run: &ThreadRunningStatus,
     log: &Logger,
 ) -> Result<(), RequiredContextRestartError> {
@@ -703,6 +750,7 @@ fn _handle_apply_block_request(
         chain_id,
         result_callback,
         permit,
+        retry_policy,
     } = request;
 
     // callback for notify chain_feeder about new stats
@@ -759,13 +807,13 @@ fn _handle_apply_block_request(
         None;
 
     // lets apply blocks in order
-    for block_to_apply in batch.take_all_blocks_to_apply() {
-        debug!(log, "Applying block";
-                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
+    let mut batch = batch.take_all_blocks_to_apply();
+    while let Some(block_to_apply) = batch.pop_front() {
+        debug!(log, "Applying block"; "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
 
         if !apply_block_run.load(Ordering::Acquire) {
             info!(log, "Shutdown detected, so stopping block batch apply immediately";
-                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
+                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
             return Ok(());
         }
 
@@ -797,7 +845,7 @@ fn _handle_apply_block_request(
             cycle_eras_storage,
             constants_storage,
             protocol_controller,
-            init_storage_data,
+            replay_mode,
             log,
         ) {
             Ok(result) => {
@@ -843,29 +891,85 @@ fn _handle_apply_block_request(
                     _ => false,
                 };
 
+                // callback for handling failed batch
+                let handle_as_failed =
+                    |oneshot_callback: Option<InjectBlockOneshotResultCallback>,
+                     stats: Option<ApplyBlockStats>,
+                     last_applied_block: Option<Arc<BlockHash>>,
+                     last_failed_block: Arc<BlockHash>,
+                     error: ApplyBlockBatchError| {
+                        notify_oneshot_result(
+                            oneshot_callback,
+                            Err(InjectBlockError {
+                                reason: format!("{}", error),
+                            }),
+                        );
+                        notify_stats(stats);
+                        notify_last_applied(last_applied_block);
+                        notify_last_failed(last_failed_block);
+                    };
+
                 if need_to_restart_context {
                     // we need to restart, but we handle some stuff at first
 
-                    notify_stats(batch_stats);
-                    notify_last_applied(last_applied);
+                    // reschedule the rest, if possible, or finish batch
+                    let retry_policy = match retry_policy {
+                        Some(retry_policy) => {
+                            // handle actual block, if we could retry it or fail
+                            retry_policy.next_retry(&block_to_apply)
+                        }
+                        None => {
+                            // block was not retried before, so we allow to retry
+                            Some(RetryPolicy::new(
+                                block_to_apply.clone(),
+                                DEFAULT_MAX_RETRIES,
+                            ))
+                        }
+                    };
+                    let restart_reason = format!("{:?}", e);
+                    let apply_block_request_to_retry = if retry_policy.is_some() {
+                        info!(log, "Preparing for retry block application"; "from_block" => block_to_apply.to_base58_check(), "successors_count" => batch.len(), "retry_policy" => format!("{:?}", retry_policy));
+                        notify_stats(batch_stats);
+                        notify_last_applied(last_applied);
 
-                    // reschedule the rest
+                        // reschedule batch with retry policy
+                        let apply_block_request_to_retry = ApplyBlock {
+                            chain_id,
+                            batch: ApplyBlockBatch::batch(block_to_apply, batch),
+                            chain_manager,
+                            result_callback,
+                            bootstrapper,
+                            permit,
+                            retry_policy,
+                        };
+                        Some((apply_block_request_to_retry, chain_feeder))
+                    } else {
+                        // here we cannot do anything, we cannot retry, just to propagate error and stop batch
+                        warn!(log, "Block apply processing failed, no more retries"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{}", e));
+                        handle_as_failed(
+                            result_callback,
+                            batch_stats,
+                            last_applied,
+                            block_to_apply,
+                            e,
+                        );
+                        None
+                    };
+
                     // now throw error to restart and process optional retry
                     return Err(RequiredContextRestartError {
-                        reason: format!("{:?}", e),
+                        reason: restart_reason,
+                        apply_block_request_to_retry,
                     });
                 } else {
                     // we dont need to rest, so we just stop the batch processing
-
-                    notify_oneshot_result(
+                    handle_as_failed(
                         result_callback,
-                        Err(InjectBlockError {
-                            reason: format!("{}", e),
-                        }),
+                        batch_stats,
+                        last_applied,
+                        block_to_apply,
+                        e,
                     );
-                    notify_stats(batch_stats);
-                    notify_last_applied(last_applied);
-                    notify_last_failed(block_to_apply);
 
                     // just break processing and wait for another event - nothing more to do
                     return Ok(());
@@ -916,7 +1020,7 @@ fn _apply_block(
     cycle_eras_storage: &CycleErasStorage,
     constants_storage: &ConstantsStorage,
     protocol_controller: &ProtocolController,
-    storage_init_info: &StorageInitInfo,
+    replay_mode: bool,
     log: &Logger,
 ) -> Result<
     Option<(
@@ -930,7 +1034,7 @@ fn _apply_block(
     let (block_request, mut block_meta, block) = apply_block_request_data?;
 
     // check if not already applied
-    if block_meta.is_applied() && storage_init_info.replay.is_none() {
+    if block_meta.is_applied() && !replay_mode {
         info!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
         return Ok(None);
     }

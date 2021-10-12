@@ -1,15 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::{Arc, PoisonError};
 
 use thiserror::Error;
 
 use crypto::hash::BlockHash;
 use storage::StorageError;
-use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
 pub mod bootstrap_state;
 pub mod chain_state;
@@ -65,34 +63,37 @@ impl From<anyhow::Error> for StateError {
 #[derive(Clone, Debug)]
 pub struct ApplyBlockBatch {
     pub block_to_apply: Arc<BlockHash>,
-    successors: Vec<Arc<BlockHash>>,
+    successors: VecDeque<Arc<BlockHash>>,
 }
 
 impl ApplyBlockBatch {
     pub fn one(block_hash: BlockHash) -> Self {
         Self {
             block_to_apply: Arc::new(block_hash),
-            successors: Vec::new(),
+            successors: VecDeque::new(),
         }
     }
 
     pub fn start_batch(block_hash: Arc<BlockHash>, expected_size: usize) -> Self {
         Self {
             block_to_apply: block_hash,
-            successors: Vec::with_capacity(expected_size),
+            successors: VecDeque::with_capacity(expected_size),
         }
     }
 
-    pub fn batch(starting_block: Arc<BlockHash>, successors: Vec<Arc<BlockHash>>) -> Self {
+    pub fn batch<S: Into<VecDeque<Arc<BlockHash>>>>(
+        starting_block: Arc<BlockHash>,
+        successors: S,
+    ) -> Self {
         Self {
             block_to_apply: starting_block,
-            successors,
+            successors: successors.into(),
         }
     }
 
     pub fn add_successor(&mut self, block_hash: Arc<BlockHash>) {
         if !self.successors.contains(&block_hash) {
-            self.successors.push(block_hash);
+            self.successors.push_back(block_hash);
         }
     }
 
@@ -104,94 +105,21 @@ impl ApplyBlockBatch {
         self.successors.len()
     }
 
-    pub fn take_all_blocks_to_apply(self) -> Vec<Arc<BlockHash>> {
+    pub fn take_all_blocks_to_apply(self) -> VecDeque<Arc<BlockHash>> {
         let Self {
             block_to_apply,
             mut successors,
         } = self;
 
-        successors.insert(0, block_to_apply);
+        successors.push_front(block_to_apply);
         successors
     }
 
     pub fn shift(self) -> Option<ApplyBlockBatch> {
         let Self { mut successors, .. } = self;
-
-        if successors.is_empty() {
-            None
-        } else {
-            let head = successors.remove(0);
-            Some(ApplyBlockBatch::batch(head, successors))
-        }
-    }
-}
-
-impl From<ApplyBlockBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
-    fn from(b: ApplyBlockBatch) -> Self {
-        let ApplyBlockBatch {
-            block_to_apply,
-            successors,
-        } = b;
-        (block_to_apply, successors)
-    }
-}
-
-/// HistoryOrderPriority reflects order in history,
-/// we want to download oldest blocks at first,
-/// we use this atribute to prioritize
-/// lowest value means as-soon-as-possible
-pub type HistoryOrderPriority = usize;
-
-#[derive(Clone)]
-pub struct MissingOperations {
-    pub(crate) block_hash: BlockHash,
-    pub(crate) validation_passes: HashSet<i8>,
-    // TODO: TE-386 - remove not needed
-    pub(crate) history_order_priority: HistoryOrderPriority,
-    /// ttl retries - in case nobody has header, e.g.: in case of reorg or whatever
-    pub(crate) retries: u8,
-}
-
-impl MissingOperations {
-    /// Returns true, we can do another retry
-    pub fn retry(&mut self) -> bool {
-        if self.retries == 0 {
-            return false;
-        }
-        self.retries -= 1;
-        true
-    }
-}
-
-impl PartialEq for MissingOperations {
-    fn eq(&self, other: &Self) -> bool {
-        self.history_order_priority == other.history_order_priority
-            && self.block_hash == other.block_hash
-    }
-}
-
-impl Eq for MissingOperations {}
-
-impl PartialOrd for MissingOperations {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for MissingOperations {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.history_order_priority, &self.block_hash)
-            .cmp(&(other.history_order_priority, &other.block_hash))
-            .reverse()
-    }
-}
-
-impl From<&MissingOperations> for Vec<OperationsForBlock> {
-    fn from(ops: &MissingOperations) -> Self {
-        ops.validation_passes
-            .iter()
-            .map(|vp| OperationsForBlock::new(ops.block_hash.clone(), *vp))
-            .collect()
+        successors
+            .pop_front()
+            .map(|head| ApplyBlockBatch::batch(head, successors))
     }
 }
 
@@ -245,24 +173,6 @@ pub mod tests {
 
     pub(crate) fn block_ref(d: u8) -> Arc<BlockHash> {
         Arc::new(block(d))
-    }
-
-    #[test]
-    fn test_retry() {
-        let mut data = MissingOperations {
-            history_order_priority: 1,
-            block_hash: block(5),
-            validation_passes: HashSet::new(),
-            retries: 5,
-        };
-
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(!data.retry());
-        assert!(!data.retry());
     }
 
     pub(crate) mod prerequisites {

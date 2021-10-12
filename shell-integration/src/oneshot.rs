@@ -20,13 +20,13 @@ pub enum DispatchOneshotResultCallbackError {
 }
 
 pub fn dispatch_oneshot_result<T, RC>(
-    result_callback: Option<OneshotResultCallback<T>>,
+    mut result_callback: Option<OneshotResultCallback<T>>,
     result: RC,
 ) -> Result<(), DispatchOneshotResultCallbackError>
 where
     RC: FnOnce() -> T,
 {
-    if let Some(result_callback) = result_callback {
+    if let Some(result_callback) = result_callback.take() {
         result_callback.send(result()).map_err(|e| {
             DispatchOneshotResultCallbackError::UnexpectedError {
                 reason: format!("{}", e),
