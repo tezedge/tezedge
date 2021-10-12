@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use tezedge_actor_system::actors::*;
 

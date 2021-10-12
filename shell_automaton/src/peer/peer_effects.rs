@@ -1,7 +1,6 @@
 use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
-use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
 use crate::service::{MioService, Service};
 use crate::{Action, State};

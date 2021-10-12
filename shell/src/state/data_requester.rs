@@ -14,7 +14,6 @@ use slog::{warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use shell_integration::InjectBlockOneshotResultCallback;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};

@@ -1,14 +1,10 @@
-use networking::network_channel::PeerMessageReceived;
 use redux_rs::{ActionWithId, Store};
-use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite};
-use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
+use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::peer::binary_message::write::{
     PeerBinaryMessageWriteSetContentAction, PeerBinaryMessageWriteState,
 };
 use crate::peer::message::write::PeerMessageWriteSuccessAction;
-use crate::peer::PeerStatus;
-use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::Service;
 use crate::{Action, State};
 
@@ -32,10 +28,11 @@ pub fn peer_message_write_effects<S>(
 
             if let PeerBinaryMessageWriteState::Init { .. } = &peer.message_write.current {
                 if let Some(front_msg) = peer.message_write.queue.front() {
+                    let message = front_msg.clone();
                     store.dispatch(
                         PeerMessageWriteInitAction {
                             address: action.address,
-                            message: front_msg.clone(),
+                            message,
                         }
                         .into(),
                     );

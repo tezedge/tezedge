@@ -1,5 +1,5 @@
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
-use crypto::nonce::{generate_nonces, NoncePair};
+use crypto::nonce::generate_nonces;
 use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
 use std::sync::Arc;
@@ -7,7 +7,6 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::AckMessage;
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
-use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 
 use crate::action::Action;
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
@@ -21,8 +20,7 @@ use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
 };
 use crate::peer::message::read::PeerMessageReadInitAction;
-use crate::peer::message::write::PeerMessageWriteInitAction;
-use crate::peer::{PeerCrypto, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
+use crate::peer::{PeerCrypto, PeerStatus};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
 use crate::State;

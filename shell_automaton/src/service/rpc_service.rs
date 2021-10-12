@@ -1,8 +1,6 @@
-use redux_rs::ActionWithId;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::{action::Action, State};
+use crate::State;
 
 use super::service_async_channel::{
     worker_channel, ResponseTryRecvError, ServiceWorkerAsyncRequester, ServiceWorkerAsyncResponder,

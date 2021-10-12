@@ -78,7 +78,7 @@ pub struct MonitoredOperation {
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
     #[serde(skip_serializing)]
-    hash: String,
+    _hash: String,
     #[serde(skip_serializing)]
     error: Option<String>,
 }

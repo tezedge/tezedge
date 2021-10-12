@@ -1,4 +1,3 @@
-use crypto::nonce::Nonce;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, sync::Arc};
 
@@ -6,8 +5,7 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
 use crate::peer::{
-    binary_message::{read::PeerBinaryMessageReadState, write::PeerBinaryMessageWriteState},
-    chunk::read::{PeerChunkRead, PeerChunkReadError, ReadCrypto},
+    binary_message::write::PeerBinaryMessageWriteState, chunk::read::PeerChunkReadError,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -15,7 +15,6 @@ use slog::{info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;

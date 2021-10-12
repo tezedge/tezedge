@@ -262,7 +262,7 @@ pub async fn dev_version(
 
 pub async fn dev_shell_automaton_state_get(
     _: Request<Body>,
-    params: Params,
+    _params: Params,
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
@@ -276,7 +276,7 @@ pub async fn dev_shell_automaton_state_get(
 
 pub async fn dev_shell_automaton_actions_get(
     _: Request<Body>,
-    params: Params,
+    _params: Params,
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
@@ -302,8 +302,8 @@ pub async fn dev_shell_automaton_actions_get(
 
 pub async fn dev_shell_automaton_actions_graph_get(
     _: Request<Body>,
-    params: Params,
-    query: Query,
+    _params: Params,
+    _query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)

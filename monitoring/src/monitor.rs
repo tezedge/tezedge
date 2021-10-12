@@ -5,15 +5,14 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use slog::{debug, info, trace, warn, Logger};
-use tezedge_actor_system::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
+use slog::{debug, info, warn, Logger};
+use tezedge_actor_system::{actor::*, system::Timer};
 
 use crypto::hash::ChainId;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
-    subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
-    subscribe_to_shell_new_current_head,
+    subscribe_to_network_events, subscribe_to_shell_events, subscribe_to_shell_new_current_head,
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
@@ -254,7 +253,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     peer_id.address.clone(),
                     PeerMonitor::new(peer_id.address.into(), peer_id.public_key_hash.clone()),
                 );
-                if let Some(previous) = previous {
+                if let Some(_previous) = previous {
                     warn!(ctx.system.log(), "Duplicate monitor found for peer"; "key" => peer_id.address.to_string());
                 } else {
                     ctx.myself.tell(
@@ -279,7 +278,6 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     );
                 }
             }
-            _ => (),
         }
     }
 }

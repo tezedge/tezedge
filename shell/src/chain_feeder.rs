@@ -49,6 +49,7 @@ pub type InitializeContextOneshotResultCallback =
 
 #[derive(Debug)]
 pub struct InitializeContextOneshotResultCallbackError {
+    #[allow(dead_code)]
     reason: String,
 }
 
