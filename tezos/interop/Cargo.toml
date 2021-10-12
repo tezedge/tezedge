@@ -10,7 +10,7 @@ thiserror = "1.0"
 futures = { version = "0.3", features = ["thread-pool"] }
 hex = "0.4"
 lazy_static = "1.4"
-ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
+ocaml-interop = { version = "0.8.7", features = ["without-ocamlopt", "caml-state"] }
 serde_json = "1.0"
 # local dependencies
 tezos-sys = { path = "../sys" }
