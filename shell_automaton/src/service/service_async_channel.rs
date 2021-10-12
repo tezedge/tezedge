@@ -12,12 +12,6 @@ pub type ResponseTryRecvError = mpsc::error::TryRecvError;
 #[derive(Debug)]
 pub struct RequestRecvError;
 
-impl From<mpsc::error::RecvError> for RequestRecvError {
-    fn from(_: mpsc::error::RecvError) -> Self {
-        Self {}
-    }
-}
-
 /// Requester half of the channel.
 ///
 /// It is used to send requests to the worker.

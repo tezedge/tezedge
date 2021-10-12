@@ -14,7 +14,6 @@ use riker::actors::*;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use shell_integration::InjectBlockOneshotResultCallback;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};

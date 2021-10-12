@@ -795,7 +795,6 @@ impl ChainManager {
                     }
                 }
             }
-            _ => (),
         }
 
         Ok(())
@@ -1660,7 +1659,7 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: DisconnectStalledPeers, _sender: Sender) {
         let log = ctx.system.log();
         self.peers.iter()
-            .for_each(|(uri, state)| {
+            .for_each(|(_uri, state)| {
                 let current_head_response_pending = state.current_head_request_last > state.current_head_response_last;
                 let mempool_operations_response_pending = state.mempool_operations_request_last > state.mempool_operations_response_last;
                 let known_higher_head = match state.current_head_level {

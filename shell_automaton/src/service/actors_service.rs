@@ -1,5 +1,5 @@
 use riker::actors::*;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
 use networking::network_channel::{

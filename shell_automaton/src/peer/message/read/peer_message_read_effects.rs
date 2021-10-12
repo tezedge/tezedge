@@ -4,7 +4,6 @@ use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
-use crate::peer::PeerStatus;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::Service;
@@ -28,9 +27,9 @@ pub fn peer_message_read_effects<S>(
             );
         }
         Action::PeerBinaryMessageReadReady(action) => {
-            let peer = match store.state().peers.get(&action.address) {
+            match store.state().peers.get(&action.address) {
                 Some(peer) => match peer.status.as_handshaked() {
-                    Some(handshaked) => handshaked,
+                    Some(_handshaked) => (),
                     None => return,
                 },
                 None => return,

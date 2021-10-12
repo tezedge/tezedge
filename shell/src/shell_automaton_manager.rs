@@ -15,7 +15,7 @@ use slog::{info, warn, Logger};
 use storage::PersistentStorage;
 
 use crypto::hash::ChainId;
-use networking::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived};
+use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
 
 use crate::PeerConnectionThreshold;
@@ -89,7 +89,7 @@ impl ShellAutomatonManager {
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
         pow_target: f64,
-        chain_id: ChainId,
+        _chain_id: ChainId,
     ) -> (Self, RpcShellAutomatonChannel) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
@@ -137,7 +137,7 @@ impl ShellAutomatonManager {
 
         let events = MioInternalEventsContainer::with_capacity(1024);
 
-        let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
+        let initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 
             port: p2p_config.listener_port,
@@ -165,13 +165,11 @@ impl ShellAutomatonManager {
 
     pub fn start(&mut self) {
         if let Some(ShellAutomatonThreadHandle::NotRunning(
-            config,
+            _config,
             mut shell_automaton,
             bootstrap_addresses,
         )) = self.shell_automaton_thread_handle.take()
         {
-            let log = self.log.clone();
-
             // start to listen for incoming p2p connections and state machine processing
             let shell_automaton_thread_handle = std::thread::Builder::new()
                 .name("shell-automaton".to_owned())
@@ -201,7 +199,6 @@ impl Drop for ShellAutomatonManager {
 
         let ShellAutomatonManager {
             shell_automaton_sender,
-            log,
             ..
         } = self;
         if let Err(err) = shell_automaton_sender.send(ShellAutomatonMsg::Shutdown) {

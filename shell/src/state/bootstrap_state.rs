@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};

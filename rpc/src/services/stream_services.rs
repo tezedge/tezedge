@@ -79,8 +79,9 @@ pub struct MonitoredOperation {
     #[serde(skip_deserializing)]
     protocol: Option<String>,
     #[serde(skip_serializing)]
-    hash: String,
+    _hash: String,
     #[serde(skip_serializing)]
+    #[allow(dead_code)]
     error: Option<Value>,
 }
 

@@ -5,13 +5,10 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor};
-use serde::{Deserialize, Serialize};
-
-use crypto::hash::BlockHash;
 
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema};
 use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
 
 pub type ShellAutomatonStateIndexStorageKV =

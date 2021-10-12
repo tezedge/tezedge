@@ -1,5 +1,4 @@
 use crypto::blake2b::Blake2bError;
-use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
 use crypto::CryptoError;
 use serde::{Deserialize, Serialize};
@@ -11,8 +10,8 @@ use tezos_messages::p2p::encoding::prelude::{AckMessage, MetadataMessage};
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
-use crate::peer::chunk::read::{PeerChunkReadState, ReadCrypto};
-use crate::peer::chunk::write::{PeerChunkWriteState, WriteCrypto};
+use crate::peer::chunk::read::PeerChunkReadState;
+use crate::peer::chunk::write::PeerChunkWriteState;
 use crate::peer::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

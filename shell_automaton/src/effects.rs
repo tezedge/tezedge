@@ -30,6 +30,7 @@ use crate::storage::state_snapshot::create::{
 
 use crate::rpc::rpc_effects;
 
+#[allow(unused)]
 fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
     eprintln!("[+] Action: {}", action.action.as_ref());
     // eprintln!("[+] Action: {:#?}", &action);
@@ -40,7 +41,7 @@ fn last_action_effects<S: Service>(
     store: &mut Store<State, S, Action>,
     action: &ActionWithId<Action>,
 ) {
-    store.service.storage().request_send(StorageRequest {
+    let _ = store.service.storage().request_send(StorageRequest {
         id: None,
         payload: StorageRequestPayload::ActionPut(Box::new(action.clone())),
     });
@@ -48,7 +49,7 @@ fn last_action_effects<S: Service>(
 
 fn applied_actions_count_effects<S: Service>(
     store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
+    _action: &ActionWithId<Action>,
 ) {
     if store.state().applied_actions_count % 10000 == 0 {
         store.dispatch(StorageStateSnapshotCreateAction {}.into());

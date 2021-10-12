@@ -10,6 +10,7 @@ pub(crate) mod rights_service;
 
 use super::{string_to_int, vec_string_to_int};
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone, CopyGetters)]
 pub(crate) struct ProtocolConstants {
     proof_of_work_nonce_size: u8,

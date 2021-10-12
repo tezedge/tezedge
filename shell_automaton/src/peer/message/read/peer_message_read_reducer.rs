@@ -1,8 +1,6 @@
 use redux_rs::ActionWithId;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
-use crate::peer::chunk::read::{PeerChunkRead, PeerChunkReadState};
-use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
 use crate::{Action, State};
 

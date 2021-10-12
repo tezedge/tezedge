@@ -1,12 +1,8 @@
 use redux_rs::{ActionWithId, Store};
-use std::sync::Arc;
-
-use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
-use crate::peer::{PeerId, PeerStatus};
-use crate::service::actors_service::{ActorsMessageFrom, ActorsMessageTo};
+use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
 use crate::{action::Action, State};
 

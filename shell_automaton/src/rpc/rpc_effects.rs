@@ -10,7 +10,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<State, S, Action>, action: &Act
             while let Ok(msg) = store.service().rpc().try_recv() {
                 match msg {
                     RpcResponse::GetCurrentGlobalState { channel } => {
-                        channel.send(store.state.get().clone());
+                        let _ = channel.send(store.state.get().clone());
                     }
                 }
             }

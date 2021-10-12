@@ -4,14 +4,11 @@
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor};
-use serde::{Deserialize, Serialize};
-
-use crypto::hash::BlockHash;
 
 use crate::database::backend::{BackendIterator, BackendIteratorMode};
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
 
 pub type ShellAutomatonActionIndexStorageKV =

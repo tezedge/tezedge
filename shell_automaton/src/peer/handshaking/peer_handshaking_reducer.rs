@@ -408,7 +408,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                     PeerStatus::Handshaking(PeerHandshaking { status, token, .. }) => {
                         match status {
                             PeerHandshakingStatus::AckMessageReady {
-                                remote_message,
+                                remote_message: _,
                                 crypto,
                                 remote_connection_message,
                                 remote_metadata_message,

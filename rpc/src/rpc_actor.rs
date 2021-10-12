@@ -13,7 +13,7 @@ use tokio::runtime::Handle;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
-use shell_automaton::service::rpc_service::{RpcShellAutomatonChannel, RpcShellAutomatonSender};
+use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
 use shell_integration::ShellConnectorRef;
 use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};

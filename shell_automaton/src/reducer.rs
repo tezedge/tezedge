@@ -28,7 +28,7 @@ pub fn last_action_id_reducer(state: &mut State, action: &ActionWithId<Action>) 
     state.last_action_id = action.id;
 }
 
-pub fn applied_actions_count_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn applied_actions_count_reducer(state: &mut State, _action: &ActionWithId<Action>) {
     state.applied_actions_count += 1;
 }
 

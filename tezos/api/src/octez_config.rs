@@ -26,7 +26,7 @@ impl OctezConfig {
 struct OctezCustomNetwork {
     pub chain_name: String,
     pub genesis: OctezGenesisChain,
-    pub sandboxed_chain_name: String,
+    pub _sandboxed_chain_name: String,
     #[serde(default)]
     pub default_bootstrap_peers: Vec<String>,
     pub genesis_parameters: Option<OctezGenesisParameters>,
