@@ -43,4 +43,4 @@ strum_macros = "0.20"
 lazy_static = "1.4"
 rand = "0.7.3"
 hyper = { version = "0.14", features = ["client"] }
-tokio = { version = "1.8", features = ["macros"] }
+tokio = { version = "1.12", features = ["macros"] }
