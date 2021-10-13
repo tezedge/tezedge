@@ -280,14 +280,24 @@ pub async fn dev_shell_automaton_actions_get(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    make_json_response(
-        &dev_services::get_shell_automaton_actions(
-            &env,
-            query.get_u64("cursor"),
-            query.get_usize("limit"),
-        )
-        .await?,
-    )
+    make_json_response(&match query.get_usize("rev").eq(&Some(1)) {
+        false => {
+            dev_services::get_shell_automaton_actions(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+        true => {
+            dev_services::get_shell_automaton_actions_reverse(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+    })
 }
 
 pub async fn dev_shell_automaton_actions_graph_get(

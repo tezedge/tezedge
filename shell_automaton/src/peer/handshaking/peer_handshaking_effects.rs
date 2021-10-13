@@ -218,7 +218,8 @@ pub fn peer_handshaking_effects<S>(
                         ..
                     }) => {
                         let nonce_pair =
-                            match generate_nonces(local_chunk.raw(), remote_chunk.raw(), *incoming) {
+                            match generate_nonces(local_chunk.raw(), remote_chunk.raw(), *incoming)
+                            {
                                 Ok(v) => v,
                                 Err(err) => {
                                     store.dispatch(
