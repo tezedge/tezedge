@@ -1,4 +1,5 @@
 use derive_more::From;
+use redux_rs::ActionId;
 use serde::{Deserialize, Serialize};
 
 use crypto::{crypto_box::PublicKey, hash::CryptoboxPublicKeyHash};
@@ -53,6 +54,13 @@ impl PeerStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Peer {
     pub status: PeerStatus,
+    pub quota: PeerQuota
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerQuota {
+    pub quota_bytes_read: usize,
+    pub quota_read_timestamp: ActionId,
 }
 
 impl Peer {

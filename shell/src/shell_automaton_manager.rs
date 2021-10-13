@@ -4,8 +4,10 @@
 //! Module takes care about (initialization, thread starting, ...) of ShellAutomaton.
 
 use std::collections::HashSet;
+use std::env;
 use std::iter::FromIterator;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -126,6 +128,8 @@ impl ShellAutomatonManager {
                 Self::SHELL_AUTOMATON_QUEUE_MAX_CAPACITY,
             );
 
+        let quota_service = shell_automaton::service::QuotaServiceDefault::new(mio_service.waker());
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -133,6 +137,7 @@ impl ShellAutomatonManager {
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
+            quota: quota_service,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
@@ -146,6 +151,12 @@ impl ShellAutomatonManager {
             identity: (*identity).clone(),
             shell_compatibility_version: (*shell_compatibility_version).clone(),
             pow_target,
+
+            quota: shell_automaton::Quota {
+                restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS").unwrap_or(1000),
+                read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(128 * 1024),
+                write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(128 * 1024),
+            }
         });
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);
@@ -205,4 +216,8 @@ impl Drop for ShellAutomatonManager {
             warn!(self.log, "Failed to send Shutdown message to ShellAutomaton"; "error" => format!("{:?}", err));
         }
     }
+}
+
+fn env_variable<T: FromStr>(name: &str) -> Option<T> {
+    env::var(name).ok().and_then(|v| v.parse().ok())
 }

@@ -15,6 +15,7 @@ use crate::peer::handshaking::peer_handshaking_reducer;
 use crate::peer::message::read::peer_message_read_reducer;
 use crate::peer::message::write::peer_message_write_reducer;
 
+use crate::peer::peer_reducer;
 use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
 use crate::peers::dns_lookup::peers_dns_lookup_reducer;
@@ -42,6 +43,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         peers_add_multi_reducer,
         peers_add_reducer,
         peers_remove_reducer,
+        peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,
         peer_connection_incoming_reducer,

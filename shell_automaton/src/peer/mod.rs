@@ -22,3 +22,6 @@ pub use peer_actions::*;
 
 mod peer_effects;
 pub use peer_effects::*;
+
+mod peer_reducer;
+pub use peer_reducer::*;
