@@ -208,6 +208,7 @@ pub fn peer_handshaking_effects<S>(
             if let Some(peer) = store.state.get().peers.get(&action.address) {
                 match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
+                        incoming,
                         status:
                             PeerHandshakingStatus::ConnectionMessageReady {
                                 local_chunk,
@@ -217,7 +218,7 @@ pub fn peer_handshaking_effects<S>(
                         ..
                     }) => {
                         let nonce_pair =
-                            match generate_nonces(local_chunk.raw(), remote_chunk.raw(), false) {
+                            match generate_nonces(local_chunk.raw(), remote_chunk.raw(), *incoming) {
                                 Ok(v) => v,
                                 Err(err) => {
                                     store.dispatch(
