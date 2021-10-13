@@ -20,7 +20,9 @@ pub struct InjectBlock {
     pub operation_paths: Option<Vec<Path>>,
 }
 
-pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), InjectBlockError>>;
+pub type InjectBlockOneshotResultCallbackResult = Result<(), InjectBlockError>;
+pub type InjectBlockOneshotResultCallback =
+    OneshotResultCallback<InjectBlockOneshotResultCallbackResult>;
 
 #[derive(Debug)]
 pub struct InjectBlockError {

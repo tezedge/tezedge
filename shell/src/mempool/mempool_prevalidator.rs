@@ -33,9 +33,7 @@ use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
 };
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
-use tezos_wrapper::service::{
-    handle_protocol_service_error, ProtocolController, ProtocolServiceError,
-};
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{AdvertiseToP2pNewMempool, ChainManagerRef};
@@ -481,7 +479,7 @@ fn begin_construction(
     }) {
         Ok(prevalidator) => (Some(prevalidator), Some(block_hash)),
         Err(pse) => {
-            handle_protocol_service_error(
+            ProtocolServiceError::handle_protocol_service_error(
                 pse,
                 |e| warn!(log, "Mempool - failed to begin construction"; "block_hash" => block_hash.to_base58_check(), "error" => format!("{:?}", e)),
             )?;
@@ -538,7 +536,7 @@ fn handle_pending_operations(
                         // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
                     }
                     Err(pse) => {
-                        handle_protocol_service_error(
+                        ProtocolServiceError::handle_protocol_service_error(
                             pse,
                             |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => pending_op.to_base58_check(), "error" => format!("{:?}", e)),
                         )?

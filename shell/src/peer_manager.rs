@@ -232,7 +232,7 @@ impl PeerManager {
             self.discovery_last = Some(Instant::now());
 
             info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
-            self.process_new_potential_peers(dns_lookup_peers(&self.bootstrap_addresses, &log))?;
+            self.process_new_potential_peers(dns_lookup_peers(&self.bootstrap_addresses, log))?;
         } else {
             let msg: Arc<PeerMessageResponse> = Arc::new(PeerMessage::Bootstrap.into());
             self.peers
@@ -618,7 +618,7 @@ impl Actor for PeerManager {
             LogPeerStats.into(),
         );
 
-        let listener_address = self.listener_address.clone();
+        let listener_address = self.listener_address;
         let peers = self.peers.clone();
         let myself = ctx.myself();
         let rx_run = self.rx_run.clone();
@@ -838,7 +838,7 @@ impl Receive<ConnectToPeer> for PeerManager {
             match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                 Ok(Ok(stream)) => {
                     debug!(log, "(Outgoing) Connection to peer successful, so start bootstrapping"; "incoming" => false, "ip" => msg.address);
-                    match bootstrap(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &log).await {
+                    match bootstrap(Bootstrap::outgoing(stream, msg.address, disable_mempool, private_node), local_node_info, &log).await {
                         Ok(bootstrap_output) => {
                             match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output, &log) {
                                 Ok(peer) => {
@@ -895,7 +895,7 @@ impl Receive<AcceptPeer> for PeerManager {
                 self.tokio_executor.spawn(async move {
                     let log = system.log();
                     debug!(log, "Bootstrapping"; "incoming" => true, "ip" => &msg.address);
-                    match bootstrap(Bootstrap::incoming(msg.stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &log).await {
+                    match bootstrap(Bootstrap::incoming(msg.stream, msg.address, disable_mempool, private_node), local_node_info, &log).await {
                         Ok(bootstrap_output) => {
                             match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output, &log) {
                                 Ok(peer) => {
@@ -922,7 +922,7 @@ impl Receive<AcceptPeer> for PeerManager {
                     "Cannot accept incoming peer connection because peer limit was reached - dropping incoming connection"
                 );
                 // TODO: TE-490 - better handle Nack TooManyConnetions here instead of drop
-                // not needed, just wanted to be explicit here
+                // not needed, just to be explicit
                 drop(msg.stream);
                 drop(msg.permit);
             }
@@ -932,7 +932,7 @@ impl Receive<AcceptPeer> for PeerManager {
                     "Failed to resolve `max_connections_exceeded` - dropping incoming connection";
                     "reason" => format!("{:?}", e)
                 );
-                // not needed, just wanted to be explicit here
+                // not needed, just to be explicit
                 drop(msg.stream);
                 drop(msg.permit);
             }
@@ -1002,7 +1002,7 @@ async fn begin_listen_incoming(
                                 "No more permits (exceeded) for incoming connection - dropping incoming connection";
                                 "socket_addr" => address.to_string(),
                             );
-                            // not needed, just wanted to be explicit here
+                            // not needed, just to be explicit
                             drop(stream);
                         }
                         Err(e) => {
@@ -1012,7 +1012,7 @@ async fn begin_listen_incoming(
                                 "socket_addr" => address.to_string(),
                                 "reason" => format!("{:?}", e),
                             );
-                            // not needed, just wanted to be explicit here
+                            // not needed, just to be explicit
                             drop(stream);
                         }
                     }
@@ -1336,13 +1336,8 @@ pub mod tests {
         assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
 
         // register as outgoing
-        let PeerState { peer_id, .. } = test_peer(
-            &actor_system,
-            network_channel.clone(),
-            &tokio_runtime,
-            7779,
-            &log,
-        );
+        let PeerState { peer_id, .. } =
+            test_peer(&actor_system, network_channel, &tokio_runtime, 7779, &log);
         p2p_peers
             .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address)
             .unwrap();
@@ -1396,7 +1391,7 @@ pub mod tests {
             (60, 80),
             (100, 150),
         ];
-        for i in thresh.into_iter() {
+        for i in thresh.iter() {
             let (low, high) = i;
             for current in 0..high * 2 {
                 check_count_of_required_peers(current, *low, *high);
