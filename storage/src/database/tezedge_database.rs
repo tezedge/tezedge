@@ -11,6 +11,8 @@ use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+use super::backend::BackendIterator;
+
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
 }
@@ -57,19 +59,13 @@ pub trait KVStore<S: KeyValueSchema> {
 }
 
 pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
-    fn find(
-        &self,
-        mode: IteratorMode<S>,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    fn find<'a>(&'a self, mode: IteratorMode<'a, S>) -> Result<BackendIterator<'a>, Error>;
 
-    fn find_by_prefix(
-        &self,
+    fn find_by_prefix<'a>(
+        &'a self,
         key: &S::Key,
         max_key_len: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    ) -> Result<BackendIterator<'a>, Error>;
 }
 
 // TODO - TE-498: Todo Change name
@@ -227,12 +223,7 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 }
 
 impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase {
-    fn find(
-        &self,
-        mode: IteratorMode<S>,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    fn find<'a>(&'a self, mode: IteratorMode<S>) -> Result<BackendIterator<'a>, Error> {
         let mode = match mode {
             IteratorMode::Start => BackendIteratorMode::Start,
             IteratorMode::End => BackendIteratorMode::End,
@@ -240,18 +231,17 @@ impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase 
                 BackendIteratorMode::From(key.encode()?, direction)
             }
         };
-        self.backend.find(S::column_name(), mode, limit, filter)
+        self.backend.find(S::column_name(), mode)
     }
 
-    fn find_by_prefix(
-        &self,
+    fn find_by_prefix<'a>(
+        &'a self,
         key: &<S as KeyValueSchema>::Key,
         max_key_len: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    ) -> Result<BackendIterator<'a>, Error> {
         let key = key.encode()?;
         self.backend
-            .find_by_prefix(S::column_name(), &key, max_key_len, filter)
+            .find_by_prefix(S::column_name(), &key, max_key_len)
     }
 }
 

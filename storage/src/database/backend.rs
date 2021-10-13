@@ -1,6 +1,8 @@
 use crate::database::error::Error;
-use crate::persistent::SchemaError;
 use crate::Direction;
+
+pub type BoxedSliceKV = (Box<[u8]>, Box<[u8]>);
+pub type BackendIterator<'a> = Box<dyn 'a + Send + Iterator<Item = Result<BoxedSliceKV, Error>>>;
 
 #[derive(Clone)]
 pub enum BackendIteratorMode {
@@ -22,18 +24,15 @@ pub trait TezedgeDatabaseBackendStore {
     ) -> Result<(), Error>;
     fn flush(&self) -> Result<usize, Error>;
 
-    fn find(
-        &self,
+    fn find<'a>(
+        &'a self,
         column: &'static str,
         mode: BackendIteratorMode,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
-    fn find_by_prefix(
-        &self,
+    ) -> Result<BackendIterator<'a>, Error>;
+    fn find_by_prefix<'a>(
+        &'a self,
         column: &'static str,
         key: &Vec<u8>,
         max_key_len: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    ) -> Result<BackendIterator<'a>, Error>;
 }
