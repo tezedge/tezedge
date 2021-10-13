@@ -4,8 +4,8 @@
 use std::time::Duration;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
-use riker::{actor::*, system::Timer};
 use slog::{info, warn, Logger};
+use tezedge_actor_system::{actor::*, system::Timer};
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 use warp::ws::Message;

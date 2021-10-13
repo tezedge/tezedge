@@ -84,7 +84,7 @@ impl PeerConnectionThreshold {
 }
 
 pub mod subscription {
-    use riker::actors::*;
+    use tezedge_actor_system::actors::*;
 
     use networking::p2p::network_channel::NetworkChannelTopic;
 
@@ -265,8 +265,8 @@ pub mod connector {
 
     impl ShellConnector for ShellConnectorSupport {
         fn request_current_head_from_connected_peers(&self) {
-            // actual implementation use riker and sends command to shell_channel
-            use riker::actors::*;
+            // actual implementation use tezedge_actor_system and sends command to shell_channel
+            use tezedge_actor_system::actors::*;
 
             self.chain_manager.tell(
                 AskPeersAboutCurrentHead {
@@ -297,8 +297,8 @@ pub mod connector {
             request: InjectBlock,
             result_callback: Option<InjectBlockOneshotResultCallback>,
         ) {
-            // actual implementation use riker and sends command to shell_channel
-            use riker::actors::*;
+            // actual implementation use tezedge_actor_system and sends command to shell_channel
+            use tezedge_actor_system::actors::*;
 
             self.chain_manager.tell(
                 InjectBlockRequest {

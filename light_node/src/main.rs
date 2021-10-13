@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use riker::actors::*;
 use slog::{debug, error, info, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
@@ -233,16 +233,16 @@ fn block_on_actors(
     // create partial (global) states for sharing between threads/actors
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    // create riker's actor system
+    // create actor system
     let actor_system = Arc::new(
         SystemBuilder::new()
             .name("light-node")
             .log(log.clone())
             .cfg({
-                let mut cfg = riker::load_config();
+                let mut cfg = tezedge_actor_system::load_config();
                 // websocket uses [`ctx.schedule`] with cca 1.5s delay,
                 // and without websocket, the lowest scheduled delay is about 15s
-                // so default 50ms for riker's schedule thread is too low
+                // so default 50ms for actor system schedule thread is too low
                 cfg.scheduler.frequency_millis = if env.rpc.websocket_cfg.is_some() {
                     500
                 } else {

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use riker::actors::*;
+use tezedge_actor_system::actors::*;
 
 use rpc::RpcServiceEnvironmentRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};

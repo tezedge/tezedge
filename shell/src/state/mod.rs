@@ -277,8 +277,8 @@ pub mod tests {
         use std::time::Duration;
 
         use futures::lock::Mutex as TokioMutex;
-        use riker::actors::*;
         use slog::{Drain, Level, Logger};
+        use tezedge_actor_system::actors::*;
 
         use crypto::hash::{ChainId, CryptoboxPublicKeyHash};
         use networking::p2p::network_channel::NetworkChannelRef;
