@@ -13,7 +13,6 @@ use std::future::Future;
 use std::vec;
 
 use crypto::hash::ContractKt1Hash;
-use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use shell_automaton::{Action, ActionWithId};
 use slog::Logger;
@@ -401,7 +400,7 @@ pub(crate) async fn get_shell_automaton_state_after(
     let mut state = shell_automaton_state_closest(env, target_action_id).await?;
 
     let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
-    let mut actions_iter = shell_automaton_actions_iter(
+    let actions_iter = shell_automaton_actions_iter(
         &action_storage,
         IteratorMode::From(Cow::Owned(target_action_id), Direction::Forward),
     )
@@ -648,7 +647,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 #[serde(rename_all = "camelCase")]
 pub struct ActionGraphNode {
     action_id: usize,
-    action_name: String,
+    action_name: &'static str,
     next_actions: Vec<usize>,
 }
 
@@ -663,8 +662,7 @@ pub(crate) async fn get_shell_automaton_actions_graph(
     let mut action_it = shell_automaton_actions_iter(&action_storage, IteratorMode::Start)
         .await?
         .map(shell_automaton_actions_decode_map)
-        .map(|result| result.map(|action| GenAction::from(action.action)));
-
+        .map(|result| result.map(|action| action.action.into()));
     let action = action_it.next().unwrap()?;
     action_indices.insert(action, 0);
     next_actions.push(HashSet::new());
@@ -695,242 +693,11 @@ pub(crate) async fn get_shell_automaton_actions_graph(
             next_actions.sort();
             ActionGraphNode {
                 action_id: i,
-                action_name: format!("{:?}", s),
+                action_name: s,
                 next_actions,
             }
         })
         .collect::<Vec<_>>();
 
     Ok(actions_graph)
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum GenAction {
-    PeersDnsLookupInit,
-    PeersDnsLookupError,
-    PeersDnsLookupSuccess,
-    PeersDnsLookupCleanup,
-
-    PeersAddIncomingPeer,
-    PeersAddMulti,
-    PeersRemove,
-
-    PeerConnectionIncomingAccept,
-    PeerConnectionIncomingAcceptError,
-    PeerConnectionIncomingAcceptSuccess,
-
-    PeerConnectionIncomingSuccess,
-
-    PeerConnectionOutgoingRandomInit,
-    PeerConnectionOutgoingInit,
-    PeerConnectionOutgoingPending,
-    PeerConnectionOutgoingError,
-    PeerConnectionOutgoingSuccess,
-
-    PeerConnectionClosed,
-
-    PeerDisconnect,
-    PeerDisconnected,
-
-    P2pServerEvent,
-    P2pPeerEvent,
-    WakeupEvent,
-
-    PeerTryWrite,
-    PeerTryRead,
-
-    // chunk read
-    PeerChunkReadInit,
-    PeerChunkReadPart,
-    PeerChunkReadDecrypt,
-    PeerChunkReadReady,
-    PeerChunkReadError,
-
-    // chunk write
-    PeerChunkWriteSetContent,
-    PeerChunkWriteEncryptContent,
-    PeerChunkWriteCreateChunk,
-    PeerChunkWritePart,
-    PeerChunkWriteReady,
-    PeerChunkWriteError,
-
-    // binary message read
-    PeerBinaryMessageReadInit,
-    PeerBinaryMessageReadChunkReady,
-    PeerBinaryMessageReadSizeReady,
-    PeerBinaryMessageReadReady,
-    PeerBinaryMessageReadError,
-
-    // binary message write
-    PeerBinaryMessageWriteSetContent,
-    PeerBinaryMessageWriteNextChunk,
-    PeerBinaryMessageWriteReady,
-    PeerBinaryMessageWriteError,
-
-    PeerMessageReadInit,
-    PeerMessageReadSuccess,
-
-    PeerMessageWriteNext,
-    PeerMessageWriteInit,
-    PeerMessageWriteSuccess,
-
-    PeerHandshakingInit,
-    PeerHandshakingConnectionMessageInit,
-    PeerHandshakingConnectionMessageEncode,
-    PeerHandshakingConnectionMessageWrite,
-    PeerHandshakingConnectionMessageRead,
-    PeerHandshakingConnectionMessageDecode,
-
-    PeerHandshakingEncryptionInit,
-
-    PeerHandshakingMetadataMessageInit,
-    PeerHandshakingMetadataMessageEncode,
-    PeerHandshakingMetadataMessageWrite,
-    PeerHandshakingMetadataMessageRead,
-    PeerHandshakingMetadataMessageDecode,
-
-    PeerHandshakingAckMessageInit,
-    PeerHandshakingAckMessageEncode,
-    PeerHandshakingAckMessageWrite,
-    PeerHandshakingAckMessageRead,
-    PeerHandshakingAckMessageDecode,
-
-    PeerHandshakingError,
-    PeerHandshakingFinish,
-
-    StorageBlockHeadersPut,
-    StorageBlockHeaderPutNextInit,
-    StorageBlockHeaderPutNextPending,
-
-    StorageStateSnapshotCreate,
-
-    StorageRequestCreate,
-    StorageRequestInit,
-    StorageRequestPending,
-    StorageRequestError,
-    StorageRequestSuccess,
-    StorageRequestFinish,
-}
-
-impl From<Action> for GenAction {
-    fn from(action: Action) -> Self {
-        match action {
-            Action::PeersDnsLookupInit(_) => GenAction::PeersDnsLookupInit,
-            Action::PeersDnsLookupError(_) => GenAction::PeersDnsLookupError,
-            Action::PeersDnsLookupSuccess(_) => GenAction::PeersDnsLookupSuccess,
-            Action::PeersDnsLookupCleanup(_) => GenAction::PeersDnsLookupCleanup,
-            Action::PeersAddIncomingPeer(_) => GenAction::PeersAddIncomingPeer,
-            Action::PeersAddMulti(_) => GenAction::PeersAddMulti,
-            Action::PeersRemove(_) => GenAction::PeersRemove,
-            Action::PeerConnectionIncomingAccept(_) => GenAction::PeerConnectionIncomingAccept,
-            Action::PeerConnectionIncomingAcceptError(_) => {
-                GenAction::PeerConnectionIncomingAcceptError
-            }
-            Action::PeerConnectionIncomingAcceptSuccess(_) => {
-                GenAction::PeerConnectionIncomingAcceptSuccess
-            }
-            Action::PeerConnectionIncomingSuccess(_) => GenAction::PeerConnectionIncomingSuccess,
-            Action::PeerConnectionOutgoingRandomInit(_) => {
-                GenAction::PeerConnectionOutgoingRandomInit
-            }
-            Action::PeerConnectionOutgoingInit(_) => GenAction::PeerConnectionOutgoingInit,
-            Action::PeerConnectionOutgoingPending(_) => GenAction::PeerConnectionOutgoingPending,
-            Action::PeerConnectionOutgoingError(_) => GenAction::PeerConnectionOutgoingError,
-            Action::PeerConnectionOutgoingSuccess(_) => GenAction::PeerConnectionOutgoingSuccess,
-            Action::PeerConnectionClosed(_) => GenAction::PeerConnectionClosed,
-            Action::PeerDisconnect(_) => GenAction::PeerDisconnect,
-            Action::PeerDisconnected(_) => GenAction::PeerDisconnected,
-            Action::P2pServerEvent(_) => GenAction::P2pServerEvent,
-            Action::P2pPeerEvent(_) => GenAction::P2pPeerEvent,
-            Action::WakeupEvent(_) => GenAction::WakeupEvent,
-            Action::PeerTryWrite(_) => GenAction::PeerTryWrite,
-            Action::PeerTryRead(_) => GenAction::PeerTryRead,
-            Action::PeerChunkReadInit(_) => GenAction::PeerChunkReadInit,
-            Action::PeerChunkReadPart(_) => GenAction::PeerChunkReadPart,
-            Action::PeerChunkReadDecrypt(_) => GenAction::PeerChunkReadDecrypt,
-            Action::PeerChunkReadReady(_) => GenAction::PeerChunkReadReady,
-            Action::PeerChunkReadError(_) => GenAction::PeerChunkReadError,
-            Action::PeerChunkWriteSetContent(_) => GenAction::PeerChunkWriteSetContent,
-            Action::PeerChunkWriteEncryptContent(_) => GenAction::PeerChunkWriteEncryptContent,
-            Action::PeerChunkWriteCreateChunk(_) => GenAction::PeerChunkWriteCreateChunk,
-            Action::PeerChunkWritePart(_) => GenAction::PeerChunkWritePart,
-            Action::PeerChunkWriteReady(_) => GenAction::PeerChunkWriteReady,
-            Action::PeerChunkWriteError(_) => GenAction::PeerChunkWriteError,
-            Action::PeerBinaryMessageReadInit(_) => GenAction::PeerBinaryMessageReadInit,
-            Action::PeerBinaryMessageReadChunkReady(_) => {
-                GenAction::PeerBinaryMessageReadChunkReady
-            }
-            Action::PeerBinaryMessageReadSizeReady(_) => GenAction::PeerBinaryMessageReadSizeReady,
-            Action::PeerBinaryMessageReadReady(_) => GenAction::PeerBinaryMessageReadReady,
-            Action::PeerBinaryMessageReadError(_) => GenAction::PeerBinaryMessageReadError,
-            Action::PeerBinaryMessageWriteSetContent(_) => {
-                GenAction::PeerBinaryMessageWriteSetContent
-            }
-            Action::PeerBinaryMessageWriteNextChunk(_) => {
-                GenAction::PeerBinaryMessageWriteNextChunk
-            }
-            Action::PeerBinaryMessageWriteReady(_) => GenAction::PeerBinaryMessageWriteReady,
-            Action::PeerBinaryMessageWriteError(_) => GenAction::PeerBinaryMessageWriteError,
-            Action::PeerMessageReadInit(_) => GenAction::PeerMessageReadInit,
-            Action::PeerMessageReadSuccess(_) => GenAction::PeerMessageReadSuccess,
-            Action::PeerMessageWriteNext(_) => GenAction::PeerMessageWriteNext,
-            Action::PeerMessageWriteInit(_) => GenAction::PeerMessageWriteInit,
-            Action::PeerMessageWriteSuccess(_) => GenAction::PeerMessageWriteSuccess,
-            Action::PeerHandshakingInit(_) => GenAction::PeerHandshakingInit,
-            Action::PeerHandshakingConnectionMessageInit(_) => {
-                GenAction::PeerHandshakingConnectionMessageInit
-            }
-            Action::PeerHandshakingConnectionMessageEncode(_) => {
-                GenAction::PeerHandshakingConnectionMessageEncode
-            }
-            Action::PeerHandshakingConnectionMessageWrite(_) => {
-                GenAction::PeerHandshakingConnectionMessageWrite
-            }
-            Action::PeerHandshakingConnectionMessageRead(_) => {
-                GenAction::PeerHandshakingConnectionMessageRead
-            }
-            Action::PeerHandshakingConnectionMessageDecode(_) => {
-                GenAction::PeerHandshakingConnectionMessageDecode
-            }
-            Action::PeerHandshakingEncryptionInit(_) => GenAction::PeerHandshakingEncryptionInit,
-            Action::PeerHandshakingMetadataMessageInit(_) => {
-                GenAction::PeerHandshakingMetadataMessageInit
-            }
-            Action::PeerHandshakingMetadataMessageEncode(_) => {
-                GenAction::PeerHandshakingMetadataMessageEncode
-            }
-            Action::PeerHandshakingMetadataMessageWrite(_) => {
-                GenAction::PeerHandshakingMetadataMessageWrite
-            }
-            Action::PeerHandshakingMetadataMessageRead(_) => {
-                GenAction::PeerHandshakingMetadataMessageRead
-            }
-            Action::PeerHandshakingMetadataMessageDecode(_) => {
-                GenAction::PeerHandshakingMetadataMessageDecode
-            }
-            Action::PeerHandshakingAckMessageInit(_) => GenAction::PeerHandshakingAckMessageInit,
-            Action::PeerHandshakingAckMessageEncode(_) => {
-                GenAction::PeerHandshakingAckMessageEncode
-            }
-            Action::PeerHandshakingAckMessageWrite(_) => GenAction::PeerHandshakingAckMessageWrite,
-            Action::PeerHandshakingAckMessageRead(_) => GenAction::PeerHandshakingAckMessageRead,
-            Action::PeerHandshakingAckMessageDecode(_) => {
-                GenAction::PeerHandshakingAckMessageDecode
-            }
-            Action::PeerHandshakingError(_) => GenAction::PeerHandshakingError,
-            Action::PeerHandshakingFinish(_) => GenAction::PeerHandshakingFinish,
-            Action::StorageBlockHeadersPut(_) => GenAction::StorageBlockHeadersPut,
-            Action::StorageBlockHeaderPutNextInit(_) => GenAction::StorageBlockHeaderPutNextInit,
-            Action::StorageBlockHeaderPutNextPending(_) => {
-                GenAction::StorageBlockHeaderPutNextPending
-            }
-            Action::StorageStateSnapshotCreate(_) => GenAction::StorageStateSnapshotCreate,
-            Action::StorageRequestCreate(_) => GenAction::StorageRequestCreate,
-            Action::StorageRequestInit(_) => GenAction::StorageRequestInit,
-            Action::StorageRequestPending(_) => GenAction::StorageRequestPending,
-            Action::StorageRequestError(_) => GenAction::StorageRequestError,
-            Action::StorageRequestSuccess(_) => GenAction::StorageRequestSuccess,
-            Action::StorageRequestFinish(_) => GenAction::StorageRequestFinish,
-        }
-    }
 }
