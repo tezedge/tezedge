@@ -500,7 +500,7 @@ pub(crate) async fn get_shell_automaton_actions(
     let mut actions_iter = shell_automaton_actions_iter(
         &action_storage,
         match cursor {
-            Some(cursor) => IteratorMode::From(Cow::Owned(cursor), Direction::Reverse),
+            Some(cursor) => IteratorMode::From(Cow::Owned(cursor - 1), Direction::Reverse),
             None => IteratorMode::End,
         },
     )
@@ -510,11 +510,8 @@ pub(crate) async fn get_shell_automaton_actions(
     let mut result_actions = Vec::with_capacity(limit);
 
     for _ in 0..=limit {
-        match actions_iter.next() {
-            Some(Ok(action)) => result_actions.push(action),
-            Some(result) => {
-                result?;
-            }
+        match actions_iter.next().transpose()? {
+            Some(action) => result_actions.push(action),
             None => break,
         }
     }
@@ -547,8 +544,11 @@ pub(crate) async fn get_shell_automaton_actions(
             state
         });
 
-    let result_len = result_actions.len();
-    let action_times = result_actions.iter().rev().map(|x| u64::from(x.id)).collect::<Vec<_>>();
+    let action_times = result_actions
+        .iter()
+        .rev()
+        .map(|x| u64::from(x.id))
+        .collect::<Vec<_>>();
 
     Ok(result_actions
         .into_iter()
@@ -556,13 +556,84 @@ pub(crate) async fn get_shell_automaton_actions(
         .enumerate()
         .take(limit)
         .fold(
-            (state, VecDeque::with_capacity(result_len)),
+            (state, VecDeque::with_capacity(limit)),
             |(mut state, mut result), (index, action)| {
                 let action_time = u64::from(action.id);
                 let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
 
                 shell_automaton::reducer(&mut state, &action);
                 result.push_front(RpcShellAutomatonAction {
+                    action,
+                    state: state.clone(),
+                    duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                });
+                (state, result)
+            },
+        )
+        .1)
+}
+
+pub(crate) async fn get_shell_automaton_actions_reverse(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<usize>,
+) -> anyhow::Result<VecDeque<RpcShellAutomatonAction>> {
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+
+    let cursor = cursor.unwrap_or(0);
+    let limit = limit.unwrap_or(20).max(1).min(1000);
+
+    let mut state = shell_automaton_state_closest(env, cursor).await?;
+
+    let mut actions_iter = shell_automaton_actions_iter(
+        &action_storage,
+        IteratorMode::From(Cow::Owned(state.last_action_id.into()), Direction::Forward),
+    )
+    .await?
+    .map(shell_automaton_actions_decode_map)
+    .peekable();
+
+    loop {
+        match actions_iter.peek() {
+            Some(Ok(action)) if u64::from(action.id) >= cursor => break,
+            None => break,
+            _ => {}
+        }
+        if let Some(action) = actions_iter.next().transpose()? {
+            shell_automaton::reducer(&mut state, &action);
+        }
+    }
+    dbg!(state.last_action_id);
+
+    let mut result_actions = VecDeque::with_capacity(limit);
+
+    for _ in 0..=limit {
+        match actions_iter.next().transpose()? {
+            Some(action) => result_actions.push_front(action),
+            None => break,
+        }
+    }
+    dbg!(result_actions[0].id);
+
+    let action_times = result_actions
+        .iter()
+        .rev()
+        .map(|x| u64::from(x.id))
+        .collect::<Vec<_>>();
+
+    Ok(result_actions
+        .into_iter()
+        .rev()
+        .enumerate()
+        .take(limit)
+        .fold(
+            (state, VecDeque::with_capacity(limit)),
+            |(mut state, mut result), (index, action)| {
+                let action_time = u64::from(action.id);
+                let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
+                shell_automaton::reducer(&mut state, &action);
+                result.push_back(RpcShellAutomatonAction {
                     action,
                     state: state.clone(),
                     duration: next_action_time.checked_sub(action_time).unwrap_or(0),
