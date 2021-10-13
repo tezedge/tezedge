@@ -51,7 +51,7 @@ use std::io::Read;
 
 use sysinfo::{ProcessExt, System, SystemExt};
 
-fn dump_threads(log: &slog::Logger) {
+pub fn dump_threads(log: &slog::Logger) {
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -416,11 +416,6 @@ impl NodeInfrastructure {
         info!(log, "Thread workers stopped");
 
         warn!(log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
-
-        info!(log, "-----------------------");
-        info!(log, "Dumping threads:");
-        dump_threads(log);
-        info!(log, "Dumping threads done");
     }
 
     // TODO: refactor with async/condvar, not to block main thread

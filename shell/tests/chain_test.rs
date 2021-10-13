@@ -79,7 +79,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
-        (log, log_level),
+        (log.clone(), log_level),
         (false, false),
     )?;
 
@@ -130,6 +130,11 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     drop(mocked_peer_node);
     drop(node);
 
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
     Ok(())
 }
 
@@ -161,7 +166,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         Some(p2p_cfg),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
-        (log, log_level),
+        (log.clone(), log_level),
         (false, false),
     )?;
 
@@ -252,6 +257,11 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
     drop(mocked_peer_node);
     drop(node);
 
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
     Ok(())
 }
 
@@ -282,7 +292,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), anyhow::Er
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
-        (log, log_level),
+        (log.clone(), log_level),
         (false, false),
     )?;
 
@@ -364,6 +374,11 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), anyhow::Er
     drop(mocked_peer_node_branch_1);
     drop(node);
 
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
     Ok(())
 }
 
@@ -390,7 +405,7 @@ fn test_process_current_heads_to_level3() -> Result<(), anyhow::Error> {
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
-        (log, log_level),
+        (log.clone(), log_level),
         (false, false),
     )?;
 
@@ -456,6 +471,11 @@ fn test_process_current_heads_to_level3() -> Result<(), anyhow::Error> {
     drop(mocked_peer_node);
     drop(node);
 
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
     Ok(())
 }
 
@@ -483,7 +503,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Resu
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
-        (log, log_level),
+        (log.clone(), log_level),
         (false, false),
     )?;
 
@@ -608,19 +628,21 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Resu
     drop(mocked_peer_node);
     drop(node);
 
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
     Ok(())
 }
 
 fn process_bootstrap_level1324_and_mempool_for_level1325(
     name: &str,
     current_head_wait_timeout: (Duration, Duration),
+    (log, log_level): (slog::Logger, slog::Level),
 ) -> Result<(), anyhow::Error> {
     let root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
     let root_context_db_path = &common::prepare_empty_dir("__test_05_context");
-
-    // logger
-    let log_level = common::log_level();
-    let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_1324::init_data(&log);
     let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
@@ -831,10 +853,22 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 #[test]
 #[serial]
 fn test_process_bootstrap_level1324_and_mempool_for_level1325() -> Result<(), anyhow::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level);
+
     process_bootstrap_level1324_and_mempool_for_level1325(
         "process_bootstrap_level1324_and_mempool_for_level1325",
         (Duration::from_secs(90), Duration::from_millis(500)),
-    )
+        (log.clone(), log_level),
+    )?;
+
+    slog::info!(log, "-----------------------");
+    slog::info!(log, "Dumping threads:");
+    crate::common::infra::dump_threads(&log);
+    slog::info!(log, "Dumping threads done");
+
+    Ok(())
 }
 
 #[ignore]
