@@ -100,7 +100,9 @@ impl MempoolPrevalidator {
                 let mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
-                    let result = tokio_runtime.block_on(tezos_protocol_api.readable_connection());
+                    let result = tokio::task::block_in_place(|| {
+                        tokio_runtime.block_on(tezos_protocol_api.readable_connection())
+                    });
                     match result {
                         Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
@@ -488,12 +490,15 @@ fn begin_construction(
     block_header: Arc<BlockHeader>,
     log: &Logger,
 ) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
+    let result = tokio::task::block_in_place(|| {
+        tokio_runtime.block_on(api.begin_construction(BeginConstructionRequest {
+            chain_id: chain_id.clone(),
+            predecessor: block_header.as_ref().clone(),
+            protocol_data: None,
+        }))
+    });
     // try to begin construction
-    let result = match tokio_runtime.block_on(api.begin_construction(BeginConstructionRequest {
-        chain_id: chain_id.clone(),
-        predecessor: block_header.as_ref().clone(),
-        protocol_data: None,
-    })) {
+    let result = match result {
         Ok(prevalidator) => (Some(prevalidator), Some(block_hash)),
         Err(pse) => {
             handle_protocol_service_error(
@@ -539,11 +544,15 @@ fn handle_pending_operations(
             Some(operation) => {
                 trace!(log, "Mempool - lets validate "; "hash" => pending_op.to_base58_check());
 
+                let result = tokio::task::block_in_place(|| {
+                    tokio_runtime.block_on(api.validate_operation(ValidateOperationRequest {
+                        prevalidator: prevalidator.clone(),
+                        operation: operation.clone(),
+                    }))
+                });
+
                 // lets validate throught protocol
-                match tokio_runtime.block_on(api.validate_operation(ValidateOperationRequest {
-                    prevalidator: prevalidator.clone(),
-                    operation: operation.clone(),
-                })) {
+                match result {
                     Ok(response) => {
                         debug!(log, "Mempool - validate operation response finished with success"; "hash" => pending_op.to_base58_check(), "result" => format!("{:?}", response.result));
 

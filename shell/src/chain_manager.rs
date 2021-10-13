@@ -538,8 +538,10 @@ impl ChainManager {
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
-                                    let mut connection = tokio_runtime
-                                        .block_on(tezos_protocol_api.readable_connection())?;
+                                    let mut connection = tokio::task::block_in_place(|| {
+                                        tokio_runtime
+                                            .block_on(tezos_protocol_api.readable_connection())
+                                    })?;
 
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
@@ -714,21 +716,27 @@ impl ChainManager {
 
                                 match peer.queued_mempool_operations.remove(&operation_hash) {
                                     Some(operation_type) => {
-                                        let mut connection = tokio_runtime
-                                            .block_on(tezos_protocol_api.readable_connection())?;
+                                        let mut connection = tokio::task::block_in_place(|| {
+                                            tokio_runtime
+                                                .block_on(tezos_protocol_api.readable_connection())
+                                        })?;
 
                                         // do prevalidation before add the operation to mempool
-                                        let result = self.tokio_runtime.block_on(
-                                            validation::prevalidate_operation(
-                                                chain_state.get_chain_id(),
-                                                &operation_hash,
-                                                operation,
-                                                Arc::clone(&self.current_mempool_state),
-                                                &mut connection,
-                                                block_storage,
-                                                block_meta_storage,
-                                            ),
-                                        );
+                                        let current_mempool_state =
+                                            Arc::clone(&self.current_mempool_state);
+                                        let result = tokio::task::block_in_place(|| {
+                                            tokio_runtime.block_on(
+                                                validation::prevalidate_operation(
+                                                    chain_state.get_chain_id(),
+                                                    &operation_hash,
+                                                    operation,
+                                                    current_mempool_state,
+                                                    &mut connection,
+                                                    block_storage,
+                                                    block_meta_storage,
+                                                ),
+                                            )
+                                        });
 
                                         let result = match result {
                                             Ok(result) => result,

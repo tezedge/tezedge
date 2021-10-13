@@ -207,15 +207,16 @@ impl BlockchainState {
 
         // if we have protocol lets validate
         if let Some(protocol_hash) = protocol_hash {
-            let result = self
-                .tokio_runtime
-                .block_on(validation::check_multipass_validation(
-                    head.chain_id(),
-                    protocol_hash,
-                    validated_header,
-                    predecessor_header,
-                    api,
-                ));
+            let result = tokio::task::block_in_place(|| {
+                self.tokio_runtime
+                    .block_on(validation::check_multipass_validation(
+                        head.chain_id(),
+                        protocol_hash,
+                        validated_header,
+                        predecessor_header,
+                        api,
+                    ))
+            });
             // lets check strict multipass validation
             match result {
                 Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),

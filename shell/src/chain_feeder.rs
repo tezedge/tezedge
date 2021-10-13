@@ -484,6 +484,7 @@ impl BlockApplierThreadSpawner {
 
                 while apply_block_run.load(Ordering::Acquire) {
                     info!(log, "Chain feeding starting");
+                    // TODO now: pass api object instead, and make connection inside
                     let result = tokio_runtime.block_on(tezos_protocol_api.writable_connection());
                     match result {
                         Ok(mut protocol_controller) => match feed_chain_to_protocol(
