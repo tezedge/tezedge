@@ -585,6 +585,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-foundation-sys"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -859,6 +865,12 @@ dependencies = [
  "socket2",
  "winapi",
 ]
+
+[[package]]
+name = "doc-comment"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "either"
@@ -2892,6 +2904,7 @@ dependencies = [
  "slog-term",
  "storage",
  "tezedge-actor-system",
+ "sysinfo",
  "tezos-sys",
  "tezos_api",
  "tezos_context",
@@ -3185,6 +3198,21 @@ dependencies = [
  "proc-macro2 1.0.30",
  "quote 1.0.10",
  "unicode-xid 0.2.2",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.19.2"
+source = "git+https://github.com/tezedge/sysinfo.git?tag=tezedge-v0.19.2-1#ac780b2511d582cf13c2116dd47a740b69049321"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys",
+ "doc-comment",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "winapi",
 ]
 
 [[package]]

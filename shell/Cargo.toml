@@ -43,6 +43,7 @@ fs_extra = "1.2.0"
 zip = "0.5.5"
 tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
+sysinfo = { git = "https://github.com/tezedge/sysinfo.git", tag = "tezedge-v0.19.2-1" }
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
 ipc = { path = "../ipc" }

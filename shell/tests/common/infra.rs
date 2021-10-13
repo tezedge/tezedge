@@ -45,6 +45,46 @@ use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration}
 
 use crate::common;
 
+use std::fs::File;
+use std::io::BufReader;
+use std::io::Read;
+
+use sysinfo::{ProcessExt, System, SystemExt};
+
+fn dump_threads(log: &slog::Logger) {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    // Display processes ID, name na disk usage:
+    for (pid, process) in sys.processes() {
+        info!(log, "[{}] {} {:?}", pid, process.name(), process.disk_usage());
+        process
+            .tasks
+            .iter()
+            .map(|(task_id, task)| {
+                (read_task_name_file(*pid, *task_id), task.cpu_usage())
+            }).for_each(|(task_name, task_usage)| {
+            info!(log, "    [{:?} {:?}]", task_name, task_usage);
+        });
+    }
+}
+
+fn read_task_name_file(pid: i32, task_pid: i32) -> String {
+    if let Ok(f) = File::open(&format!("/proc/{}/task/{}/comm", pid, task_pid)) {
+        let mut buf = BufReader::new(f);
+        let mut name = String::new();
+
+        match buf.read_to_string(&mut name) {
+            Ok(_) => format!("{}-{}", &name.replace("\n", ""), task_pid.to_string()),
+            // if for some reason we cannot read the thread name file, just use the task PID
+            _ => task_pid.to_string(),
+        }
+    } else {
+        // if for some reason we cannot access the thread name file, just use the task PID
+        task_pid.to_string()
+    }
+}
+
 pub struct NodeInfrastructure {
     name: String,
     pub log: Logger,
@@ -376,6 +416,11 @@ impl NodeInfrastructure {
         info!(log, "Thread workers stopped");
 
         warn!(log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
+
+        info!(log, "-----------------------");
+        info!(log, "Dumping threads:");
+        dump_threads(log);
+        info!(log, "Dumping threads done");
     }
 
     // TODO: refactor with async/condvar, not to block main thread
