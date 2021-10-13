@@ -149,15 +149,16 @@ impl MempoolStorage {
 
     #[inline]
     pub fn iter(&self) -> Result<Vec<(OperationHash, OperationMessage)>, StorageError> {
-        let items = self
-            .kv
-            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;
-        let mut operations = Vec::with_capacity(items.len());
-        for (k, v) in items.iter() {
-            let value: MempoolValue = BincodeEncoded::decode(v)?;
-            let key: MempoolKey = <Self as KeyValueSchema>::Key::decode(k)?;
+        let mut operations = vec![];
+
+        for result in self.kv.find(IteratorMode::Start)? {
+            let (k, v) = result?;
+
+            let key: MempoolKey = <Self as KeyValueSchema>::Key::decode(&k)?;
+            let value: MempoolValue = BincodeEncoded::decode(&v)?;
             operations.push((key.operation_hash, value.operation));
         }
+
         Ok(operations)
     }
 }
@@ -180,7 +181,7 @@ impl KVStoreKeyValueSchema for MempoolStorage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolKey {
     operation_type: MempoolOperationType,
     operation_hash: OperationHash,

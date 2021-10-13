@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use getset::Getters;
@@ -450,13 +451,10 @@ impl BlockPrimaryIndex {
     #[inline]
     fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
         use crate::persistent::codec::Decoder;
-        let results: Result<Vec<_>, _> = self
-            .kv
-            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?
-            .iter()
-            .map(|(k, _)| <Self as KeyValueSchema>::Key::decode(k))
-            .collect();
-        Ok(results?)
+        self.kv
+            .find(IteratorMode::Start)?
+            .map(|result| Ok(<Self as KeyValueSchema>::Key::decode(&result?.0)?))
+            .collect()
     }
 }
 
@@ -505,18 +503,14 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results: Result<Vec<_>, _> = self
-            .kv
-            .find(
-                IteratorMode::From(&from_level, Direction::Reverse),
-                Some(limit),
-                Box::new(|(_, _)| Ok(true)),
-            )?
-            .iter()
-            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
-            .collect();
-
-        Ok(results?)
+        self.kv
+            .find(IteratorMode::From(
+                Cow::Owned(from_level),
+                Direction::Reverse,
+            ))?
+            .take(limit)
+            .map(|result| Ok(<Self as KeyValueSchema>::Value::decode(&result?.1)?))
+            .collect()
     }
 
     fn get_blocks_directed(
@@ -525,17 +519,11 @@ impl BlockByLevelIndex {
         limit: usize,
         direction: Direction,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results: Result<Vec<_>, _> = self
-            .kv
-            .find(
-                IteratorMode::From(&from_level, direction),
-                Some(limit),
-                Box::new(|(_, _)| Ok(true)),
-            )?
-            .iter()
-            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
-            .collect();
-        Ok(results?)
+        self.kv
+            .find(IteratorMode::From(Cow::Owned(from_level), direction))?
+            .take(limit)
+            .map(|result| Ok(<Self as KeyValueSchema>::Value::decode(&result?.1)?))
+            .collect()
     }
 
     fn get_blocks_by_nth_level(
@@ -544,21 +532,31 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results: Result<Vec<_>, _> = self
-            .kv
-            .find(
-                IteratorMode::From(&from_level, Direction::Reverse),
-                Some(limit),
-                Box::new(move |(k, _)| {
-                    use crate::persistent::codec::Decoder;
-                    let level = <Self as KeyValueSchema>::Key::decode(k)?;
-                    Ok(level % every_nth == 0)
-                }),
-            )?
-            .iter()
-            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
-            .collect();
-        Ok(results?)
+        self.kv
+            .find(IteratorMode::From(
+                Cow::Owned(from_level),
+                Direction::Reverse,
+            ))?
+            .filter_map(|result| {
+                let (key, value) = match result {
+                    Ok(v) => v,
+                    Err(err) => return Some(Err(err)),
+                };
+
+                let level = match <BlockLevel as crate::persistent::codec::Decoder>::decode(&key) {
+                    Ok(v) => v,
+                    Err(err) => return Some(Err(err.into())),
+                };
+
+                if level % every_nth == 0 {
+                    Some(BlockStorageColumnsLocation::decode(&value).map_err(|err| err.into()))
+                } else {
+                    None
+                }
+            })
+            .map(|res| Ok(res?))
+            .take(limit)
+            .collect()
     }
 }
 
