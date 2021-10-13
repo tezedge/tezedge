@@ -422,6 +422,7 @@ pub(crate) async fn get_shell_automaton_state_after(
     Ok(state)
 }
 
+#[allow(dead_code)]
 pub(crate) async fn get_shell_automaton_action(
     env: &RpcServiceEnvironment,
     action_id: u64,

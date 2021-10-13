@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor};
 
-use crate::database::backend::{BackendIterator, BackendIteratorMode};
+use crate::database::backend::BackendIterator;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
-use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema};
+use crate::{IteratorMode, PersistentStorage, StorageError};
 
 pub type ShellAutomatonActionIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<ShellAutomatonActionStorage> + Sync + Send;
