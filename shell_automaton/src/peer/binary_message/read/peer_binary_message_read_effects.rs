@@ -11,10 +11,14 @@ use crate::peer::{PeerHandshaked, PeerStatus};
 use crate::service::Service;
 use crate::{Action, State};
 
-use super::{PeerBinaryMessageReadChunkReadyAction, peer_binary_message_read_actions::{
+use super::{
+    peer_binary_message_read_actions::{
         PeerBinaryMessageReadErrorAction, PeerBinaryMessageReadReadyAction,
         PeerBinaryMessageReadSizeReadyAction,
-    }, peer_binary_message_read_state::PeerBinaryMessageReadState};
+    },
+    peer_binary_message_read_state::PeerBinaryMessageReadState,
+    PeerBinaryMessageReadChunkReadyAction,
+};
 
 pub fn peer_binary_message_read_effects<S>(
     store: &mut Store<State, S, Action>,

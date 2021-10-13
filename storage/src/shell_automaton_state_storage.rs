@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor};
@@ -60,16 +61,15 @@ impl ShellAutomatonStateStorage {
     where
         T: Decoder,
     {
-        let results = self.kv.find(
-            IteratorMode::From(action_id, Direction::Reverse),
-            Some(1),
-            Box::new(|_| Ok(true)),
-        )?;
-
-        Ok(results
-            .get(0)
-            .map(|(_, encoded)| T::decode(encoded))
-            .transpose()?)
+        self.kv
+            .find(IteratorMode::From(
+                Cow::Borrowed(action_id),
+                Direction::Reverse,
+            ))?
+            .take(1)
+            .next()
+            .map(|res| Ok(T::decode(&res?.1)?))
+            .transpose()
     }
 }
 

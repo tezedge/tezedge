@@ -73,11 +73,8 @@ impl OperationsStorageReader for OperationsStorage {
         };
 
         let mut operations: Vec<OperationsForBlocksMessage> = vec![];
-        for (_key, value) in self.kv.find_by_prefix(
-            &key,
-            HashType::BlockHash.size(),
-            Box::new(|(_, _)| Ok(true)),
-        )? {
+        for result in self.kv.find_by_prefix(&key, HashType::BlockHash.size())? {
+            let (_, value) = result?;
             operations.push(BincodeEncoded::decode(value.as_ref())?);
         }
         operations.sort_by_key(|v| v.operations_for_block().validation_pass());
@@ -111,7 +108,7 @@ impl KVStoreKeyValueSchema for OperationsStorage {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OperationKey {
     block_hash: BlockHash,
     validation_pass: u8,

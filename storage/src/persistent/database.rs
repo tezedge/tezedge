@@ -4,6 +4,7 @@
 //! This module provides wrapper on RocksDB database.
 //! Everything related to RocksDB should be placed here.
 
+use std::borrow::Cow;
 use std::io;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -388,5 +389,5 @@ impl From<Direction> for rocksdb::Direction {
 pub enum IteratorMode<'a, S: KeyValueSchema> {
     Start,
     End,
-    From(&'a S::Key, Direction),
+    From(Cow<'a, S::Key>, Direction),
 }

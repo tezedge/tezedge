@@ -268,7 +268,7 @@ pub async fn dev_shell_automaton_state_get(
 ) -> ServiceResult {
     match query.get_u64("action_id") {
         Some(target_action_id) => make_json_response(
-            &dev_services::get_shell_automaton_state_after_action(&env, target_action_id).await?,
+            &dev_services::get_shell_automaton_state_after(&env, target_action_id).await?,
         ),
         None => make_json_response(&dev_services::get_shell_automaton_state_current(&env).await?),
     }

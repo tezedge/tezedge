@@ -49,7 +49,7 @@ where
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement
 pub trait KeyValueSchema {
-    type Key: Codec;
+    type Key: Codec + Clone;
     type Value: Codec;
 }
 

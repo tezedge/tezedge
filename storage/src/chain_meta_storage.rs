@@ -183,7 +183,7 @@ impl KVStoreKeyValueSchema for ChainMetaStorage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MetaKey {
     chain_id: ChainId,
     key: String,

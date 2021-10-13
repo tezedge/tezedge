@@ -327,7 +327,6 @@ impl ChainManager {
                         .into(),
                     &log,
                 );
-
             }
             NetworkChannelMsg::PeerDisconnected(peer)
             | NetworkChannelMsg::PeerBlacklisted(peer) => {
