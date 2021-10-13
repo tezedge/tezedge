@@ -42,7 +42,7 @@ use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub use redux_rs::{ActionId, ActionWithId};
 
-#[derive(From, Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
+#[derive(From, Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr, strum_macros::IntoStaticStr)]
 #[serde(tag = "type", content = "content")]
 pub enum Action {
     PeersDnsLookupInit(PeersDnsLookupInitAction),
