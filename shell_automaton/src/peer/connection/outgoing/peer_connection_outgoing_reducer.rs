@@ -1,5 +1,6 @@
 use redux_rs::ActionWithId;
 
+use crate::peer::PeerQuota;
 use crate::peer::connection::PeerConnectionState;
 use crate::{
     action::Action,
@@ -7,13 +8,14 @@ use crate::{
     State,
 };
 
-use super::PeerConnectionOutgoingState;
+use super::{PeerConnectionOutgoingInitAction, PeerConnectionOutgoingState};
 
 pub fn peer_connection_outgoing_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
-        Action::PeerConnectionOutgoingInit(action) => {
-            let peer = state.peers.entry(action.address).or_insert_with(|| Peer {
+        Action::PeerConnectionOutgoingInit(PeerConnectionOutgoingInitAction { address }) => {
+            let peer = state.peers.entry(*address).or_insert_with(|| Peer {
                 status: PeerStatus::Potential,
+                quota: PeerQuota { quota_bytes_read: 0, quota_read_timestamp: action.id }
             });
             if matches!(peer.status, PeerStatus::Potential) {
                 peer.status = PeerStatus::Connecting(PeerConnectionOutgoingState::Idle.into());

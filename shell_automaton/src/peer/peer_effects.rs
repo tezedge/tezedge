@@ -1,8 +1,9 @@
 use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
+use std::time::Duration;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
-use crate::service::{MioService, Service};
+use crate::service::{MioService, QuotaService, Service};
 use crate::{Action, State};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
@@ -22,6 +23,26 @@ where
     S: Service,
 {
     match &action.action {
+        Action::WakeupEvent(_) => {
+            let addresses = store
+                .state
+                .get()
+                .peers
+                .iter()
+                .filter_map(|(address, peer)| {
+                    if peer.quota.quota_read_timestamp == action.id {
+                        Some(address)
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+
+            for address in addresses {
+                store.dispatch(PeerTryReadAction { address }.into());
+            }
+        }
         // Handle peer related mio event.
         Action::P2pPeerEvent(event) => {
             if event.is_closed() {
@@ -125,6 +146,19 @@ where
                 Some(v) => v,
                 None => return,
             };
+
+            if peer.quota.quota_bytes_read > store.state.get().config.quota.read_quota {
+                eprintln!(
+                    "read quota exceeded for {}, quota: {}, bytes read: {}",
+                    action.address,
+                    store.state.get().config.quota.read_quota,
+                    peer.quota.quota_bytes_read
+                );
+                store.service.quota().schedule(Duration::from_millis(
+                    store.state.get().config.quota.restore_duration_millis as u64,
+                ));
+                return;
+            }
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,

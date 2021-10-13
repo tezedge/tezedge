@@ -44,6 +44,15 @@ pub struct Config {
     pub pow_target: f64,
     pub identity: Identity,
     pub shell_compatibility_version: ShellCompatibilityVersion,
+
+    pub quota: Quota,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Quota {
+    pub restore_duration_millis: usize,
+    pub read_quota: usize,
+    pub write_quota: usize,
 }
 
 pub fn default_config() -> Config {
@@ -62,6 +71,12 @@ pub fn default_config() -> Config {
             vec![0, 1],
             vec![1],
         ),
+
+        quota: Quota {
+            restore_duration_millis: 1000,
+            read_quota: 1024,
+            write_quota: 1024,
+        },
     }
 }
 
@@ -81,5 +96,11 @@ pub fn test_config() -> Config {
             vec![0],
             vec![1],
         ),
+
+        quota: Quota {
+            restore_duration_millis: 1000,
+            read_quota: 1024,
+            write_quota: 1024,
+        },
     }
 }

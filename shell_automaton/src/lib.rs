@@ -10,7 +10,7 @@ pub mod action;
 pub use action::{Action, ActionId, ActionWithId};
 
 pub mod config;
-pub use config::Config;
+pub use config::{Config, Quota};
 
 mod state;
 pub use state::State;
