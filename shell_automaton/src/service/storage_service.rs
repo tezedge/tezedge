@@ -134,7 +134,11 @@ impl StorageServiceDefault {
     }
 
     // TODO: remove unwraps
-    pub fn init(waker: Arc<mio::Waker>, persistent_storage: PersistentStorage, channel_bound: usize) -> Self {
+    pub fn init(
+        waker: Arc<mio::Waker>,
+        persistent_storage: PersistentStorage,
+        channel_bound: usize,
+    ) -> Self {
         let (requester, responder) = worker_channel(waker, channel_bound);
 
         thread::Builder::new()
