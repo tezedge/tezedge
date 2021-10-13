@@ -478,18 +478,21 @@ pub(crate) fn shell_automaton_actions_iter<'a>(
     }
 }
 
+/// Action sent from rpc.
 #[derive(Serialize, Deserialize)]
-pub(crate) struct ActionWithState {
+pub(crate) struct RpcShellAutomatonAction {
     #[serde(flatten)]
     action: ActionWithId<Action>,
     state: shell_automaton::State,
+    /// Time between this action and the next one.
+    duration: u64,
 }
 
 pub(crate) async fn get_shell_automaton_actions(
     env: &RpcServiceEnvironment,
     cursor: Option<u64>,
     limit: Option<usize>,
-) -> anyhow::Result<VecDeque<ActionWithState>> {
+) -> anyhow::Result<VecDeque<RpcShellAutomatonAction>> {
     let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
 
     let limit = limit.unwrap_or(20).max(1).min(1000);
@@ -506,7 +509,7 @@ pub(crate) async fn get_shell_automaton_actions(
 
     let mut result_actions = Vec::with_capacity(limit);
 
-    for _ in 0..limit {
+    for _ in 0..=limit {
         match actions_iter.next() {
             Some(Ok(action)) => result_actions.push(action),
             Some(result) => {
@@ -544,18 +547,25 @@ pub(crate) async fn get_shell_automaton_actions(
             state
         });
 
-    let actions_with_state = VecDeque::with_capacity(result_actions.len());
+    let result_len = result_actions.len();
+    let action_times = result_actions.iter().rev().map(|x| u64::from(x.id)).collect::<Vec<_>>();
 
     Ok(result_actions
         .into_iter()
         .rev()
+        .enumerate()
+        .take(limit)
         .fold(
-            (state, actions_with_state),
-            |(mut state, mut result), action| {
+            (state, VecDeque::with_capacity(result_len)),
+            |(mut state, mut result), (index, action)| {
+                let action_time = u64::from(action.id);
+                let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
                 shell_automaton::reducer(&mut state, &action);
-                result.push_front(ActionWithState {
+                result.push_front(RpcShellAutomatonAction {
                     action,
                     state: state.clone(),
+                    duration: next_action_time.checked_sub(action_time).unwrap_or(0),
                 });
                 (state, result)
             },
