@@ -16,7 +16,7 @@ rlimit = "0.5"
 serde_json = "1.0"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 strum = "0.20"
-tokio = { version = "1.8", features = ["rt-multi-thread", "signal"] }
+tokio = { version = "1.12", features = ["rt-multi-thread", "signal"] }
 num_cpus = "1.13"
 # Local dependencies
 crypto = { path = "../crypto" }
