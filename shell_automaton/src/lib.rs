@@ -7,7 +7,7 @@ pub mod event;
 use event::Event;
 
 pub mod action;
-pub use action::{Action, ActionId, ActionType, ActionWithId};
+pub use action::{Action, ActionId, ActionKind, ActionWithId};
 
 pub mod config;
 pub use config::{Config, Quota};
