@@ -3236,7 +3236,7 @@ dependencies = [
 [[package]]
 name = "tezedge-actor-system"
 version = "0.5.0"
-source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#5851cd55f05a781e5bbd03e86bd8a428a55e9cd8"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#90cc2f1041f22ac456d854a069ed3f5029b0c586"
 dependencies = [
  "slog",
  "tezedge-actor-system-macros",
@@ -3248,7 +3248,7 @@ dependencies = [
 [[package]]
 name = "tezedge-actor-system-macros"
 version = "0.5.0"
-source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#5851cd55f05a781e5bbd03e86bd8a428a55e9cd8"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#90cc2f1041f22ac456d854a069ed3f5029b0c586"
 dependencies = [
  "proc-macro2 1.0.30",
  "quote 1.0.10",
