@@ -13,6 +13,7 @@ rand = "0.7.3"
 mio = { version = "0.7.13", features = ["os-poll", "net"] }
 dns-lookup = "1.0.1"
 derive_more = "0.99.16"
+enum-kinds = "0.5.1"
 tokio = { version = "1.12", features = ["time", "rt-multi-thread"] }
 hyper = { version = "0.14", features = ["server", "http1", "http2", "stream", "tcp", "runtime"] }
 tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }

@@ -20,7 +20,7 @@ use slog::Logger;
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
-use shell_automaton::ActionId;
+use shell_automaton::{ActionId, ActionType};
 use storage::cycle_eras_storage::CycleEra;
 use storage::database::backend::BoxedSliceKV;
 use storage::database::error::Error as DBError;
@@ -507,7 +507,7 @@ pub(crate) async fn get_shell_automaton_actions(
     .await?
     .map(shell_automaton_actions_decode_map);
 
-    let mut result_actions = Vec::with_capacity(limit);
+    let mut result_actions = Vec::with_capacity(limit + 1);
 
     for _ in 0..=limit {
         match actions_iter.next().transpose()? {
@@ -603,9 +603,8 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
             shell_automaton::reducer(&mut state, &action);
         }
     }
-    dbg!(state.last_action_id);
 
-    let mut result_actions = VecDeque::with_capacity(limit);
+    let mut result_actions = VecDeque::with_capacity(limit + 1);
 
     for _ in 0..=limit {
         match actions_iter.next().transpose()? {
@@ -613,7 +612,6 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
             None => break,
         }
     }
-    dbg!(result_actions[0].id);
 
     let action_times = result_actions
         .iter()
@@ -648,7 +646,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 #[serde(rename_all = "camelCase")]
 pub struct ActionGraphNode {
     action_id: usize,
-    action_name: &'static str,
+    action_name: ActionType,
     next_actions: Vec<usize>,
 }
 
@@ -663,7 +661,7 @@ pub(crate) async fn get_shell_automaton_actions_graph(
     let mut action_it = shell_automaton_actions_iter(&action_storage, IteratorMode::Start)
         .await?
         .map(shell_automaton_actions_decode_map)
-        .map(|result| result.map(|action| action.action.into()));
+        .map(|result| result.map(|action| action.into()));
     let action = action_it.next().unwrap()?;
     action_indices.insert(action, 0);
     next_actions.push(HashSet::new());

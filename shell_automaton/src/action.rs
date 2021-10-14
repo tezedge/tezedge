@@ -1,4 +1,5 @@
 use derive_more::From;
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
@@ -42,7 +43,17 @@ use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub use redux_rs::{ActionId, ActionWithId};
 
-#[derive(From, Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr, strum_macros::IntoStaticStr)]
+#[derive(
+    EnumKind,
+    strum_macros::AsRefStr,
+    strum_macros::IntoStaticStr,
+    From,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+)]
+#[enum_kind(ActionType, derive(Serialize, Deserialize, Hash))]
 #[serde(tag = "type", content = "content")]
 pub enum Action {
     PeersDnsLookupInit(PeersDnsLookupInitAction),
@@ -151,6 +162,13 @@ pub enum Action {
     StorageRequestFinish(StorageRequestFinishAction),
 }
 
+impl Action {
+    #[inline(always)]
+    pub fn action_type(&self) -> ActionType {
+        ActionType::from(self)
+    }
+}
+
 // bincode decoding fails with: "Bincode does not support Deserializer::deserialize_identifier".
 // So use json instead, which works.
 
@@ -174,5 +192,17 @@ impl storage::persistent::Encoder for Action {
 impl storage::persistent::Decoder for Action {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         serde_json::from_slice(bytes).map_err(|_| SchemaError::DecodeError)
+    }
+}
+
+impl<'a> From<&'a ActionWithId<Action>> for ActionType {
+    fn from(action: &'a ActionWithId<Action>) -> ActionType {
+        action.action.action_type()
+    }
+}
+
+impl From<ActionWithId<Action>> for ActionType {
+    fn from(action: ActionWithId<Action>) -> ActionType {
+        action.action.action_type()
     }
 }
