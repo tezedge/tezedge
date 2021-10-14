@@ -119,7 +119,7 @@ impl StorageServiceDefault {
                     .map(|_| ActionPutSuccess(action.id))
                     .map_err(|err| ActionPutError(err.into())),
                 StateSnapshotPut(state) => {
-                    let last_action_id = state.last_action_id;
+                    let last_action_id = state.last_action.id;
                     snapshot_storage
                         .put(&last_action_id.into(), &*state)
                         .map(|_| StateSnapshotPutSuccess(last_action_id))

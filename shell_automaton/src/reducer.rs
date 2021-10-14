@@ -25,8 +25,8 @@ use crate::storage::block_header::put::storage_block_header_put_reducer;
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
 
-pub fn last_action_id_reducer(state: &mut State, action: &ActionWithId<Action>) {
-    state.last_action_id = action.id;
+pub fn last_action_reducer(state: &mut State, action: &ActionWithId<Action>) {
+    state.last_action.update(action);
 }
 
 pub fn applied_actions_count_reducer(state: &mut State, _action: &ActionWithId<Action>) {
@@ -59,6 +59,6 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         storage_request_reducer,
         // needs to be last!
         applied_actions_count_reducer,
-        last_action_id_reducer
+        last_action_reducer
     );
 }

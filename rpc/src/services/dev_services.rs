@@ -20,7 +20,7 @@ use slog::Logger;
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
-use shell_automaton::{ActionId, ActionType};
+use shell_automaton::{ActionId, ActionKind};
 use storage::cycle_eras_storage::CycleEra;
 use storage::database::backend::BoxedSliceKV;
 use storage::database::error::Error as DBError;
@@ -526,9 +526,9 @@ pub(crate) async fn get_shell_automaton_actions(
     for result in actions_iter {
         let action = result?;
 
-        if action.id > state.last_action_id {
+        if action.id > state.last_action.id {
             actions_to_apply.push(action);
-        } else if action.id == state.last_action_id {
+        } else if action.id == state.last_action.id {
             actions_to_apply.push(action);
             break;
         } else {
@@ -587,7 +587,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 
     let mut actions_iter = shell_automaton_actions_iter(
         &action_storage,
-        IteratorMode::From(Cow::Owned(state.last_action_id.into()), Direction::Forward),
+        IteratorMode::From(Cow::Owned(state.last_action.id.into()), Direction::Forward),
     )
     .await?
     .map(shell_automaton_actions_decode_map)
@@ -646,7 +646,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 #[serde(rename_all = "camelCase")]
 pub struct ActionGraphNode {
     action_id: usize,
-    action_name: ActionType,
+    action_kind: ActionKind,
     next_actions: Vec<usize>,
 }
 
@@ -692,7 +692,7 @@ pub(crate) async fn get_shell_automaton_actions_graph(
             next_actions.sort();
             ActionGraphNode {
                 action_id: i,
-                action_name: s,
+                action_kind: s,
                 next_actions,
             }
         })

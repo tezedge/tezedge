@@ -14,9 +14,9 @@ use crate::{Direction, IteratorMode, PersistentStorage, StorageError};
 pub type ShellAutomatonStateIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<ShellAutomatonStateStorage> + Sync + Send;
 
-/// Storage for redux::State.
+/// Storage for shell_automaton::State.
 ///
-/// Indexed by ActionId that modified it [redux::State::last_action_id].
+/// Indexed by ActionId that modified it [shell_automaton::State::last_action.id].
 #[derive(Clone)]
 pub struct ShellAutomatonStateStorage {
     kv: Arc<ShellAutomatonStateIndexStorageKV>,
@@ -52,7 +52,7 @@ impl ShellAutomatonStateStorage {
         })
     }
 
-    /// Get closest state snapshot, where `state.last_action_id` <= `action_id`.
+    /// Get closest state snapshot, where `state.last_action.id` <= `action_id`.
     #[inline]
     pub fn get_closest_before<T>(&self, action_id: &u64) -> Result<Option<T>, StorageError>
     where

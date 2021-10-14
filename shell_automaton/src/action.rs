@@ -53,9 +53,11 @@ pub use redux_rs::{ActionId, ActionWithId};
     Debug,
     Clone,
 )]
-#[enum_kind(ActionType, derive(Serialize, Deserialize, Hash))]
-#[serde(tag = "type", content = "content")]
+#[enum_kind(ActionKind, derive(Serialize, Deserialize, Hash))]
+#[serde(tag = "kind", content = "content")]
 pub enum Action {
+    Init,
+
     PeersDnsLookupInit(PeersDnsLookupInitAction),
     PeersDnsLookupError(PeersDnsLookupErrorAction),
     PeersDnsLookupSuccess(PeersDnsLookupSuccessAction),
@@ -164,8 +166,8 @@ pub enum Action {
 
 impl Action {
     #[inline(always)]
-    pub fn action_type(&self) -> ActionType {
-        ActionType::from(self)
+    pub fn kind(&self) -> ActionKind {
+        ActionKind::from(self)
     }
 }
 
@@ -195,14 +197,14 @@ impl storage::persistent::Decoder for Action {
     }
 }
 
-impl<'a> From<&'a ActionWithId<Action>> for ActionType {
-    fn from(action: &'a ActionWithId<Action>) -> ActionType {
-        action.action.action_type()
+impl<'a> From<&'a ActionWithId<Action>> for ActionKind {
+    fn from(action: &'a ActionWithId<Action>) -> ActionKind {
+        action.action.kind()
     }
 }
 
-impl From<ActionWithId<Action>> for ActionType {
-    fn from(action: ActionWithId<Action>) -> ActionType {
-        action.action.action_type()
+impl From<ActionWithId<Action>> for ActionKind {
+    fn from(action: ActionWithId<Action>) -> ActionKind {
+        action.action.kind()
     }
 }
