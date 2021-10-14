@@ -46,7 +46,7 @@ jobs:
             sudo apt-get install libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
       - name: OSX dependencies
         if: runner.os == 'macOS'
-        run: brew install hidapi
+        run: brew install pkg-config gmp libev libsodium hidapi
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:

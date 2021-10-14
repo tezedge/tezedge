@@ -131,7 +131,7 @@ for most of the more popular Linux distributions:
 
 |  OS  |      Versions      |
 |----------|:-------------:|
-| Ubuntu |  16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10 |
+| Ubuntu |  16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10, 21.04, 21.10 |
 | Debian |  9, 10 |
 | OpenSUSE |  15.1, 15.2 |
 | CentOS |  8 |
