@@ -631,7 +631,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
                 let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
 
                 shell_automaton::reducer(&mut state, &action);
-                result.push_back(RpcShellAutomatonAction {
+                result.push_front(RpcShellAutomatonAction {
                     action,
                     state: state.clone(),
                     duration: next_action_time.checked_sub(action_time).unwrap_or(0),
