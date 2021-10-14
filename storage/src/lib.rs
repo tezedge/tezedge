@@ -51,6 +51,7 @@ pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
 use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
+pub use crate::shell_automaton_action_meta_storage::ShellAutomatonActionMetaStorage;
 pub use crate::shell_automaton_action_storage::ShellAutomatonActionStorage;
 pub use crate::shell_automaton_state_storage::ShellAutomatonStateStorage;
 pub use crate::system_storage::SystemStorage;
@@ -68,6 +69,7 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
+pub mod shell_automaton_action_meta_storage;
 pub mod shell_automaton_action_storage;
 pub mod shell_automaton_state_storage;
 pub mod system_storage;
@@ -546,6 +548,7 @@ pub mod initializer {
                 crate::ConstantsStorage::descriptor(cache),
                 crate::ShellAutomatonStateStorage::descriptor(cache),
                 crate::ShellAutomatonActionStorage::descriptor(cache),
+                crate::ShellAutomatonActionMetaStorage::descriptor(cache),
             ]
         }
     }
@@ -796,6 +799,7 @@ pub mod tests_common {
                         ConstantsStorage::descriptor(&db_cache),
                         ShellAutomatonStateStorage::descriptor(&db_cache),
                         ShellAutomatonActionStorage::descriptor(&db_cache),
+                        ShellAutomatonActionMetaStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
@@ -827,6 +831,7 @@ pub mod tests_common {
                         ConstantsStorage::descriptor(&db_cache),
                         ShellAutomatonStateStorage::descriptor(&db_cache),
                         ShellAutomatonActionStorage::descriptor(&db_cache),
+                        ShellAutomatonActionMetaStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
