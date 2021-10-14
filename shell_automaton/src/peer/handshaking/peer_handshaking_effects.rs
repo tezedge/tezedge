@@ -2,6 +2,7 @@ use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::generate_nonces;
 use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
+use tezos_messages::p2p::encoding::peer::PeerMessage;
 use std::sync::Arc;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::AckMessage;
@@ -20,6 +21,7 @@ use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
 };
 use crate::peer::message::read::PeerMessageReadInitAction;
+use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
@@ -583,6 +585,14 @@ pub fn peer_handshaking_effects<S>(
                 ),
                 Arc::new(peer_handshaked.version.clone()),
             ));
+
+            store.dispatch(
+                PeerMessageWriteInitAction {
+                    address: action.address,
+                    message: Arc::new(PeerMessage::Bootstrap.into()),
+                }
+                .into(),
+            );
 
             store.dispatch(
                 PeerMessageReadInitAction {
