@@ -13,7 +13,7 @@ use std::time::SystemTime;
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
-use slog::{info, warn, Logger};
+use slog::{info, o, warn, Logger};
 use storage::PersistentStorage;
 
 use crypto::hash::ChainId;
@@ -128,7 +128,10 @@ impl ShellAutomatonManager {
                 Self::SHELL_AUTOMATON_QUEUE_MAX_CAPACITY,
             );
 
-        let quota_service = shell_automaton::service::QuotaServiceDefault::new(mio_service.waker());
+        let quota_service = shell_automaton::service::QuotaServiceDefault::new(
+            mio_service.waker(),
+            log.new(o!("service" => "quota")),
+        );
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),

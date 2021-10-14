@@ -35,8 +35,8 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
                     >= state.config.quota.restore_duration_millis
                 {
                     eprintln!(
-                        "[tryread] resetting read bytes for {}, was {}",
-                        address, peer.quota.quota_bytes_read
+                        "[tryread] resetting read bytes in {}ms for {}, was {}",
+                        millis, address, peer.quota.quota_bytes_read
                     );
                     peer.quota.quota_bytes_read = 0;
                     peer.quota.quota_read_timestamp = action.id;
