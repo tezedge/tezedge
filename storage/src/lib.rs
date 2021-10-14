@@ -864,11 +864,12 @@ pub mod tests_common {
 
     impl Drop for TmpStoragePath {
         fn drop(&mut self) {
-            let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
-            if self.remove_on_destroy {
-                let _ = fs::remove_dir_all(&self.path);
-                slog::info!(&self.log, "Temporal storage removed: {:?}", self.path);
-            }
+            slog::info!(&self.log, "TODO: Temporal storage removed: {:?} - disabled", self.path);
+            // let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
+            // if self.remove_on_destroy {
+            //     let _ = fs::remove_dir_all(&self.path);
+            //     slog::info!(&self.log, "Temporal storage removed: {:?}", self.path);
+            // }
         }
     }
 

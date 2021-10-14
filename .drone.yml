@@ -69,7 +69,8 @@ steps:
     # build and unit-test
     - cargo clean
     - cargo build --release --workspace
-    - cargo test --release --workspace --no-run
+#    - cargo test --release --workspace --no-run
+    - cargo test --release --workspace
     # collect binary artefacts
     # directory in the workspace to cache all the binary artefacts
     # TODO: use snake-case for directories
