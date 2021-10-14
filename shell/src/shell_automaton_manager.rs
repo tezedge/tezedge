@@ -9,7 +9,7 @@ use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
@@ -130,6 +130,7 @@ impl ShellAutomatonManager {
 
         let quota_service = shell_automaton::service::QuotaServiceDefault::new(
             mio_service.waker(),
+            Duration::from_millis(100),
             log.new(o!("service" => "quota")),
         );
 

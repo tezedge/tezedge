@@ -1,9 +1,8 @@
 use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
-use std::time::Duration;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
-use crate::service::{MioService, QuotaService, Service};
+use crate::service::{MioService, Service};
 use crate::{Action, State};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
@@ -24,13 +23,21 @@ where
 {
     match &action.action {
         Action::WakeupEvent(_) => {
+            let quota_restore_duration_millis =
+                store.state.get().config.quota.restore_duration_millis;
             let read_addresses = store
                 .state
                 .get()
                 .peers
                 .iter()
                 .filter_map(|(address, peer)| {
-                    if peer.quota.quota_read_timestamp == action.id {
+                    if peer.quota.reject_read
+                        && action
+                            .id
+                            .duration_since(peer.quota.read_timestamp)
+                            .as_millis()
+                            >= quota_restore_duration_millis
+                    {
                         Some(address)
                     } else {
                         None
@@ -45,7 +52,13 @@ where
                 .peers
                 .iter()
                 .filter_map(|(address, peer)| {
-                    if peer.quota.quota_write_timestamp == action.id {
+                    if peer.quota.reject_write
+                        && action
+                            .id
+                            .duration_since(peer.quota.write_timestamp)
+                            .as_millis()
+                            >= quota_restore_duration_millis
+                    {
                         Some(address)
                     } else {
                         None
@@ -96,16 +109,7 @@ where
                 None => return,
             };
 
-            if peer.quota.quota_bytes_written > store.state.get().config.quota.write_quota {
-                eprintln!(
-                    "write quota exceeded for {}, quota: {}, bytes written: {}",
-                    action.address,
-                    store.state.get().config.quota.write_quota,
-                    peer.quota.quota_bytes_written
-                );
-                store.service.quota().schedule(Duration::from_millis(
-                    store.state.get().config.quota.restore_duration_millis as u64,
-                ));
+            if peer.quota.reject_write {
                 return;
             }
 
@@ -178,16 +182,7 @@ where
                 None => return,
             };
 
-            if peer.quota.quota_bytes_read > store.state.get().config.quota.read_quota {
-                eprintln!(
-                    "read quota exceeded for {}, quota: {}, bytes read: {}",
-                    action.address,
-                    store.state.get().config.quota.read_quota,
-                    peer.quota.quota_bytes_read
-                );
-                store.service.quota().schedule(Duration::from_millis(
-                    store.state.get().config.quota.restore_duration_millis as u64,
-                ));
+            if peer.quota.reject_read {
                 return;
             }
 
