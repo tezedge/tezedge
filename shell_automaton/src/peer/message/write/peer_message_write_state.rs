@@ -5,8 +5,7 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
 use crate::peer::{
-    binary_message::write::PeerBinaryMessageWriteState ,
-    chunk::read::PeerChunkReadError,
+    binary_message::write::PeerBinaryMessageWriteState, chunk::read::PeerChunkReadError,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

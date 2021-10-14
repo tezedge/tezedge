@@ -12,8 +12,7 @@ use crypto::hash::ChainId;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
-    subscribe_to_network_events, subscribe_to_shell_events,
-    subscribe_to_shell_new_current_head,
+    subscribe_to_network_events, subscribe_to_shell_events, subscribe_to_shell_new_current_head,
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;

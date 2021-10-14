@@ -54,7 +54,7 @@ impl PeerStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Peer {
     pub status: PeerStatus,
-    pub quota: PeerQuota
+    pub quota: PeerQuota,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

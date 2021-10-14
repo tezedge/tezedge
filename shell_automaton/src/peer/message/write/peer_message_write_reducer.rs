@@ -11,10 +11,7 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithId<Actio
         Action::PeerMessageWriteInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
-                    PeerStatus::Handshaked(PeerHandshaked {
-                        message_write,
-                        ..
-                    }) => {
+                    PeerStatus::Handshaked(PeerHandshaked { message_write, .. }) => {
                         if let PeerBinaryMessageWriteState::Init { .. } = &message_write.current {
                             return;
                         }

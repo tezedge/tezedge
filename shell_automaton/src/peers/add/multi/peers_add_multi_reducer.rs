@@ -1,6 +1,10 @@
 use redux_rs::ActionWithId;
 
-use crate::{State, action::Action, peer::{Peer, PeerQuota, PeerStatus}};
+use crate::{
+    action::Action,
+    peer::{Peer, PeerQuota, PeerStatus},
+    State,
+};
 
 use super::PeersAddMultiAction;
 
@@ -14,7 +18,7 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithId<Action>)
                     quota: PeerQuota {
                         quota_bytes_read: 0,
                         quota_read_timestamp: action.id,
-                    }
+                    },
                 });
             }
         }
