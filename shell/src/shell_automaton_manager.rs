@@ -153,10 +153,11 @@ impl ShellAutomatonManager {
             pow_target,
 
             quota: shell_automaton::Quota {
-                restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS").unwrap_or(1000),
+                restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS")
+                    .unwrap_or(1000),
                 read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(128 * 1024),
                 write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(128 * 1024),
-            }
+            },
         });
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);
