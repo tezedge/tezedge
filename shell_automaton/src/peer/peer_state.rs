@@ -59,19 +59,23 @@ pub struct Peer {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerQuota {
-    pub quota_bytes_read: usize,
-    pub quota_bytes_written: usize,
-    pub quota_read_timestamp: ActionId,
-    pub quota_write_timestamp: ActionId,
+    pub bytes_read: usize,
+    pub bytes_written: usize,
+    pub read_timestamp: ActionId,
+    pub write_timestamp: ActionId,
+    pub reject_read: bool,
+    pub reject_write: bool,
 }
 
 impl PeerQuota {
     pub fn new(timestamp: ActionId) -> Self {
         Self {
-            quota_bytes_read: 0,
-            quota_bytes_written: 0,
-            quota_read_timestamp: timestamp,
-            quota_write_timestamp: timestamp,
+            bytes_read: 0,
+            bytes_written: 0,
+            read_timestamp: timestamp,
+            write_timestamp: timestamp,
+            reject_read: false,
+            reject_write: false,
         }
     }
 }

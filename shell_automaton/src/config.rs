@@ -50,7 +50,7 @@ pub struct Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Quota {
-    pub restore_duration_millis: usize,
+    pub restore_duration_millis: u128,
     pub read_quota: usize,
     pub write_quota: usize,
 }
