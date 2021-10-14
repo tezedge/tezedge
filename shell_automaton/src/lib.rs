@@ -1,3 +1,5 @@
+#![feature(deadline_api)]
+
 use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 use redux_rs::Store;
 
