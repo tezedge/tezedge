@@ -195,7 +195,7 @@ pub mod tests {
         use networking::p2p::peer::{BootstrapOutput, Peer};
         use networking::PeerId;
         use shell_integration::OneshotResultCallback;
-        use storage::{PersistentStorageRef, StorageInitInfo};
+        use storage::{PersistentStorage, StorageInitInfo};
         use tezos_api::environment::*;
         use tezos_api::ffi::{
             GenesisChain, ProtocolOverrides, TezosContextIrminStorageConfiguration,
@@ -323,7 +323,7 @@ pub mod tests {
             shell_channel: ShellChannelRef,
             network_channel: NetworkChannelRef,
             block_applier: chain_feeder::ChainFeederRef,
-            persistent_storage: PersistentStorageRef,
+            persistent_storage: PersistentStorage,
             tokio_runtime: &tokio::runtime::Runtime,
         ) -> Result<ChainManagerRef, anyhow::Error> {
             let init_data = StorageInitInfo {

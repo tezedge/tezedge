@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crypto::hash::ChainId;
 use shell_integration::*;
-use storage::PersistentStorageRef;
+use storage::PersistentStorage;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::ChainManagerRef;
@@ -42,7 +42,7 @@ pub enum MempoolPrevalidatorInitError {
 pub struct MempoolPrevalidatorFactory {
     actor_system: Arc<ActorSystem>,
     log: Logger,
-    persistent_storage: PersistentStorageRef,
+    persistent_storage: PersistentStorage,
     current_mempool_state: CurrentMempoolStateStorageRef,
     tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
     /// Indicates if mempool is disabled to propagate to p2p
@@ -54,7 +54,7 @@ impl MempoolPrevalidatorFactory {
     pub fn new(
         actor_system: Arc<ActorSystem>,
         log: Logger,
-        persistent_storage: PersistentStorageRef,
+        persistent_storage: PersistentStorage,
         current_mempool_state: CurrentMempoolStateStorageRef,
         tezos_readonly_mempool_api: Arc<TezosApiConnectionPool>,
         p2p_disable_mempool: bool,

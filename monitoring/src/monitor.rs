@@ -15,7 +15,7 @@ use shell::subscription::{
     subscribe_to_shell_new_current_head,
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::PersistentStorageRef;
+use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
@@ -47,7 +47,7 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
     LogStats
 )]
 pub struct Monitor {
-    persistent_storage: PersistentStorageRef,
+    persistent_storage: PersistentStorage,
     main_chain_id: ChainId,
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
@@ -73,7 +73,7 @@ impl Monitor {
         event_channel: NetworkChannelRef,
         websocket_ref: ActorRef<WebsocketHandlerMsg>,
         shell_channel: ShellChannelRef,
-        persistent_storage: PersistentStorageRef,
+        persistent_storage: PersistentStorage,
         main_chain_id: ChainId,
     ) -> Result<MonitorRef, CreateError> {
         sys.actor_of_props::<Monitor>(
@@ -123,7 +123,7 @@ impl
         NetworkChannelRef,
         ActorRef<WebsocketHandlerMsg>,
         ShellChannelRef,
-        PersistentStorageRef,
+        PersistentStorage,
         ChainId,
     )> for Monitor
 {
@@ -132,7 +132,7 @@ impl
             NetworkChannelRef,
             ActorRef<WebsocketHandlerMsg>,
             ShellChannelRef,
-            PersistentStorageRef,
+            PersistentStorage,
             ChainId,
         ),
     ) -> Self {
@@ -353,7 +353,7 @@ impl Receive<ShellChannelMsg> for Monitor {
 }
 
 fn initialize_monitors(
-    persistent_storage: &PersistentStorageRef,
+    persistent_storage: &PersistentStorage,
     main_chain_id: &ChainId,
 ) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
     let mut chain_monitor = ChainMonitor::new();

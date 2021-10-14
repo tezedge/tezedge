@@ -627,16 +627,13 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
-    // storage for test
-    let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
-
     // start mempool on the beginning
     let mut p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 0, 10, 0);
     p2p_cfg.0.disable_mempool = false;
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        storage,
+        TmpStorage::create(&root_dir_temp_storage_path)?,
         root_context_db_path,
         name,
         tezos_env,
@@ -854,12 +851,9 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), any
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
-    // storage for test
-    let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
-
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        storage,
+        TmpStorage::create(&root_dir_temp_storage_path)?,
         root_context_db_path,
         "test_process_bootstrap_level1324_and_generate_action_file",
         tezos_env,

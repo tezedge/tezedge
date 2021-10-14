@@ -24,7 +24,7 @@ use shell_integration::{
 };
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
-    CycleErasStorage, CycleMetaStorage, PersistentStorageRef,
+    CycleErasStorage, CycleMetaStorage, PersistentStorage,
 };
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
@@ -175,12 +175,12 @@ impl ChainFeeder {
     /// If the actor is successfully created then reference to the actor is returned.
     /// Commands to the tezos protocol are transmitted via IPC channel provided by [`ipc_server`](IpcCmdServer).
     ///
-    /// This actor spawns a new thread in which it will periodically monitor [`persistent_storage`](PersistentStorageRef).
+    /// This actor spawns a new thread in which it will periodically monitor [`persistent_storage`](PersistentStorage).
     /// Purpose of the monitoring thread is to detect whether it is possible to apply blocks received by the p2p layer.
     /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
     pub fn actor(
         sys: &impl ActorRefFactory,
-        persistent_storage: PersistentStorageRef,
+        persistent_storage: PersistentStorage,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
@@ -491,7 +491,7 @@ impl From<ProtocolServiceError> for ApplyBlockBatchError {
 
 #[derive(Clone)]
 pub(crate) struct BlockApplierThreadSpawner {
-    persistent_storage: PersistentStorageRef,
+    persistent_storage: PersistentStorage,
     init_storage_data: Arc<StorageInitInfo>,
     tezos_env: Arc<TezosEnvironmentConfiguration>,
     tezos_writeable_api: Arc<TezosApiConnectionPool>,
@@ -500,7 +500,7 @@ pub(crate) struct BlockApplierThreadSpawner {
 
 impl BlockApplierThreadSpawner {
     pub(crate) fn new(
-        persistent_storage: PersistentStorageRef,
+        persistent_storage: PersistentStorage,
         init_storage_data: Arc<StorageInitInfo>,
         tezos_env: Arc<TezosEnvironmentConfiguration>,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
