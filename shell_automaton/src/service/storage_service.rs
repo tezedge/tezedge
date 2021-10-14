@@ -1,16 +1,17 @@
-use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::thread;
-
-use storage::{
-    BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionStorage,
-    ShellAutomatonStateStorage, StorageError,
+use storage::shell_automaton_action_meta_storage::{
+    ShellAutomatonActionMeta, ShellAutomatonActionMetas,
 };
 
-use crate::action::Action;
+use storage::{
+    BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionMetaStorage,
+    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
+};
+
 use crate::request::RequestId;
-use crate::State;
+use crate::{Action, ActionId, ActionKind, ActionWithId, State};
 
 use super::service_channel::{
     worker_channel, RequestSendError, ResponseTryRecvError, ServiceWorkerRequester,
@@ -44,6 +45,13 @@ pub enum StorageRequestPayload {
 
     StateSnapshotPut(Arc<State>),
     ActionPut(Box<ActionWithId<Action>>),
+    ActionMetaUpdate {
+        action_id: ActionId,
+        action_kind: ActionKind,
+
+        /// Duration until next action.
+        duration_nanos: u64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,6 +60,7 @@ pub enum StorageResponseSuccess {
 
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
+    ActionMetaUpdateSuccess(ActionId),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -60,6 +69,7 @@ pub enum StorageResponseError {
 
     StateSnapshotPutError(StorageErrorTmp),
     ActionPutError(StorageErrorTmp),
+    ActionMetaUpdateError(StorageErrorTmp),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -106,6 +116,13 @@ impl StorageServiceDefault {
         let block_storage = BlockStorage::new(&storage);
         let snapshot_storage = ShellAutomatonStateStorage::new(&storage);
         let action_storage = ShellAutomatonActionStorage::new(&storage);
+        let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
+
+        let mut action_metas = action_meta_storage
+            .get()
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| ShellAutomatonActionMetas::new());
 
         while let Ok(req) = channel.recv() {
             let result = match req.payload {
@@ -114,16 +131,37 @@ impl StorageServiceDefault {
                     .map(|res| BlockHeaderWithHashPutSuccess(res))
                     .map_err(|err| BlockHeaderWithHashPutError(err.into())),
 
-                ActionPut(action) => action_storage
-                    .put::<Action>(&action.id.into(), &action.action)
-                    .map(|_| ActionPutSuccess(action.id))
-                    .map_err(|err| ActionPutError(err.into())),
                 StateSnapshotPut(state) => {
-                    let last_action_id = state.last_action.id;
+                    let last_action_id = state.last_action.id();
                     snapshot_storage
                         .put(&last_action_id.into(), &*state)
                         .map(|_| StateSnapshotPutSuccess(last_action_id))
                         .map_err(|err| StateSnapshotPutError(err.into()))
+                }
+                ActionPut(action) => action_storage
+                    .put::<Action>(&action.id.into(), &action.action)
+                    .map(|_| ActionPutSuccess(action.id))
+                    .map_err(|err| ActionPutError(err.into())),
+                ActionMetaUpdate {
+                    action_id,
+                    action_kind,
+                    duration_nanos,
+                } => {
+                    let meta = action_metas
+                        .metas
+                        .entry(action_kind.to_string())
+                        .or_insert_with(|| ShellAutomatonActionMeta {
+                            total_calls: 0,
+                            total_duration: 0,
+                        });
+
+                    meta.total_calls += 1;
+                    meta.total_duration += duration_nanos;
+
+                    action_meta_storage
+                        .set(&action_metas)
+                        .map(|_| ActionMetaUpdateSuccess(action_id))
+                        .map_err(|err| ActionMetaUpdateError(err.into()))
                 }
             };
 

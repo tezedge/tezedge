@@ -3,7 +3,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
-use crate::{Action, State};
+use crate::{Action, ActionId, State};
 
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
 use crate::peer::binary_message::write::peer_binary_message_write_effects;
@@ -45,6 +45,22 @@ fn last_action_effects<S: Service>(
         id: None,
         payload: StorageRequestPayload::ActionPut(Box::new(action.clone())),
     });
+
+    let prev_action = &store.state.get().prev_action;
+
+    if prev_action.id() == ActionId::ZERO {
+        return;
+    }
+
+    let _ = store.service.storage().request_send(StorageRequest {
+        id: None,
+        payload: StorageRequestPayload::ActionMetaUpdate {
+            action_id: prev_action.id(),
+            action_kind: prev_action.kind(),
+
+            duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
+        },
+    });
 }
 
 fn applied_actions_count_effects<S: Service>(
@@ -57,7 +73,7 @@ fn applied_actions_count_effects<S: Service>(
 }
 
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    // these four effects must be first!
+    // these four effects must be first and in this order!
     // log_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);

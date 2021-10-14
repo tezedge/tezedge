@@ -31,8 +31,8 @@ use storage::persistent::Decoder;
 //};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
-    CycleErasStorage, Direction, IteratorMode, PersistentStorage, ShellAutomatonActionStorage,
-    ShellAutomatonStateStorage, StorageError,
+    CycleErasStorage, Direction, IteratorMode, PersistentStorage, ShellAutomatonActionMetaStorage,
+    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
@@ -526,9 +526,9 @@ pub(crate) async fn get_shell_automaton_actions(
     for result in actions_iter {
         let action = result?;
 
-        if action.id > state.last_action.id {
+        if action.id > state.last_action.id() {
             actions_to_apply.push(action);
-        } else if action.id == state.last_action.id {
+        } else if action.id == state.last_action.id() {
             actions_to_apply.push(action);
             break;
         } else {
@@ -587,7 +587,10 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 
     let mut actions_iter = shell_automaton_actions_iter(
         &action_storage,
-        IteratorMode::From(Cow::Owned(state.last_action.id.into()), Direction::Forward),
+        IteratorMode::From(
+            Cow::Owned(state.last_action.id().into()),
+            Direction::Forward,
+        ),
     )
     .await?
     .map(shell_automaton_actions_decode_map)
@@ -642,7 +645,41 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
         .1)
 }
 
-#[derive(serde::Serialize)]
+pub(crate) type ShellAutomatonActionsStats = HashMap<String, ShellAutomatonActionStats>;
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ShellAutomatonActionStats {
+    total_calls: u64,
+    total_duration: u64,
+}
+
+pub(crate) async fn get_shell_automaton_actions_stats(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<ShellAutomatonActionsStats> {
+    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
+
+    let meta = match action_meta_storage.get()? {
+        Some(v) => v,
+        None => return Ok(Default::default()),
+    };
+
+    Ok(meta
+        .metas
+        .into_iter()
+        .map(|(action_kind, meta)| {
+            (
+                action_kind,
+                ShellAutomatonActionStats {
+                    total_calls: meta.total_calls,
+                    total_duration: meta.total_duration,
+                },
+            )
+        })
+        .collect())
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionGraphNode {
     action_id: usize,
