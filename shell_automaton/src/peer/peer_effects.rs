@@ -24,7 +24,7 @@ where
 {
     match &action.action {
         Action::WakeupEvent(_) => {
-            let addresses = store
+            let read_addresses = store
                 .state
                 .get()
                 .peers
@@ -39,8 +39,26 @@ where
                 .cloned()
                 .collect::<Vec<_>>();
 
-            for address in addresses {
+            let write_addresses = store
+                .state
+                .get()
+                .peers
+                .iter()
+                .filter_map(|(address, peer)| {
+                    if peer.quota.quota_write_timestamp == action.id {
+                        Some(address)
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+
+            for address in read_addresses {
                 store.dispatch(PeerTryReadAction { address }.into());
+            }
+            for address in write_addresses {
+                store.dispatch(PeerTryWriteAction { address }.into());
             }
         }
         // Handle peer related mio event.
@@ -77,6 +95,19 @@ where
                 Some(v) => v,
                 None => return,
             };
+
+            if peer.quota.quota_bytes_written > store.state.get().config.quota.write_quota {
+                eprintln!(
+                    "write quota exceeded for {}, quota: {}, bytes written: {}",
+                    action.address,
+                    store.state.get().config.quota.write_quota,
+                    peer.quota.quota_bytes_written
+                );
+                store.service.quota().schedule(Duration::from_millis(
+                    store.state.get().config.quota.restore_duration_millis as u64,
+                ));
+                return;
+            }
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,

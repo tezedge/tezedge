@@ -60,7 +60,20 @@ pub struct Peer {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerQuota {
     pub quota_bytes_read: usize,
+    pub quota_bytes_written: usize,
     pub quota_read_timestamp: ActionId,
+    pub quota_write_timestamp: ActionId,
+}
+
+impl PeerQuota {
+    pub fn new(timestamp: ActionId) -> Self {
+        Self {
+            quota_bytes_read: 0,
+            quota_bytes_written: 0,
+            quota_read_timestamp: timestamp,
+            quota_write_timestamp: timestamp,
+        }
+    }
 }
 
 impl Peer {

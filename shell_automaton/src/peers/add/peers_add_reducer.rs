@@ -16,10 +16,7 @@ pub fn peers_add_reducer(state: &mut State, action: &ActionWithId<Action>) {
                 status: PeerStatus::Connecting(
                     PeerConnectionIncomingState::Pending { token: *token }.into(),
                 ),
-                quota: PeerQuota {
-                    quota_bytes_read: 0,
-                    quota_read_timestamp: action.id,
-                },
+                quota: PeerQuota::new(action.id),
             });
         }
         _ => {}
