@@ -250,7 +250,6 @@ fn block_on_actors(
                 };
                 cfg
             })
-            .exec(tokio_runtime.handle().clone().into())
             .create()
             .expect("Failed to create actor system"),
     );
@@ -445,7 +444,6 @@ fn block_on_actors(
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
-        use tokio::time::timeout;
 
         // if everything is ok, we can run and hold this "forever"
         if is_setup_ok {
@@ -509,10 +507,9 @@ fn block_on_actors(
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         info!(log, "Shutting down actors (4/8)");
-        match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
-            Ok(_) => info!(log, "Shutdown actors complete"),
-            Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
-        };
+
+        actor_system.shutdown();
+        info!(log, "Shutdown actors complete");
 
         info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (5/8)");
         if let Some(thread) = block_applier_thread_watcher.thread() {

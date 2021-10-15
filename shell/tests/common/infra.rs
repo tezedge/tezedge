@@ -177,7 +177,6 @@ impl NodeInfrastructure {
             SystemBuilder::new()
                 .name(name)
                 .log(log.clone())
-                .exec(tokio_runtime.handle().clone().into())
                 .create()
                 .expect("Failed to create actor system"),
         );
@@ -298,7 +297,6 @@ impl NodeInfrastructure {
             log,
             shell_channel,
             actor_system,
-            tokio_runtime,
             block_applier_thread_watcher,
             mempool_prevalidator_factory,
             ..
@@ -351,9 +349,7 @@ impl NodeInfrastructure {
             None,
         );
 
-        let _ = tokio_runtime.block_on(async move {
-            tokio::time::timeout(Duration::from_secs(10), actor_system.shutdown()).await
-        });
+        let _ = actor_system.shutdown();
 
         info!(
             log,

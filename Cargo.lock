@@ -3235,20 +3235,19 @@ dependencies = [
 
 [[package]]
 name = "tezedge-actor-system"
-version = "0.5.0"
-source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#90cc2f1041f22ac456d854a069ed3f5029b0c586"
+version = "0.6.0"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?branch=use-system-threads#94f0b91386e5b6ab510b43469dc12bd2d73dba8f"
 dependencies = [
  "slog",
  "tezedge-actor-system-macros",
- "tokio",
  "toml",
  "uuid",
 ]
 
 [[package]]
 name = "tezedge-actor-system-macros"
-version = "0.5.0"
-source = "git+https://github.com/tezedge/tezedge-actor-system.git?tag=v0.5.0#90cc2f1041f22ac456d854a069ed3f5029b0c586"
+version = "0.6.0"
+source = "git+https://github.com/tezedge/tezedge-actor-system.git?branch=use-system-threads#94f0b91386e5b6ab510b43469dc12bd2d73dba8f"
 dependencies = [
  "proc-macro2 1.0.30",
  "quote 1.0.10",

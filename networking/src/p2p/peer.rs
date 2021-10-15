@@ -811,11 +811,10 @@ mod tests {
         Logger::root(drain, slog::o!())
     }
 
-    fn create_test_actor_system(log: Logger, handle: tokio::runtime::Handle) -> ActorSystem {
+    fn create_test_actor_system(log: Logger) -> ActorSystem {
         SystemBuilder::new()
             .name("create_actor_system")
             .log(log)
-            .exec(handle.into())
             .create()
             .expect("Failed to create test actor system")
     }
@@ -872,7 +871,7 @@ mod tests {
             Level::Debug,
         );
         let runtime = create_test_tokio_runtime();
-        let actor_system = create_test_actor_system(log.clone(), runtime.handle().clone());
+        let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let peer = create_test_peer(

@@ -198,8 +198,6 @@ impl SynchronizationBootstrapState {
 
 #[cfg(test)]
 pub mod tests {
-    use std::time::Duration;
-
     use slog::Level;
 
     use networking::p2p::network_channel::NetworkChannel;
@@ -226,7 +224,7 @@ pub mod tests {
         // prerequizities
         let tokio_runtime = create_test_tokio_runtime();
         let log = create_logger(Level::Debug);
-        let actor_system = create_test_actor_system(log.clone(), tokio_runtime.handle().clone());
+        let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let mut peer_state1 = test_peer(
@@ -336,9 +334,7 @@ pub mod tests {
         assert!(bootstrap_state.is_bootstrapped());
 
         // shutdown actor system
-        let _ = tokio_runtime.block_on(async move {
-            tokio::time::timeout(Duration::from_secs(2), actor_system.shutdown()).await
-        });
+        let _ = actor_system.shutdown();
     }
 
     #[test]
