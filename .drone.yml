@@ -6669,7 +6669,7 @@ steps:
         echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
         echo "Octez node: $oct seconds ($oct1 seconds)"
         echo "New node:   $new seconds ($new1 seconds)"
-        echo "Old node:   $old seconds ($new1 seconds)"
+        echo "Old node:   $old seconds ($old1 seconds)"
         echo "Difference: $diff%"
         if [ "$diff" -gt 15 ]; then
           echo "New node bootstrap is more than 15% slower then the old one!!!"

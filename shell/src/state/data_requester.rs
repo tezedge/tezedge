@@ -23,7 +23,7 @@ use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, OperationsForBlock, PeerMessageResponse,
 };
 
-use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
+use crate::chain_feeder::{ApplyBlock, ApplyBlockPermit, ChainFeederRef};
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::state::peer_state::{
@@ -438,16 +438,24 @@ impl DataRequester {
         Ok(())
     }
 
-    pub fn call_schedule_apply_block(
+    pub fn call_apply_block_batch(
         &self,
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
         chain_manager: Arc<ChainManagerRef>,
-        bootstrapper: Option<PeerBranchBootstrapperRef>,
+        bootstrapper: PeerBranchBootstrapperRef,
+        permit: ApplyBlockPermit,
     ) {
         // try to call apply
         self.block_applier.tell(
-            ScheduleApplyBlock::new(chain_id, batch, chain_manager, bootstrapper),
+            ApplyBlock::new(
+                chain_id,
+                batch,
+                chain_manager,
+                None,
+                Some(bootstrapper),
+                Some(permit),
+            ),
             None,
         );
     }
@@ -495,7 +503,7 @@ impl Drop for RequestedOperationDataLock {
     }
 }
 
-fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerId) {
+pub fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerId) {
     peer.peer_ref.tell(SendMessage::new(msg), None);
 }
 

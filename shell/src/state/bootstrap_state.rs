@@ -7,23 +7,24 @@
 //! - bootstrap state is initialized from branch history, which is splitted to partitions
 //! - it is king of bingo, where we prepare block intervals, and we check/mark what is downloaded/applied, and what needs to be downloaded or applied
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use slog::{info, warn, Logger};
+use rand::Rng;
+use slog::{debug, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::prelude::{GetCurrentBranchMessage, PeerMessageResponse};
+use tokio::sync::Semaphore;
 
 use crate::chain_manager::ChainManagerRef;
-use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
-};
-use crate::state::data_requester::{DataRequester, DataRequesterRef};
+use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::state::data_requester::{tell_peer, DataRequester, DataRequesterRef};
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::{ApplyBlockBatch, StateError};
@@ -39,6 +40,36 @@ pub enum AddBranchState {
 
 type PeerBranchSynchronizationDoneCallback = Box<dyn Fn(PeerBranchSynchronizationDone) + Send>;
 
+#[derive(Clone)]
+pub struct BootstrapStateConfiguration {
+    /// Timeout for request of block header from one peer
+    pub(crate) block_header_timeout: Duration,
+    /// Timeout for request of block operations
+    pub(crate) block_operations_timeout: Duration,
+    pub(crate) missing_new_branch_bootstrap_timeout: Duration,
+
+    max_bootstrap_branches_per_peer: usize,
+    apply_block_batch_maxsize: usize,
+}
+
+impl BootstrapStateConfiguration {
+    pub fn new(
+        block_header_timeout: Duration,
+        block_operations_timeout: Duration,
+        missing_new_branch_bootstrap_timeout: Duration,
+        max_bootstrap_branches_per_peer: usize,
+        apply_block_batch_maxsize: usize,
+    ) -> Self {
+        Self {
+            block_header_timeout,
+            block_operations_timeout,
+            missing_new_branch_bootstrap_timeout,
+            max_bootstrap_branches_per_peer,
+            apply_block_batch_maxsize,
+        }
+    }
+}
+
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
     /// Holds peers info
@@ -47,23 +78,40 @@ pub struct BootstrapState {
     /// Holds unique blocks cache, shared for all branch bootstraps to minimalize memory usage
     block_state_db: BlockStateDb,
 
+    /// We apply blocks by batches, and this queue will be like 'waiting room'
+    /// If one batch will pass, just then we send another one,
+    /// In case of failure, we remove conequent batches
+    apply_block_batch_queue: VecDeque<ApplyBlockBatch>,
+    /// Semaphore for limiting apply block batch queue processing, we need to send next batch, only if previous was done (success or failure)
+    /// We use semaphore with just 1 permit:
+    /// - if we have permit available, we can send next batch
+    /// - if we dont have permit, we cannot send next batch and we need to wait until permit will be returned (or dropped)
+    apply_block_batch_tickets: Arc<Semaphore>,
+
     /// Data requester
     data_requester: DataRequesterRef,
 
     /// Callback which should be triggered, when node finishes bootstrapp of any peer's branches
     peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
+
+    /// Configuration for bootstrap state (timeouts, maxsizes, ...)
+    cfg: BootstrapStateConfiguration,
 }
 
 impl BootstrapState {
     pub fn new(
         data_requester: DataRequesterRef,
         peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
+        cfg: BootstrapStateConfiguration,
     ) -> Self {
         Self {
             peers: Default::default(),
             block_state_db: BlockStateDb::new(512),
             data_requester,
             peer_branch_synchronization_done_callback,
+            apply_block_batch_queue: VecDeque::with_capacity(1),
+            apply_block_batch_tickets: Arc::new(Semaphore::new(1)),
+            cfg,
         }
     }
 
@@ -77,29 +125,24 @@ impl BootstrapState {
         }
     }
 
-    pub fn check_stalled_peers<DP: Fn(&PeerId)>(
-        &mut self,
-        cfg: &PeerBranchBootstrapperConfiguration,
-        log: &Logger,
-        disconnect_peer: DP,
-    ) {
+    pub fn check_stalled_peers<DP: Fn(&PeerId)>(&mut self, log: &Logger, disconnect_peer: DP) {
         let stalled_peers = self.peers
             .values()
             .filter_map(|PeerBootstrapState { empty_bootstrap_state, peer_id, peer_queues, .. }| {
                 let mut is_stalled = None;
                 if let Some(empty_bootstrap_state) = empty_bootstrap_state.as_ref() {
                     // 1. check empty bootstrap branches
-                    if empty_bootstrap_state.elapsed() > cfg.missing_new_branch_bootstrap_timeout {
-                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (timeout: {:?})", cfg.missing_new_branch_bootstrap_timeout)));
+                    if empty_bootstrap_state.elapsed() > self.cfg.missing_new_branch_bootstrap_timeout {
+                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (timeout: {:?})", self.cfg.missing_new_branch_bootstrap_timeout)));
                     }
                 }
                 // 2. check penalty peer for not responding to our block header requests on time
                 if is_stalled.is_none() {
-                    match peer_queues.find_any_block_header_response_pending(cfg.block_header_timeout)
+                    match peer_queues.find_any_block_header_response_pending(self.cfg.block_header_timeout)
                     {
                         Ok(response_pending) => {
                             if let Some((pending_block, elapsed)) = response_pending {
-                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block header {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, cfg.block_header_timeout)));
+                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block header {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, self.cfg.block_header_timeout)));
                             }
                         }
                         Err(e) => {
@@ -113,11 +156,11 @@ impl BootstrapState {
                 // 2. check penalty peer for not responding to our block header requests on time
                 if is_stalled.is_none() {
                     match peer_queues
-                        .find_any_block_operations_response_pending(cfg.block_operations_timeout)
+                        .find_any_block_operations_response_pending(self.cfg.block_operations_timeout)
                     {
                         Ok(response_pending) => {
                             if let Some((pending_block, elapsed)) = response_pending {
-                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block operations {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, cfg.block_operations_timeout)));
+                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block operations {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, self.cfg.block_operations_timeout)));
                             }
                         }
                         Err(e) => {
@@ -141,31 +184,46 @@ impl BootstrapState {
         }
     }
 
-    pub fn block_apply_failed(&mut self, failed_block: &BlockHash, log: &Logger) {
-        self.peers
-            .values_mut()
-            .for_each(|PeerBootstrapState { branches, peer_id, empty_bootstrap_state, .. }| {
-                branches
-                    .retain(|branch| {
-                        if branch.contains_block(failed_block) {
-                            warn!(log, "Peer's branch bootstrap contains failed block, so this branch bootstrap is removed";
-                               "block_hash" => failed_block.to_base58_check(),
-                               "to_level" => &branch.to_level,
-                               "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                            false
-                        } else {
-                            true
-                        }
-                    });
+    /// if block apply failed, means that we have serious problem (there could a lots of very different issue: wrong/hacked block, db issue, ...),
+    /// we dont know what to do in every case,
+    /// so we better:
+    /// - clean the state,
+    /// - disconnect some peers
+    /// - ask for new CurrentBranch from the rest of the peers peers
+    ///
+    ///  give change to other new peers
+    pub fn block_apply_failed<DP: Fn(&PeerId)>(
+        &mut self,
+        _: &BlockHash,
+        chain_id: ChainId,
+        log: &Logger,
+        disconnect_peer: DP,
+    ) {
+        // we clear the actual bootstrap state
+        self.apply_block_batch_queue.clear();
+        self.block_state_db.clear();
 
-                if branches.is_empty() && empty_bootstrap_state.is_none() {
-                    *empty_bootstrap_state = Some(Instant::now());
-                }
-            });
+        // randomly disconnect or ask GetCurrentBranch
+        let msg: Arc<PeerMessageResponse> = GetCurrentBranchMessage::new(chain_id).into();
+        let mut rng = rand::thread_rng();
+        self.peers.retain(|_, peer_state| {
+            // clear peer state
+            peer_state.empty_bootstrap_state = Some(Instant::now());
+            peer_state.is_bootstrapped = false;
+            peer_state.is_already_scheduled_ping_for_process_all_bootstrap_pipelines = false;
+            peer_state.branches.clear();
 
-        // remove from cache state
-        self.block_state_db
-            .remove_with_all_predecessors(failed_block);
+            // ask or disconnect
+            let retain_peer: bool = rng.gen();
+            if retain_peer {
+                tell_peer(msg.clone(), &peer_state.peer_id);
+            } else {
+                debug!(log, "Disconnecting peer (random selection), because of failed apply block";
+                            "peer_id" => peer_state.peer_id.peer_id_marker.clone(), "peer_ip" => peer_state.peer_id.peer_address.to_string(), "peer" => peer_state.peer_id.peer_ref.name(), "peer_uri" => peer_state.peer_id.peer_ref.uri().to_string());
+                disconnect_peer(&peer_state.peer_id);
+            }
+            retain_peer
+        });
     }
 
     pub fn blocks_scheduled_count(&self) -> usize {
@@ -207,6 +265,28 @@ impl BootstrapState {
                     },
                 )
             })
+    }
+
+    pub fn apply_block_batch_queue_stats(&self) -> (usize, usize, bool) {
+        // queue stats
+        let (waiting_batch_count, waiting_batch_blocks_count) = self
+            .apply_block_batch_queue
+            .iter()
+            .fold((0, 0), |(batches_count, blocks_count), next_batch| {
+                (
+                    batches_count + 1,
+                    blocks_count + next_batch.batch_total_size(),
+                )
+            });
+
+        // we expect max permits 1, so if no permits available, means that batch is in processing
+        let batch_in_progress = self.apply_block_batch_tickets.available_permits() == 0;
+
+        (
+            waiting_batch_count,
+            waiting_batch_blocks_count,
+            batch_in_progress,
+        )
     }
 
     pub fn next_lowest_missing_blocks(&self) -> Vec<(usize, &BlockRef)> {
@@ -262,12 +342,12 @@ impl BootstrapState {
         last_applied_block: BlockHash,
         missing_history: Vec<BlockHash>,
         to_level: Level,
-        max_bootstrap_branches_per_peer: usize,
         log: &Logger,
     ) -> AddBranchState {
         let BootstrapState {
             peers,
             block_state_db,
+            cfg,
             ..
         } = self;
 
@@ -295,8 +375,8 @@ impl BootstrapState {
                 }
 
                 // we handle just finite branches from one peer
-                if peer_state.branches.len() >= max_bootstrap_branches_per_peer {
-                    info!(log, "Peer has started already maximum ({}) branch pipelines, so we dont start new one", max_bootstrap_branches_per_peer;
+                if peer_state.branches.len() >= cfg.max_bootstrap_branches_per_peer {
+                    info!(log, "Peer has started already maximum ({}) branch pipelines, so we dont start new one", cfg.max_bootstrap_branches_per_peer;
                                     "to_level" => &to_level,
                                     "branches" => {
                                         peer_state
@@ -486,19 +566,13 @@ impl BootstrapState {
         }
     }
 
-    pub fn schedule_blocks_for_apply(
-        &mut self,
-        filter_peer: &Arc<PeerId>,
-        max_block_apply_batch: usize,
-        chain_id: &Arc<ChainId>,
-        chain_manager: &Arc<ChainManagerRef>,
-        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
-        log: &slog::Logger,
-    ) {
+    pub fn schedule_blocks_for_apply(&mut self, filter_peer: &Arc<PeerId>, log: &slog::Logger) {
         let BootstrapState {
             peers,
             block_state_db,
             data_requester,
+            cfg,
+            apply_block_batch_queue,
             ..
         } = self;
 
@@ -510,12 +584,10 @@ impl BootstrapState {
             let mut branches_to_remove: HashSet<Level> = HashSet::default();
             for branch in branches.iter_mut() {
                 if let Err(error) = branch.schedule_next_block_to_apply(
-                    max_block_apply_batch,
+                    cfg.apply_block_batch_maxsize,
+                    apply_block_batch_queue,
                     block_state_db,
                     data_requester,
-                    chain_id,
-                    chain_manager,
-                    peer_branch_bootstrapper,
                 ) {
                     warn!(log, "Failed to schedule blocks for apply";
                                "reason" => error,
@@ -624,6 +696,31 @@ impl BootstrapState {
 
             if branches.is_empty() && empty_bootstrap_state.is_none() {
                 *empty_bootstrap_state = Some(Instant::now());
+            }
+        }
+    }
+
+    pub fn try_call_apply_block_batch(
+        &mut self,
+        chain_id: &Arc<ChainId>,
+        chain_manager: &Arc<ChainManagerRef>,
+        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
+    ) {
+        // just skip for empty queue
+        if self.apply_block_batch_queue.is_empty() {
+            return;
+        }
+
+        // if we can aquire ticket, means that we can sent a next batch for application
+        if let Ok(permit) = self.apply_block_batch_tickets.clone().try_acquire_owned() {
+            if let Some(batch) = self.apply_block_batch_queue.pop_front() {
+                self.data_requester.call_apply_block_batch(
+                    chain_id.clone(),
+                    batch,
+                    chain_manager.clone(),
+                    peer_branch_bootstrapper.clone(),
+                    permit,
+                );
             }
         }
     }
@@ -827,12 +924,10 @@ impl BranchState {
 
     pub fn schedule_next_block_to_apply(
         &mut self,
-        max_block_apply_batch: usize,
+        apply_block_batch_maxsize: usize,
+        apply_block_batch_queue: &mut VecDeque<ApplyBlockBatch>,
         block_state_db: &mut BlockStateDb,
         data_requester: &DataRequester,
-        chain_id: &Arc<ChainId>,
-        chain_manager: &Arc<ChainManagerRef>,
-        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
     ) -> Result<(), StateError> {
         // we can apply blocks just from the first "scheduled" interval
         // interval is removed all the time, when the last block of the interval is applied
@@ -920,14 +1015,9 @@ impl BranchState {
                             // start batch or continue existing one
                             if let Some(mut batch) = batch_for_apply {
                                 batch.add_successor(block_ref);
-                                if batch.successors_size() >= max_block_apply_batch {
+                                if batch.successors_size() >= apply_block_batch_maxsize {
                                     // schedule batch
-                                    data_requester.call_schedule_apply_block(
-                                        chain_id.clone(),
-                                        batch,
-                                        chain_manager.clone(),
-                                        Some(peer_branch_bootstrapper.clone()),
-                                    );
+                                    apply_block_batch_queue.push_back(batch);
                                     // start new one
                                     batch_for_apply = None;
                                 } else {
@@ -936,7 +1026,7 @@ impl BranchState {
                             } else {
                                 batch_for_apply = Some(ApplyBlockBatch::start_batch(
                                     block_ref,
-                                    max_block_apply_batch,
+                                    apply_block_batch_maxsize,
                                 ));
                             }
 
@@ -957,12 +1047,7 @@ impl BranchState {
 
         if let Some(batch) = batch_for_apply {
             // schedule last batch
-            data_requester.call_schedule_apply_block(
-                chain_id.clone(),
-                batch,
-                chain_manager.clone(),
-                Some(peer_branch_bootstrapper.clone()),
-            );
+            apply_block_batch_queue.push_back(batch);
         }
 
         // remove all previous already scheduled
@@ -1526,6 +1611,10 @@ impl BlockStateDb {
 
         removed_blocks
     }
+
+    pub fn clear(&mut self) {
+        self.blocks.clear();
+    }
 }
 
 #[cfg(test)]
@@ -1626,6 +1715,13 @@ mod tests {
                 // doing nothing here
                 // chain_manager.tell(msg, None);
             });
+        let cfg = BootstrapStateConfiguration::new(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            10,
+            10,
+        );
 
         // peer1
         let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
@@ -1635,8 +1731,11 @@ mod tests {
         }));
 
         // empty state
-        let mut state =
-            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
+        let mut state = BootstrapState::new(
+            data_requester,
+            peer_branch_synchronization_done_callback,
+            cfg,
+        );
 
         // genesis
         let last_applied = block(0);
@@ -1660,7 +1759,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Added(false)
@@ -1700,7 +1798,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1722,7 +1819,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1749,7 +1845,6 @@ mod tests {
                 last_applied.clone(),
                 history_to_merge,
                 29,
-                5,
                 &log,
             ),
             AddBranchState::Added(true)
@@ -1792,7 +1887,6 @@ mod tests {
                 last_applied.clone(),
                 history_to_merge,
                 129,
-                5,
                 &log,
             ),
             AddBranchState::Added(false)
@@ -1814,6 +1908,10 @@ mod tests {
             block(229),
         ];
 
+        // peer has two branches
+        // we reset max allowed branches to two, so we cannot add more branches,
+        state.cfg.max_bootstrap_branches_per_peer = 2;
+
         assert!(matches!(
             state.add_new_branch(
                 peer_id.clone(),
@@ -1821,7 +1919,6 @@ mod tests {
                 last_applied,
                 history_to_merge,
                 229,
-                2,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1860,6 +1957,13 @@ mod tests {
                 is_bootstrapped.store(true, Ordering::Release);
             })
         };
+        let cfg = BootstrapStateConfiguration::new(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            10,
+            10,
+        );
 
         // peer1
         let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
@@ -1883,8 +1987,11 @@ mod tests {
         };
 
         // empty state
-        let mut state =
-            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
+        let mut state = BootstrapState::new(
+            data_requester,
+            peer_branch_synchronization_done_callback,
+            cfg,
+        );
         state.block_state_db = BlockStateDb::new(2);
 
         // init block_state_db:
