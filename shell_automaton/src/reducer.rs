@@ -14,10 +14,11 @@ use crate::peer::disconnection::peer_disconnection_reducer;
 use crate::peer::handshaking::peer_handshaking_reducer;
 use crate::peer::message::read::peer_message_read_reducer;
 use crate::peer::message::write::peer_message_write_reducer;
-
 use crate::peer::peer_reducer;
+
 use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
+use crate::peers::check::timeouts::peers_check_timeouts_reducer;
 use crate::peers::dns_lookup::peers_dns_lookup_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
@@ -39,10 +40,6 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         action,
         // needs to be first!
         storage_state_snapshot_create_reducer,
-        peers_dns_lookup_reducer,
-        peers_add_multi_reducer,
-        peers_add_reducer,
-        peers_remove_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,
@@ -55,6 +52,11 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         peer_chunk_write_reducer,
         peer_chunk_read_reducer,
         peer_disconnection_reducer,
+        peers_dns_lookup_reducer,
+        peers_add_multi_reducer,
+        peers_add_reducer,
+        peers_remove_reducer,
+        peers_check_timeouts_reducer,
         storage_block_header_put_reducer,
         storage_request_reducer,
         // needs to be last!

@@ -4,9 +4,6 @@ use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
-use crate::peer::connection::closed::PeerConnectionClosedAction;
-use crate::peer::connection::incoming::accept::*;
-use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
 
 use crate::peer::binary_message::read::*;
 use crate::peer::binary_message::write::*;
@@ -14,23 +11,31 @@ use crate::peer::chunk::read::*;
 use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
 use crate::peer::message::write::*;
+use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
 
+use crate::peer::connection::closed::PeerConnectionClosedAction;
+use crate::peer::connection::incoming::accept::*;
+use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
 use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
     PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
     PeerConnectionOutgoingSuccessAction,
 };
 use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
+
 use crate::peer::handshaking::*;
 
-use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
+use crate::peers::check::timeouts::{
+    PeersCheckTimeoutsCleanupAction, PeersCheckTimeoutsInitAction, PeersCheckTimeoutsSuccessAction,
+};
 use crate::peers::dns_lookup::{
     PeersDnsLookupCleanupAction, PeersDnsLookupErrorAction, PeersDnsLookupInitAction,
     PeersDnsLookupSuccessAction,
 };
 use crate::peers::remove::PeersRemoveAction;
+
 use crate::storage::block_header::put::{
     StorageBlockHeaderPutNextInitAction, StorageBlockHeaderPutNextPendingAction,
     StorageBlockHeadersPutAction,
@@ -70,6 +75,10 @@ pub enum Action {
     PeersAddMulti(PeersAddMultiAction),
     PeersRemove(PeersRemoveAction),
 
+    PeersCheckTimeoutsInit(PeersCheckTimeoutsInitAction),
+    PeersCheckTimeoutsSuccess(PeersCheckTimeoutsSuccessAction),
+    PeersCheckTimeoutsCleanup(PeersCheckTimeoutsCleanupAction),
+
     PeerConnectionIncomingAccept(PeerConnectionIncomingAcceptAction),
     PeerConnectionIncomingAcceptError(PeerConnectionIncomingAcceptErrorAction),
     PeerConnectionIncomingAcceptSuccess(PeerConnectionIncomingAcceptSuccessAction),
@@ -87,6 +96,7 @@ pub enum Action {
     PeerDisconnect(PeerDisconnectAction),
     PeerDisconnected(PeerDisconnectedAction),
 
+    MioTimeoutEvent,
     P2pServerEvent(P2pServerEvent),
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),

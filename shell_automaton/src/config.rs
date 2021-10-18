@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,22 @@ pub struct Config {
     pub identity: Identity,
     pub shell_compatibility_version: ShellCompatibilityVersion,
 
+    /// How often to check for timeouts.
+    ///
+    /// E.g. if it's set to 100ms, every 100ms we will check state for timeouts.
+    pub check_timeouts_interval: Duration,
+
+    /// Timeout for the whole handshaking process. If handshaking isn't
+    /// done within this time limitation, we will disconnect and blacklist the peer.
+    pub peer_handshaking_timeout: Duration,
+
     pub quota: Quota,
+}
+
+impl Config {
+    pub fn min_time_interval(&self) -> Duration {
+        self.check_timeouts_interval
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -72,6 +87,9 @@ pub fn default_config() -> Config {
             vec![1],
         ),
 
+        check_timeouts_interval: Duration::from_millis(100),
+        peer_handshaking_timeout: Duration::from_secs(8),
+
         quota: Quota {
             restore_duration_millis: 1000,
             read_quota: 1024,
@@ -96,6 +114,9 @@ pub fn test_config() -> Config {
             vec![0],
             vec![1],
         ),
+
+        check_timeouts_interval: Duration::from_millis(100),
+        peer_handshaking_timeout: Duration::from_secs(8),
 
         quota: Quota {
             restore_duration_millis: 1000,
