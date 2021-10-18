@@ -1,15 +1,12 @@
 use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::BincodeEncoded;
 
 use crate::config::Config;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
-use crate::peer::Peer;
-use crate::peers::dns_lookup::PeersDnsLookupState;
+use crate::peers::PeersState;
 use crate::storage::StorageState;
 use crate::{Action, ActionKind};
 
@@ -39,8 +36,7 @@ impl ActionIdWithKind {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct State {
     pub config: Config,
-    pub peers: BTreeMap<SocketAddr, Peer>,
-    pub peers_dns_lookup: Option<PeersDnsLookupState>,
+    pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
 
@@ -54,8 +50,7 @@ impl State {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            peers: BTreeMap::new(),
-            peers_dns_lookup: None,
+            peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle,
             storage: StorageState::new(),
 

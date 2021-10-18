@@ -156,6 +156,9 @@ impl ShellAutomatonManager {
             shell_compatibility_version: (*shell_compatibility_version).clone(),
             pow_target,
 
+            check_timeouts_interval: Duration::from_millis(100),
+            peer_handshaking_timeout: Duration::from_secs(8),
+
             quota: shell_automaton::Quota {
                 restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS")
                     .unwrap_or(1000),

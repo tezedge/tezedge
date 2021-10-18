@@ -20,6 +20,7 @@ use crate::peer::message::write::peer_message_write_effects;
 use crate::peer::peer_effects;
 
 use crate::peers::add::multi::peers_add_multi_effects;
+use crate::peers::check::timeouts::peers_check_timeouts_effects;
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 
 use crate::storage::block_header::put::storage_block_header_put_effects;
@@ -79,9 +80,6 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     applied_actions_count_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
 
-    peers_dns_lookup_effects(store, action);
-    peers_add_multi_effects(store, action);
-
     peer_effects(store, action);
 
     peer_connection_outgoing_effects(store, action);
@@ -98,6 +96,10 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peer_chunk_read_effects(store, action);
 
     peer_handshaking_effects(store, action);
+
+    peers_dns_lookup_effects(store, action);
+    peers_add_multi_effects(store, action);
+    peers_check_timeouts_effects(store, action);
 
     storage_block_header_put_effects(store, action);
     storage_request_effects(store, action);

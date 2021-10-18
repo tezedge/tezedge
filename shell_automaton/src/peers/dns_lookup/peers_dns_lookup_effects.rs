@@ -25,7 +25,7 @@ pub fn peers_dns_lookup_effects<S: Service>(
             });
         }
         Action::PeersDnsLookupSuccess(_) => {
-            let dns_lookup_state = match store.state.get().peers_dns_lookup.as_ref() {
+            let dns_lookup_state = match store.state.get().peers.dns_lookup.as_ref() {
                 Some(v) => v,
                 None => return,
             };

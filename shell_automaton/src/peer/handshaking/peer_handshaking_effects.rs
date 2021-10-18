@@ -2,12 +2,12 @@ use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::generate_nonces;
 use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
-use tezos_messages::p2p::encoding::peer::PeerMessage;
 use std::sync::Arc;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::AckMessage;
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
+use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::action::Action;
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
@@ -16,6 +16,7 @@ use crate::peer::binary_message::write::PeerBinaryMessageWriteSetContentAction;
 use crate::peer::chunk::read::PeerChunkReadInitAction;
 use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteSetContentAction;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageEncodeAction, PeerHandshakingConnectionMessageInitAction,
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
@@ -91,7 +92,8 @@ pub fn peer_handshaking_effects<S>(
             if let Some(peer) = store.state.get().peers.get(&action.address) {
                 match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::ConnectionMessageEncoded { binary_message },
+                        status:
+                            PeerHandshakingStatus::ConnectionMessageEncoded { binary_message, .. },
                         ..
                     }) => match BinaryChunk::from_content(&binary_message) {
                         Ok(chunk) => store.dispatch(
@@ -214,6 +216,7 @@ pub fn peer_handshaking_effects<S>(
                                 local_chunk,
                                 remote_chunk,
                                 remote_message,
+                                ..
                             },
                         ..
                     }) => {
@@ -602,6 +605,15 @@ pub fn peer_handshaking_effects<S>(
             );
         }
 
+        Action::PeerHandshakingError(action) => {
+            // TODO: blacklist.
+            store.dispatch(
+                PeerDisconnectAction {
+                    address: action.address,
+                }
+                .into(),
+            );
+        }
         _ => {}
     }
 }

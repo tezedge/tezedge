@@ -97,18 +97,28 @@ where
     for<'a> &'a Events: IntoIterator<Item = &'a <Serv::Mio as MioService>::InternalEvent>,
 {
     pub fn make_progress(&mut self) {
+        let mio_timeout = self.store.state().config.min_time_interval();
+
         self.store
             .service()
             .mio()
-            .wait_for_events(&mut self.events, None);
+            .wait_for_events(&mut self.events, Some(mio_timeout));
+
+        let mut no_events = true;
 
         for event in self.events.into_iter() {
+            no_events = false;
+
             match self.store.service().mio().transform_event(event) {
                 Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event.into()),
                 Event::P2pPeer(p2p_peer_event) => self.store.dispatch(p2p_peer_event.into()),
                 Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event.into()),
                 _ => {}
             }
+        }
+
+        if no_events {
+            self.store.dispatch(Action::MioTimeoutEvent);
         }
     }
 }
