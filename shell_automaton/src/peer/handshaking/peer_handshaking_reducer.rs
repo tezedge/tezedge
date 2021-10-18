@@ -26,13 +26,20 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                 match peer.status {
                     PeerStatus::Connecting(PeerConnectionState::Outgoing(
                         PeerConnectionOutgoingState::Success { token },
-                    ))
-                    | PeerStatus::Connecting(PeerConnectionState::Incoming(
-                        PeerConnectionIncomingState::Success { token },
                     )) => {
                         peer.status = PeerStatus::Handshaking(PeerHandshaking {
                             token,
                             incoming: false,
+                            status: PeerHandshakingStatus::Init { time: action_time },
+                            since: action_time,
+                        });
+                    }
+                    PeerStatus::Connecting(PeerConnectionState::Incoming(
+                        PeerConnectionIncomingState::Success { token },
+                    )) => {
+                        peer.status = PeerStatus::Handshaking(PeerHandshaking {
+                            token,
+                            incoming: true,
                             status: PeerHandshakingStatus::Init { time: action_time },
                             since: action_time,
                         });
