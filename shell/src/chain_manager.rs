@@ -50,10 +50,11 @@ use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
+use crate::state::data_requester::tell_peer;
 use crate::state::head_state::{
     has_any_higher_than, HeadResult, HeadState, RemoteBestKnownCurrentHead,
 };
-use crate::state::peer_state::{tell_peer, PeerState};
+use crate::state::peer_state::PeerState;
 use crate::state::synchronization_state::{
     PeerBranchSynchronizationDone, SynchronizationBootstrapState,
 };
@@ -313,7 +314,7 @@ impl ChainManager {
                     tell_peer(
                         GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
                             .into(),
-                        peer,
+                        &peer.peer_id,
                     );
                 }
             }
@@ -390,7 +391,7 @@ impl ChainManager {
                                                 history,
                                             ),
                                         );
-                                        tell_peer(msg.into(), peer);
+                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 } else {
                                     warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
@@ -427,7 +428,7 @@ impl ChainManager {
                                     if let Some(block) = block_storage.get(block_hash)? {
                                         let msg: BlockHeaderMessage =
                                             (*block.header).clone().into();
-                                        tell_peer(msg.into(), peer);
+                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -448,7 +449,7 @@ impl ChainManager {
                                                 current_head_local,
                                             )?,
                                         );
-                                        tell_peer(msg.into(), peer);
+                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -506,7 +507,7 @@ impl ChainManager {
 
                                     let key = get_op.into();
                                     if let Some(op) = operations_storage.get(&key)? {
-                                        tell_peer(op.into(), peer);
+                                        tell_peer(op.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -605,7 +606,7 @@ impl ChainManager {
                                                     message.chain_id().clone(),
                                                 )
                                                 .into(),
-                                                peer,
+                                                &peer.peer_id,
                                             );
                                         }
                                         BlockAcceptanceResult::MutlipassValidationError(error) => {
@@ -662,7 +663,7 @@ impl ChainManager {
                                                         message.chain_id().clone(),
                                                     )
                                                     .into(),
-                                                    peer,
+                                                    &peer.peer_id,
                                                 );
                                             }
                                         }
@@ -676,7 +677,7 @@ impl ChainManager {
                                     // TODO: where to look for operations for advertised mempool?
                                     // TODO: if not found here, check regular operation storage?
                                     if let Some(found) = mempool_storage.find(operation_hash)? {
-                                        tell_peer(found.into(), peer);
+                                        tell_peer(found.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -1134,7 +1135,7 @@ impl ChainManager {
                     ),
                 )
                 .into(),
-                peer,
+                &peer.peer_id,
             )
         }
 
@@ -1201,7 +1202,7 @@ impl ChainManager {
 
             let can_send_msg = !(ignore_msg_with_empty_mempool && msg_is_mempool_empty);
             if can_send_msg {
-                tell_peer(msg, peer)
+                tell_peer(msg, &peer.peer_id)
             }
         });
     }
@@ -1816,7 +1817,7 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
             };
             if can_request {
                 peer.current_head_request_last = Instant::now();
-                tell_peer(p2p_msg.clone(), peer)
+                tell_peer(p2p_msg.clone(), &peer.peer_id)
             }
         });
     }

@@ -38,13 +38,10 @@ use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
-use crate::peer_branch_bootstrapper::{
-    ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
-};
+use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::state::ApplyBlockBatch;
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
-use std::collections::VecDeque;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::OwnedSemaphorePermit;
 
 pub type InitializeContextOneshotResultCallback =
     OneshotResultCallback<Result<(), InitializeContextOneshotResultCallbackError>>;
@@ -57,14 +54,8 @@ pub struct InitializeContextOneshotResultCallbackError {
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
-/// BLocks are applied in batches, to optimize database unnecessery access between two blocks (predecessor data)
-/// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
-const BLOCK_APPLY_BATCH_MAX_TICKETS: usize = 2;
-
 /// For restarting scenario, retry policy max retries for one block
 const DEFAULT_MAX_RETRIES: u8 = 2;
-
-pub type ApplyBlockPermit = OwnedSemaphorePermit;
 
 /// Message commands [`ChainFeeder`] to apply completed block.
 #[derive(Clone, Debug)]
@@ -104,38 +95,34 @@ impl ApplyBlock {
     }
 }
 
-/// Message commands [`ChainFeeder`] to add to the queue for scheduling
+/// Used for synchronization, if caller want to limit or need to know, if previous request was done or not
+pub type ApplyBlockPermit = OwnedSemaphorePermit;
+
+/// Event is fired, when some batch was finished, so next can go
 #[derive(Clone, Debug)]
-pub struct ScheduleApplyBlock {
-    batch: ApplyBlockBatch,
-    chain_id: Arc<ChainId>,
-    chain_manager: Arc<ChainManagerRef>,
-    bootstrapper: Option<PeerBranchBootstrapperRef>,
+pub struct ApplyBlockDone {
+    pub last_applied: Arc<BlockHash>,
+
+    /// Simple lock guard, for easy synchronization
+    pub permit: Option<Arc<ApplyBlockPermit>>,
 }
 
-impl ScheduleApplyBlock {
-    pub fn new(
-        chain_id: Arc<ChainId>,
-        batch: ApplyBlockBatch,
-        chain_manager: Arc<ChainManagerRef>,
-        bootstrapper: Option<PeerBranchBootstrapperRef>,
-    ) -> Self {
-        Self {
-            chain_id,
-            batch,
-            chain_manager,
-            bootstrapper,
-        }
-    }
+/// Event is fired, when some batch was not applied and error occured
+#[derive(Clone, Debug)]
+pub struct ApplyBlockFailed {
+    pub failed_block: Arc<BlockHash>,
+
+    /// Simple lock guard, for easy synchronization
+    pub permit: Option<Arc<ApplyBlockPermit>>,
 }
 
 /// Message commands [`ChainFeeder`] to log its internal stats.
 #[derive(Clone, Debug)]
 pub struct LogStats;
 
-/// Message tells [`ChainFeeder`] that batch is done, so it can log its internal stats or schedule more batches.
+/// Message tells [`ChainFeeder`] to update apply block stats
 #[derive(Clone, Debug)]
-pub struct ApplyBlockDone {
+pub struct UpdateApplyBlockStats {
     stats: ApplyBlockStats,
 }
 
@@ -146,17 +133,8 @@ pub(crate) enum Event {
 }
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ApplyBlock, ScheduleApplyBlock, LogStats, ApplyBlockDone)]
+#[actor(ApplyBlock, LogStats, UpdateApplyBlockStats)]
 pub struct ChainFeeder {
-    /// We apply blocks by batches, and this queue will be like 'waiting room'
-    /// Blocks from the queue will be
-    queue: VecDeque<ScheduleApplyBlock>,
-
-    /// Semaphore for limiting block apply queue, guarding block_applier_event_sender
-    /// And also we want to limit QueueSender, because we have to points of produceing ApplyBlock event (bootstrap, inject block)
-    apply_block_tickets: Arc<Semaphore>,
-    apply_block_tickets_maximum: usize,
-
     /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
     /// Thread where blocks are applied will run until this is set to `false`
@@ -204,7 +182,6 @@ impl ChainFeeder {
             Props::new_args((
                 Arc::new(Mutex::new(block_applier_event_sender)),
                 block_applier_thread_watcher.thread_running_status().clone(),
-                BLOCK_APPLY_BATCH_MAX_TICKETS,
             )),
         )
         .map(|actor| (actor, block_applier_thread_watcher))
@@ -239,38 +216,11 @@ impl ChainFeeder {
 
             // just ping chain_feeder
             chain_feeder.tell(
-                ApplyBlockDone {
+                UpdateApplyBlockStats {
                     stats: ApplyBlockStats::default(),
                 },
                 None,
             );
-        }
-    }
-
-    fn add_to_batch_queue(&mut self, msg: ScheduleApplyBlock) {
-        self.queue.push_back(msg);
-    }
-
-    fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
-        // try schedule batches as many permits we can get
-        while let Ok(permit) = self.apply_block_tickets.clone().try_acquire_owned() {
-            match self.queue.pop_front() {
-                Some(batch) => {
-                    self.apply_completed_block(
-                        ApplyBlock::new(
-                            batch.chain_id,
-                            batch.batch,
-                            batch.chain_manager,
-                            None,
-                            batch.bootstrapper,
-                            Some(permit),
-                        ),
-                        chain_feeder.clone(),
-                        log,
-                    );
-                }
-                None => break,
-            }
         }
     }
 
@@ -279,23 +229,17 @@ impl ChainFeeder {
     }
 }
 
-impl ActorFactoryArgs<(Arc<Mutex<QueueSender<Event>>>, ThreadRunningStatus, usize)>
-    for ChainFeeder
-{
+impl ActorFactoryArgs<(Arc<Mutex<QueueSender<Event>>>, ThreadRunningStatus)> for ChainFeeder {
     fn create_args(
-        (block_applier_event_sender, block_applier_thread_run, max_permits): (
+        (block_applier_event_sender, block_applier_thread_run): (
             Arc<Mutex<QueueSender<Event>>>,
             ThreadRunningStatus,
-            usize,
         ),
     ) -> Self {
         ChainFeeder {
-            queue: VecDeque::new(),
             block_applier_event_sender,
             block_applier_thread_run,
             apply_block_stats: ApplyBlockStats::default(),
-            apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
-            apply_block_tickets_maximum: max_permits,
         }
     }
 }
@@ -330,29 +274,15 @@ impl Receive<ApplyBlock> for ChainFeeder {
     }
 }
 
-impl Receive<ScheduleApplyBlock> for ChainFeeder {
+impl Receive<UpdateApplyBlockStats> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ScheduleApplyBlock, _: Sender) {
-        // do not process any message, when thread is down
-        if !self.block_applier_thread_run.load(Ordering::Acquire) {
-            return;
-        }
-        self.add_to_batch_queue(msg);
-        self.process_batch_queue(ctx.myself(), &ctx.system.log());
-    }
-}
-
-impl Receive<ApplyBlockDone> for ChainFeeder {
-    type Msg = ChainFeederMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlockDone, _: Sender) {
+    fn receive(&mut self, _: &Context<Self::Msg>, msg: UpdateApplyBlockStats, _: Sender) {
         // do not process any message, when thread is down
         if !self.block_applier_thread_run.load(Ordering::Acquire) {
             return;
         }
         self.update_stats(msg.stats);
-        self.process_batch_queue(ctx.myself(), &ctx.system.log());
     }
 }
 
@@ -395,25 +325,7 @@ impl Receive<LogStats> for ChainFeeder {
             }
         };
 
-        // count queue batches
-        let (waiting_batch_count, waiting_batch_blocks_count) =
-            self.queue
-                .iter()
-                .fold((0, 0), |(batches_count, blocks_count), next_batch| {
-                    (
-                        batches_count + 1,
-                        blocks_count + next_batch.batch.batch_total_size(),
-                    )
-                });
-        let queued_batch_count = self
-            .apply_block_tickets_maximum
-            .checked_sub(self.apply_block_tickets.available_permits())
-            .unwrap_or(0);
-
         info!(log, "Blocks apply info";
-            "queued_batch_count" => queued_batch_count,
-            "waiting_batch_count" => waiting_batch_count,
-            "waiting_batch_blocks_count" => waiting_batch_blocks_count,
             "last_applied" => last_applied,
             "last_applied_batch_block_level" => last_applied_block_level,
             "last_applied_batch_block_elapsed_in_secs" => last_applied_block_elapsed_in_secs);
@@ -758,36 +670,46 @@ fn _handle_apply_block_request(
         if apply_block_run.load(Ordering::Acquire) {
             // fire stats
             if let Some(stats) = stats.take() {
-                chain_feeder.tell(ApplyBlockDone { stats }, None);
+                chain_feeder.tell(UpdateApplyBlockStats { stats }, None);
             }
         }
     };
     // callback for notify bootstrapper about some successfulyl last_applied block
-    let notify_last_applied = |last_applied: Option<Arc<BlockHash>>| {
-        if apply_block_run.load(Ordering::Acquire) {
-            if let Some(last_applied) = last_applied {
-                // notify bootstrapper just on the end of the success batch
-                if let Some(bootstrapper) = bootstrapper.as_ref() {
-                    bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
+    let notify_last_applied =
+        |last_applied: Option<Arc<BlockHash>>,
+         apply_block_permit: Option<Arc<ApplyBlockPermit>>| {
+            if apply_block_run.load(Ordering::Acquire) {
+                if let Some(last_applied) = last_applied {
+                    // notify bootstrapper just on the end of the success batch
+                    if let Some(bootstrapper) = bootstrapper.as_ref() {
+                        bootstrapper.tell(
+                            ApplyBlockDone {
+                                last_applied,
+                                permit: apply_block_permit,
+                            },
+                            None,
+                        );
+                    }
                 }
             }
-        }
-    };
+        };
     // callback for notify bootstrapper about some failed batch block
-    let notify_last_failed = |last_failed: Arc<BlockHash>| {
-        if apply_block_run.load(Ordering::Acquire) {
-            // notify bootstrapper just on the end of the success batch
-            if let Some(bootstrapper) = bootstrapper.as_ref() {
-                // TODO: posunut sem aj zvysok batchu, ze nebude naaplikovany
-                bootstrapper.tell(
-                    ApplyBlockBatchFailed {
-                        failed_block: last_failed,
-                    },
-                    None,
-                );
+    let notify_last_failed =
+        |last_failed: Arc<BlockHash>, apply_block_permit: Option<Arc<ApplyBlockPermit>>| {
+            if apply_block_run.load(Ordering::Acquire) {
+                // notify bootstrapper just on the end of the success batch
+                if let Some(bootstrapper) = bootstrapper.as_ref() {
+                    // TODO: posunut sem aj zvysok batchu, ze nebude naaplikovany
+                    bootstrapper.tell(
+                        ApplyBlockFailed {
+                            failed_block: last_failed,
+                            permit: apply_block_permit,
+                        },
+                        None,
+                    );
+                }
             }
-        }
-    };
+        };
     // callback for notify condvar
     let notify_oneshot_result =
         |oneshot_callback: Option<InjectBlockOneshotResultCallback>,
@@ -897,6 +819,7 @@ fn _handle_apply_block_request(
                      stats: Option<ApplyBlockStats>,
                      last_applied_block: Option<Arc<BlockHash>>,
                      last_failed_block: Arc<BlockHash>,
+                     apply_block_permit: Option<Arc<ApplyBlockPermit>>,
                      error: ApplyBlockBatchError| {
                         notify_oneshot_result(
                             oneshot_callback,
@@ -905,8 +828,8 @@ fn _handle_apply_block_request(
                             }),
                         );
                         notify_stats(stats);
-                        notify_last_applied(last_applied_block);
-                        notify_last_failed(last_failed_block);
+                        notify_last_applied(last_applied_block, None);
+                        notify_last_failed(last_failed_block, apply_block_permit);
                     };
 
                 if need_to_restart_context {
@@ -930,7 +853,7 @@ fn _handle_apply_block_request(
                     let apply_block_request_to_retry = if retry_policy.is_some() {
                         info!(log, "Preparing for retry block application"; "from_block" => block_to_apply.to_base58_check(), "successors_count" => batch.len(), "retry_policy" => format!("{:?}", retry_policy));
                         notify_stats(batch_stats);
-                        notify_last_applied(last_applied);
+                        notify_last_applied(last_applied, None);
 
                         // reschedule batch with retry policy
                         let apply_block_request_to_retry = ApplyBlock {
@@ -951,6 +874,7 @@ fn _handle_apply_block_request(
                             batch_stats,
                             last_applied,
                             block_to_apply,
+                            permit,
                             e,
                         );
                         None
@@ -968,6 +892,7 @@ fn _handle_apply_block_request(
                         batch_stats,
                         last_applied,
                         block_to_apply,
+                        permit,
                         e,
                     );
 
@@ -979,19 +904,12 @@ fn _handle_apply_block_request(
     }
 
     // now handle successfull batch application
-
-    // allow others as soon as possible
-    if let Some(permit) = permit {
-        // not needed, just to be explicit
-        drop(permit);
-    }
-
     // notify other actors after batch success done
     if let Some(oneshot_result) = oneshot_result {
         notify_oneshot_result(result_callback, oneshot_result);
     }
     notify_stats(batch_stats);
-    notify_last_applied(last_applied);
+    notify_last_applied(last_applied, permit);
 
     // if we came here, everything is ok
     Ok(())

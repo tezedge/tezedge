@@ -26,10 +26,10 @@ use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use crate::chain_feeder::ChainFeederRef;
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
-    StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
+    PeerBranchBootstrapper, PeerBranchBootstrapperRef, StartBranchBootstraping, UpdateBlockState,
+    UpdateOperationsState,
 };
-use crate::state::bootstrap_state::InnerBlockState;
+use crate::state::bootstrap_state::{BootstrapStateConfiguration, InnerBlockState};
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
@@ -420,7 +420,7 @@ impl BlockchainState {
                         self.chain_id.clone(),
                         self.requester.clone(),
                         chain_manager_ref.clone(),
-                        PeerBranchBootstrapperConfiguration::new(
+                        BootstrapStateConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,
                             bootstrap_constants::MISSING_NEW_BRANCH_BOOTSTRAP_TIMEOUT,

@@ -308,7 +308,6 @@ pub mod tests {
                     Props::new_args((
                         Arc::new(Mutex::new(block_applier_event_sender)),
                         Arc::new(AtomicBool::new(true)),
-                        2,
                     )),
                 )
                 .map(|feeder| (feeder, block_applier_event_receiver))
