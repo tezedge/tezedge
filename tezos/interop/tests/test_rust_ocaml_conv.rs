@@ -92,11 +92,13 @@ mod tezos_ffi {
             chain_id: OCamlChainId,
             predecessor: OCamlBlockHeader,
             protocol_data: Option<OCamlBytes>,
+            mode: OCamlValidationMode,
         ) -> bool;
         pub fn construct_and_compare_validate_operation_request(
             validate_operation_request: OCamlValidateOperationRequest,
             prevalidator: OCamlPrevalidatorWrapper,
             operation: OCamlOperation,
+            mode: OCamlValidationMode,
         ) -> bool;
         pub fn construct_and_compare_rpc_request(
             rpc_request: OCamlRpcRequest,
@@ -394,6 +396,7 @@ fn test_begin_construction_request_conv() {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         predecessor: BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap(),
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
+        mode: tezos_api::ffi::ValidationMode::Mempool,
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
@@ -401,13 +404,16 @@ fn test_begin_construction_request_conv() {
         let predecessor =
             FfiBlockHeader::from(&begin_construction_request.predecessor).to_boxroot(rt);
         let protocol_data = begin_construction_request.protocol_data.to_boxroot(rt);
+        let mode = begin_construction_request.mode.to_boxroot(rt);
         let begin_construction_request = begin_construction_request.to_boxroot(rt);
+
         tezos_ffi::construct_and_compare_begin_construction_request(
             rt,
             &begin_construction_request,
             &chain_id,
             &predecessor,
             &protocol_data,
+            &mode,
         )
         .to_rust(rt)
     })
@@ -438,11 +444,13 @@ fn test_validate_operation_request_conv() {
     let validate_operation_request = ValidateOperationRequest {
         prevalidator,
         operation,
+        mode: tezos_api::ffi::ValidationMode::Mempool,
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         let prevalidator = validate_operation_request.prevalidator.to_boxroot(rt);
         let operation = FfiOperation::from(&validate_operation_request.operation).to_boxroot(rt);
+        let mode = validate_operation_request.mode.to_boxroot(rt);
         let validate_operation_request = validate_operation_request.to_boxroot(rt);
 
         tezos_ffi::construct_and_compare_validate_operation_request(
@@ -450,6 +458,7 @@ fn test_validate_operation_request_conv() {
             &validate_operation_request,
             &prevalidator,
             &operation,
+            &mode,
         )
         .to_rust(rt)
     })

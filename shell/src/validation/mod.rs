@@ -278,6 +278,7 @@ pub async fn prevalidate_operation(
             chain_id: chain_id.clone(),
             predecessor: (&*mempool_head.header).clone(),
             protocol_data: None,
+            mode: tezos_api::ffi::ValidationMode::Prevalidation,
         })
         .await
         .map_err(|e| PrevalidateOperationError::ValidationError {
@@ -289,6 +290,7 @@ pub async fn prevalidate_operation(
     api.validate_operation(ValidateOperationRequest {
         prevalidator,
         operation: operation.clone(),
+        mode: tezos_api::ffi::ValidationMode::Prevalidation,
     })
     .await
     .map(|r| r.result)

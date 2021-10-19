@@ -92,6 +92,8 @@ pub struct OCamlContextGetTreeByPrefixRequest {}
 
 // Requests
 
+pub struct OCamlValidationMode {}
+
 pub struct OCamlApplyBlockRequest {}
 pub struct OCamlBeginApplicationRequest {}
 pub struct OCamlBeginConstructionRequest {}

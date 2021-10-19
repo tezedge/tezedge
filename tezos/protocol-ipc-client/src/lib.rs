@@ -415,7 +415,7 @@ impl ProtocolRunnerApi {
                             "Failed to send shutdown message to protocol runner: {}", err
                         );
                     } else {
-                        info!(self.log, "protocol runner shutdoen message sent");
+                        info!(self.log, "protocol runner shutdown message sent");
                     }
                 }
             })
@@ -889,12 +889,7 @@ impl ProtocolRunnerConnection {
     ///
     /// Must be called after the writable context has been initialized.
     pub async fn init_context_ipc_server(&mut self) -> Result<(), ProtocolServiceError> {
-        if self
-            .configuration
-            .storage
-            .get_ipc_socket_path()
-            .is_some()
-        {
+        if self.configuration.storage.get_ipc_socket_path().is_some() {
             self.io
                 .send(&ProtocolMessage::InitProtocolContextIpcServer(
                     self.configuration.storage.clone(),

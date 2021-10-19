@@ -754,7 +754,7 @@ impl ChainManager {
                                             }
                                         };
 
-                                        // can accpect operation ?
+                                        // can accept operation ?
                                         if !validation::can_accept_operation_from_p2p(
                                             &operation_hash,
                                             &result,

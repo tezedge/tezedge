@@ -12,7 +12,7 @@ use crate::{
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
     OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
-    OCamlValidateOperationRequest,
+    OCamlValidateOperationRequest, OCamlValidationMode,
 };
 
 use super::{
@@ -36,7 +36,7 @@ use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
     ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
     PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosRuntimeConfiguration,
-    ValidateOperationRequest,
+    ValidateOperationRequest, ValidationMode,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
@@ -266,11 +266,19 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_variant! {
+    ValidationMode => OCamlValidationMode {
+        ValidationMode::Mempool,
+        ValidationMode::Prevalidation,
+    }
+}
+
 impl_to_ocaml_record! {
     BeginConstructionRequest => OCamlBeginConstructionRequest {
         chain_id: OCamlChainId,
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
         protocol_data: Option<OCamlBytes>,
+        mode: OCamlValidationMode,
     }
 }
 
@@ -286,6 +294,7 @@ impl_to_ocaml_record! {
     ValidateOperationRequest => OCamlValidateOperationRequest {
         prevalidator: OCamlPrevalidatorWrapper,
         operation: OCamlOperation => FfiOperation::from(operation),
+        mode: OCamlValidationMode,
     }
 }
 

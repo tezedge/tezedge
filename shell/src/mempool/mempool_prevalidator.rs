@@ -495,6 +495,7 @@ fn begin_construction(
             chain_id: chain_id.clone(),
             predecessor: block_header.as_ref().clone(),
             protocol_data: None,
+            mode: tezos_api::ffi::ValidationMode::Mempool,
         }))
     });
     // try to begin construction
@@ -548,6 +549,7 @@ fn handle_pending_operations(
                     tokio_runtime.block_on(api.validate_operation(ValidateOperationRequest {
                         prevalidator: prevalidator.clone(),
                         operation: operation.clone(),
+                        mode: tezos_api::ffi::ValidationMode::Mempool,
                     }))
                 });
 

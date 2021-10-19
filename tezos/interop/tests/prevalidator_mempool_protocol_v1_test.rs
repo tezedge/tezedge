@@ -33,6 +33,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
             chain_id: chain_id.clone(),
             predecessor: last_block,
             protocol_data: None,
+            mode: tezos_api::ffi::ValidationMode::Prevalidation,
         },
     ))
     .unwrap();
@@ -50,6 +51,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
         ValidateOperationRequest {
             prevalidator,
             operation,
+            mode: tezos_api::ffi::ValidationMode::Prevalidation,
         },
     ))
     .unwrap();
