@@ -67,7 +67,6 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         // needs to be first!
         dispatch_recursion_reducer,
         storage_state_snapshot_create_reducer,
-
         peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,

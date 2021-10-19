@@ -1,6 +1,11 @@
 #![feature(deadline_api)]
 
-use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
+use std::time::Duration;
+
+use peer::{
+    connection::outgoing::PeerConnectionOutgoingRandomInitAction, PeerTryReadAction,
+    PeerTryWriteAction,
+};
 use redux_rs::Store;
 
 pub mod io_error_kind;
@@ -99,15 +104,42 @@ where
     pub fn make_progress(&mut self) {
         let mio_timeout = self.store.state().config.min_time_interval();
 
+        self.wait_for_mio_events(Some(mio_timeout));
+
+        let mut no_events = true;
+        loop {
+            // dispatch existing mio events
+            let were_mio_events = self.process_mio_events();
+            // dispatch readable/writable peers
+            let were_active_peers = self.process_active_peers();
+            if were_mio_events || were_active_peers {
+                // fetch more mio events without any timeout
+                self.wait_for_mio_events(None);
+                no_events = false;
+            } else {
+                break;
+            }
+        }
+
+        if no_events {
+            self.store.dispatch(Action::MioTimeoutEvent);
+            self.store.dispatch(Action::DispatchRecursionReset);
+        }
+    }
+
+    fn wait_for_mio_events(&mut self, timeout: Option<Duration>) {
         self.store
             .service()
             .mio()
-            .wait_for_events(&mut self.events, Some(mio_timeout));
+            .wait_for_events(&mut self.events, timeout);
+    }
 
-        let mut no_events = true;
+    fn process_mio_events(&mut self) -> bool {
+        let mut were_events = false;
 
+        // process new mio events
         for event in self.events.into_iter() {
-            no_events = false;
+            were_events = true;
 
             match self.store.service().mio().transform_event(event) {
                 Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event.into()),
@@ -118,10 +150,36 @@ where
             self.store.dispatch(Action::DispatchRecursionReset);
         }
 
-        if no_events {
-            self.store.dispatch(Action::MioTimeoutEvent);
+        were_events
+    }
+
+    fn process_active_peers(&mut self) -> bool {
+        let mut were_events = false;
+        let quota_restore_duration_millis =
+            self.store.state.get().config.quota.restore_duration_millis;
+        let now = self.store.state.get().last_action.id();
+        let peers = &self.store.state.get().peers;
+        let readable_peers = peers
+            .readable(now, quota_restore_duration_millis)
+            .map(|(address, _)| address.clone())
+            .collect::<Vec<_>>();
+        let writable_peers = peers
+            .writable(now, quota_restore_duration_millis)
+            .map(|(address, _)| address.clone())
+            .collect::<Vec<_>>();
+
+        for address in readable_peers {
+            were_events = true;
+            self.store.dispatch(PeerTryReadAction { address }.into());
             self.store.dispatch(Action::DispatchRecursionReset);
         }
+        for address in writable_peers {
+            were_events = true;
+            self.store.dispatch(PeerTryWriteAction { address }.into());
+            self.store.dispatch(Action::DispatchRecursionReset);
+        }
+
+        were_events
     }
 }
 

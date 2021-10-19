@@ -5,8 +5,10 @@ use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
-use crate::peer::{PeerHandshaked, PeerStatus};
+use crate::peer::{PeerHandshaked, PeerReadState, PeerStatus};
 use crate::{Action, State};
+
+use super::PeerChunkReadPartAction;
 
 pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
@@ -53,8 +55,24 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>)
                 }
             }
         }
-        Action::PeerChunkReadPart(action) => {
-            if let Some(peer) = state.peers.get_mut(&action.address) {
+        Action::PeerChunkReadPart(PeerChunkReadPartAction { address, bytes }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                if let PeerReadState::Readable {
+                    bytes_read,
+                    timestamp,
+                } = &mut peer.read_state
+                {
+                    if *bytes_read + bytes.len() >= state.config.quota.read_quota {
+                        peer.read_state = PeerReadState::OutOfQuota {
+                            timestamp: *timestamp,
+                        };
+                    } else {
+                        *bytes_read += bytes.len();
+                    }
+                } else {
+                    return;
+                }
+
                 let binary_message_state = match &mut peer.status {
                     PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
                         PeerHandshakingStatus::ConnectionMessageReadPending {
@@ -62,10 +80,8 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>)
                         } => {
                             return match chunk_state {
                                 PeerChunkReadState::PendingSize { buffer } => {
-                                    if buffer.len() + action.bytes.len()
-                                        <= CONTENT_LENGTH_FIELD_BYTES
-                                    {
-                                        buffer.extend_from_slice(&action.bytes);
+                                    if buffer.len() + bytes.len() <= CONTENT_LENGTH_FIELD_BYTES {
+                                        buffer.extend_from_slice(bytes);
                                         if buffer.len() == CONTENT_LENGTH_FIELD_BYTES {
                                             let size = ((u16::from(buffer[0]) << 8)
                                                 + u16::from(buffer[1]))
@@ -78,8 +94,8 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>)
                                     }
                                 }
                                 PeerChunkReadState::PendingBody { buffer, size } => {
-                                    if buffer.len() + action.bytes.len() <= *size {
-                                        buffer.extend_from_slice(&action.bytes);
+                                    if buffer.len() + bytes.len() <= *size {
+                                        buffer.extend_from_slice(bytes);
                                         if buffer.len() == *size {
                                             *chunk_state = PeerChunkReadState::Ready {
                                                 chunk: buffer.clone(),
@@ -115,8 +131,8 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>)
                     PeerBinaryMessageReadState::PendingFirstChunk { chunk }
                     | PeerBinaryMessageReadState::Pending { chunk, .. } => match &mut chunk.state {
                         PeerChunkReadState::PendingSize { buffer } => {
-                            if buffer.len() + action.bytes.len() <= CONTENT_LENGTH_FIELD_BYTES {
-                                buffer.extend_from_slice(&action.bytes);
+                            if buffer.len() + bytes.len() <= CONTENT_LENGTH_FIELD_BYTES {
+                                buffer.extend_from_slice(bytes);
                                 if buffer.len() == CONTENT_LENGTH_FIELD_BYTES {
                                     let size =
                                         ((u16::from(buffer[0]) << 8) + u16::from(buffer[1])).into();
@@ -128,8 +144,8 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>)
                             }
                         }
                         PeerChunkReadState::PendingBody { buffer, size } => {
-                            if buffer.len() + action.bytes.len() <= *size {
-                                buffer.extend_from_slice(&action.bytes);
+                            if buffer.len() + bytes.len() <= *size {
+                                buffer.extend_from_slice(bytes);
                                 if buffer.len() == *size {
                                     chunk.state = PeerChunkReadState::EncryptedReady {
                                         chunk_encrypted: buffer.clone(),

@@ -22,7 +22,6 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithId<Actio
                             }
                         }
 
-
                         if let PeerBinaryMessageWriteState::Init { .. } = &message_write.current {
                             // if binary message writing is idle, immediately start writing the message
                         } else {

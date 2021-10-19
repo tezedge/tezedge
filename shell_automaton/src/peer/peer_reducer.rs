@@ -1,57 +1,120 @@
 use redux_rs::ActionWithId;
 
-use crate::{Action, State};
+use crate::{event::P2pPeerEvent, Action, State};
 
 use super::{
-    chunk::{read::PeerChunkReadPartAction, write::PeerChunkWritePartAction},
-    PeerTryReadAction, PeerTryWriteAction,
+    PeerReadState, PeerReadWouldBlockAction, PeerTryReadAction, PeerTryWriteAction, PeerWriteState,
+    PeerWriteWouldBlockAction,
 };
 
 pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
-        Action::PeerTryRead(PeerTryReadAction { address }) => {
+        Action::P2pPeerEvent(P2pPeerEvent {
+            address,
+            is_closed,
+            is_readable,
+            is_writable,
+            ..
+        }) => {
             if let Some(peer) = state.peers.get_mut(address) {
-                if peer.quota.bytes_read == 0 {
-                    return;
+                match peer.read_state {
+                    PeerReadState::Closed => (),
+                    _ if *is_closed => peer.read_state = PeerReadState::Closed,
+                    PeerReadState::Idle {
+                        bytes_read,
+                        timestamp,
+                    } if *is_readable => {
+                        peer.read_state = PeerReadState::Readable {
+                            bytes_read,
+                            timestamp,
+                        }
+                    }
+                    _ => (),
                 }
-                let duration_since_restore_millis = action
-                    .id
-                    .duration_since(peer.quota.read_timestamp)
-                    .as_millis();
-                if duration_since_restore_millis >= state.config.quota.restore_duration_millis {
-                    peer.quota.bytes_read = 0;
-                    peer.quota.read_timestamp = action.id;
-                    peer.quota.reject_read = false;
+                match peer.write_state {
+                    PeerWriteState::Closed => (),
+                    _ if *is_closed => peer.write_state = PeerWriteState::Closed,
+                    PeerWriteState::Idle {
+                        bytes_written,
+                        timestamp,
+                    } if *is_writable => {
+                        peer.write_state = PeerWriteState::Writable {
+                            bytes_written,
+                            timestamp,
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Action::PeerTryRead(PeerTryReadAction { address }) => {
+            let restore_duration_millis = state.config.quota.restore_duration_millis;
+            if let Some(peer) = state.peers.get_mut(address) {
+                if peer
+                    .read_state
+                    .time_since_last_update(&action.id)
+                    .map(|time| time >= restore_duration_millis)
+                    .unwrap_or(false)
+                {
+                    match &peer.read_state {
+                        PeerReadState::OutOfQuota { .. } | PeerReadState::Readable { .. } => {
+                            peer.read_state = PeerReadState::Readable {
+                                bytes_read: 0,
+                                timestamp: action.id,
+                            };
+                        }
+                        _ => (),
+                    }
                 }
             }
         }
         Action::PeerTryWrite(PeerTryWriteAction { address }) => {
+            let restore_duration_millis = state.config.quota.restore_duration_millis;
             if let Some(peer) = state.peers.get_mut(address) {
-                if peer.quota.bytes_written == 0 {
-                    return;
-                }
-                let duration_since_restore_millis = action
-                    .id
-                    .duration_since(peer.quota.write_timestamp)
-                    .as_millis();
-                if duration_since_restore_millis >= state.config.quota.restore_duration_millis {
-                    peer.quota.bytes_written = 0;
-                    peer.quota.write_timestamp = action.id;
-                    peer.quota.reject_write = false;
+                if peer
+                    .write_state
+                    .time_since_last_update(&action.id)
+                    .map(|time| time >= restore_duration_millis)
+                    .unwrap_or(false)
+                {
+                    match &peer.write_state {
+                        PeerWriteState::OutOfQuota { .. } | PeerWriteState::Writable { .. } => {
+                            peer.write_state = PeerWriteState::Writable {
+                                bytes_written: 0,
+                                timestamp: action.id,
+                            };
+                        }
+                        _ => (),
+                    }
                 }
             }
         }
-        Action::PeerChunkReadPart(PeerChunkReadPartAction { address, bytes }) => {
-            if let Some(peer) = state.peers.get_mut(&address) {
-                peer.quota.bytes_read += bytes.len();
-                peer.quota.reject_read = peer.quota.bytes_read >= state.config.quota.read_quota;
+        Action::PeerReadWouldBlock(PeerReadWouldBlockAction { address }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                if let PeerReadState::Readable {
+                    bytes_read,
+                    timestamp,
+                } = peer.read_state
+                {
+                    peer.read_state = PeerReadState::Idle {
+                        bytes_read,
+                        timestamp,
+                    };
+                }
             }
         }
-        Action::PeerChunkWritePart(PeerChunkWritePartAction { address, written }) => {
-            if let Some(peer) = state.peers.get_mut(&address) {
-                peer.quota.bytes_written += written;
-                peer.quota.reject_write =
-                    peer.quota.bytes_written >= state.config.quota.write_quota;
+        Action::PeerWriteWouldBlock(PeerWriteWouldBlockAction { address }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                if let PeerWriteState::Writable {
+                    bytes_written,
+                    timestamp,
+                } = peer.write_state
+                {
+                    peer.write_state = PeerWriteState::Idle {
+                        bytes_written,
+                        timestamp,
+                    };
+                }
             }
         }
         _ => (),

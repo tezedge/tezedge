@@ -3,8 +3,10 @@ use redux_rs::ActionWithId;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::chunk::write::PeerChunkWriteState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
-use crate::peer::{PeerHandshaked, PeerStatus};
+use crate::peer::{PeerHandshaked, PeerStatus, PeerWriteState};
 use crate::{Action, State};
+
+use super::PeerChunkWritePartAction;
 
 pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
@@ -109,8 +111,24 @@ pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithId<Action>
                 };
             }
         }
-        Action::PeerChunkWritePart(action) => {
-            if let Some(peer) = state.peers.get_mut(&action.address) {
+        Action::PeerChunkWritePart(PeerChunkWritePartAction { address, written }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                if let PeerWriteState::Writable {
+                    bytes_written,
+                    timestamp,
+                } = &mut peer.write_state
+                {
+                    if *bytes_written + *written >= state.config.quota.write_quota {
+                        peer.write_state = PeerWriteState::OutOfQuota {
+                            timestamp: *timestamp,
+                        };
+                    } else {
+                        *bytes_written += written;
+                    }
+                } else {
+                    return;
+                }
+
                 let chunk_state = match &mut peer.status {
                     PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
                         PeerHandshakingStatus::ConnectionMessageWritePending {
@@ -136,9 +154,13 @@ pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithId<Action>
                     _ => return,
                 };
 
-                if let PeerChunkWriteState::Pending { chunk, written } = chunk_state {
-                    if *written + action.written < chunk.raw().len() {
-                        *written += action.written;
+                if let PeerChunkWriteState::Pending {
+                    chunk,
+                    written: chunk_written,
+                } = chunk_state
+                {
+                    if *chunk_written + *written < chunk.raw().len() {
+                        *chunk_written += *written;
                     } else {
                         *chunk_state = PeerChunkWriteState::Ready;
                     }

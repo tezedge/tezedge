@@ -2,7 +2,7 @@ use redux_rs::ActionWithId;
 
 use crate::{
     action::Action,
-    peer::{Peer, PeerQuota, PeerStatus},
+    peer::{Peer, PeerStatus},
     State,
 };
 
@@ -18,10 +18,10 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithId<Action>)
                 .unwrap_or(0);
 
             for address in addresses.into_iter().take(max_len) {
-                state.peers.entry(*address).or_insert_with(|| Peer {
-                    status: PeerStatus::Potential,
-                    quota: PeerQuota::new(action.id),
-                });
+                state
+                    .peers
+                    .entry(*address)
+                    .or_insert_with(|| Peer::new(PeerStatus::Potential, action.id));
             }
         }
         _ => {}
