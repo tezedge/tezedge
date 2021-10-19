@@ -8,7 +8,7 @@
 //! ```
 //! use serde::{Serialize, Deserialize};
 //! #[derive(Serialize, Deserialize)]
-//! pub struct SomeProposal {
+//! pub struct SomeAction {
 //!     #[serde(with = "io_error_kind::serde")]
 //!     error: std::io::ErrorKind,
 //! }

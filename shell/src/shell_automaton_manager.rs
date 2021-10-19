@@ -57,8 +57,7 @@ pub struct P2p {
     /// Randomness seed for [shell_automaton::ShellAutomaton].
     pub randomness_seed: Option<u64>,
 
-    pub persist_proposals: Option<String>,
-    pub replay_proposals: Option<String>,
+    pub record_shell_automaton_actions: bool,
 }
 
 impl P2p {
@@ -159,6 +158,8 @@ impl ShellAutomatonManager {
             check_timeouts_interval: Duration::from_millis(500),
             peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
+
+            record_actions: p2p_config.record_shell_automaton_actions,
 
             quota: shell_automaton::Quota {
                 restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS")

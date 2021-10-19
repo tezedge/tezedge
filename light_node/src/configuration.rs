@@ -621,19 +621,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
-        .arg(Arg::with_name("persist-proposals")
+        .arg(Arg::with_name("record-shell-automaton-actions")
+            .long("record-shell-automaton-actions")
             .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path where we should persist proposals.")
-            .conflicts_with("replay-proposals")
-        )
-        .arg(Arg::with_name("replay-proposals")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to recorded proposals, which will be used to replay state.")
-            .conflicts_with("persist-proposals")
+            .takes_value(false)
+            .help("Enable recording/persisting shell automaton actions.")
         )
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
@@ -1061,8 +1053,7 @@ impl Environment {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")
                 }),
-                persist_proposals: args.value_of("persist-proposals").map(|s| s.to_owned()),
-                replay_proposals: args.value_of("replay-proposals").map(|s| s.to_owned()),
+                record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
