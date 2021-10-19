@@ -57,6 +57,9 @@ pub struct Config {
     /// done within this time limitation, we will disconnect and blacklist the peer.
     pub peer_handshaking_timeout: Duration,
 
+    /// Record/Persist actions.
+    pub record_actions: bool,
+
     pub quota: Quota,
 }
 
@@ -94,6 +97,8 @@ pub fn default_config() -> Config {
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
+        record_actions: false,
+
         quota: Quota {
             restore_duration_millis: 1000,
             read_quota: 1024,
@@ -122,6 +127,8 @@ pub fn test_config() -> Config {
         check_timeouts_interval: Duration::from_millis(100),
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
+
+        record_actions: false,
 
         quota: Quota {
             restore_duration_millis: 1000,

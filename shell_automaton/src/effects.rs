@@ -53,15 +53,17 @@ fn last_action_effects<S: Service>(
         return;
     }
 
-    let _ = store.service.storage().request_send(StorageRequest {
-        id: None,
-        payload: StorageRequestPayload::ActionMetaUpdate {
-            action_id: prev_action.id(),
-            action_kind: prev_action.kind(),
+    if store.state.get().config.record_actions {
+        let _ = store.service.storage().request_send(StorageRequest {
+            id: None,
+            payload: StorageRequestPayload::ActionMetaUpdate {
+                action_id: prev_action.id(),
+                action_kind: prev_action.kind(),
 
-            duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
-        },
-    });
+                duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
+            },
+        });
+    }
 }
 
 fn applied_actions_count_effects<S: Service>(
