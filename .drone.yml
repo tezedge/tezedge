@@ -150,6 +150,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 ---
 ##############################################################################################################
@@ -217,6 +218,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
   ref:
     - refs/pull/*/head
 
@@ -488,6 +490,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -562,6 +565,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 ---
 ##############################################################################################################
@@ -861,6 +865,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 ---
 ##############################################################################################################
@@ -1032,6 +1037,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 #############################################################################################################
  # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
@@ -1276,6 +1282,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -1522,6 +1529,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -2032,6 +2040,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -2203,6 +2212,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -2373,6 +2383,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -2686,6 +2697,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -3004,6 +3016,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -3319,6 +3332,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 depends_on:
   - build-tezedge-binaries
@@ -6330,6 +6344,7 @@ trigger:
   branch:
     - master
     - develop
+    - redux-apply-block
 
 volumes:
   - name: snapshots
