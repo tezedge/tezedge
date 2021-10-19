@@ -2,12 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 
+use crate::peer::connection::PeerConnectionStatePhase;
 use crate::peer::handshaking::PeerHandshakingPhase;
 
 pub type PeersTimeouts = BTreeMap<SocketAddr, PeerTimeout>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerTimeout {
+    Connecting(PeerConnectionStatePhase),
     Handshaking(PeerHandshakingPhase),
 }
 

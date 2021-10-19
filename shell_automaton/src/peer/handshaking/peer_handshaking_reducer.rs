@@ -25,7 +25,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match peer.status {
                     PeerStatus::Connecting(PeerConnectionState::Outgoing(
-                        PeerConnectionOutgoingState::Success { token },
+                        PeerConnectionOutgoingState::Success { token, .. },
                     )) => {
                         peer.status = PeerStatus::Handshaking(PeerHandshaking {
                             token,
@@ -35,7 +35,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                         });
                     }
                     PeerStatus::Connecting(PeerConnectionState::Incoming(
-                        PeerConnectionIncomingState::Success { token },
+                        PeerConnectionIncomingState::Success { token, .. },
                     )) => {
                         peer.status = PeerStatus::Handshaking(PeerHandshaking {
                             token,

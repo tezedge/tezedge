@@ -7,11 +7,15 @@ use crate::{Action, State};
 use super::PeerConnectionOutgoingState;
 
 pub fn peer_connection_outgoing_reducer(state: &mut State, action: &ActionWithId<Action>) {
+    let action_time = action.time_as_nanos();
+
     match &action.action {
         Action::PeerConnectionOutgoingInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 if matches!(peer.status, PeerStatus::Potential) {
-                    peer.status = PeerStatus::Connecting(PeerConnectionOutgoingState::Idle.into());
+                    peer.status = PeerStatus::Connecting(
+                        PeerConnectionOutgoingState::Idle { time: action_time }.into(),
+                    );
                 }
             }
         }
@@ -20,11 +24,12 @@ pub fn peer_connection_outgoing_reducer(state: &mut State, action: &ActionWithId
                 if matches!(
                     peer.status,
                     PeerStatus::Connecting(PeerConnectionState::Outgoing(
-                        PeerConnectionOutgoingState::Idle
+                        PeerConnectionOutgoingState::Idle { .. }
                     ))
                 ) {
                     peer.status = PeerStatus::Connecting(
                         PeerConnectionOutgoingState::Pending {
+                            time: action_time,
                             token: action.token,
                         }
                         .into(),
@@ -34,31 +39,40 @@ pub fn peer_connection_outgoing_reducer(state: &mut State, action: &ActionWithId
         }
         Action::PeerConnectionOutgoingError(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
-                if matches!(
-                    peer.status,
+                let token = match peer.status {
                     PeerStatus::Connecting(PeerConnectionState::Outgoing(
-                        PeerConnectionOutgoingState::Idle
-                    )) | PeerStatus::Connecting(PeerConnectionState::Outgoing(
-                        PeerConnectionOutgoingState::Pending { .. }
-                    ))
-                ) {
-                    peer.status = PeerStatus::Connecting(
-                        PeerConnectionOutgoingState::Error {
-                            error: action.error,
-                        }
-                        .into(),
-                    );
-                }
+                        PeerConnectionOutgoingState::Idle { .. },
+                    )) => None,
+                    PeerStatus::Connecting(PeerConnectionState::Outgoing(
+                        PeerConnectionOutgoingState::Pending { token, .. },
+                    )) => Some(token),
+                    _ => return,
+                };
+                peer.status = PeerStatus::Connecting(
+                    PeerConnectionOutgoingState::Error {
+                        time: action_time,
+                        token,
+                        error: action.error.clone(),
+                    }
+                    .into(),
+                );
             }
         }
         Action::PeerConnectionOutgoingSuccess(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 if let PeerStatus::Connecting(PeerConnectionState::Outgoing(
-                    PeerConnectionOutgoingState::Pending { token },
+                    PeerConnectionOutgoingState::Pending {
+                        time: action_time,
+                        token,
+                    },
                 )) = peer.status
                 {
                     peer.status = PeerStatus::Connecting(
-                        PeerConnectionOutgoingState::Success { token }.into(),
+                        PeerConnectionOutgoingState::Success {
+                            time: action_time,
+                            token,
+                        }
+                        .into(),
                     );
                 }
             }

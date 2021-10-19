@@ -15,7 +15,9 @@ use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
 use crate::peer::connection::incoming::accept::*;
-use crate::peer::connection::incoming::PeerConnectionIncomingSuccessAction;
+use crate::peer::connection::incoming::{
+    PeerConnectionIncomingErrorAction, PeerConnectionIncomingSuccessAction,
+};
 use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
     PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
@@ -83,6 +85,7 @@ pub enum Action {
     PeerConnectionIncomingAcceptError(PeerConnectionIncomingAcceptErrorAction),
     PeerConnectionIncomingAcceptSuccess(PeerConnectionIncomingAcceptSuccessAction),
 
+    PeerConnectionIncomingError(PeerConnectionIncomingErrorAction),
     PeerConnectionIncomingSuccess(PeerConnectionIncomingSuccessAction),
 
     PeerConnectionOutgoingRandomInit(PeerConnectionOutgoingRandomInitAction),

@@ -156,7 +156,8 @@ impl ShellAutomatonManager {
             shell_compatibility_version: (*shell_compatibility_version).clone(),
             pow_target,
 
-            check_timeouts_interval: Duration::from_millis(100),
+            check_timeouts_interval: Duration::from_millis(500),
+            peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
 
             quota: shell_automaton::Quota {

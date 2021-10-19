@@ -1,22 +1,47 @@
-use crate::io_error_kind::IOErrorKind;
-use crate::peer::PeerToken;
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+use crate::peer::PeerToken;
+
+use super::PeerConnectionOutgoingError;
+
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
+#[enum_kind(PeerConnectionOutgoingStatePhase, derive(Serialize, Deserialize))]
 pub enum PeerConnectionOutgoingState {
-    Idle,
-    Pending { token: PeerToken },
-    Error { error: IOErrorKind },
-    Success { token: PeerToken },
+    Idle {
+        time: u64,
+    },
+    Pending {
+        time: u64,
+        token: PeerToken,
+    },
+    Error {
+        time: u64,
+        token: Option<PeerToken>,
+        error: PeerConnectionOutgoingError,
+    },
+    Success {
+        time: u64,
+        token: PeerToken,
+    },
 }
 
 impl PeerConnectionOutgoingState {
     pub fn token(&self) -> Option<PeerToken> {
         match self {
-            Self::Idle => None,
-            Self::Pending { token } => Some(*token),
-            Self::Error { .. } => None,
-            Self::Success { token } => Some(*token),
+            Self::Idle { .. } => None,
+            Self::Pending { token, .. } => Some(*token),
+            Self::Error { token, .. } => token.clone(),
+            Self::Success { token, .. } => Some(*token),
+        }
+    }
+
+    pub fn time(&self) -> u64 {
+        match self {
+            Self::Idle { time, .. }
+            | Self::Pending { time, .. }
+            | Self::Error { time, .. }
+            | Self::Success { time, .. } => *time,
         }
     }
 }
