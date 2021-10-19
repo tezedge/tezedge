@@ -4,7 +4,7 @@ use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
 use std::sync::Arc;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
-use tezos_messages::p2p::encoding::ack::AckMessage;
+use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
@@ -449,13 +449,33 @@ pub fn peer_handshaking_effects<S>(
             }
         }
         Action::PeerHandshakingMetadataMessageDecode(action) => {
-            if let Some(peer) = store.state.get().peers.get(&action.address) {
+            let state = store.state.get();
+            if let Some(peer) = state.peers.get(&action.address) {
                 match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
                         status: PeerHandshakingStatus::MetadataMessageReady { .. },
+                        nack_motive,
                         ..
                     }) => {
-                        let message = AckMessage::Ack;
+                        let message = match nack_motive.as_ref() {
+                            Some(motive) => {
+                                let potential_peers =
+                                    state.peers.potential_iter().collect::<Vec<_>>();
+                                let nack_potential_peers = store
+                                    .service
+                                    .randomness()
+                                    .choose_potential_peers_for_nack(&potential_peers)
+                                    .into_iter()
+                                    .map(|x| x.to_string())
+                                    .collect::<Vec<_>>();
+
+                                AckMessage::Nack(NackInfo::new(
+                                    motive.clone(),
+                                    &nack_potential_peers,
+                                ))
+                            }
+                            None => AckMessage::Ack,
+                        };
                         store.dispatch(
                             PeerHandshakingAckMessageInitAction {
                                 address: action.address,
@@ -573,7 +593,14 @@ pub fn peer_handshaking_effects<S>(
             let peer_handshaked = match store.state.get().peers.get(&action.address) {
                 Some(peer) => match &peer.status {
                     PeerStatus::Handshaked(v) => v,
-                    _ => return,
+                    _ => {
+                        return store.dispatch(
+                            PeerDisconnectAction {
+                                address: action.address,
+                            }
+                            .into(),
+                        );
+                    }
                 },
                 None => return,
             };

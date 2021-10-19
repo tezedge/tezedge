@@ -11,6 +11,10 @@ pub trait RandomnessService {
 
     /// Choose peer to initiate random outgoing connection.
     fn choose_peer(&mut self, list: &[SocketAddr]) -> Option<SocketAddr>;
+
+    fn choose_potential_peers_for_advertise(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr>;
+
+    fn choose_potential_peers_for_nack(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr>;
 }
 
 impl<R> RandomnessService for R
@@ -25,5 +29,18 @@ where
 
     fn choose_peer(&mut self, list: &[SocketAddr]) -> Option<SocketAddr> {
         list.choose(self).cloned()
+    }
+
+    fn choose_potential_peers_for_advertise(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr> {
+        let len = self.gen_range(1, 80.min(list.len()).max(2));
+        if len >= list.len() {
+            list.iter().cloned().collect()
+        } else {
+            list.choose_multiple(self, len).cloned().collect()
+        }
+    }
+
+    fn choose_potential_peers_for_nack(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr> {
+        self.choose_potential_peers_for_advertise(list)
     }
 }

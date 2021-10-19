@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError};
+use tezos_messages::p2p::encoding::ack::NackMotive;
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::prelude::{AckMessage, MetadataMessage};
+use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
@@ -91,6 +93,7 @@ pub enum PeerHandshakingStatus {
     EncryptionReady {
         time: u64,
         crypto: PeerCrypto,
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
 
@@ -102,6 +105,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
     MetadataMessageEncoded {
@@ -112,6 +116,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
     MetadataMessageWritePending {
@@ -123,6 +128,7 @@ pub enum PeerHandshakingStatus {
         remote_nonce: Nonce,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
     MetadataMessageReadPending {
@@ -133,6 +139,7 @@ pub enum PeerHandshakingStatus {
         /// Encryption data.
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
     MetadataMessageReady {
@@ -143,6 +150,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
     },
     //
@@ -154,6 +162,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
         remote_metadata_message: MetadataMessage,
     },
@@ -165,6 +174,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
         remote_metadata_message: MetadataMessage,
     },
@@ -177,6 +187,7 @@ pub enum PeerHandshakingStatus {
         remote_nonce: Nonce,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
         remote_metadata_message: MetadataMessage,
     },
@@ -188,6 +199,7 @@ pub enum PeerHandshakingStatus {
         local_nonce: Nonce,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
         remote_metadata_message: MetadataMessage,
     },
@@ -199,6 +211,7 @@ pub enum PeerHandshakingStatus {
         crypto: PeerCrypto,
 
         /// Data collected from previous stages.
+        compatible_version: Option<NetworkVersion>,
         remote_connection_message: ConnectionMessage,
         remote_metadata_message: MetadataMessage,
         // remote ack message has no data
@@ -210,6 +223,7 @@ pub struct PeerHandshaking {
     pub token: PeerToken,
     pub status: PeerHandshakingStatus,
     pub incoming: bool,
+    pub nack_motive: Option<NackMotive>,
     /// We are handshaking with the peer since this time.
     pub since: u64,
 }

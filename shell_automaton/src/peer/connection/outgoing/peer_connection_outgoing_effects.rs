@@ -21,14 +21,7 @@ pub fn peer_connection_outgoing_effects<S>(
 {
     match &action.action {
         Action::PeerConnectionOutgoingRandomInit(_) => {
-            let addresses = store
-                .state
-                .get()
-                .peers
-                .iter()
-                .filter(|(_, peer)| matches!(&peer.status, PeerStatus::Potential))
-                .map(|(addr, _)| *addr)
-                .collect::<Vec<_>>();
+            let addresses = store.state.get().peers.potential_iter().collect::<Vec<_>>();
 
             // TMP hardcoded threshold
             if store

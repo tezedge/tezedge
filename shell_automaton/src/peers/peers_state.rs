@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use std::net::SocketAddr;
 
-use crate::peer::Peer;
+use crate::peer::{Peer, PeerStatus};
 
 use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
@@ -61,5 +61,12 @@ impl PeersState {
     #[inline(always)]
     pub fn iter_mut<'a>(&'a mut self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a mut Peer)> {
         self.list.iter_mut()
+    }
+
+    /// Iterator over `Potential` peers.
+    pub fn potential_iter<'a>(&'a self) -> impl 'a + Iterator<Item = SocketAddr> {
+        self.iter()
+            .filter(|(_, peer)| matches!(&peer.status, PeerStatus::Potential))
+            .map(|(addr, _)| *addr)
     }
 }
