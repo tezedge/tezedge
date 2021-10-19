@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use redux_rs::ActionWithId;
+use tezos_messages::p2p::encoding::ack::AckMessage;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
@@ -478,13 +479,17 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                     PeerStatus::Handshaking(PeerHandshaking { status, token, .. }) => {
                         match status {
                             PeerHandshakingStatus::AckMessageReady {
-                                remote_message: _,
+                                remote_message,
                                 crypto,
                                 compatible_version,
                                 remote_connection_message,
                                 remote_metadata_message,
                                 ..
                             } => {
+                                match remote_message {
+                                    AckMessage::Ack => {}
+                                    _ => return,
+                                }
                                 let version = match compatible_version {
                                     Some(version) => version.clone(),
                                     None => return,
