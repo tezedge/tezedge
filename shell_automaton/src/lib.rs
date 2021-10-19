@@ -116,6 +116,7 @@ where
                 _ => {}
             }
         }
+        self.store.dispatch(Action::MioIdleEvent);
 
         if no_events {
             self.store.dispatch(Action::MioTimeoutEvent);

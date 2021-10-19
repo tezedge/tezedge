@@ -7,7 +7,7 @@ use crate::peer::chunk::read::{
 };
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
-use crate::peer::{PeerHandshaked, PeerStatus, PeerTryReadAction};
+use crate::peer::{PeerHandshaked, PeerStatus};
 use crate::{Action, Service, State};
 
 pub fn peer_chunk_read_effects<S>(
@@ -17,13 +17,13 @@ pub fn peer_chunk_read_effects<S>(
     S: Service,
 {
     match &action.action {
-        Action::PeerChunkReadInit(action) => {
-            store.dispatch(
-                PeerTryReadAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+        Action::PeerChunkReadInit(_action) => {
+            // store.dispatch(
+            //     PeerTryReadAction {
+            //         address: action.address,
+            //     }
+            //     .into(),
+            // );
         }
         Action::PeerChunkReadPart(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
@@ -32,15 +32,15 @@ pub fn peer_chunk_read_effects<S>(
                         PeerHandshakingStatus::ConnectionMessageReadPending {
                             chunk_state, ..
                         } => {
-                            return match chunk_state {
+                            match chunk_state {
                                 PeerChunkReadState::PendingSize { .. }
                                 | PeerChunkReadState::PendingBody { .. } => {
-                                    store.dispatch(
-                                        PeerTryReadAction {
-                                            address: action.address,
-                                        }
-                                        .into(),
-                                    );
+                                    // store.dispatch(
+                                    //     PeerTryReadAction {
+                                    //         address: action.address,
+                                    //     }
+                                    //     .into(),
+                                    // );
                                 }
                                 PeerChunkReadState::Ready { .. } => {
                                     store.dispatch(
@@ -52,6 +52,7 @@ pub fn peer_chunk_read_effects<S>(
                                 }
                                 _ => {}
                             }
+                            return;
                         }
                         PeerHandshakingStatus::MetadataMessageReadPending {
                             binary_message_state,
@@ -79,12 +80,12 @@ pub fn peer_chunk_read_effects<S>(
                     | PeerBinaryMessageReadState::Pending { chunk, .. } => match &chunk.state {
                         PeerChunkReadState::PendingSize { .. }
                         | PeerChunkReadState::PendingBody { .. } => {
-                            store.dispatch(
-                                PeerTryReadAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            );
+                            // store.dispatch(
+                            //     PeerTryReadAction {
+                            //         address: action.address,
+                            //     }
+                            //     .into(),
+                            // );
                         }
                         PeerChunkReadState::EncryptedReady {
                             chunk_encrypted: chunk_content_encrypted,

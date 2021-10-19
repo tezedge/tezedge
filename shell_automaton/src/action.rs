@@ -11,7 +11,7 @@ use crate::peer::chunk::read::*;
 use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
 use crate::peer::message::write::*;
-use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
+use crate::peer::{PeerReadWouldBlockAction, PeerTryReadAction, PeerTryWriteAction, PeerWriteWouldBlockAction};
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
 use crate::peer::connection::incoming::accept::*;
@@ -100,12 +100,15 @@ pub enum Action {
     PeerDisconnected(PeerDisconnectedAction),
 
     MioTimeoutEvent,
+    MioIdleEvent,
     P2pServerEvent(P2pServerEvent),
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),
 
     PeerTryWrite(PeerTryWriteAction),
     PeerTryRead(PeerTryReadAction),
+    PeerReadWouldBlock(PeerReadWouldBlockAction),
+    PeerWriteWouldBlock(PeerWriteWouldBlockAction),
 
     // chunk read
     PeerChunkReadInit(PeerChunkReadInitAction),

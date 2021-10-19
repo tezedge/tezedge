@@ -1,7 +1,9 @@
 use redux_rs::{ActionWithId, Store};
+use std::cmp;
 use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
+use crate::peer::PeerReadWouldBlockAction;
 use crate::service::{MioService, Service};
 use crate::{Action, State};
 
@@ -15,14 +17,14 @@ use super::chunk::write::{
 use super::connection::closed::PeerConnectionClosedAction;
 use super::handshaking::PeerHandshakingStatus;
 use super::message::read::PeerMessageReadState;
-use super::{PeerHandshaked, PeerStatus, PeerTryReadAction, PeerTryWriteAction};
+use super::{PeerHandshaked, PeerReadState, PeerStatus, PeerTryReadAction, PeerTryWriteAction, PeerWriteWouldBlockAction};
 
 pub fn peer_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
 where
     S: Service,
 {
     match &action.action {
-        Action::WakeupEvent(_) => {
+        Action::MioIdleEvent => {
             let quota_restore_duration_millis =
                 store.state.get().config.quota.restore_duration_millis;
             let read_addresses = store
@@ -30,18 +32,15 @@ where
                 .get()
                 .peers
                 .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_read
-                        && action
-                            .id
-                            .duration_since(peer.quota.read_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
+                .filter_map(|(address, peer)| match peer.read_state {
+                    PeerReadState::Readable { .. } => Some(address),
+                    PeerReadState::OutOfQuota { timestamp }
+                        if action.id.duration_since(timestamp).as_millis()
+                            >= quota_restore_duration_millis =>
                     {
                         Some(address)
-                    } else {
-                        None
                     }
+                    _ => None,
                 })
                 .cloned()
                 .collect::<Vec<_>>();
@@ -51,18 +50,15 @@ where
                 .get()
                 .peers
                 .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_write
-                        && action
-                            .id
-                            .duration_since(peer.quota.write_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
+                .filter_map(|(address, peer)| match peer.write_state {
+                    super::PeerWriteState::Writable { .. } => Some(address),
+                    super::PeerWriteState::OutOfQuota { timestamp }
+                        if action.id.duration_since(timestamp).as_millis()
+                            >= quota_restore_duration_millis =>
                     {
                         Some(address)
-                    } else {
-                        None
                     }
+                    _ => None,
                 })
                 .cloned()
                 .collect::<Vec<_>>();
@@ -86,21 +82,21 @@ where
             }
 
             if event.is_writable() {
-                store.dispatch(
-                    PeerTryWriteAction {
-                        address: event.address(),
-                    }
-                    .into(),
-                );
+                // store.dispatch(
+                //     PeerTryWriteAction {
+                //         address: event.address(),
+                //     }
+                //     .into(),
+                // );
             }
 
             if event.is_readable() {
-                store.dispatch(
-                    PeerTryReadAction {
-                        address: event.address(),
-                    }
-                    .into(),
-                );
+                // store.dispatch(
+                //     PeerTryReadAction {
+                //         address: event.address(),
+                //     }
+                //     .into(),
+                // );
             }
         }
         Action::PeerTryWrite(action) => {
@@ -109,9 +105,23 @@ where
                 None => return,
             };
 
-            if peer.quota.reject_write {
-                return;
-            }
+            let bytes_allowed_to_write = match peer.write_state {
+                super::PeerWriteState::Writable { bytes_written, .. } => {
+                    if let Some(v) = store
+                        .state
+                        .get()
+                        .config
+                        .quota
+                        .write_quota
+                        .checked_sub(bytes_written)
+                    {
+                        v
+                    } else {
+                        return;
+                    }
+                }
+                _ => return,
+            };
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,
@@ -156,7 +166,9 @@ where
                 written: prev_written,
             } = chunk_state
             {
-                match peer_stream.write(&chunk.raw()[*prev_written..]) {
+                let write_slice = &chunk.raw()[*prev_written..];
+                let bytes_allowed_to_write = cmp::min(bytes_allowed_to_write, write_slice.len());
+                match peer_stream.write(&write_slice[..bytes_allowed_to_write]) {
                     Ok(written) if written > 0 => store.dispatch(
                         PeerChunkWritePartAction {
                             address: action.address,
@@ -165,7 +177,12 @@ where
                         .into(),
                     ),
                     Ok(_) => {}
-                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => store.dispatch(
+                        PeerWriteWouldBlockAction {
+                            address: action.address,
+                        }
+                        .into(),
+                    ),
                     Err(err) => store.dispatch(
                         PeerChunkWriteErrorAction {
                             address: action.address,
@@ -182,9 +199,23 @@ where
                 None => return,
             };
 
-            if peer.quota.reject_read {
-                return;
-            }
+            let bytes_allowed_to_read = match peer.read_state {
+                PeerReadState::Readable { bytes_read, .. } => {
+                    if let Some(v) = store
+                        .state
+                        .get()
+                        .config
+                        .quota
+                        .read_quota
+                        .checked_sub(bytes_read)
+                    {
+                        v
+                    } else {
+                        return;
+                    }
+                }
+                _ => return,
+            };
 
             let peer_token = match &peer.status {
                 PeerStatus::Handshaking(s) => s.token,
@@ -236,7 +267,7 @@ where
                 PeerChunkReadState::PendingBody { buffer, size } => size - buffer.len(),
                 _ => return,
             };
-            debug_assert!(bytes_to_read > 0);
+            let bytes_to_read = cmp::min(bytes_to_read, bytes_allowed_to_read);
 
             let mut buff = vec![0; bytes_to_read];
             match peer_stream.read(&mut buff) {
@@ -250,7 +281,12 @@ where
                     );
                 }
                 Ok(_) => {}
-                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => store.dispatch(
+                    PeerReadWouldBlockAction {
+                        address: action.address,
+                    }
+                    .into(),
+                ),
                 Err(err) => store.dispatch(
                     PeerChunkReadErrorAction {
                         address: action.address,

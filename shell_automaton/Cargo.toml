@@ -14,7 +14,7 @@ mio = { version = "0.7.13", features = ["os-poll", "net"] }
 dns-lookup = "1.0.1"
 derive_more = "0.99.16"
 enum-kinds = "0.5.1"
-tokio = { version = "1.12", features = ["time", "rt-multi-thread"] }
+tokio = { version = "1.12", features = ["time", "rt-multi-thread", "sync"] }
 riker = "0.4"
 
 bincode = "1.3"

@@ -12,3 +12,14 @@ pub struct PeerTryWriteAction {
 pub struct PeerTryReadAction {
     pub address: SocketAddr,
 }
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerReadWouldBlockAction {
+    pub address: SocketAddr,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerWriteWouldBlockAction {
+    pub address: SocketAddr,
+}
