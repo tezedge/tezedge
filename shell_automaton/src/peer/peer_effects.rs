@@ -236,10 +236,9 @@ where
                 PeerChunkReadState::PendingBody { buffer, size } => size - buffer.len(),
                 _ => return,
             };
+            debug_assert!(bytes_to_read > 0);
 
             let mut buff = vec![0; bytes_to_read];
-            assert_ne!(buff.len(), 0);
-            assert_ne!(bytes_to_read, 0);
             match peer_stream.read(&mut buff) {
                 Ok(bytes) if bytes > 0 => {
                     store.dispatch(
