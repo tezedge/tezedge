@@ -1,10 +1,11 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::peer::connection::PeerConnectionState;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
 use crate::service::{MioService, RandomnessService, Service};
-use crate::{action::Action, State};
+use crate::{Action, State};
 
 use super::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
@@ -53,7 +54,7 @@ pub fn peer_connection_outgoing_effects<S>(
                 Ok(token) => PeerConnectionOutgoingPendingAction { address, token }.into(),
                 Err(error) => PeerConnectionOutgoingErrorAction {
                     address,
-                    error: error.kind().into(),
+                    error: error.into(),
                 }
                 .into(),
             });
@@ -95,8 +96,13 @@ pub fn peer_connection_outgoing_effects<S>(
             }
             .into(),
         ),
-        Action::PeerConnectionOutgoingError(_) => {
-            store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+        Action::PeerConnectionOutgoingError(action) => {
+            store.dispatch(
+                PeerDisconnectAction {
+                    address: action.address,
+                }
+                .into(),
+            );
         }
         _ => {}
     }

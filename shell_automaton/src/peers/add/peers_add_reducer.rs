@@ -14,7 +14,11 @@ pub fn peers_add_reducer(state: &mut State, action: &ActionWithId<Action>) {
             // TODO: check peers thresholds.
             state.peers.entry(*address).or_insert_with(|| Peer {
                 status: PeerStatus::Connecting(
-                    PeerConnectionIncomingState::Pending { token: *token }.into(),
+                    PeerConnectionIncomingState::Pending {
+                        time: action.time_as_nanos(),
+                        token: *token,
+                    }
+                    .into(),
                 ),
                 quota: PeerQuota::new(action.id),
             });

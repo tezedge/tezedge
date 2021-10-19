@@ -51,7 +51,7 @@ impl State {
         Self {
             config,
             peers: PeersState::new(),
-            peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle,
+            peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
 
             prev_action: ActionIdWithKind {

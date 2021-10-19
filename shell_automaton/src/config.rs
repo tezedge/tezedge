@@ -50,6 +50,9 @@ pub struct Config {
     /// E.g. if it's set to 100ms, every 100ms we will check state for timeouts.
     pub check_timeouts_interval: Duration,
 
+    /// Timeout for peer tcp socket connection.
+    pub peer_connecting_timeout: Duration,
+
     /// Timeout for the whole handshaking process. If handshaking isn't
     /// done within this time limitation, we will disconnect and blacklist the peer.
     pub peer_handshaking_timeout: Duration,
@@ -88,6 +91,7 @@ pub fn default_config() -> Config {
         ),
 
         check_timeouts_interval: Duration::from_millis(100),
+        peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
         quota: Quota {
@@ -116,6 +120,7 @@ pub fn test_config() -> Config {
         ),
 
         check_timeouts_interval: Duration::from_millis(100),
+        peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
         quota: Quota {

@@ -1,6 +1,7 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::peer::connection::PeerConnectionState;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
 use crate::service::Service;
@@ -43,6 +44,12 @@ pub fn peer_connection_incoming_effects<S>(
         }
         Action::PeerConnectionIncomingSuccess(action) => store.dispatch(
             PeerHandshakingInitAction {
+                address: action.address,
+            }
+            .into(),
+        ),
+        Action::PeerConnectionIncomingError(action) => store.dispatch(
+            PeerDisconnectAction {
                 address: action.address,
             }
             .into(),
