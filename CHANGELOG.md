@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing.
+- Shell refactor and simplify communication between actors
+- Upgrade to Tokio 1.12
+- `riker` dependency replaced with `tezedge-actor-system` dependency
 
 ### Deprecated
 
@@ -20,15 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Nothing.
+- Removed `riker` dependency from `rpc` module
 
 ### Fixed
 
 - Optimize `chains/{chain_id}/mempool/monitor_operations` and `monitor/heads/{chain_id}` RPCs.
+- Controlled startup for chain_manager - run p2p only after ChainManager is subscribed to NetworkChannel
+- ChainFeeder block application improved error handling with retry policy on protocol-runner restart
+- Added set_size_hint after decoding read_message to avoid unnecessary recounting for websocket monitoring
 
 ### Security
 
 - Nothing.
+
 ## [1.8.0] - 2021-09-20
 
 ### Added
