@@ -2,11 +2,13 @@ use networking::network_channel::PeerMessageReceived;
 use redux_rs::{ActionWithId, Store};
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
+use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
+use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
-use crate::service::Service;
+use crate::service::{RandomnessService, Service};
 use crate::{Action, State};
 
 use super::{PeerMessageReadInitAction, PeerMessageReadSuccessAction};
@@ -65,6 +67,24 @@ pub fn peer_message_read_effects<S>(
                 }));
 
             match &action.message.message() {
+                PeerMessage::Bootstrap => {
+                    let potential_peers =
+                        store.state.get().peers.potential_iter().collect::<Vec<_>>();
+                    let advertise_peers = store
+                        .service
+                        .randomness()
+                        .choose_potential_peers_for_advertise(&potential_peers);
+                    store.dispatch(
+                        PeerMessageWriteInitAction {
+                            address: action.address,
+                            message: PeerMessageResponse::from(AdvertiseMessage::new(
+                                advertise_peers,
+                            ))
+                            .into(),
+                        }
+                        .into(),
+                    );
+                }
                 PeerMessage::Advertise(msg) => {
                     store.dispatch(
                         PeersAddMultiAction {
