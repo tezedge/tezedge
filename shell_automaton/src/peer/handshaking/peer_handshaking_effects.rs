@@ -576,14 +576,30 @@ pub fn peer_handshaking_effects<S>(
             if let Some(peer) = store.state.get().peers.get(&action.address) {
                 match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageReady { .. },
+                        status: PeerHandshakingStatus::AckMessageReady { remote_message, .. },
                         ..
-                    }) => store.dispatch(
-                        PeerHandshakingFinishAction {
-                            address: action.address,
+                    }) => {
+                        match remote_message {
+                            AckMessage::Ack => {
+                                return store.dispatch(
+                                    PeerHandshakingFinishAction {
+                                        address: action.address,
+                                    }
+                                    .into(),
+                                )
+                            }
+                            // TODO: use potential peers in nack message.
+                            AckMessage::Nack(_) => {}
+                            AckMessage::NackV0 => {}
                         }
-                        .into(),
-                    ),
+                        // peer nacked us so we should disconnect him.
+                        store.dispatch(
+                            PeerDisconnectAction {
+                                address: action.address,
+                            }
+                            .into(),
+                        );
+                    }
                     _ => {}
                 }
             }
