@@ -9,7 +9,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
-use std::future::Future;
 use std::vec;
 
 use crypto::hash::ContractKt1Hash;
@@ -400,26 +399,29 @@ pub(crate) async fn get_shell_automaton_state_after(
     let mut state = shell_automaton_state_closest(env, target_action_id).await?;
 
     let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
-    let actions_iter = shell_automaton_actions_iter(
-        &action_storage,
-        IteratorMode::From(Cow::Owned(target_action_id), Direction::Forward),
-    )
+
+    tokio::task::spawn_blocking(move || {
+        let actions_iter = action_storage
+            .find(IteratorMode::From(
+                Cow::Owned(target_action_id),
+                Direction::Forward,
+            ))?
+            .map(shell_automaton_actions_decode_map);
+
+        for result in actions_iter {
+            let action = result?;
+            let action_id = u64::from(action.id);
+
+            if action_id <= target_action_id {
+                shell_automaton::reducer(&mut state, &action);
+            }
+            if action_id >= target_action_id {
+                break;
+            }
+        }
+        Ok(state)
+    })
     .await?
-    .map(shell_automaton_actions_decode_map);
-
-    for result in actions_iter {
-        let action = result?;
-        let action_id = u64::from(action.id);
-
-        if action_id <= target_action_id {
-            shell_automaton::reducer(&mut state, &action);
-        }
-        if action_id >= target_action_id {
-            break;
-        }
-    }
-
-    Ok(state)
 }
 
 #[allow(dead_code)]
@@ -464,20 +466,6 @@ pub(crate) async fn shell_automaton_state_closest(
     .await?
 }
 
-pub(crate) fn shell_automaton_actions_iter<'a>(
-    action_storage: &'a ShellAutomatonActionStorage,
-    mode: IteratorMode<'a, ShellAutomatonActionStorage>,
-) -> impl 'a + Future<Output = anyhow::Result<impl 'a + Iterator<Item = Result<BoxedSliceKV, DBError>>>>
-{
-    async move {
-        // TODO: tmp, shouldn't use block_in_place as it blocks tokio's
-        // non-blocking worker thread.
-        Ok::<_, anyhow::Error>(tokio::task::block_in_place(move || {
-            Ok(action_storage.find(mode)?)
-        }))?
-    }
-}
-
 /// Action sent from rpc.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RpcShellAutomatonAction {
@@ -493,84 +481,90 @@ pub(crate) async fn get_shell_automaton_actions(
     cursor: Option<u64>,
     limit: Option<usize>,
 ) -> anyhow::Result<VecDeque<RpcShellAutomatonAction>> {
+    let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
     let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
 
     let limit = limit.unwrap_or(20).max(1).min(1000);
 
-    let mut actions_iter = shell_automaton_actions_iter(
-        &action_storage,
-        match cursor {
-            Some(cursor) => IteratorMode::From(Cow::Owned(cursor - 1), Direction::Reverse),
-            None => IteratorMode::End,
-        },
-    )
-    .await?
-    .map(shell_automaton_actions_decode_map);
+    tokio::task::spawn_blocking(move || {
+        let mut actions_iter = action_storage
+            .find(match cursor {
+                Some(cursor) => IteratorMode::From(Cow::Owned(cursor - 1), Direction::Reverse),
+                None => IteratorMode::End,
+            })?
+            .map(shell_automaton_actions_decode_map);
 
-    let mut result_actions = Vec::with_capacity(limit + 1);
+        let mut result_actions = Vec::with_capacity(limit + 1);
 
-    for _ in 0..=limit {
-        match actions_iter.next().transpose()? {
-            Some(action) => result_actions.push(action),
-            None => break,
+        for _ in 0..=limit {
+            match actions_iter.next().transpose()? {
+                Some(action) => result_actions.push(action),
+                None => break,
+            }
         }
-    }
 
-    let state = match result_actions.last() {
-        Some(first_action) => shell_automaton_state_closest(env, first_action.id.into()).await?,
-        None => return Ok(VecDeque::new()),
-    };
+        let state: shell_automaton::State = match result_actions.last() {
+            Some(first_action) => {
+                match snapshot_storage.get_closest_before(&first_action.id.into())? {
+                    Some(v) => Ok(v),
+                    None => Err(anyhow::anyhow!("snapshot not available")),
+                }?
+            }
+            None => return Ok(VecDeque::new()),
+        };
 
-    let mut actions_to_apply = vec![];
+        let mut actions_to_apply = vec![];
 
-    for result in actions_iter {
-        let action = result?;
+        for result in actions_iter {
+            let action = result?;
 
-        if action.id > state.last_action.id() {
-            actions_to_apply.push(action);
-        } else if action.id == state.last_action.id() {
-            actions_to_apply.push(action);
-            break;
-        } else {
-            break;
+            if action.id > state.last_action.id() {
+                actions_to_apply.push(action);
+            } else if action.id == state.last_action.id() {
+                actions_to_apply.push(action);
+                break;
+            } else {
+                break;
+            }
         }
-    }
 
-    let state = actions_to_apply
-        .into_iter()
-        .rev()
-        .fold(state, |mut state, action| {
-            shell_automaton::reducer(&mut state, &action);
-            state
-        });
-
-    let action_times = result_actions
-        .iter()
-        .rev()
-        .map(|x| u64::from(x.id))
-        .collect::<Vec<_>>();
-
-    Ok(result_actions
-        .into_iter()
-        .rev()
-        .enumerate()
-        .take(limit)
-        .fold(
-            (state, VecDeque::with_capacity(limit)),
-            |(mut state, mut result), (index, action)| {
-                let action_time = u64::from(action.id);
-                let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
-
+        let state = actions_to_apply
+            .into_iter()
+            .rev()
+            .fold(state, |mut state, action| {
                 shell_automaton::reducer(&mut state, &action);
-                result.push_front(RpcShellAutomatonAction {
-                    action,
-                    state: state.clone(),
-                    duration: next_action_time.checked_sub(action_time).unwrap_or(0),
-                });
-                (state, result)
-            },
-        )
-        .1)
+                state
+            });
+
+        let action_times = result_actions
+            .iter()
+            .rev()
+            .map(|x| u64::from(x.id))
+            .collect::<Vec<_>>();
+
+        Ok(result_actions
+            .into_iter()
+            .rev()
+            .enumerate()
+            .take(limit)
+            .fold(
+                (state, VecDeque::with_capacity(limit)),
+                |(mut state, mut result), (index, action)| {
+                    let action_time = u64::from(action.id);
+                    let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
+                    shell_automaton::reducer(&mut state, &action);
+                    result.push_front(RpcShellAutomatonAction {
+                        action,
+                        state: state.clone(),
+                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                    });
+                    (state, result)
+                },
+            )
+            .1)
+    })
+    .await?
 }
 
 pub(crate) async fn get_shell_automaton_actions_reverse(
@@ -585,64 +579,64 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
 
     let mut state = shell_automaton_state_closest(env, cursor).await?;
 
-    let mut actions_iter = shell_automaton_actions_iter(
-        &action_storage,
-        IteratorMode::From(
-            Cow::Owned(state.last_action.id().into()),
-            Direction::Forward,
-        ),
-    )
-    .await?
-    .map(shell_automaton_actions_decode_map)
-    .peekable();
+    tokio::task::spawn_blocking(move || {
+        let mut actions_iter = action_storage
+            .find(IteratorMode::From(
+                Cow::Owned(state.last_action.id().into()),
+                Direction::Forward,
+            ))?
+            .map(shell_automaton_actions_decode_map)
+            .peekable();
 
-    loop {
-        match actions_iter.peek() {
-            Some(Ok(action)) if u64::from(action.id) >= cursor => break,
-            None => break,
-            _ => {}
-        }
-        if let Some(action) = actions_iter.next().transpose()? {
-            shell_automaton::reducer(&mut state, &action);
-        }
-    }
-
-    let mut result_actions = VecDeque::with_capacity(limit + 1);
-
-    for _ in 0..=limit {
-        match actions_iter.next().transpose()? {
-            Some(action) => result_actions.push_front(action),
-            None => break,
-        }
-    }
-
-    let action_times = result_actions
-        .iter()
-        .rev()
-        .map(|x| u64::from(x.id))
-        .collect::<Vec<_>>();
-
-    Ok(result_actions
-        .into_iter()
-        .rev()
-        .enumerate()
-        .take(limit)
-        .fold(
-            (state, VecDeque::with_capacity(limit)),
-            |(mut state, mut result), (index, action)| {
-                let action_time = u64::from(action.id);
-                let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
-
+        loop {
+            match actions_iter.peek() {
+                Some(Ok(action)) if u64::from(action.id) >= cursor => break,
+                None => break,
+                _ => {}
+            }
+            if let Some(action) = actions_iter.next().transpose()? {
                 shell_automaton::reducer(&mut state, &action);
-                result.push_front(RpcShellAutomatonAction {
-                    action,
-                    state: state.clone(),
-                    duration: next_action_time.checked_sub(action_time).unwrap_or(0),
-                });
-                (state, result)
-            },
-        )
-        .1)
+            }
+        }
+
+        let mut result_actions = VecDeque::with_capacity(limit + 1);
+
+        for _ in 0..=limit {
+            match actions_iter.next().transpose()? {
+                Some(action) => result_actions.push_front(action),
+                None => break,
+            }
+        }
+
+        let action_times = result_actions
+            .iter()
+            .rev()
+            .map(|x| u64::from(x.id))
+            .collect::<Vec<_>>();
+
+        Ok(result_actions
+            .into_iter()
+            .rev()
+            .enumerate()
+            .take(limit)
+            .fold(
+                (state, VecDeque::with_capacity(limit)),
+                |(mut state, mut result), (index, action)| {
+                    let action_time = u64::from(action.id);
+                    let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
+                    shell_automaton::reducer(&mut state, &action);
+                    result.push_front(RpcShellAutomatonAction {
+                        action,
+                        state: state.clone(),
+                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                    });
+                    (state, result)
+                },
+            )
+            .1)
+    })
+    .await?
 }
 
 pub(crate) type ShellAutomatonActionsStats = HashMap<String, ShellAutomatonActionStats>;
@@ -695,45 +689,48 @@ pub(crate) async fn get_shell_automaton_actions_graph(
     let mut action_indices = HashMap::new();
     let mut next_actions = Vec::new();
 
-    let mut action_it = shell_automaton_actions_iter(&action_storage, IteratorMode::Start)
-        .await?
-        .map(shell_automaton_actions_decode_map)
-        .map(|result| result.map(|action| action.into()));
-    let action = action_it.next().unwrap()?;
-    action_indices.insert(action, 0);
-    next_actions.push(HashSet::new());
-    let mut pred_action_index = 0;
+    tokio::task::spawn_blocking(move || {
+        let mut action_it = action_storage
+            .find(IteratorMode::Start)?
+            .map(shell_automaton_actions_decode_map)
+            .map(|result| result.map(|action| action.into()));
+        let action = action_it.next().unwrap()?;
+        action_indices.insert(action, 0);
+        next_actions.push(HashSet::new());
+        let mut pred_action_index = 0;
 
-    for result in action_it {
-        let action = result?;
-        let action_index = if let Some(action_index) = action_indices.get(&action) {
-            *action_index
-        } else {
-            let action_index = action_indices.len();
-            action_indices.insert(action, action_index);
-            next_actions.push(HashSet::new());
-            action_index
-        };
-        next_actions[pred_action_index].insert(action_index);
-        pred_action_index = action_index;
-    }
+        for result in action_it {
+            let action = result?;
+            let action_index = if let Some(action_index) = action_indices.get(&action) {
+                *action_index
+            } else {
+                let action_index = action_indices.len();
+                action_indices.insert(action, action_index);
+                next_actions.push(HashSet::new());
+                action_index
+            };
+            next_actions[pred_action_index].insert(action_index);
+            pred_action_index = action_index;
+        }
 
-    let mut actions_graph = action_indices.into_iter().collect::<Vec<_>>();
-    actions_graph.sort_by_key(|(_, k)| *k);
-    let actions_graph = actions_graph
-        .into_iter()
-        .enumerate()
-        .map(|(i, (s, i2))| {
-            assert_eq!(i, i2);
-            let mut next_actions: Vec<_> = next_actions[i].iter().cloned().collect();
-            next_actions.sort();
-            ActionGraphNode {
-                action_id: i,
-                action_kind: s,
-                next_actions,
-            }
-        })
-        .collect::<Vec<_>>();
+        let mut actions_graph = action_indices.into_iter().collect::<Vec<_>>();
+        actions_graph.sort_by_key(|(_, k)| *k);
+        let actions_graph = actions_graph
+            .into_iter()
+            .enumerate()
+            .map(|(i, (s, i2))| {
+                assert_eq!(i, i2);
+                let mut next_actions: Vec<_> = next_actions[i].iter().cloned().collect();
+                next_actions.sort();
+                ActionGraphNode {
+                    action_id: i,
+                    action_kind: s,
+                    next_actions,
+                }
+            })
+            .collect::<Vec<_>>();
 
-    Ok(actions_graph)
+        Ok(actions_graph)
+    })
+    .await?
 }
