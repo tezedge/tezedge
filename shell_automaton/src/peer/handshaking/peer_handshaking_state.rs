@@ -1,8 +1,12 @@
-use crypto::blake2b::Blake2bError;
-use crypto::nonce::Nonce;
-use crypto::CryptoError;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use thiserror::Error;
+
+use crypto::blake2b::Blake2bError;
+use crypto::nonce::Nonce;
+use crypto::proof_of_work::PowError;
+use crypto::CryptoError;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError};
@@ -17,13 +21,27 @@ use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteState;
 use crate::peer::{PeerCrypto, PeerToken};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Error, Debug, Clone)]
 pub enum PeerHandshakingError {
+    #[error("Chunk error: {0}")]
     Chunk(String),
+
+    #[error("Crypto error: {0}")]
     Crypto(String),
+
+    #[error("Encoding error: {0}")]
     Encoding(String),
+
+    #[error("Decoding error: {0}")]
     Decoding(String),
+
+    #[error("Blake2b error: {0}")]
     Blake2b(String),
+
+    #[error("BadPow error: {0}")]
+    BadPow(#[from] PowError),
+
+    #[error("Timeout error. Phase: {0}")]
     Timeout(PeerHandshakingPhase),
 }
 
@@ -226,4 +244,10 @@ pub struct PeerHandshaking {
     pub nack_motive: Option<NackMotive>,
     /// We are handshaking with the peer since this time.
     pub since: u64,
+}
+
+impl fmt::Display for PeerHandshakingPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }

@@ -1,5 +1,6 @@
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::generate_nonces;
+use crypto::proof_of_work::{PowError, PowResult};
 use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
 use std::sync::Arc;
@@ -38,6 +39,15 @@ use super::{
     PeerHandshakingMetadataMessageReadAction, PeerHandshakingMetadataMessageWriteAction,
     PeerHandshakingStatus,
 };
+
+fn check_proof_of_work(pow_target: f64, conn_msg_bytes: &[u8]) -> PowResult {
+    if conn_msg_bytes.len() < 58 {
+        Err(PowError::CheckFailed)
+    } else {
+        // skip first 2 bytes which are for port.
+        crypto::proof_of_work::check_proof_of_work(&conn_msg_bytes[2..58], pow_target)
+    }
+}
 
 pub fn peer_handshaking_effects<S>(
     store: &mut Store<State, S, Action>,
@@ -163,7 +173,8 @@ pub fn peer_handshaking_effects<S>(
             );
         }
         Action::PeerChunkReadReady(action) => {
-            if let Some(peer) = store.state.get().peers.get(&action.address) {
+            let state = store.state.get();
+            if let Some(peer) = state.peers.get(&action.address) {
                 match &peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
                         status:
@@ -175,8 +186,33 @@ pub fn peer_handshaking_effects<S>(
                                 ..
                             },
                         ..
-                    }) => match ConnectionMessage::from_bytes(remote_chunk) {
-                        Ok(connection_message) => match BinaryChunk::from_content(&remote_chunk) {
+                    }) => {
+                        // check proof of work.
+                        if let Err(err) = check_proof_of_work(state.config.pow_target, remote_chunk)
+                        {
+                            return store.dispatch(
+                                PeerHandshakingErrorAction {
+                                    address: action.address,
+                                    error: err.into(),
+                                }
+                                .into(),
+                            );
+                        }
+
+                        let connection_message = match ConnectionMessage::from_bytes(remote_chunk) {
+                            Ok(v) => v,
+                            Err(err) => {
+                                return store.dispatch(
+                                    PeerHandshakingErrorAction {
+                                        address: action.address,
+                                        error: err.into(),
+                                    }
+                                    .into(),
+                                )
+                            }
+                        };
+
+                        match BinaryChunk::from_content(&remote_chunk) {
                             Ok(remote_chunk) => store.dispatch(
                                 PeerHandshakingConnectionMessageDecodeAction {
                                     address: action.address,
@@ -185,7 +221,6 @@ pub fn peer_handshaking_effects<S>(
                                 }
                                 .into(),
                             ),
-
                             Err(err) => store.dispatch(
                                 PeerHandshakingErrorAction {
                                     address: action.address,
@@ -193,15 +228,8 @@ pub fn peer_handshaking_effects<S>(
                                 }
                                 .into(),
                             ),
-                        },
-                        Err(err) => store.dispatch(
-                            PeerHandshakingErrorAction {
-                                address: action.address,
-                                error: err.into(),
-                            }
-                            .into(),
-                        ),
-                    },
+                        }
+                    }
                     _ => {}
                 }
             }
