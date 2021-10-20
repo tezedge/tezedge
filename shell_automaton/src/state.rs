@@ -33,6 +33,15 @@ impl ActionIdWithKind {
     }
 }
 
+impl From<&ActionWithId<Action>> for ActionIdWithKind {
+    fn from(action: &ActionWithId<Action>) -> Self {
+        ActionIdWithKind {
+            id: action.id,
+            kind: ActionKind::from(&action.action),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct State {
     pub config: Config,
@@ -44,6 +53,18 @@ pub struct State {
     pub prev_action: ActionIdWithKind,
     pub last_action: ActionIdWithKind,
     pub applied_actions_count: u64,
+    pub dispatch_actions_backtrace: DispatchBacktrace,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DispatchBacktrace {
+    Ok {
+        backtrace: Vec<ActionIdWithKind>,
+    },
+    Overflow {
+        action: ActionIdWithKind,
+        backtrace: Vec<ActionIdWithKind>,
+    },
 }
 
 impl State {
@@ -63,6 +84,9 @@ impl State {
                 kind: ActionKind::Init,
             },
             applied_actions_count: 0,
+            dispatch_actions_backtrace: DispatchBacktrace::Ok {
+                backtrace: Vec::new(),
+            },
         }
     }
 

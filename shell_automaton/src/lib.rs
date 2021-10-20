@@ -115,10 +115,12 @@ where
                 Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event.into()),
                 _ => {}
             }
+            self.store.dispatch(Action::DispatchRecursionReset);
         }
 
         if no_events {
             self.store.dispatch(Action::MioTimeoutEvent);
+            self.store.dispatch(Action::DispatchRecursionReset);
         }
     }
 }

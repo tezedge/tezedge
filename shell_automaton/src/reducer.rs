@@ -22,6 +22,7 @@ use crate::peers::check::timeouts::peers_check_timeouts_reducer;
 use crate::peers::dns_lookup::peers_dns_lookup_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
+use crate::state::DispatchBacktrace;
 use crate::storage::block_header::put::storage_block_header_put_reducer;
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
@@ -34,12 +35,39 @@ pub fn applied_actions_count_reducer(state: &mut State, _action: &ActionWithId<A
     state.applied_actions_count += 1;
 }
 
+pub fn dispatch_recursion_reducer(state: &mut State, action: &ActionWithId<Action>) {
+    match &action.action {
+        Action::DispatchRecursionReset => {
+            state.dispatch_actions_backtrace = DispatchBacktrace::Ok {
+                backtrace: Vec::new(),
+            }
+        }
+        Action::DispatchRecursionLimitExceeded(_action) => (),
+        _ => match &mut state.dispatch_actions_backtrace {
+            DispatchBacktrace::Ok { ref mut backtrace }
+                if backtrace.len() < state.config.dispatch_recursion_limit =>
+            {
+                backtrace.push(action.into());
+            }
+            DispatchBacktrace::Ok { backtrace } => {
+                state.dispatch_actions_backtrace = DispatchBacktrace::Overflow {
+                    backtrace: backtrace.clone(),
+                    action: action.into(),
+                };
+            }
+            _ => (),
+        },
+    }
+}
+
 pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
     chain_reducers!(
         state,
         action,
         // needs to be first!
+        dispatch_recursion_reducer,
         storage_state_snapshot_create_reducer,
+
         peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,

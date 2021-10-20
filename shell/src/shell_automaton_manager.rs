@@ -170,6 +170,7 @@ impl ShellAutomatonManager {
                 read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(128 * 1024),
                 write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(128 * 1024),
             },
+            dispatch_recursion_limit: env_variable("DISPATCH_RECURSION_LIMIT").unwrap_or(128),
         });
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);

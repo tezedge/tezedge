@@ -38,6 +38,7 @@ use crate::peers::dns_lookup::{
 };
 use crate::peers::remove::PeersRemoveAction;
 
+use crate::state::ActionIdWithKind;
 use crate::storage::block_header::put::{
     StorageBlockHeaderPutNextInitAction, StorageBlockHeaderPutNextPendingAction,
     StorageBlockHeadersPutAction,
@@ -179,6 +180,11 @@ pub enum Action {
     StorageRequestError(StorageRequestErrorAction),
     StorageRequestSuccess(StorageRequestSuccessAction),
     StorageRequestFinish(StorageRequestFinishAction),
+
+    // Action to reset dispatch recursion counter
+    DispatchRecursionReset,
+    DispatchRecursionIncrement,
+    DispatchRecursionLimitExceeded(DispatchRecursionLimitExceededAction),
 }
 
 impl Action {
@@ -224,4 +230,11 @@ impl From<ActionWithId<Action>> for ActionKind {
     fn from(action: ActionWithId<Action>) -> ActionKind {
         action.action.kind()
     }
+}
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DispatchRecursionLimitExceededAction {
+    pub action: ActionIdWithKind,
+    pub backtrace: Vec<ActionIdWithKind>,
 }

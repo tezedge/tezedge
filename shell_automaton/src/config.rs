@@ -67,6 +67,8 @@ pub struct Config {
     pub record_actions: bool,
 
     pub quota: Quota,
+
+    pub dispatch_recursion_limit: usize,
 }
 
 impl Config {
@@ -113,6 +115,7 @@ pub fn default_config() -> Config {
             read_quota: 1024,
             write_quota: 1024,
         },
+        dispatch_recursion_limit: 64,
     }
 }
 
@@ -147,5 +150,6 @@ pub fn test_config() -> Config {
             read_quota: 1024,
             write_quota: 1024,
         },
+        dispatch_recursion_limit: 64,
     }
 }

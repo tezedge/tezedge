@@ -1,8 +1,10 @@
 use redux_rs::{ActionWithId, Store};
 
+use crate::action::DispatchRecursionLimitExceededAction;
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
+use crate::state::DispatchBacktrace;
 use crate::{Action, ActionId, State};
 
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
@@ -77,9 +79,38 @@ fn applied_actions_count_effects<S: Service>(
     }
 }
 
+fn dispatch_recursion_effects<S: Service>(
+    store: &mut Store<State, S, Action>,
+    action: &ActionWithId<Action>,
+) {
+    match &action.action {
+        Action::DispatchRecursionReset => (),
+        Action::DispatchRecursionLimitExceeded(DispatchRecursionLimitExceededAction {
+            action,
+            backtrace,
+        }) => {
+            eprintln!("===========================================");
+            eprintln!("Recursion limit exceeded on action {:?}", action);
+            eprintln!("Backtrace:");
+            for action in backtrace {
+                eprintln!("{:?}", action);
+            }
+        }
+        _ => match &store.state.get().dispatch_actions_backtrace {
+            DispatchBacktrace::Ok { .. } => (),
+            DispatchBacktrace::Overflow { action, backtrace } => {
+                let action = action.clone();
+                let backtrace = backtrace.clone();
+                store.dispatch(DispatchRecursionLimitExceededAction { action, backtrace }.into());
+            }
+        },
+    }
+}
+
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
     // these four effects must be first and in this order!
     // log_effects(store, action);
+    dispatch_recursion_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
