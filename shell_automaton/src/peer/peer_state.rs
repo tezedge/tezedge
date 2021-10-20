@@ -9,7 +9,7 @@ use crate::Port;
 
 use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnecting;
-use super::handshaking::PeerHandshaking;
+use super::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use super::message::read::PeerMessageReadState;
 use super::message::write::PeerMessageWriteState;
 use super::{PeerCrypto, PeerToken};
@@ -88,6 +88,72 @@ impl Peer {
             PeerStatus::Handshaking(state) => Some(state.token),
             PeerStatus::Handshaked(state) => Some(state.token),
             PeerStatus::Disconnecting(state) => Some(state.token),
+            PeerStatus::Disconnected => None,
+        }
+    }
+
+    pub fn public_key(&self) -> Option<&[u8]> {
+        match &self.status {
+            PeerStatus::Potential => None,
+            PeerStatus::Connecting(_) => None,
+            PeerStatus::Handshaking(state) => match &state.status {
+                PeerHandshakingStatus::Init { .. }
+                | PeerHandshakingStatus::ConnectionMessageInit { .. }
+                | PeerHandshakingStatus::ConnectionMessageEncoded { .. }
+                | PeerHandshakingStatus::ConnectionMessageWritePending { .. }
+                | PeerHandshakingStatus::ConnectionMessageReadPending { .. } => None,
+
+                PeerHandshakingStatus::ConnectionMessageReady {
+                    remote_message: remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::EncryptionReady {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::MetadataMessageInit {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::MetadataMessageEncoded {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::MetadataMessageWritePending {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::MetadataMessageReadPending {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::MetadataMessageReady {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::AckMessageInit {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::AckMessageEncoded {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::AckMessageWritePending {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::AckMessageReadPending {
+                    remote_connection_message,
+                    ..
+                }
+                | PeerHandshakingStatus::AckMessageReady {
+                    remote_connection_message,
+                    ..
+                } => Some(remote_connection_message.public_key()),
+            },
+            PeerStatus::Handshaked(state) => Some(state.public_key.as_ref().as_ref()),
+            PeerStatus::Disconnecting(_) => None,
             PeerStatus::Disconnected => None,
         }
     }
