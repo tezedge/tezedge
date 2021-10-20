@@ -647,7 +647,9 @@ pub fn peer_handshaking_effects<S>(
         }
 
         Action::PeerHandshakingFinish(action) => {
-            let peer_handshaked = match store.state.get().peers.get(&action.address) {
+            let state = store.state.get();
+
+            let peer_handshaked = match state.peers.get(&action.address) {
                 Some(peer) => match &peer.status {
                     PeerStatus::Handshaked(v) => v,
                     _ => {
@@ -673,13 +675,15 @@ pub fn peer_handshaking_effects<S>(
                 Arc::new(peer_handshaked.version.clone()),
             ));
 
-            store.dispatch(
-                PeerMessageWriteInitAction {
-                    address: action.address,
-                    message: Arc::new(PeerMessage::Bootstrap.into()),
-                }
-                .into(),
-            );
+            if state.peers.potential_len() < state.config.peers_potential_max {
+                store.dispatch(
+                    PeerMessageWriteInitAction {
+                        address: action.address,
+                        message: Arc::new(PeerMessage::Bootstrap.into()),
+                    }
+                    .into(),
+                );
+            }
 
             store.dispatch(
                 PeerMessageReadInitAction {
