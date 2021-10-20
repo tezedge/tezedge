@@ -30,6 +30,18 @@ pub fn peer_connection_incoming_accept_reducer(state: &mut State, action: &Actio
                 error: action.error.clone(),
             };
         }
+        Action::PeerConnectionIncomingRejected(action) => {
+            match &state.peer_connection_incoming_accept {
+                PeerConnectionIncomingAcceptState::Idle { .. } => {}
+                _ => return,
+            }
+            state.peer_connection_incoming_accept = PeerConnectionIncomingAcceptState::Rejected {
+                time: action_time,
+                token: action.token,
+                address: action.address,
+                reason: action.reason,
+            };
+        }
         _ => {}
     }
 }

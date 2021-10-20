@@ -69,4 +69,9 @@ impl PeersState {
             .filter(|(_, peer)| matches!(&peer.status, PeerStatus::Potential))
             .map(|(addr, _)| *addr)
     }
+
+    /// Number of peers that we have established tcp connection with.
+    pub fn connected_len(&self) -> usize {
+        self.iter().filter(|(_, peer)| peer.is_connected()).count()
+    }
 }

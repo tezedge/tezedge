@@ -24,13 +24,7 @@ pub fn peer_connection_outgoing_effects<S>(
             let state = store.state.get();
             let potential_peers = state.peers.potential_iter().collect::<Vec<_>>();
 
-            if state
-                .peers
-                .len()
-                .checked_sub(potential_peers.len())
-                .unwrap_or(0)
-                >= state.config.peers_connected_max
-            {
+            if state.peers.connected_len() >= state.config.peers_connected_max {
                 return;
             }
 

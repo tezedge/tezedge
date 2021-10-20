@@ -7,7 +7,8 @@ use crate::{action::Action, State};
 
 use super::{
     PeerConnectionIncomingAcceptAction, PeerConnectionIncomingAcceptErrorAction,
-    PeerConnectionIncomingAcceptSuccessAction,
+    PeerConnectionIncomingAcceptSuccessAction, PeerConnectionIncomingRejectedAction,
+    PeerConnectionIncomingRejectedReason,
 };
 
 pub fn peer_connection_incoming_accept_effects<S>(
@@ -21,10 +22,21 @@ pub fn peer_connection_incoming_accept_effects<S>(
             store.dispatch(PeerConnectionIncomingAcceptAction {}.into());
         }
         Action::PeerConnectionIncomingAccept(_) => {
+            let state = store.state.get();
+
             // TODO: check peer thresholds.
             match store.service.mio().peer_connection_incoming_accept() {
                 Ok((peer_token, peer)) => {
                     let peer_address = peer.address;
+
+                    if state.peers.connected_len() >= state.config.peers_connected_max {
+                        return store.dispatch(PeerConnectionIncomingRejectedAction {
+                            token: peer_token,
+                            address: peer_address,
+                            reason:
+                                PeerConnectionIncomingRejectedReason::PeersConnectedMaxBoundReached,
+                        }.into());
+                    }
                     store.dispatch(
                         PeerConnectionIncomingAcceptSuccessAction {
                             token: peer_token,
@@ -43,6 +55,9 @@ pub fn peer_connection_incoming_accept_effects<S>(
                 // if more progress can be made, accept next incoming connection.
                 store.dispatch(PeerConnectionIncomingAcceptAction {}.into());
             }
+        }
+        Action::PeerConnectionIncomingRejected(action) => {
+            store.service.mio().peer_disconnect(action.token);
         }
         Action::PeerConnectionIncomingAcceptSuccess(action) => {
             store.dispatch(

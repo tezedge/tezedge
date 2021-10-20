@@ -83,6 +83,7 @@ pub enum Action {
 
     PeerConnectionIncomingAccept(PeerConnectionIncomingAcceptAction),
     PeerConnectionIncomingAcceptError(PeerConnectionIncomingAcceptErrorAction),
+    PeerConnectionIncomingRejected(PeerConnectionIncomingRejectedAction),
     PeerConnectionIncomingAcceptSuccess(PeerConnectionIncomingAcceptSuccessAction),
 
     PeerConnectionIncomingError(PeerConnectionIncomingErrorAction),
