@@ -13,13 +13,13 @@ use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 pub struct ShellCompatibilityVersion {
     /// All supported distributed_db_versions
-    distributed_db_versions: Vec<u16>,
+    pub distributed_db_versions: Vec<u16>,
 
     /// All supported p2p_versions
-    p2p_versions: Vec<u16>,
+    pub p2p_versions: Vec<u16>,
 
     /// version of network protocol, which we send to other peers
-    version: NetworkVersion,
+    pub version: NetworkVersion,
 }
 
 impl ShellCompatibilityVersion {

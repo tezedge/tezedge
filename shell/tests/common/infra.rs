@@ -19,15 +19,14 @@ use tokio::runtime::Runtime;
 use common::contains_all_keys;
 use crypto::hash::{BlockHash, OperationHash};
 use networking::network_channel::{NetworkChannel, NetworkChannelRef};
-use networking::ShellCompatibilityVersion;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::mempool::{
     init_mempool_state_storage, CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory,
 };
-use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-use shell::PeerConnectionThreshold;
+use shell::ShellCompatibilityVersion;
+use shell::shell_automaton_manager::{P2p, ShellAutomatonManager};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
@@ -47,7 +46,6 @@ use crate::common;
 pub struct NodeInfrastructure {
     name: String,
     pub log: Logger,
-    pub peer_manager: Option<PeerManagerRef>,
     pub block_applier: ChainFeederRef,
     pub chain_manager: ChainManagerRef,
     pub shell_channel: ShellChannelRef,
@@ -66,7 +64,7 @@ impl NodeInfrastructure {
         name: &str,
         tezos_env: &TezosEnvironmentConfiguration,
         patch_context: Option<PatchContext>,
-        p2p: Option<(P2p, ShellCompatibilityVersion)>,
+        (p2p_config, shell_compatibility_version): (P2p, ShellCompatibilityVersion),
         identity: Identity,
         pow_target: f64,
         (log, log_level): (Logger, Level),
@@ -76,10 +74,8 @@ impl NodeInfrastructure {
 
         // environement
         let is_sandbox = false;
-        let (p2p_threshold, p2p_disable_mempool) = match p2p.as_ref() {
-            Some((p2p, _)) => (p2p.peer_threshold, p2p.disable_mempool),
-            None => (PeerConnectionThreshold::try_new(1, 1, Some(0))?, false),
-        };
+        let p2p_threshold = p2p_config.peer_threshold;
+        let p2p_disable_mempool = p2p_config.disable_mempool;
         let identity = Arc::new(identity);
 
         // storage
@@ -191,6 +187,18 @@ impl NodeInfrastructure {
             p2p_disable_mempool,
         ));
 
+        // initialize tezedge state
+        let (mut shell_automaton_manager, _) = ShellAutomatonManager::new(
+            persistent_storage.clone(),
+            network_channel.clone(),
+            log.clone(),
+            identity.clone(),
+            Arc::new(shell_compatibility_version),
+            p2p_config,
+            pow_target,
+            init_storage_data.chain_id.clone(),
+        );
+
         let (initialize_context_result_callback, initialize_context_result_callback_receiver) = {
             let (result_callback_sender, result_callback_receiver) =
                 std::sync::mpsc::sync_channel(1);
@@ -231,6 +239,7 @@ impl NodeInfrastructure {
             &actor_system,
             block_applier.clone(),
             network_channel.clone(),
+            shell_automaton_manager.shell_automaton_sender(),
             shell_channel.clone(),
             persistent_storage.clone(),
             tezos_readonly_api_pool,
@@ -244,28 +253,11 @@ impl NodeInfrastructure {
         )
         .expect("Failed to create chain manager");
 
-        // and than open p2p and others - if configured
-        let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
-            let peer_manager = PeerManager::actor(
-                actor_system.as_ref(),
-                network_channel.clone(),
-                shell_channel.clone(),
-                tokio_runtime.handle().clone(),
-                identity,
-                Arc::new(shell_compatibility_version),
-                p2p_config,
-                pow_target,
-            )
-            .expect("Failed to create peer manager");
-            Some(peer_manager)
-        } else {
-            None
-        };
+        shell_automaton_manager.start();
 
         Ok(NodeInfrastructure {
             name: String::from(name),
             log,
-            peer_manager,
             chain_manager,
             block_applier,
             shell_channel,
@@ -409,11 +401,11 @@ impl NodeInfrastructure {
         Ok(())
     }
 
-    pub fn whitelist_all(&self) {
-        if let Some(peer_manager) = &self.peer_manager {
-            peer_manager.tell(WhitelistAllIpAddresses, None);
-        }
-    }
+    // pub fn whitelist_all(&self) {
+    //     if let Some(peer_manager) = &self.peer_manager {
+    //         peer_manager.tell(WhitelistAllIpAddresses, None);
+    //     }
+    // }
 }
 
 impl Drop for NodeInfrastructure {
@@ -531,12 +523,12 @@ pub mod test_actor {
                         PeerConnectionStatus::Connected,
                     );
                 }
-                NetworkChannelMsg::BlacklistPeer(..) => {}
-                NetworkChannelMsg::PeerBlacklisted(peer_id) => {
-                    self.peers_mirror.write().unwrap().insert(
-                        peer_id.public_key_hash.clone(),
-                        PeerConnectionStatus::Blacklisted,
-                    );
+                NetworkChannelMsg::PeerBlacklisted(_peer_id) => {
+                    // TODO: fix
+                    // self.peers_mirror.write().unwrap().insert(
+                    //     peer_id.public_key_hash.clone(),
+                    //     PeerConnectionStatus::Blacklisted,
+                    // );
                 }
                 _ => (),
             }
@@ -573,7 +565,7 @@ pub mod test_actor {
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), anyhow::Error> {
-            let start = SystemTime::now();
+            let start = Instant::now();
             let public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {

@@ -19,12 +19,12 @@ use tokio::runtime::{Handle, Runtime};
 use tokio::time::timeout;
 
 use crypto::hash::OperationHash;
-use networking::p2p::peer;
-use networking::p2p::peer::{Bootstrap, BootstrapOutput};
-use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
-use networking::{LocalPeerInfo, ShellCompatibilityVersion};
+use shell::ShellCompatibilityVersion;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
+
+use crate::common::test_networking;
+use crate::common::test_networking::{Bootstrap, BootstrapOutput, EncryptedMessageReader, EncryptedMessageWriter, LocalPeerInfo};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -111,7 +111,7 @@ impl TestNodePeer {
                                     false,
                                 );
 
-                                match peer::bootstrap(bootstrap, local, &log).await {
+                                match test_networking::bootstrap(bootstrap, local, &log).await {
                                     Ok(BootstrapOutput(rx, txw, ..)) => {
                                         info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
@@ -187,7 +187,7 @@ impl TestNodePeer {
                             false,
                         );
 
-                        match peer::bootstrap(bootstrap, local, &log).await {
+                        match test_networking::bootstrap(bootstrap, local, &log).await {
                             Ok(BootstrapOutput(..)) => {
                                 info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
@@ -234,7 +234,9 @@ impl TestNodePeer {
         while connected.load(Ordering::Acquire) {
             match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
                 Ok(res) => match res {
-                    Ok((msg, _)) => {
+                    Ok(msg) => {
+                    // TODO: after rebase
+                    // Ok((msg, _)) => {
                         let msg_type = msg_type(&msg);
                         trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
