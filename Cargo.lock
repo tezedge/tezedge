@@ -3096,6 +3096,7 @@ dependencies = [
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
+ "thiserror",
  "tokio",
 ]
 

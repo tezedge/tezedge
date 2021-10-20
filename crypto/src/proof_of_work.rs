@@ -16,7 +16,7 @@ use super::{
 
 pub const POW_SIZE: usize = NONCE_SIZE;
 
-#[derive(Debug, Error)]
+#[derive(Serialize, Deserialize, Error, Debug, Clone)]
 pub enum PowError {
     #[error("Proof-of-work check failed")]
     CheckFailed,
