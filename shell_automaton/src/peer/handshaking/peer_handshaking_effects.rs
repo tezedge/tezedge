@@ -212,6 +212,19 @@ pub fn peer_handshaking_effects<S>(
                             }
                         };
 
+                        // check if we are connecting to ourself.
+                        if state.config.identity.public_key.as_ref().as_ref()
+                            == connection_message.public_key()
+                        {
+                            return store.dispatch(
+                                PeerHandshakingErrorAction {
+                                    address: action.address,
+                                    error: PeerHandshakingError::ConnectingToSelf,
+                                }
+                                .into(),
+                            );
+                        }
+
                         match BinaryChunk::from_content(&remote_chunk) {
                             Ok(remote_chunk) => store.dispatch(
                                 PeerHandshakingConnectionMessageDecodeAction {
