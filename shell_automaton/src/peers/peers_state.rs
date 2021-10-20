@@ -70,6 +70,11 @@ impl PeersState {
             .map(|(addr, _)| *addr)
     }
 
+    /// Number of potential peers.
+    pub fn potential_len(&self) -> usize {
+        self.potential_iter().count()
+    }
+
     /// Number of peers that we have established tcp connection with.
     pub fn connected_len(&self) -> usize {
         self.iter().filter(|(_, peer)| peer.is_connected()).count()

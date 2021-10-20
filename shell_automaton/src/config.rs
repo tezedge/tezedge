@@ -57,6 +57,10 @@ pub struct Config {
     /// done within this time limitation, we will disconnect and blacklist the peer.
     pub peer_handshaking_timeout: Duration,
 
+    /// Maximum number of potential peers.
+    pub peers_potential_max: usize,
+
+    /// Maximum number of connected peers on socket layer.
     pub peers_connected_max: usize,
 
     /// Record/Persist actions.
@@ -99,6 +103,7 @@ pub fn default_config() -> Config {
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
+        peers_potential_max: 80,
         peers_connected_max: 40,
 
         record_actions: false,
@@ -132,6 +137,7 @@ pub fn test_config() -> Config {
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
+        peers_potential_max: 80,
         peers_connected_max: 40,
 
         record_actions: false,
