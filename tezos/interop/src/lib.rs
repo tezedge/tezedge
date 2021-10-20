@@ -85,6 +85,7 @@ fn setup() -> OCamlRuntime {
     let ocaml_runtime = OCamlRuntime::init();
 
     INIT.call_once(|| {
+        force_libtezos_linking();
         tezos_context::ffi::initialize_callbacks();
         ipc_message_encoding::initialize_callbacks();
     });
