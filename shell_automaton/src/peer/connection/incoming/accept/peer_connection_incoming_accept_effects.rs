@@ -24,7 +24,6 @@ pub fn peer_connection_incoming_accept_effects<S>(
         Action::PeerConnectionIncomingAccept(_) => {
             let state = store.state.get();
 
-            // TODO: check peer thresholds.
             match store.service.mio().peer_connection_incoming_accept() {
                 Ok((peer_token, peer)) => {
                     let peer_address = peer.address;

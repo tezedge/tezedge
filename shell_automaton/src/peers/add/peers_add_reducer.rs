@@ -11,7 +11,6 @@ use super::PeersAddIncomingPeerAction;
 pub fn peers_add_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
         Action::PeersAddIncomingPeer(PeersAddIncomingPeerAction { address, token }) => {
-            // TODO: check peers thresholds.
             state.peers.entry(*address).or_insert_with(|| Peer {
                 status: PeerStatus::Connecting(
                     PeerConnectionIncomingState::Pending {
