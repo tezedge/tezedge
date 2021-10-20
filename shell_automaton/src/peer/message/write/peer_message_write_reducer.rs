@@ -12,18 +12,23 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithId<Actio
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
                     PeerStatus::Handshaked(PeerHandshaked { message_write, .. }) => {
-                        if let PeerBinaryMessageWriteState::Init { .. } = &message_write.current {
-                            return;
-                        }
+                        // check the current message against the head of the queue
+                        // to see if the current one is the the next queued one
                         if let Some(front_msg) = message_write.queue.front() {
                             // pop message from the queue, if that's the
                             // message that we are initiating write for.
                             if Arc::ptr_eq(front_msg, &action.message) {
                                 message_write.queue.pop_front();
-                                return;
                             }
                         }
-                        message_write.queue.push_back(action.message.clone());
+
+
+                        if let PeerBinaryMessageWriteState::Init { .. } = &message_write.current {
+                            // if binary message writing is idle, immediately start writing the message
+                        } else {
+                            // otherwise queue it for later reading
+                            message_write.queue.push_back(action.message.clone());
+                        }
                     }
                     _ => {}
                 }
