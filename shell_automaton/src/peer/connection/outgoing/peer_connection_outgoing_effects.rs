@@ -21,22 +21,20 @@ pub fn peer_connection_outgoing_effects<S>(
 {
     match &action.action {
         Action::PeerConnectionOutgoingRandomInit(_) => {
-            let addresses = store.state.get().peers.potential_iter().collect::<Vec<_>>();
+            let state = store.state.get();
+            let potential_peers = state.peers.potential_iter().collect::<Vec<_>>();
 
-            // TMP hardcoded threshold
-            if store
-                .state
-                .get()
+            if state
                 .peers
                 .len()
-                .checked_sub(addresses.len())
+                .checked_sub(potential_peers.len())
                 .unwrap_or(0)
-                > 40
+                >= state.config.peers_connected_max
             {
                 return;
             }
 
-            if let Some(address) = store.service.randomness().choose_peer(&addresses) {
+            if let Some(address) = store.service.randomness().choose_peer(&potential_peers) {
                 store.dispatch(PeerConnectionOutgoingInitAction { address }.into());
             }
         }
