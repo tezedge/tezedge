@@ -37,6 +37,7 @@ tezos_context = { path = "../tezos/context" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
+bytes = "1"
 r2d2 = "0.8.9"
 serial_test = "0.5"
 slog-async = "2.6"
