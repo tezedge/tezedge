@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use redux_rs::ActionWithId;
-use tezos_messages::p2p::encoding::ack::AckMessage;
+use tezos_messages::p2p::encoding::ack::{AckMessage, NackMotive};
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
@@ -147,6 +147,20 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
         }
 
         Action::PeerHandshakingEncryptionInit(action) => {
+            let already_connected = match state.peers.get(&action.address) {
+                Some(peer) => {
+                    let token = peer.token();
+                    let pub_key = peer.public_key();
+
+                    state
+                        .peers
+                        .iter()
+                        .filter(|(_, peer)| peer.token().ne(&token))
+                        .any(|(_, peer)| peer.public_key().eq(&pub_key))
+                }
+                None => return,
+            };
+
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
@@ -157,6 +171,10 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                         PeerHandshakingStatus::ConnectionMessageReady {
                             remote_message, ..
                         } => {
+                            if already_connected {
+                                *nack_motive = Some(NackMotive::AlreadyConnected);
+                            }
+
                             let compatible_version = match state
                                 .config
                                 .shell_compatibility_version
