@@ -81,6 +81,11 @@ impl PeerQuota {
 }
 
 impl Peer {
+    /// Whether or not peer is connected on socket level.
+    pub fn is_connected(&self) -> bool {
+        self.token().is_some()
+    }
+
     pub fn token(&self) -> Option<PeerToken> {
         match &self.status {
             PeerStatus::Potential => None,
