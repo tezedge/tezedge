@@ -51,6 +51,7 @@ pub fn dispatch_recursion_reducer(state: &mut State, action: &ActionWithId<Actio
             }
             DispatchBacktrace::Ok { backtrace } => {
                 state.dispatch_actions_backtrace = DispatchBacktrace::Overflow {
+                    peer_address: action.action.get_peer_address().cloned(),
                     backtrace: backtrace.clone(),
                     action: action.into(),
                 };

@@ -36,6 +36,7 @@ pub fn peer_disconnection_reducer(state: &mut State, action: &ActionWithId<Actio
                     PeerStatus::Handshaked(_) => PeerStatus::Disconnected,
                     PeerStatus::Disconnecting(_) => PeerStatus::Disconnected,
                     PeerStatus::Disconnected => return,
+                    PeerStatus::Error(_) => return,
                 };
             }
         }

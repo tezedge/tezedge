@@ -12,7 +12,7 @@ use super::disconnection::PeerDisconnecting;
 use super::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use super::message::read::PeerMessageReadState;
 use super::message::write::PeerMessageWriteState;
-use super::{PeerCrypto, PeerToken};
+use super::{PeerCrypto, PeerError, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshaked {
@@ -40,6 +40,8 @@ pub enum PeerStatus {
 
     Disconnecting(PeerDisconnecting),
     Disconnected,
+
+    Error(PeerError),
 }
 
 impl PeerStatus {
@@ -158,6 +160,7 @@ impl Peer {
             PeerStatus::Handshaked(state) => Some(state.token),
             PeerStatus::Disconnecting(state) => Some(state.token),
             PeerStatus::Disconnected => None,
+            PeerStatus::Error(_) => None,
         }
     }
 
@@ -224,6 +227,7 @@ impl Peer {
             PeerStatus::Handshaked(state) => Some(state.public_key.as_ref().as_ref()),
             PeerStatus::Disconnecting(_) => None,
             PeerStatus::Disconnected => None,
+            PeerStatus::Error(_) => None,
         }
     }
 }

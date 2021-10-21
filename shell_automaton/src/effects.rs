@@ -4,7 +4,7 @@ use crate::action::DispatchRecursionLimitExceededAction;
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
-use crate::state::DispatchBacktrace;
+use crate::state::{DispatchBacktrace, PeerDispatchRecursionLimitExceededError};
 use crate::{Action, ActionId, State};
 
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
@@ -19,7 +19,7 @@ use crate::peer::disconnection::peer_disconnection_effects;
 use crate::peer::handshaking::peer_handshaking_effects;
 use crate::peer::message::read::peer_message_read_effects;
 use crate::peer::message::write::peer_message_write_effects;
-use crate::peer::peer_effects;
+use crate::peer::{peer_effects, PeerErrorAction};
 
 use crate::peers::add::multi::peers_add_multi_effects;
 use crate::peers::check::timeouts::peers_check_timeouts_effects;
@@ -86,6 +86,24 @@ fn dispatch_recursion_effects<S: Service>(
     match &action.action {
         Action::DispatchRecursionReset => (),
         Action::DispatchRecursionLimitExceeded(DispatchRecursionLimitExceededAction {
+            peer_address: Some(address),
+            action,
+            backtrace,
+        }) => {
+            store.dispatch(
+                PeerErrorAction {
+                    address: *address,
+                    error: PeerDispatchRecursionLimitExceededError {
+                        action: action.clone(),
+                        backtrace: backtrace.clone(),
+                    }
+                    .into(),
+                }
+                .into(),
+            );
+        }
+        Action::DispatchRecursionLimitExceeded(DispatchRecursionLimitExceededAction {
+            peer_address: None,
             action,
             backtrace,
         }) => {
@@ -98,10 +116,22 @@ fn dispatch_recursion_effects<S: Service>(
         }
         _ => match &store.state.get().dispatch_actions_backtrace {
             DispatchBacktrace::Ok { .. } => (),
-            DispatchBacktrace::Overflow { action, backtrace } => {
+            DispatchBacktrace::Overflow {
+                peer_address,
+                action,
+                backtrace,
+            } => {
+                let peer_address = *peer_address;
                 let action = action.clone();
                 let backtrace = backtrace.clone();
-                store.dispatch(DispatchRecursionLimitExceededAction { action, backtrace }.into());
+                store.dispatch(
+                    DispatchRecursionLimitExceededAction {
+                        peer_address,
+                        action,
+                        backtrace,
+                    }
+                    .into(),
+                );
             }
         },
     }

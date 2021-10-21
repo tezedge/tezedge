@@ -1,10 +1,14 @@
 use redux_rs::ActionWithId;
 
-use crate::{event::P2pPeerEvent, Action, State};
+use crate::{
+    event::P2pPeerEvent,
+    peer::{Peer, PeerStatus},
+    Action, State,
+};
 
 use super::{
-    PeerReadState, PeerReadWouldBlockAction, PeerTryReadAction, PeerTryWriteAction, PeerWriteState,
-    PeerWriteWouldBlockAction,
+    PeerErrorAction, PeerReadState, PeerReadWouldBlockAction, PeerTryReadAction,
+    PeerTryWriteAction, PeerWriteState, PeerWriteWouldBlockAction,
 };
 
 pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
@@ -115,6 +119,18 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
                         timestamp,
                     };
                 }
+            }
+        }
+        Action::PeerError(PeerErrorAction { address, error }) => {
+            match state.peers.get_mut(address) {
+                Some(Peer {
+                    status: PeerStatus::Error(_),
+                    ..
+                }) => (),
+                Some(Peer { status, .. }) => {
+                    *status = PeerStatus::Error(error.clone());
+                }
+                _ => (),
             }
         }
         _ => (),

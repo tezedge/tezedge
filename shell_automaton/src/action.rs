@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use derive_more::From;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
@@ -12,7 +14,8 @@ use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
 use crate::peer::message::write::*;
 use crate::peer::{
-    PeerReadWouldBlockAction, PeerTryReadAction, PeerTryWriteAction, PeerWriteWouldBlockAction,
+    PeerErrorAction, PeerReadWouldBlockAction, PeerTryReadAction, PeerTryWriteAction,
+    PeerWriteWouldBlockAction,
 };
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
@@ -173,6 +176,8 @@ pub enum Action {
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
 
+    PeerError(PeerErrorAction),
+
     StorageBlockHeadersPut(StorageBlockHeadersPutAction),
     StorageBlockHeaderPutNextInit(StorageBlockHeaderPutNextInitAction),
     StorageBlockHeaderPutNextPending(StorageBlockHeaderPutNextPendingAction),
@@ -196,6 +201,170 @@ impl Action {
     #[inline(always)]
     pub fn kind(&self) -> ActionKind {
         ActionKind::from(self)
+    }
+
+    pub fn get_peer_address(&self) -> Option<&SocketAddr> {
+        match self {
+            Action::PeersAddIncomingPeer(PeersAddIncomingPeerAction { address, .. })
+            | Action::PeersRemove(PeersRemoveAction { address, .. })
+            | Action::PeerConnectionIncomingRejected(PeerConnectionIncomingRejectedAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionIncomingAcceptSuccess(
+                PeerConnectionIncomingAcceptSuccessAction { address, .. },
+            )
+            | Action::PeerConnectionIncomingError(PeerConnectionIncomingErrorAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionIncomingSuccess(PeerConnectionIncomingSuccessAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionOutgoingInit(PeerConnectionOutgoingInitAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionOutgoingPending(PeerConnectionOutgoingPendingAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionOutgoingError(PeerConnectionOutgoingErrorAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionOutgoingSuccess(PeerConnectionOutgoingSuccessAction {
+                address,
+                ..
+            })
+            | Action::PeerConnectionClosed(PeerConnectionClosedAction { address, .. })
+            | Action::PeerDisconnect(PeerDisconnectAction { address, .. })
+            | Action::PeerDisconnected(PeerDisconnectedAction { address, .. })
+            | Action::P2pPeerEvent(P2pPeerEvent { address, .. })
+            | Action::PeerTryWrite(PeerTryWriteAction { address, .. })
+            | Action::PeerTryRead(PeerTryReadAction { address, .. })
+            | Action::PeerReadWouldBlock(PeerReadWouldBlockAction { address, .. })
+            | Action::PeerWriteWouldBlock(PeerWriteWouldBlockAction { address, .. })
+            | Action::PeerChunkReadInit(PeerChunkReadInitAction { address, .. })
+            | Action::PeerChunkReadPart(PeerChunkReadPartAction { address, .. })
+            | Action::PeerChunkReadDecrypt(PeerChunkReadDecryptAction { address, .. })
+            | Action::PeerChunkReadReady(PeerChunkReadReadyAction { address, .. })
+            | Action::PeerChunkReadError(PeerChunkReadErrorAction { address, .. })
+            | Action::PeerChunkWriteSetContent(PeerChunkWriteSetContentAction {
+                address, ..
+            })
+            | Action::PeerChunkWriteEncryptContent(PeerChunkWriteEncryptContentAction {
+                address,
+                ..
+            })
+            | Action::PeerChunkWriteCreateChunk(PeerChunkWriteCreateChunkAction {
+                address, ..
+            })
+            | Action::PeerChunkWritePart(PeerChunkWritePartAction { address, .. })
+            | Action::PeerChunkWriteReady(PeerChunkWriteReadyAction { address, .. })
+            | Action::PeerChunkWriteError(PeerChunkWriteErrorAction { address, .. })
+            | Action::PeerBinaryMessageReadInit(PeerBinaryMessageReadInitAction {
+                address, ..
+            })
+            | Action::PeerBinaryMessageReadChunkReady(PeerBinaryMessageReadChunkReadyAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageReadSizeReady(PeerBinaryMessageReadSizeReadyAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageReadReady(PeerBinaryMessageReadReadyAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageReadError(PeerBinaryMessageReadErrorAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageWriteSetContent(PeerBinaryMessageWriteSetContentAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageWriteNextChunk(PeerBinaryMessageWriteNextChunkAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageWriteReady(PeerBinaryMessageWriteReadyAction {
+                address,
+                ..
+            })
+            | Action::PeerBinaryMessageWriteError(PeerBinaryMessageWriteErrorAction {
+                address,
+                ..
+            })
+            | Action::PeerMessageReadInit(PeerMessageReadInitAction { address, .. })
+            | Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { address, .. })
+            | Action::PeerMessageWriteNext(PeerMessageWriteNextAction { address, .. })
+            | Action::PeerMessageWriteInit(PeerMessageWriteInitAction { address, .. })
+            | Action::PeerMessageWriteSuccess(PeerMessageWriteSuccessAction { address, .. })
+            | Action::PeerHandshakingInit(PeerHandshakingInitAction { address, .. })
+            | Action::PeerHandshakingConnectionMessageInit(
+                PeerHandshakingConnectionMessageInitAction { address, .. },
+            )
+            | Action::PeerHandshakingConnectionMessageEncode(
+                PeerHandshakingConnectionMessageEncodeAction { address, .. },
+            )
+            | Action::PeerHandshakingConnectionMessageWrite(
+                PeerHandshakingConnectionMessageWriteAction { address, .. },
+            )
+            | Action::PeerHandshakingConnectionMessageRead(
+                PeerHandshakingConnectionMessageReadAction { address, .. },
+            )
+            | Action::PeerHandshakingConnectionMessageDecode(
+                PeerHandshakingConnectionMessageDecodeAction { address, .. },
+            )
+            | Action::PeerHandshakingEncryptionInit(PeerHandshakingEncryptionInitAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingMetadataMessageInit(
+                PeerHandshakingMetadataMessageInitAction { address, .. },
+            )
+            | Action::PeerHandshakingMetadataMessageEncode(
+                PeerHandshakingMetadataMessageEncodeAction { address, .. },
+            )
+            | Action::PeerHandshakingMetadataMessageWrite(
+                PeerHandshakingMetadataMessageWriteAction { address, .. },
+            )
+            | Action::PeerHandshakingMetadataMessageRead(
+                PeerHandshakingMetadataMessageReadAction { address, .. },
+            )
+            | Action::PeerHandshakingMetadataMessageDecode(
+                PeerHandshakingMetadataMessageDecodeAction { address, .. },
+            )
+            | Action::PeerHandshakingAckMessageInit(PeerHandshakingAckMessageInitAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingAckMessageEncode(PeerHandshakingAckMessageEncodeAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingAckMessageWrite(PeerHandshakingAckMessageWriteAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingAckMessageRead(PeerHandshakingAckMessageReadAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingAckMessageDecode(PeerHandshakingAckMessageDecodeAction {
+                address,
+                ..
+            })
+            | Action::PeerHandshakingError(PeerHandshakingErrorAction { address, .. })
+            | Action::PeerHandshakingFinish(PeerHandshakingFinishAction { address, .. }) => {
+                Some(address)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -239,6 +408,7 @@ impl From<ActionWithId<Action>> for ActionKind {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DispatchRecursionLimitExceededAction {
+    pub peer_address: Option<SocketAddr>,
     pub action: ActionIdWithKind,
     pub backtrace: Vec<ActionIdWithKind>,
 }

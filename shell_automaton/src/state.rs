@@ -1,5 +1,6 @@
 use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::BincodeEncoded;
@@ -62,9 +63,16 @@ pub enum DispatchBacktrace {
         backtrace: Vec<ActionIdWithKind>,
     },
     Overflow {
+        peer_address: Option<SocketAddr>,
         action: ActionIdWithKind,
         backtrace: Vec<ActionIdWithKind>,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerDispatchRecursionLimitExceededError {
+    pub action: ActionIdWithKind,
+    pub backtrace: Vec<ActionIdWithKind>,
 }
 
 impl State {

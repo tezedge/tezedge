@@ -40,6 +40,7 @@ fn check_timeout(
         PeerStatus::Handshaked(_) => return None,
         PeerStatus::Disconnecting(_) => return None,
         PeerStatus::Disconnected => return None,
+        PeerStatus::Error(_) => return None,
     })
 }
 
