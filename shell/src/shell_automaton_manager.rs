@@ -201,8 +201,9 @@ impl ShellAutomatonManager {
                 .spawn(move || {
                     shell_automaton.init(bootstrap_addresses);
 
+                    let mut dont_wait = true;
                     loop {
-                        shell_automaton.make_progress();
+                        dont_wait = shell_automaton.make_progress(dont_wait);
                     }
                 })
                 .expect("failed to spawn shell-automaton-thread");

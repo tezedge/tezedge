@@ -101,29 +101,29 @@ where
     Mio: MioService<Events = Events>,
     for<'a> &'a Events: IntoIterator<Item = &'a <Serv::Mio as MioService>::InternalEvent>,
 {
-    pub fn make_progress(&mut self) {
-        let mio_timeout = self.store.state().config.min_time_interval();
+    /// Making progress for the automaton by processing all available MIO events
+    /// and readable and writable peers. Returns `false` if there were none to
+    /// make the next iteration wait for more events.
+    pub fn make_progress(&mut self, dont_wait: bool) -> bool {
+        let mio_timeout = if dont_wait {
+            Duration::ZERO
+        } else {
+            self.store.state().config.min_time_interval()
+        };
 
         self.wait_for_mio_events(Some(mio_timeout));
 
-        let mut no_events = true;
-        loop {
-            // dispatch existing mio events
-            let were_mio_events = self.process_mio_events();
-            // dispatch readable/writable peers
-            let were_active_peers = self.process_active_peers();
-            if were_mio_events || were_active_peers {
-                // fetch more mio events without any timeout
-                self.wait_for_mio_events(None);
-                no_events = false;
-            } else {
-                break;
-            }
-        }
+        // dispatch existing mio events
+        let were_mio_events = self.process_mio_events();
+        // dispatch readable/writable peers
+        let were_active_peers = self.process_active_peers();
 
-        if no_events {
+        if !were_mio_events && !were_active_peers {
             self.store.dispatch(Action::MioTimeoutEvent);
             self.store.dispatch(Action::DispatchRecursionReset);
+            false
+        } else {
+            true
         }
     }
 
