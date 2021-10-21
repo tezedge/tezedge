@@ -8,6 +8,7 @@
 
 use clap::{App, Arg};
 use slog::*;
+use tezos_interop::runtime::OCamlBlockPanic;
 
 extern crate jemallocator;
 
@@ -98,17 +99,16 @@ fn main() {
         }).expect("Error setting Ctrl-C handler");
     }
 
-    // Process commands from from the Rust node. Most commands are instructions for the Tezos protocol
-    //if let Err(err) = ipc_loop::process_protocol_commands::<crate::tezos::NativeTezosLib, _, _>(
-    //    cmd_socket_path,
-    //    &log,
-    //    shutdown_callback,
-    //) {
-    //    error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
-    //    shutdown_callback(&log);
-    //}
-    // TODO: error handling
-    tezos_interop::start_ipc_loop(cmd_socket_path.into());
+    match tezos_interop::start_ipc_loop(cmd_socket_path.into()) {
+        Err(OCamlBlockPanic) => warn!(log, "Protocol runner loop exited with a panic"),
+        Ok(Err(trace)) => warn!(log, "Protocol runner loop exited with error: {:?}", trace),
+        Ok(Ok(code)) => info!(
+            log,
+            "Protocol runner exited with internal exit code = {}", code
+        ),
+    }
+
+    shutdown_callback(&log);
 
     info!(log, "Protocol runner finished gracefully");
 }

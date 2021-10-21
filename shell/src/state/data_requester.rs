@@ -806,6 +806,7 @@ mod tests {
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
         let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system, "mocked_chain_feeder")?;
         let tezos_protocol_api = create_tezos_protocol_runner(&tokio_runtime, log.clone());
+        let _tezos_protocol_api_shutdown = tezos_protocol_api.shutdown_on_drop();
         let chain_manager_mock = Arc::new(chain_manager_mock(
             actor_system,
             log,

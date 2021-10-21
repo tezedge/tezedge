@@ -21,6 +21,7 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
+    sync::RwLock,
     time::Instant,
 };
 
@@ -87,7 +88,6 @@ impl ProtocolRunnerConfiguration {
 
 // TODO: differentiate between writable and readonly?
 pub struct ProtocolRunnerInstance {
-    // TODO: child handle here?
     configuration: ProtocolRunnerConfiguration,
     socket_path: PathBuf,
     endpoint_name: String,
@@ -98,39 +98,7 @@ pub struct ProtocolRunnerInstance {
 
 impl Drop for ProtocolRunnerInstance {
     fn drop(&mut self) {
-        let mut child_process_handle =
-            if let Some(child) = std::mem::take(&mut self.child_process_handle) {
-                child
-            } else {
-                return;
-            };
-
-        info!(
-            self.log,
-            "Shutting down protocol runner: {}", self.endpoint_name
-        );
-        if let Err(err) = tokio::task::block_in_place(|| {
-            let tokio_runtime = self.tokio_runtime.clone();
-            tokio_runtime.block_on(async {
-                if let Ok(mut conn) = self.writable_connection().await {
-                    if let Err(err) = conn.shutdown().await {
-                        warn!(
-                            self.log,
-                            "Failed to send shutdown message to protocol runner: {}", err
-                        );
-                    }
-                }
-                Self::wait_and_terminate_ref(
-                    &mut child_process_handle,
-                    Duration::from_secs(3),
-                    &self.log,
-                )
-                .await
-            })
-        }) {
-            warn!(self.log, "Failed to stop protocol runner: {}", err);
-        }
-        Self::log_exit_status(&mut child_process_handle, &self.log);
+        self.shutdown()
     }
 }
 
@@ -288,6 +256,42 @@ impl ProtocolRunnerInstance {
         }
     }
 
+    pub fn shutdown(&mut self) {
+        let mut child_process_handle =
+            if let Some(child) = std::mem::take(&mut self.child_process_handle) {
+                child
+            } else {
+                return;
+            };
+
+        info!(
+            self.log,
+            "Shutting down protocol runner: {}", self.endpoint_name
+        );
+        if let Err(err) = tokio::task::block_in_place(|| {
+            let tokio_runtime = self.tokio_runtime.clone();
+            tokio_runtime.block_on(async {
+                if let Ok(mut conn) = self.writable_connection().await {
+                    if let Err(err) = conn.shutdown().await {
+                        warn!(
+                            self.log,
+                            "Failed to send shutdown message to protocol runner: {}", err
+                        );
+                    }
+                }
+                Self::wait_and_terminate_ref(
+                    &mut child_process_handle,
+                    Duration::from_secs(3),
+                    &self.log,
+                )
+                .await
+            })
+        }) {
+            warn!(self.log, "Failed to stop protocol runner: {}", err);
+        }
+        Self::log_exit_status(&mut child_process_handle, &self.log);
+    }
+
     async fn terminate_or_kill(
         process: &mut Child,
         reason: String,
@@ -382,50 +386,48 @@ impl IpcIO {
 }
 
 pub struct ProtocolRunnerApi {
-    writable_instance: Arc<ProtocolRunnerInstance>,
-    log: Logger,
-    shutdown_done: bool,
+    pub(crate) writable_instance: RwLock<ProtocolRunnerInstance>,
+    pub(crate) tokio_runtime: tokio::runtime::Handle,
 }
 
-impl Drop for ProtocolRunnerApi {
+pub struct ProtocolRunnerApiShutdownGuard {
+    api: Arc<ProtocolRunnerApi>,
+}
+
+impl Drop for ProtocolRunnerApiShutdownGuard {
     fn drop(&mut self) {
-        self.shutdown()
+        tokio::task::block_in_place(|| self.api.tokio_runtime.block_on(self.api.shutdown()))
     }
 }
 
 impl ProtocolRunnerApi {
-    pub fn new(writable_instance: ProtocolRunnerInstance, log: Logger) -> Self {
+    pub fn new(
+        writable_instance: ProtocolRunnerInstance,
+        tokio_runtime: &tokio::runtime::Handle,
+    ) -> Self {
         Self {
-            writable_instance: Arc::new(writable_instance),
-            log,
-            shutdown_done: false,
+            writable_instance: RwLock::new(writable_instance),
+            tokio_runtime: tokio_runtime.clone(),
         }
     }
 
-    pub fn shutdown(&mut self) {
-        if self.shutdown_done {
-            return;
+    pub async fn shutdown(&self) {
+        self.writable_instance.write().await.shutdown();
+    }
+
+    pub fn shutdown_on_drop(self: &Arc<Self>) -> ProtocolRunnerApiShutdownGuard {
+        ProtocolRunnerApiShutdownGuard {
+            api: Arc::clone(&self),
         }
-        tokio::task::block_in_place(|| {
-            self.writable_instance.tokio_runtime.block_on(async {
-                if let Ok(mut conn) = self.writable_connection().await {
-                    if let Err(err) = conn.shutdown().await {
-                        warn!(
-                            self.log,
-                            "Failed to send shutdown message to protocol runner: {}", err
-                        );
-                    } else {
-                        info!(self.log, "protocol runner shutdown message sent");
-                    }
-                }
-            })
-        });
-        self.shutdown_done = true;
     }
 
     pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
         // TODO: pool connections
-        self.writable_instance.writable_connection().await
+        self.writable_instance
+            .read()
+            .await
+            .writable_connection()
+            .await
     }
 
     pub async fn readable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
@@ -437,6 +439,32 @@ impl ProtocolRunnerApi {
 pub struct ProtocolRunnerConnection {
     configuration: ProtocolRunnerConfiguration,
     io: IpcIO,
+}
+
+macro_rules! handle_request {
+    ($io:expr, $msg:ident $(($($arg:ident),+))?, $resp:ident($result:ident), $error:ident, $timeout:expr $(,)?) => {{
+        $io.send(&ProtocolMessage::$msg $(($($arg),+))?).await?;
+
+        match $io.try_receive($timeout).await? {
+            NodeMessage::$resp($result) => {
+                $result.map_err(|err| ProtocolError::$error { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }};
+
+    ($io:expr, $msg:ident $(($($arg:ident),+))?, $resp:ident $(($result:ident))? => $result_expr:expr, $timeout:expr $(,)?) => {{
+        $io.send(&ProtocolMessage::$msg $(($($arg),+))?).await?;
+
+        match $io.try_receive($timeout).await? {
+            NodeMessage::$resp $(($result))? => $result_expr,
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }};
 }
 
 impl ProtocolRunnerConnection {
@@ -458,18 +486,13 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: ApplyBlockRequest,
     ) -> Result<ApplyBlockResponse, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ApplyBlockCall(request))
-            .await?;
-        // this might take a while, so we will use unusually long timeout
-        match self.io.try_receive(Some(Self::APPLY_BLOCK_TIMEOUT)).await? {
-            NodeMessage::ApplyBlockResult(result) => {
-                result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ApplyBlockCall(request),
+            ApplyBlockResult(result),
+            ApplyBlockError,
+            Some(Self::APPLY_BLOCK_TIMEOUT),
+        )
     }
 
     pub async fn assert_encoding_for_protocol_data(
@@ -477,26 +500,13 @@ impl ProtocolRunnerConnection {
         protocol_hash: ProtocolHash,
         protocol_data: RustBytes,
     ) -> Result<(), ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::AssertEncodingForProtocolDataCall(
-                protocol_hash,
-                protocol_data,
-            ))
-            .await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT))
-            .await?
-        {
-            NodeMessage::AssertEncodingForProtocolDataResult(result) => result.map_err(|err| {
-                ProtocolError::AssertEncodingForProtocolDataError { reason: err }.into()
-            }),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            AssertEncodingForProtocolDataCall(protocol_hash, protocol_data),
+            AssertEncodingForProtocolDataResult(result),
+            AssertEncodingForProtocolDataError,
+            Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT),
+        )
     }
 
     /// Begin application
@@ -504,71 +514,69 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: BeginApplicationRequest,
     ) -> Result<BeginApplicationResponse, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::BeginApplicationCall(request))
-            .await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::BEGIN_APPLICATION_TIMEOUT))
-            .await?
-        {
-            NodeMessage::BeginApplicationResult(result) => {
-                result.map_err(|err| ProtocolError::BeginApplicationError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            BeginApplicationCall(request),
+            BeginApplicationResult(result),
+            BeginApplicationError,
+            Some(Self::BEGIN_APPLICATION_TIMEOUT),
+        )
     }
 
-    /// Begin construction
-    pub async fn begin_construction(
+    /// Begin construction (for prevalidation, doesn't accumulate)
+    pub async fn begin_construction_for_prevalidation(
         &mut self,
         request: BeginConstructionRequest,
     ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::BeginConstructionCall(request))
-            .await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::BEGIN_CONSTRUCTION_TIMEOUT))
-            .await?
-        {
-            NodeMessage::BeginConstructionResult(result) => {
-                result.map_err(|err| ProtocolError::BeginConstructionError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            BeginConstructionForPrevalidationCall(request),
+            BeginConstructionResult(result),
+            BeginConstructionError,
+            Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
+        )
     }
 
-    /// Validate operation
-    pub async fn validate_operation(
+    /// Validate operation (for prevalidation, doesn't accumulate)
+    pub async fn validate_operation_for_prevalidation(
         &mut self,
         request: ValidateOperationRequest,
     ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ValidateOperationCall(request))
-            .await?;
+        handle_request!(
+            self.io,
+            ValidateOperationForPrevalidationCall(request),
+            ValidateOperationResponse(result),
+            ValidateOperationError,
+            Some(Self::VALIDATE_OPERATION_TIMEOUT),
+        )
+    }
 
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::VALIDATE_OPERATION_TIMEOUT))
-            .await?
-        {
-            NodeMessage::ValidateOperationResponse(result) => {
-                result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+    /// Begin construction (for mempool, accumulates)
+    pub async fn begin_construction_for_mempool(
+        &mut self,
+        request: BeginConstructionRequest,
+    ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            BeginConstructionForMempoolCall(request),
+            BeginConstructionResult(result),
+            BeginConstructionError,
+            Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
+        )
+    }
+
+    /// Validate operation (for mempool, accumulates)
+    pub async fn validate_operation_for_mempool(
+        &mut self,
+        request: ValidateOperationRequest,
+    ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            ValidateOperationForMempoolCall(request),
+            ValidateOperationResponse(result),
+            ValidateOperationError,
+            Some(Self::VALIDATE_OPERATION_TIMEOUT),
+        )
     }
 
     /// ComputePath
@@ -576,23 +584,13 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: ComputePathRequest,
     ) -> Result<ComputePathResponse, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ComputePathCall(request))
-            .await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::COMPUTE_PATH_TIMEOUT))
-            .await?
-        {
-            NodeMessage::ComputePathResponse(result) => {
-                result.map_err(|err| ProtocolError::ComputePathError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ComputePathCall(request),
+            ComputePathResponse(result),
+            ComputePathError,
+            Some(Self::COMPUTE_PATH_TIMEOUT),
+        )
     }
 
     pub async fn apply_block_result_metadata(
@@ -603,37 +601,26 @@ impl ProtocolRunnerConnection {
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::JsonEncodeApplyBlockResultMetadata(
-                JsonEncodeApplyBlockResultMetadataParams {
-                    context_hash,
-                    max_operations_ttl,
-                    metadata_bytes,
-                    protocol_hash,
-                    next_protocol_hash,
-                },
-            ))
-            .await?;
+        let params = JsonEncodeApplyBlockResultMetadataParams {
+            context_hash,
+            max_operations_ttl,
+            metadata_bytes,
+            protocol_hash,
+            next_protocol_hash,
+        };
 
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::JSON_ENCODE_DATA_TIMEOUT))
-            .await?
-        {
-            NodeMessage::JsonEncodeApplyBlockResultMetadataResponse(result) => {
-                result.map_err(|err| {
-                    ProtocolError::FfiJsonEncoderError {
-                        caller: "apply_block_result_metadata".to_owned(),
-                        reason: err,
-                    }
-                    .into()
-                })
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
+        handle_request!(
+            self.io,
+            JsonEncodeApplyBlockResultMetadata(params),
+            JsonEncodeApplyBlockResultMetadataResponse(result) => result.map_err(|err| {
+                ProtocolError::FfiJsonEncoderError {
+                    caller: "apply_block_result_metadata".to_owned(),
+                    reason: err,
+                }
+                .into()
             }),
-        }
+            Some(Self::JSON_ENCODE_DATA_TIMEOUT),
+        )
     }
 
     pub async fn apply_block_operations_metadata(
@@ -644,62 +631,46 @@ impl ProtocolRunnerConnection {
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(
-                JsonEncodeApplyBlockOperationsMetadataParams {
-                    chain_id,
-                    operations,
-                    operations_metadata_bytes,
-                    protocol_hash,
-                    next_protocol_hash,
-                },
-            ))
-            .await?;
+        let params = JsonEncodeApplyBlockOperationsMetadataParams {
+            chain_id,
+            operations,
+            operations_metadata_bytes,
+            protocol_hash,
+            next_protocol_hash,
+        };
 
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::JSON_ENCODE_DATA_TIMEOUT))
-            .await?
-        {
-            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result) => result.map_err(|err| {
+        handle_request!(
+            self.io,
+            JsonEncodeApplyBlockOperationsMetadata(params),
+            JsonEncodeApplyBlockOperationsMetadata(result) => result.map_err(|err| {
                 ProtocolError::FfiJsonEncoderError {
                     caller: "apply_block_operations_metadata".to_owned(),
                     reason: err,
                 }
                 .into()
             }),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+            Some(Self::JSON_ENCODE_DATA_TIMEOUT),
+        )
     }
 
     /// Call protocol  rpc - internal
     async fn call_protocol_rpc_internal(
         &mut self,
         request_path: String,
-        msg: ProtocolMessage,
+        request: ProtocolRpcRequest,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
-        self.io.send(&msg).await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::CALL_PROTOCOL_HEAVY_RPC_TIMEOUT))
-            .await?
-        {
-            NodeMessage::RpcResponse(result) => result.map_err(|err| {
+        handle_request!(
+            self.io,
+            ProtocolRpcCall(request),
+            RpcResponse(result) => result.map_err(|err| {
                 ProtocolError::ProtocolRpcError {
                     reason: err,
                     request_path,
                 }
                 .into()
             }),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+            Some(Self::CALL_PROTOCOL_HEAVY_RPC_TIMEOUT),
+        )
     }
 
     /// Call protocol rpc
@@ -707,33 +678,8 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: ProtocolRpcRequest,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
-        self.call_protocol_rpc_internal(
-            request.request.context_path.clone(),
-            ProtocolMessage::ProtocolRpcCall(request),
-        )
-        .await
-    }
-
-    /// Call helpers_preapply_* shell service - internal
-    async fn call_helpers_preapply_internal(
-        &mut self,
-        msg: ProtocolMessage,
-    ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
-        self.io.send(&msg).await?;
-
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT))
-            .await?
-        {
-            NodeMessage::HelpersPreapplyResponse(result) => {
-                result.map_err(|err| ProtocolError::HelpersPreapplyError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        self.call_protocol_rpc_internal(request.request.context_path.clone(), request)
+            .await
     }
 
     /// Call helpers_preapply_operations shell service
@@ -741,8 +687,13 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: ProtocolRpcRequest,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
-        self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyOperationsCall(request))
-            .await
+        handle_request!(
+            self.io,
+            HelpersPreapplyOperationsCall(request),
+            HelpersPreapplyResponse(result),
+            HelpersPreapplyError,
+            Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
+        )
     }
 
     /// Call helpers_preapply_block shell service
@@ -750,8 +701,13 @@ impl ProtocolRunnerConnection {
         &mut self,
         request: HelpersPreapplyBlockRequest,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
-        self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
-            .await
+        handle_request!(
+            self.io,
+            HelpersPreapplyBlockCall(request),
+            HelpersPreapplyResponse(result),
+            HelpersPreapplyError,
+            Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
+        )
     }
 
     /// Change tezos runtime configuration
@@ -759,15 +715,12 @@ impl ProtocolRunnerConnection {
         &mut self,
         settings: TezosRuntimeConfiguration,
     ) -> Result<(), ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))
-            .await?;
-        match self.io.try_receive(Some(Self::DEFAULT_TIMEOUT)).await? {
-            NodeMessage::ChangeRuntimeConfigurationResult => Ok(()),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ChangeRuntimeConfigurationCall(settings),
+            ChangeRuntimeConfigurationResult => Ok(()),
+            Some(Self::DEFAULT_TIMEOUT),
+        )
     }
 
     /// Command tezos ocaml code to initialize context and protocol.
@@ -782,63 +735,41 @@ impl ProtocolRunnerConnection {
         patch_context: Option<PatchContext>,
         context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        // call init
-        self.io
-            .send(&ProtocolMessage::InitProtocolContextCall(
-                InitProtocolContextParams {
-                    storage,
-                    genesis: tezos_environment.genesis.clone(),
-                    genesis_max_operations_ttl: tezos_environment
-                        .genesis_additional_data()
-                        .map_err(|error| ProtocolServiceError::InvalidDataError {
-                            message: format!("{:?}", error),
-                        })?
-                        .max_operations_ttl,
-                    protocol_overrides: tezos_environment.protocol_overrides.clone(),
-                    commit_genesis,
-                    enable_testchain,
-                    readonly,
-                    turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
-                    patch_context,
-                    context_stats_db_path,
-                },
-            ))
-            .await?;
+        let params = InitProtocolContextParams {
+            storage,
+            genesis: tezos_environment.genesis.clone(),
+            genesis_max_operations_ttl: tezos_environment
+                .genesis_additional_data()
+                .map_err(|error| ProtocolServiceError::InvalidDataError {
+                    message: format!("{:?}", error),
+                })?
+                .max_operations_ttl,
+            protocol_overrides: tezos_environment.protocol_overrides.clone(),
+            commit_genesis,
+            enable_testchain,
+            readonly,
+            turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
+            patch_context,
+            context_stats_db_path,
+        };
 
-        // wait for response
-        // this might take a while, so we will use unusually long timeout
-        match self
-            .io
-            .try_receive(Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT))
-            .await?
-        {
-            NodeMessage::InitProtocolContextResult(result) => {
-                result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            InitProtocolContextCall(params),
+            InitProtocolContextResult(result),
+            OcamlStorageInitError,
+            Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT),
+        )
     }
 
     /// Gracefully shutdown protocol runner
     pub async fn shutdown(&mut self) -> Result<(), ProtocolServiceError> {
-        // TODO: needed?
-        //if self.shutting_down {
-        //    // shutdown was already triggered before
-        //    return Ok(());
-        //}
-        //self.shutting_down = true;
-
-        // For shutdown messages we don't care if there are pending reads
-        self.io.send(&ProtocolMessage::ShutdownCall).await?;
-
-        match self.io.try_receive(Some(Self::DEFAULT_TIMEOUT)).await? {
-            NodeMessage::ShutdownResult => Ok(()),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ShutdownCall,
+            ShutdownResult => Ok(()),
+            Some(Self::DEFAULT_TIMEOUT),
+        )
     }
 
     /// Initialize protocol environment from default configuration (writeable).
@@ -890,22 +821,17 @@ impl ProtocolRunnerConnection {
     /// Must be called after the writable context has been initialized.
     pub async fn init_context_ipc_server(&mut self) -> Result<(), ProtocolServiceError> {
         if self.configuration.storage.get_ipc_socket_path().is_some() {
-            self.io
-                .send(&ProtocolMessage::InitProtocolContextIpcServer(
-                    self.configuration.storage.clone(),
-                ))
-                .await?;
-
-            match self.io.try_receive(Some(Self::DEFAULT_TIMEOUT)).await? {
-                NodeMessage::InitProtocolContextIpcServerResult(result) => {
+            let cfg = self.configuration.storage.clone();
+            handle_request!(
+                self.io,
+                InitProtocolContextIpcServer(cfg),
+                InitProtocolContextIpcServerResult(result) => {
                     result.map_err(|err| ProtocolServiceError::ContextIpcServerError {
                         message: format!("Failure when starting context IPC server: {}", err),
                     })
-                }
-                message => Err(ProtocolServiceError::UnexpectedMessage {
-                    message: message.into(),
-                }),
-            }
+                },
+                Some(Self::DEFAULT_TIMEOUT),
+            )
         } else {
             Ok(())
         }
@@ -927,31 +853,25 @@ impl ProtocolRunnerConnection {
                 message: format!("{:?}", e),
             }
         })?;
+        let params = GenesisResultDataParams {
+            genesis_context_hash: genesis_context_hash.clone(),
+            chain_id: main_chain_id,
+            genesis_protocol_hash: protocol_hash,
+            genesis_max_operations_ttl: tezos_environment
+                .genesis_additional_data()
+                .map_err(|error| ProtocolServiceError::InvalidDataError {
+                    message: format!("{:?}", error),
+                })?
+                .max_operations_ttl,
+        };
 
-        self.io
-            .send(&ProtocolMessage::GenesisResultDataCall(
-                GenesisResultDataParams {
-                    genesis_context_hash: genesis_context_hash.clone(),
-                    chain_id: main_chain_id,
-                    genesis_protocol_hash: protocol_hash,
-                    genesis_max_operations_ttl: tezos_environment
-                        .genesis_additional_data()
-                        .map_err(|error| ProtocolServiceError::InvalidDataError {
-                            message: format!("{:?}", error),
-                        })?
-                        .max_operations_ttl,
-                },
-            ))
-            .await?;
-
-        match self.io.try_receive(Some(Self::DEFAULT_TIMEOUT)).await? {
-            NodeMessage::CommitGenesisResultData(result) => {
-                result.map_err(|err| ProtocolError::GenesisResultDataError { reason: err }.into())
-            }
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            GenesisResultDataCall(params),
+            CommitGenesisResultData(result),
+            GenesisResultDataError,
+            Some(Self::DEFAULT_TIMEOUT),
+        )
     }
 
     pub async fn get_context_key_from_history(
@@ -959,26 +879,18 @@ impl ProtocolRunnerConnection {
         context_hash: &ContextHash,
         key: ContextKeyOwned,
     ) -> Result<Option<ContextValue>, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ContextGetKeyFromHistory(
-                ContextGetKeyFromHistoryRequest {
-                    context_hash: context_hash.clone(),
-                    key,
-                },
-            ))
-            .await?;
+        let params = ContextGetKeyFromHistoryRequest {
+            context_hash: context_hash.clone(),
+            key,
+        };
 
-        match self
-            .io
-            .try_receive(Some(Self::DEFAULT_TIMEOUT_LONG))
-            .await?
-        {
-            NodeMessage::ContextGetKeyFromHistoryResult(result) => result
-                .map_err(|err| ProtocolError::ContextGetKeyFromHistoryError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ContextGetKeyFromHistory(params),
+            ContextGetKeyFromHistoryResult(result),
+            ContextGetKeyFromHistoryError,
+            Some(Self::DEFAULT_TIMEOUT),
+        )
     }
 
     pub async fn get_context_key_values_by_prefix(
@@ -986,27 +898,18 @@ impl ProtocolRunnerConnection {
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ContextGetKeyValuesByPrefix(
-                ContextGetKeyValuesByPrefixRequest {
-                    context_hash: context_hash.clone(),
-                    prefix,
-                },
-            ))
-            .await?;
+        let params = ContextGetKeyValuesByPrefixRequest {
+            context_hash: context_hash.clone(),
+            prefix,
+        };
 
-        match self
-            .io
-            .try_receive(Some(Self::DEFAULT_TIMEOUT_LONG))
-            .await?
-        {
-            NodeMessage::ContextGetKeyValuesByPrefixResult(result) => result.map_err(|err| {
-                ProtocolError::ContextGetKeyValuesByPrefixError { reason: err }.into()
-            }),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ContextGetKeyValuesByPrefix(params),
+            ContextGetKeyValuesByPrefixResult(result),
+            ContextGetKeyValuesByPrefixError,
+            Some(Self::DEFAULT_TIMEOUT_LONG),
+        )
     }
 
     pub async fn get_context_tree_by_prefix(
@@ -1015,28 +918,19 @@ impl ProtocolRunnerConnection {
         prefix: ContextKeyOwned,
         depth: Option<usize>,
     ) -> Result<StringTreeObject, ProtocolServiceError> {
-        self.io
-            .send(&ProtocolMessage::ContextGetTreeByPrefix(
-                ContextGetTreeByPrefixRequest {
-                    context_hash: context_hash.clone(),
-                    prefix,
-                    depth,
-                },
-            ))
-            .await?;
+        let params = ContextGetTreeByPrefixRequest {
+            context_hash: context_hash.clone(),
+            prefix,
+            depth,
+        };
 
-        match self
-            .io
-            .try_receive(Some(Self::DEFAULT_TIMEOUT_LONG))
-            .await?
-        {
-            NodeMessage::ContextGetTreeByPrefixResult(result) => result.map_err(|err| {
-                ProtocolError::ContextGetKeyValuesByPrefixError { reason: err }.into()
-            }),
-            message => Err(ProtocolServiceError::UnexpectedMessage {
-                message: message.into(),
-            }),
-        }
+        handle_request!(
+            self.io,
+            ContextGetTreeByPrefix(params),
+            ContextGetTreeByPrefixResult(result),
+            ContextGetKeyValuesByPrefixError,
+            Some(Self::DEFAULT_TIMEOUT_LONG),
+        )
     }
 }
 

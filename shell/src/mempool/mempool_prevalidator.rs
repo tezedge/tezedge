@@ -491,12 +491,13 @@ fn begin_construction(
     log: &Logger,
 ) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
     let result = tokio::task::block_in_place(|| {
-        tokio_runtime.block_on(api.begin_construction(BeginConstructionRequest {
-            chain_id: chain_id.clone(),
-            predecessor: block_header.as_ref().clone(),
-            protocol_data: None,
-            mode: tezos_api::ffi::ValidationMode::Mempool,
-        }))
+        tokio_runtime.block_on(
+            api.begin_construction_for_mempool(BeginConstructionRequest {
+                chain_id: chain_id.clone(),
+                predecessor: block_header.as_ref().clone(),
+                protocol_data: None,
+            }),
+        )
     });
     // try to begin construction
     let result = match result {
@@ -546,11 +547,12 @@ fn handle_pending_operations(
                 trace!(log, "Mempool - lets validate "; "hash" => pending_op.to_base58_check());
 
                 let result = tokio::task::block_in_place(|| {
-                    tokio_runtime.block_on(api.validate_operation(ValidateOperationRequest {
-                        prevalidator: prevalidator.clone(),
-                        operation: operation.clone(),
-                        mode: tezos_api::ffi::ValidationMode::Mempool,
-                    }))
+                    tokio_runtime.block_on(api.validate_operation_for_mempool(
+                        ValidateOperationRequest {
+                            prevalidator: prevalidator.clone(),
+                            operation: operation.clone(),
+                        },
+                    ))
                 });
 
                 // lets validate throught protocol

@@ -431,7 +431,7 @@ pub mod tests {
             .unwrap();
             let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
                 protocol_runner_instance,
-                log.clone(),
+                tokio_runtime.handle(),
             ));
 
             tezos_protocol_api

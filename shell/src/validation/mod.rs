@@ -274,11 +274,10 @@ pub async fn prevalidate_operation(
 
     // begin construction of a new empty block
     let prevalidator = api
-        .begin_construction(BeginConstructionRequest {
+        .begin_construction_for_prevalidation(BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: (&*mempool_head.header).clone(),
             protocol_data: None,
-            mode: tezos_api::ffi::ValidationMode::Prevalidation,
         })
         .await
         .map_err(|e| PrevalidateOperationError::ValidationError {
@@ -287,10 +286,9 @@ pub async fn prevalidate_operation(
         })?;
 
     // validate operation to new empty/dummpy block
-    api.validate_operation(ValidateOperationRequest {
+    api.validate_operation_for_prevalidation(ValidateOperationRequest {
         prevalidator,
         operation: operation.clone(),
-        mode: tezos_api::ffi::ValidationMode::Prevalidation,
     })
     .await
     .map(|r| r.result)

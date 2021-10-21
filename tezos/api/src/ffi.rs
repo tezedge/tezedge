@@ -139,24 +139,16 @@ pub struct BeginApplicationResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ValidationMode {
-    Mempool,
-    Prevalidation,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
     pub protocol_data: Option<Vec<u8>>,
-    pub mode: ValidationMode,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ValidateOperationRequest {
     pub prevalidator: PrevalidatorWrapper,
     pub operation: Operation,
-    pub mode: ValidationMode,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -336,6 +328,7 @@ pub struct ForkingTestchainData {
 ///
 /// `head_error_id` is the id of the main error in the trace, useful for mapping into a Rust error.
 /// `trace_json` is json of the trace.
+#[derive(Debug)]
 pub struct TezosErrorTrace {
     pub head_error_id: String,
     pub trace_json: String,

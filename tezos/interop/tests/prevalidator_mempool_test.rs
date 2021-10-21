@@ -26,14 +26,13 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
 
     // let's initialize prevalidator for current head
-    let prevalidator = apply_encoded_message(ProtocolMessage::BeginConstructionCall(
-        BeginConstructionRequest {
+    let prevalidator = apply_encoded_message(
+        ProtocolMessage::BeginConstructionForPrevalidationCall(BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: last_block,
             protocol_data: None,
-            mode: tezos_api::ffi::ValidationMode::Prevalidation,
-        },
-    ))
+        }),
+    )
     .unwrap();
     let prevalidator = expect_response!(BeginConstructionResult, prevalidator)?;
     assert_eq!(prevalidator.chain_id, chain_id);
@@ -44,11 +43,10 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
 
     let operation = test_data::operation_from_hex(test_data::OPERATION_LEVEL_3);
 
-    let result = apply_encoded_message(ProtocolMessage::ValidateOperationCall(
+    let result = apply_encoded_message(ProtocolMessage::ValidateOperationForPrevalidationCall(
         ValidateOperationRequest {
             prevalidator,
             operation,
-            mode: tezos_api::ffi::ValidationMode::Prevalidation,
         },
     ))
     .unwrap();

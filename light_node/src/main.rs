@@ -223,7 +223,7 @@ fn block_on_actors(
 
     let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
         protocol_runner_instance,
-        log.clone(),
+        tokio_runtime.handle(),
     ));
 
     // pool and event server dedicated for applying blocks to chain
@@ -447,7 +447,7 @@ fn block_on_actors(
     }
 
     if let Some(blocks) = blocks_replay.take() {
-        return schedule_replay_blocks(
+        schedule_replay_blocks(
             blocks,
             &init_storage_data,
             chain_manager,
@@ -456,6 +456,8 @@ fn block_on_actors(
             shell_channel,
             log.clone(),
         );
+        tokio_runtime.block_on(tezos_protocol_api.shutdown());
+        return;
     } else {
         // TODO: TE-386 - controlled startup
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -584,7 +586,7 @@ fn block_on_actors(
         info!(log, "Thread workers stopped");
 
         info!(log, "Shutting down protocol runners (6/8)");
-        // TODO: will happen on drop, but will not happen while there are still references
+        tezos_protocol_api.shutdown().await;
         debug!(log, "Protocol runners completed");
 
         info!(log, "Flushing databases (7/8)");

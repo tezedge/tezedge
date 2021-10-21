@@ -6,6 +6,7 @@ use std::sync::Once;
 
 use crypto::hash::ProtocolHash;
 use ocaml_interop::{OCamlRuntime, ToOCaml};
+use runtime::OCamlBlockPanic;
 use tezos_api::ffi::{ContextDataError, RustBytes, TezosErrorTrace};
 use tezos_conv::OCamlTezosErrorTrace;
 
@@ -14,12 +15,12 @@ pub mod ipc_message_encoding;
 type TzResult<T> = Result<T, OCamlTezosErrorTrace>;
 
 mod tezos_ffi {
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlList};
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
 
     use crate::TzResult;
 
     ocaml! {
-        pub fn ffi_server_loop(sock_cmd_path: String);
+        pub fn ffi_server_loop(sock_cmd_path: String) -> TzResult<OCamlInt>;
         pub fn ffi_apply_encoded_message(msg: OCamlBytes) -> Result<OCamlBytes, String>;
         pub fn decode_context_data(
             protocol_hash: OCamlBytes,
@@ -55,13 +56,13 @@ pub fn decode_context_data(
     })
 }
 
-pub fn start_ipc_loop(sock_cmd_path: String) {
+pub fn start_ipc_loop(
+    sock_cmd_path: String,
+) -> Result<Result<i64, TezosErrorTrace>, OCamlBlockPanic> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
         let sock_cmd_path = sock_cmd_path.to_boxroot(rt);
-        tezos_ffi::ffi_server_loop(rt, &sock_cmd_path);
+        tezos_ffi::ffi_server_loop(rt, &sock_cmd_path).to_rust(rt)
     })
-    .unwrap()
-    // TODO: remove unwrap
 }
 
 pub fn apply_encoded_message(

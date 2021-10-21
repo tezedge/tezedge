@@ -12,7 +12,7 @@ use crate::{
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
     OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
-    OCamlValidateOperationRequest, OCamlValidationMode,
+    OCamlValidateOperationRequest,
 };
 
 use super::{
@@ -36,7 +36,7 @@ use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
     ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
     PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosRuntimeConfiguration,
-    ValidateOperationRequest, ValidationMode,
+    ValidateOperationRequest,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
@@ -266,19 +266,11 @@ impl_to_ocaml_record! {
     }
 }
 
-impl_to_ocaml_variant! {
-    ValidationMode => OCamlValidationMode {
-        ValidationMode::Mempool,
-        ValidationMode::Prevalidation,
-    }
-}
-
 impl_to_ocaml_record! {
     BeginConstructionRequest => OCamlBeginConstructionRequest {
         chain_id: OCamlChainId,
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
         protocol_data: Option<OCamlBytes>,
-        mode: OCamlValidationMode,
     }
 }
 
@@ -294,7 +286,6 @@ impl_to_ocaml_record! {
     ValidateOperationRequest => OCamlValidateOperationRequest {
         prevalidator: OCamlPrevalidatorWrapper,
         operation: OCamlOperation => FfiOperation::from(operation),
-        mode: OCamlValidationMode,
     }
 }
 
@@ -500,8 +491,10 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ApplyBlockCall(req: OCamlApplyBlockRequest),
         ProtocolMessage::AssertEncodingForProtocolDataCall(hash: OCamlProtocolHash, data: OCamlBytes),
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
-        ProtocolMessage::BeginConstructionCall(req: OCamlBeginConstructionRequest),
-        ProtocolMessage::ValidateOperationCall(req: OCamlValidateOperationRequest),
+        ProtocolMessage::BeginConstructionForPrevalidationCall(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::ValidateOperationForPrevalidationCall(req: OCamlValidateOperationRequest),
+        ProtocolMessage::BeginConstructionForMempoolCall(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::ValidateOperationForMempoolCall(req: OCamlValidateOperationRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyOperationsCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyBlockCall(req: OCamlHelpersPreapplyBlockRequest),

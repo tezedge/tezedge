@@ -14,6 +14,7 @@ use async_ipc::temp_sock;
 use slog::{info, warn, Level, Logger};
 use tezedge_actor_system::actors::*;
 use tezedge_actor_system::system::SystemBuilder;
+use tezos_messages::p2p::encoding::protocol::ProtocolMessage;
 use tezos_protocol_ipc_client::{
     ProtocolRunnerApi, ProtocolRunnerConfiguration, ProtocolRunnerInstance,
 };
@@ -63,6 +64,7 @@ pub struct NodeInfrastructure {
     pub tokio_runtime: Runtime,
     pub tmp_storage: TmpStorage,
     pub log: Logger,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
 }
 
 impl NodeInfrastructure {
@@ -150,7 +152,7 @@ impl NodeInfrastructure {
 
         let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
             protocol_runner_instance,
-            log.clone(),
+            tokio_runtime.handle(),
         ));
 
         let current_mempool_state_storage = init_mempool_state_storage();
@@ -277,6 +279,7 @@ impl NodeInfrastructure {
             block_applier_thread_watcher,
             chain_manager_p2p_reader_thread_watcher,
             mempool_prevalidator_factory,
+            tezos_protocol_api,
         })
     }
 
@@ -333,6 +336,10 @@ impl NodeInfrastructure {
                 vec![]
             }
         };
+
+        info!(log, "Shutting down protocol runners");
+        let _ = tokio_runtime.block_on(self.tezos_protocol_api.shutdown());
+
         info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
         // clean up + shutdown events listening

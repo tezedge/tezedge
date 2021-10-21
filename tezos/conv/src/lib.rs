@@ -92,12 +92,11 @@ pub struct OCamlContextGetTreeByPrefixRequest {}
 
 // Requests
 
-pub struct OCamlValidationMode {}
-
 pub struct OCamlApplyBlockRequest {}
 pub struct OCamlBeginApplicationRequest {}
 pub struct OCamlBeginConstructionRequest {}
 pub struct OCamlValidateOperationRequest {}
+
 pub struct OCamlRpcRequest {}
 pub struct OCamlProtocolRpcRequest {}
 pub struct OCamlHelpersPreapplyBlockRequest {}
