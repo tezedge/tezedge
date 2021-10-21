@@ -35,7 +35,7 @@ pub fn applied_actions_count_reducer(state: &mut State, _action: &ActionWithId<A
     state.applied_actions_count += 1;
 }
 
-pub fn dispatch_recursion_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn dispatch_recursion_reducer_first(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
         Action::DispatchRecursionReset => {
             state.dispatch_actions_backtrace = DispatchBacktrace::Ok {
@@ -61,12 +61,26 @@ pub fn dispatch_recursion_reducer(state: &mut State, action: &ActionWithId<Actio
     }
 }
 
+pub fn dispatch_recursion_reducer_last(state: &mut State, action: &ActionWithId<Action>) {
+    match &action.action {
+        Action::DispatchRecursionLimitExceeded(_action) => (),
+        _ => match &mut state.dispatch_actions_backtrace {
+            DispatchBacktrace::Ok { ref mut backtrace }
+                if backtrace.len() < state.config.dispatch_recursion_limit =>
+            {
+                backtrace.pop();
+            }
+            _ => (),
+        },
+    }
+}
+
 pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
     chain_reducers!(
         state,
         action,
         // needs to be first!
-        dispatch_recursion_reducer,
+        dispatch_recursion_reducer_first,
         storage_state_snapshot_create_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
@@ -89,6 +103,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         storage_request_reducer,
         // needs to be last!
         applied_actions_count_reducer,
-        last_action_reducer
+        last_action_reducer,
+        dispatch_recursion_reducer_last
     );
 }

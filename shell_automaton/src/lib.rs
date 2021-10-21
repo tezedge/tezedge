@@ -89,9 +89,12 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         for (address, port) in peers_dns_lookup_addrs.into_iter() {
             self.store
                 .dispatch(PeersDnsLookupInitAction { address, port }.into());
+            self.store.dispatch(Action::DispatchRecursionReset);
         }
         self.store
             .dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+
+        self.store.dispatch(Action::DispatchRecursionReset);
     }
 }
 

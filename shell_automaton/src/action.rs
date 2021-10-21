@@ -193,7 +193,6 @@ pub enum Action {
 
     // Action to reset dispatch recursion counter
     DispatchRecursionReset,
-    DispatchRecursionIncrement,
     DispatchRecursionLimitExceeded(DispatchRecursionLimitExceededAction),
 }
 
