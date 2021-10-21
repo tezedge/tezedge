@@ -41,7 +41,7 @@ pub struct P2p {
     pub listener_address: SocketAddr,
 
     pub disable_mempool: bool,
-    pub disable_blacklist: bool,
+    pub disable_peer_graylist: bool,
     pub private_node: bool,
 
     pub peer_threshold: PeerConnectionThreshold,
@@ -162,6 +162,7 @@ impl ShellAutomatonManager {
             peers_potential_max: p2p_config.peer_threshold.high * 5,
             peers_connected_max: p2p_config.peer_threshold.high,
 
+            peers_graylist_disable: p2p_config.disable_peer_graylist,
             peers_graylist_timeout: Duration::from_secs(15 * 60),
 
             record_actions: p2p_config.record_shell_automaton_actions,

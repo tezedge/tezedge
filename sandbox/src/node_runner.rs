@@ -335,7 +335,7 @@ impl LightNodeRunner {
             if add_validate_cfg_identity_and_stop {
                 args.push("--validate-cfg-identity-and-stop".to_string());
             }
-            args.push("--disable-peer-blacklist".to_string());
+            args.push("--disable-peer-graylist".to_string());
             Ok(args)
         } else {
             Err(LightNodeRunnerError::JsonParsingError { json: cfg })

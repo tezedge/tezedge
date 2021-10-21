@@ -3,7 +3,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::peer::connection::PeerConnectionState;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
-use crate::peers::graylist::PeersGraylistIpAddAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::{MioService, RandomnessService, Service};
 use crate::{Action, State};
 
@@ -46,7 +46,6 @@ pub fn peer_connection_outgoing_effects<S>(
         }
         Action::PeerConnectionOutgoingPending(_) => {
             // try to connect to next random peer.
-            // TODO: maybe check peer thresholds?
             store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
         }
         Action::P2pPeerEvent(event) => {
@@ -83,8 +82,8 @@ pub fn peer_connection_outgoing_effects<S>(
         ),
         Action::PeerConnectionOutgoingError(action) => {
             store.dispatch(
-                PeersGraylistIpAddAction {
-                    ip: action.address.ip(),
+                PeersGraylistAddressAction {
+                    address: action.address,
                 }
                 .into(),
             );

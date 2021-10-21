@@ -530,8 +530,6 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                                 peer.status = PeerStatus::Handshaked(PeerHandshaked {
                                     token: token.clone(),
                                     port: remote_connection_message.port,
-                                    // TODO: compatible version needs to be calculated
-                                    // at the beginning using shell_compatibility_version.
                                     version,
                                     public_key,
                                     public_key_hash,

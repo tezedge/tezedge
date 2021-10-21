@@ -3,7 +3,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::peer::connection::PeerConnectionState;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
-use crate::peers::graylist::PeersGraylistIpAddAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::Service;
 use crate::{action::Action, State};
 
@@ -49,8 +49,8 @@ pub fn peer_connection_incoming_effects<S>(
             .into(),
         ),
         Action::PeerConnectionIncomingError(action) => store.dispatch(
-            PeersGraylistIpAddAction {
-                ip: action.address.ip(),
+            PeersGraylistAddressAction {
+                address: action.address,
             }
             .into(),
         ),

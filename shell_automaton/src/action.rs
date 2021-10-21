@@ -37,8 +37,8 @@ use crate::peers::dns_lookup::{
     PeersDnsLookupSuccessAction,
 };
 use crate::peers::graylist::{
-    PeersGraylistIpAddAction, PeersGraylistIpAddedAction, PeersGraylistIpRemoveAction,
-    PeersGraylistIpRemovedAction,
+    PeersGraylistAddressAction, PeersGraylistIpAddAction, PeersGraylistIpAddedAction,
+    PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
 use crate::peers::remove::PeersRemoveAction;
 
@@ -77,6 +77,7 @@ pub enum Action {
     PeersDnsLookupSuccess(PeersDnsLookupSuccessAction),
     PeersDnsLookupCleanup(PeersDnsLookupCleanupAction),
 
+    PeersGraylistAddress(PeersGraylistAddressAction),
     PeersGraylistIpAdd(PeersGraylistIpAddAction),
     PeersGraylistIpAdded(PeersGraylistIpAddedAction),
     PeersGraylistIpRemove(PeersGraylistIpRemoveAction),

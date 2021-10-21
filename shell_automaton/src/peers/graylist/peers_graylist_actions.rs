@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeersGraylistAddressAction {
+    pub address: SocketAddr,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpAddAction {

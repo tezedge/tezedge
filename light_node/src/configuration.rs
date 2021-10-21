@@ -368,8 +368,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("disable-mempool")
             .global(true)
             .help("Enable or disable mempool"))
-        .arg(Arg::with_name("disable-peer-blacklist")
-            .long("disable-peer-blacklist")
+        .arg(Arg::with_name("disable-peer-graylist")
+            .long("disable-peer-graylist")
             .global(true)
             .help("Disable peer blacklisting"))
         .arg(Arg::with_name("private-node")
@@ -989,7 +989,7 @@ impl Environment {
                     .parse::<SocketAddr>()
                     .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
-                disable_blacklist: args.is_present("disable-peer-blacklist"),
+                disable_peer_graylist: args.is_present("disable-peer-graylist"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")
                     .map(|addresses_str| {

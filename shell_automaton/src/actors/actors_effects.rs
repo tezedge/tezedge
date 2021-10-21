@@ -1,7 +1,7 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::peer::message::write::PeerMessageWriteInitAction;
-use crate::peers::graylist::PeersGraylistIpAddAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
 use crate::{Action, State};
@@ -19,16 +19,16 @@ pub fn actors_effects<S: Service>(
                     }
                     ActorsMessageFrom::PeerStalled(peer_id) => {
                         store.dispatch(
-                            PeersGraylistIpAddAction {
-                                ip: peer_id.address.ip(),
+                            PeersGraylistAddressAction {
+                                address: peer_id.address,
                             }
                             .into(),
                         );
                     }
                     ActorsMessageFrom::BlacklistPeer(peer_id, _) => {
                         store.dispatch(
-                            PeersGraylistIpAddAction {
-                                ip: peer_id.address.ip(),
+                            PeersGraylistAddressAction {
+                                address: peer_id.address,
                             }
                             .into(),
                         );

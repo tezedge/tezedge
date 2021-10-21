@@ -24,7 +24,7 @@ use crate::peer::handshaking::{
 use crate::peer::message::read::PeerMessageReadInitAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
-use crate::peers::graylist::PeersGraylistIpAddAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
 use crate::State;
@@ -635,8 +635,8 @@ pub fn peer_handshaking_effects<S>(
                         }
                         // peer nacked us so we should graylist him.
                         store.dispatch(
-                            PeersGraylistIpAddAction {
-                                ip: action.address.ip(),
+                            PeersGraylistAddressAction {
+                                address: action.address,
                             }
                             .into(),
                         );
@@ -654,8 +654,8 @@ pub fn peer_handshaking_effects<S>(
                     PeerStatus::Handshaked(v) => v,
                     _ => {
                         return store.dispatch(
-                            PeersGraylistIpAddAction {
-                                ip: action.address.ip(),
+                            PeersGraylistAddressAction {
+                                address: action.address,
                             }
                             .into(),
                         );
@@ -694,10 +694,9 @@ pub fn peer_handshaking_effects<S>(
         }
 
         Action::PeerHandshakingError(action) => {
-            // TODO: blacklist.
             store.dispatch(
-                PeersGraylistIpAddAction {
-                    ip: action.address.ip(),
+                PeersGraylistAddressAction {
+                    address: action.address,
                 }
                 .into(),
             );

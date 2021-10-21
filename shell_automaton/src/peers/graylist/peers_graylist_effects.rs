@@ -6,13 +6,30 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::service::Service;
 use crate::{Action, State};
 
-use super::{PeersGraylistIpAddedAction, PeersGraylistIpRemovedAction};
+use super::{PeersGraylistIpAddAction, PeersGraylistIpAddedAction, PeersGraylistIpRemovedAction};
 
 pub fn peers_graylist_effects<S: Service>(
     store: &mut Store<State, S, Action>,
     action: &ActionWithId<Action>,
 ) {
     match &action.action {
+        Action::PeersGraylistAddress(action) => {
+            if store.state.get().config.peers_graylist_disable {
+                return store.dispatch(
+                    PeerDisconnectAction {
+                        address: action.address,
+                    }
+                    .into(),
+                );
+            }
+
+            store.dispatch(
+                PeersGraylistIpAddAction {
+                    ip: action.address.ip(),
+                }
+                .into(),
+            );
+        }
         Action::PeersGraylistIpAdd(action) => {
             store.dispatch(PeersGraylistIpAddedAction { ip: action.ip }.into());
         }
