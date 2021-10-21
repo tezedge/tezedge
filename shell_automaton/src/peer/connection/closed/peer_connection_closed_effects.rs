@@ -1,6 +1,6 @@
 use redux_rs::{ActionWithId, Store};
 
-use crate::peer::disconnection::PeerDisconnectAction;
+use crate::peers::graylist::PeersGraylistIpAddAction;
 use crate::service::Service;
 use crate::{Action, State};
 
@@ -13,8 +13,8 @@ pub fn peer_connection_closed_effects<S>(
     match &action.action {
         Action::PeerConnectionClosed(action) => {
             store.dispatch(
-                PeerDisconnectAction {
-                    address: action.address,
+                PeersGraylistIpAddAction {
+                    ip: action.address.ip(),
                 }
                 .into(),
             );

@@ -15,6 +15,7 @@ pub fn peer_disconnection_reducer(state: &mut State, action: &ActionWithId<Actio
             };
 
             peer.status = match &peer.status {
+                PeerStatus::Potential => return,
                 PeerStatus::Connecting(state) => {
                     if let Some(token) = state.token() {
                         PeerDisconnecting { token }.into()
@@ -24,7 +25,8 @@ pub fn peer_disconnection_reducer(state: &mut State, action: &ActionWithId<Actio
                 }
                 PeerStatus::Handshaking(state) => PeerDisconnecting { token: state.token }.into(),
                 PeerStatus::Handshaked(state) => PeerDisconnecting { token: state.token }.into(),
-                _ => return,
+                PeerStatus::Disconnecting(_) => return,
+                PeerStatus::Disconnected => return,
             };
         }
         Action::PeerDisconnected(action) => {

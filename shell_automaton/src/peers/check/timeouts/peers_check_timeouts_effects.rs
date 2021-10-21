@@ -9,6 +9,7 @@ use crate::peer::connection::outgoing::{
 use crate::peer::connection::PeerConnectionStatePhase;
 use crate::peer::handshaking::{PeerHandshakingError, PeerHandshakingErrorAction};
 use crate::peer::{Peer, PeerStatus};
+use crate::peers::graylist::PeersGraylistIpRemoveAction;
 use crate::{Action, ActionWithId, Service, State};
 
 use super::{
@@ -26,13 +27,13 @@ fn check_timeout(
         PeerStatus::Potential => return None,
         // TODO: detect connection timeouts as well.
         PeerStatus::Connecting(connecting) => {
-            if current_time - connecting.time() < peer_connecting_timeout {
+            if current_time >= connecting.time() + peer_connecting_timeout {
                 return None;
             }
             PeerTimeout::Connecting(connecting.into())
         }
         PeerStatus::Handshaking(handshaking) => {
-            if current_time - handshaking.since < peer_handshaking_timeout {
+            if current_time >= handshaking.since + peer_handshaking_timeout {
                 return None;
             }
             PeerTimeout::Handshaking((&handshaking.status).into())
@@ -64,9 +65,7 @@ pub fn peers_check_timeouts_effects<S>(
             let peer_connecting_timeout = state.config.peer_connecting_timeout.as_nanos() as u64;
             let peer_handshaking_timeout = state.config.peer_handshaking_timeout.as_nanos() as u64;
 
-            let timeouts = store
-                .state
-                .get()
+            let peer_timeouts = state
                 .peers
                 .iter()
                 .filter_map(|(address, peer)| {
@@ -81,12 +80,40 @@ pub fn peers_check_timeouts_effects<S>(
                 })
                 .collect();
 
-            store.dispatch(PeersCheckTimeoutsSuccessAction { timeouts }.into());
+            let graylist_timeouts = state
+                .peers
+                .blacklist_ip_iter()
+                .filter_map(|(ip, blacklisted)| {
+                    if blacklisted
+                        .timeout(state.config.peers_graylist_timeout)
+                        .filter(|timeout| current_time >= *timeout)
+                        .is_some()
+                    {
+                        Some(*ip)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            store.dispatch(
+                PeersCheckTimeoutsSuccessAction {
+                    peer_timeouts,
+                    graylist_timeouts,
+                }
+                .into(),
+            );
         }
         Action::PeersCheckTimeoutsSuccess(_) => {
             match &state.peers.check_timeouts {
-                PeersCheckTimeoutsState::Success { timeouts, .. } => {
-                    for (address, timeout) in timeouts.clone() {
+                PeersCheckTimeoutsState::Success {
+                    peer_timeouts,
+                    graylist_timeouts,
+                    ..
+                } => {
+                    let graylist_timeouts = graylist_timeouts.clone();
+
+                    for (address, timeout) in peer_timeouts.clone() {
                         match timeout {
                             PeerTimeout::Connecting(connecting) => match connecting {
                                 PeerConnectionStatePhase::Incoming(incoming) => {
@@ -118,6 +145,10 @@ pub fn peers_check_timeouts_effects<S>(
                                 );
                             }
                         }
+                    }
+
+                    for ip in graylist_timeouts {
+                        store.dispatch(PeersGraylistIpRemoveAction { ip: ip.clone() }.into());
                     }
                 }
                 _ => return,

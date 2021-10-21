@@ -36,6 +36,10 @@ use crate::peers::dns_lookup::{
     PeersDnsLookupCleanupAction, PeersDnsLookupErrorAction, PeersDnsLookupInitAction,
     PeersDnsLookupSuccessAction,
 };
+use crate::peers::graylist::{
+    PeersGraylistIpAddAction, PeersGraylistIpAddedAction, PeersGraylistIpRemoveAction,
+    PeersGraylistIpRemovedAction,
+};
 use crate::peers::remove::PeersRemoveAction;
 
 use crate::storage::block_header::put::{
@@ -72,6 +76,11 @@ pub enum Action {
     PeersDnsLookupError(PeersDnsLookupErrorAction),
     PeersDnsLookupSuccess(PeersDnsLookupSuccessAction),
     PeersDnsLookupCleanup(PeersDnsLookupCleanupAction),
+
+    PeersGraylistIpAdd(PeersGraylistIpAddAction),
+    PeersGraylistIpAdded(PeersGraylistIpAddedAction),
+    PeersGraylistIpRemove(PeersGraylistIpRemoveAction),
+    PeersGraylistIpRemoved(PeersGraylistIpRemovedAction),
 
     PeersAddIncomingPeer(PeersAddIncomingPeerAction),
     PeersAddMulti(PeersAddMultiAction),

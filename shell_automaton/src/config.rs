@@ -63,6 +63,9 @@ pub struct Config {
     /// Maximum number of connected peers on socket layer.
     pub peers_connected_max: usize,
 
+    /// Duration after which graylisted peer will timeout and be whitelisted.
+    pub peers_graylist_timeout: Duration,
+
     /// Record/Persist actions.
     pub record_actions: bool,
 
@@ -106,6 +109,8 @@ pub fn default_config() -> Config {
         peers_potential_max: 80,
         peers_connected_max: 40,
 
+        peers_graylist_timeout: Duration::from_secs(15 * 60),
+
         record_actions: false,
 
         quota: Quota {
@@ -139,6 +144,8 @@ pub fn test_config() -> Config {
 
         peers_potential_max: 80,
         peers_connected_max: 40,
+
+        peers_graylist_timeout: Duration::from_secs(15 * 60),
 
         record_actions: false,
 

@@ -361,8 +361,7 @@ impl ChainManager {
                     &log,
                 );
             }
-            NetworkChannelMsg::PeerDisconnected(peer)
-            | NetworkChannelMsg::PeerBlacklisted(peer) => {
+            NetworkChannelMsg::PeerDisconnected(peer) => {
                 // remove peer from inner state
                 if let Some(mut peer_state) = self.peers.remove(&peer) {
                     let peer_id = peer_state.peer_id.clone();

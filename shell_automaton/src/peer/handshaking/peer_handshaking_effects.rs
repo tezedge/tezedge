@@ -17,7 +17,6 @@ use crate::peer::binary_message::write::PeerBinaryMessageWriteSetContentAction;
 use crate::peer::chunk::read::PeerChunkReadInitAction;
 use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteSetContentAction;
-use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageEncodeAction, PeerHandshakingConnectionMessageInitAction,
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
@@ -25,6 +24,7 @@ use crate::peer::handshaking::{
 use crate::peer::message::read::PeerMessageReadInitAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
+use crate::peers::graylist::PeersGraylistIpAddAction;
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
 use crate::State;
@@ -633,10 +633,10 @@ pub fn peer_handshaking_effects<S>(
                             AckMessage::Nack(_) => {}
                             AckMessage::NackV0 => {}
                         }
-                        // peer nacked us so we should disconnect him.
+                        // peer nacked us so we should graylist him.
                         store.dispatch(
-                            PeerDisconnectAction {
-                                address: action.address,
+                            PeersGraylistIpAddAction {
+                                ip: action.address.ip(),
                             }
                             .into(),
                         );
@@ -654,8 +654,8 @@ pub fn peer_handshaking_effects<S>(
                     PeerStatus::Handshaked(v) => v,
                     _ => {
                         return store.dispatch(
-                            PeerDisconnectAction {
-                                address: action.address,
+                            PeersGraylistIpAddAction {
+                                ip: action.address.ip(),
                             }
                             .into(),
                         );
@@ -696,8 +696,8 @@ pub fn peer_handshaking_effects<S>(
         Action::PeerHandshakingError(action) => {
             // TODO: blacklist.
             store.dispatch(
-                PeerDisconnectAction {
-                    address: action.address,
+                PeersGraylistIpAddAction {
+                    ip: action.address.ip(),
                 }
                 .into(),
             );

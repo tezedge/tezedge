@@ -39,7 +39,7 @@ pub fn peer_connection_incoming_accept_reducer(state: &mut State, action: &Actio
                 time: action_time,
                 token: action.token,
                 address: action.address,
-                reason: action.reason,
+                reason: action.reason.clone(),
             };
         }
         _ => {}

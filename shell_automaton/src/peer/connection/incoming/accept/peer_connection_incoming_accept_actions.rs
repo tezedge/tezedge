@@ -2,11 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
 use crate::peer::PeerToken;
+use crate::peers::PeerBlacklistState;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingRejectedReason {
     PeersConnectedMaxBoundReached,
+    PeerBlacklisted(PeerBlacklistState),
 }
 
 /// Accept incoming peer connection.

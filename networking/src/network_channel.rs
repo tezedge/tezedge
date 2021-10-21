@@ -28,7 +28,6 @@ pub enum NetworkChannelMsg {
     /// Events
     PeerBootstrapped(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
     PeerDisconnected(SocketAddr),
-    PeerBlacklisted(SocketAddr),
     PeerMessageReceived(PeerMessageReceived),
 }
 

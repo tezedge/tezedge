@@ -22,6 +22,7 @@ use crate::peer::peer_effects;
 use crate::peers::add::multi::peers_add_multi_effects;
 use crate::peers::check::timeouts::peers_check_timeouts_effects;
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
+use crate::peers::graylist::peers_graylist_effects;
 
 use crate::storage::block_header::put::storage_block_header_put_effects;
 use crate::storage::request::storage_request_effects;
@@ -104,6 +105,7 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peers_dns_lookup_effects(store, action);
     peers_add_multi_effects(store, action);
     peers_check_timeouts_effects(store, action);
+    peers_graylist_effects(store, action);
 
     storage_block_header_put_effects(store, action);
     storage_request_effects(store, action);

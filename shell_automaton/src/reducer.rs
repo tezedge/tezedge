@@ -20,6 +20,7 @@ use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
 use crate::peers::check::timeouts::peers_check_timeouts_reducer;
 use crate::peers::dns_lookup::peers_dns_lookup_reducer;
+use crate::peers::graylist::peers_graylist_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
 use crate::storage::block_header::put::storage_block_header_put_reducer;
@@ -57,6 +58,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         peers_add_reducer,
         peers_remove_reducer,
         peers_check_timeouts_reducer,
+        peers_graylist_reducer,
         storage_block_header_put_reducer,
         storage_request_reducer,
         // needs to be last!

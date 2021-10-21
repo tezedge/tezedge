@@ -18,10 +18,12 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithId<Action>)
                 .unwrap_or(0);
 
             for address in addresses.into_iter().take(max_len) {
-                state.peers.entry(*address).or_insert_with(|| Peer {
-                    status: PeerStatus::Potential,
-                    quota: PeerQuota::new(action.id),
-                });
+                if let Ok(entry) = state.peers.entry(*address) {
+                    entry.or_insert_with(|| Peer {
+                        status: PeerStatus::Potential,
+                        quota: PeerQuota::new(action.id),
+                    });
+                }
             }
         }
         _ => {}

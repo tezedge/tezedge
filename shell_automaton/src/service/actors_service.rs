@@ -24,7 +24,6 @@ pub trait ActorsService {
 pub enum ActorsMessageTo {
     PeerHandshaked(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
     PeerDisconnected(SocketAddr),
-    PeerBlacklisted(SocketAddr),
     PeerMessageReceived(PeerMessageReceived),
 }
 
@@ -35,7 +34,6 @@ impl From<ActorsMessageTo> for NetworkChannelMsg {
                 Self::PeerBootstrapped(id, metadata, version)
             }
             ActorsMessageTo::PeerDisconnected(address) => Self::PeerDisconnected(address),
-            ActorsMessageTo::PeerBlacklisted(address) => Self::PeerBlacklisted(address),
             ActorsMessageTo::PeerMessageReceived(address) => Self::PeerMessageReceived(address),
         }
     }

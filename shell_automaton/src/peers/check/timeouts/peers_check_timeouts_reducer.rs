@@ -14,11 +14,10 @@ pub fn peers_check_timeouts_reducer(state: &mut State, action: &ActionWithId<Act
             }
         }
         Action::PeersCheckTimeoutsSuccess(action_content) => {
-            let timeouts = action_content.timeouts.clone();
-
             state.peers.check_timeouts = PeersCheckTimeoutsState::Success {
                 time: action.time_as_nanos(),
-                timeouts,
+                peer_timeouts: action_content.peer_timeouts.clone(),
+                graylist_timeouts: action_content.graylist_timeouts.clone(),
             };
         }
         Action::PeersCheckTimeoutsCleanup(_) => {

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
 
 use crate::peer::{Peer, PeerStatus};
 
@@ -8,8 +9,24 @@ use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerBlacklistState {
+    /// Peer is temporarily graylisted.
+    Graylisted { since: u64 },
+}
+
+impl PeerBlacklistState {
+    pub fn timeout(&self, graylist_duration: Duration) -> Option<u64> {
+        match self {
+            Self::Graylisted { since } => Some(*since + graylist_duration.as_nanos() as u64),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersState {
-    pub list: BTreeMap<SocketAddr, Peer>,
+    list: BTreeMap<SocketAddr, Peer>,
+    ip_blacklist: BTreeMap<IpAddr, PeerBlacklistState>,
+
     pub dns_lookup: Option<PeersDnsLookupState>,
 
     pub check_timeouts: PeersCheckTimeoutsState,
@@ -19,6 +36,8 @@ impl PeersState {
     pub fn new() -> Self {
         Self {
             list: BTreeMap::new(),
+            ip_blacklist: BTreeMap::new(),
+
             dns_lookup: None,
 
             check_timeouts: PeersCheckTimeoutsState::new(),
@@ -45,12 +64,29 @@ impl PeersState {
         self.list.remove(address)
     }
 
+    /// Returns `Err` if peer's ip is blacklisted/graylisted.
     #[inline(always)]
     pub(super) fn entry<'a>(
         &'a mut self,
         address: SocketAddr,
-    ) -> BTreeMapEntry<'a, SocketAddr, Peer> {
-        self.list.entry(address)
+    ) -> Result<BTreeMapEntry<'a, SocketAddr, Peer>, &'a PeerBlacklistState> {
+        if let Some(blacklist_state) = self.ip_blacklist.get(&address.ip()) {
+            return Err(blacklist_state);
+        }
+        Ok(self.list.entry(address))
+    }
+
+    #[inline(always)]
+    pub(super) fn ip_blacklist_entry<'a>(
+        &'a mut self,
+        ip: IpAddr,
+    ) -> BTreeMapEntry<'a, IpAddr, PeerBlacklistState> {
+        self.ip_blacklist.entry(ip)
+    }
+
+    #[inline(always)]
+    pub(super) fn remove_blacklisted_ip(&mut self, ip: &IpAddr) -> Option<PeerBlacklistState> {
+        self.ip_blacklist.remove(ip)
     }
 
     #[inline(always)]
@@ -78,5 +114,17 @@ impl PeersState {
     /// Number of peers that we have established tcp connection with.
     pub fn connected_len(&self) -> usize {
         self.iter().filter(|(_, peer)| peer.is_connected()).count()
+    }
+
+    #[inline(always)]
+    pub fn get_blacklisted_ip(&self, ip: &IpAddr) -> Option<&PeerBlacklistState> {
+        self.ip_blacklist.get(ip)
+    }
+
+    #[inline(always)]
+    pub fn blacklist_ip_iter<'a>(
+        &'a self,
+    ) -> impl 'a + Iterator<Item = (&'a IpAddr, &'a PeerBlacklistState)> {
+        self.ip_blacklist.iter()
     }
 }

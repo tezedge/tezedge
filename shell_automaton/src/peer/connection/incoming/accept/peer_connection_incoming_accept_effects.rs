@@ -36,6 +36,22 @@ pub fn peer_connection_incoming_accept_effects<S>(
                                 PeerConnectionIncomingRejectedReason::PeersConnectedMaxBoundReached,
                         }.into());
                     }
+
+                    if let Some(blacklisted) = state.peers.get_blacklisted_ip(&peer_address.ip()) {
+                        let blacklisted = blacklisted.clone();
+
+                        return store.dispatch(
+                            PeerConnectionIncomingRejectedAction {
+                                token: peer_token,
+                                address: peer_address,
+                                reason: PeerConnectionIncomingRejectedReason::PeerBlacklisted(
+                                    blacklisted,
+                                ),
+                            }
+                            .into(),
+                        );
+                    }
+
                     store.dispatch(
                         PeerConnectionIncomingAcceptSuccessAction {
                             token: peer_token,

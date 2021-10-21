@@ -1,9 +1,9 @@
 use redux_rs::{ActionWithId, Store};
 
 use crate::peer::connection::PeerConnectionState;
-use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peer::PeerStatus;
+use crate::peers::graylist::PeersGraylistIpAddAction;
 use crate::service::{MioService, RandomnessService, Service};
 use crate::{Action, State};
 
@@ -83,8 +83,8 @@ pub fn peer_connection_outgoing_effects<S>(
         ),
         Action::PeerConnectionOutgoingError(action) => {
             store.dispatch(
-                PeerDisconnectAction {
-                    address: action.address,
+                PeersGraylistIpAddAction {
+                    ip: action.address.ip(),
                 }
                 .into(),
             );
