@@ -25,6 +25,7 @@ crypto = { path = "../../crypto" }
 
 [dev-dependencies]
 crypto = { path = "../../crypto" }
+tezos_interop = { path = "../interop" }
 serial_test = "0.5"
 criterion = "0.3"
 anyhow = "1.0"

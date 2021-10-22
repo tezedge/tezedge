@@ -13,25 +13,41 @@ use tezos_api::environment::{
     default_networks, get_empty_operation_list_list_hash, TezosEnvironmentConfiguration,
 };
 use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
-use tezos_client::client;
 use tezos_context_api::{
-    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
-use tezos_interop::ffi;
+use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
+use tezos_protocol_ipc_messages::{InitProtocolContextParams, NodeMessage, ProtocolMessage};
+
+#[macro_export]
+macro_rules! expect_response {
+    ($id:ident, $result:ident) => {
+        if let NodeMessage::$id(result) = $result {
+            result
+        } else {
+            panic!(
+                "Expected NodeMessage::{} response but got something else",
+                stringify!($id)
+            );
+        }
+    };
+}
 
 // not a real bench, just for approximatelly measurement of applying first three blocks
 // because this is very hard to use with b.iter
 // cargo bench -- --nocapture
 #[bench]
 fn bench_apply_first_three_block(_: &mut Bencher) {
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-        log_enabled: common::is_ocaml_log_enabled(),
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-    })
+    apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
+        TezosRuntimeConfiguration {
+            debug_mode: false,
+            compute_context_action_tree_hashes: false,
+            log_enabled: common::is_ocaml_log_enabled(),
+        },
+    ))
     .unwrap();
 
     let now = Instant::now();
@@ -68,20 +84,25 @@ fn apply_first_three_blocks(
 
     // apply first block - level 1
     let clocks = Instant::now();
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
-        block_header: BlockHeader::from_bytes(
-            hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
-        )?,
-        pred_header: genesis_block_header,
-        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        )),
-        max_operations_ttl: 0,
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
-    })?;
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(
+                hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
+            )?,
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                ),
+            ),
+            max_operations_ttl: 0,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result)?;
     perf_log.push(format!("- 1. apply: {:?}", clocks.elapsed()));
     assert_eq!(
         test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH),
@@ -90,22 +111,27 @@ fn apply_first_three_blocks(
 
     // apply second block - level 2
     let clocks = Instant::now();
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
-        block_header: BlockHeader::from_bytes(
-            hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
-        )?,
-        pred_header: BlockHeader::from_bytes(
-            hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
-        )?,
-        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        )),
-        max_operations_ttl: apply_block_result.max_operations_ttl,
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
-    })?;
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(
+                hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
+            )?,
+            pred_header: BlockHeader::from_bytes(
+                hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
+            )?,
+            operations: ApplyBlockRequest::convert_operations(
+                test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                ),
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result)?;
     perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
     assert_eq!(
         "lvl 2, fit 2, prio 5, 0 ops",
@@ -114,22 +140,27 @@ fn apply_first_three_blocks(
 
     // apply third block - level 3
     let clocks = Instant::now();
-    let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id,
-        block_header: BlockHeader::from_bytes(
-            hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
-        )?,
-        pred_header: BlockHeader::from_bytes(
-            hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
-        )?,
-        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        )),
-        max_operations_ttl: apply_block_result.max_operations_ttl,
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
-    })?;
+    let apply_block_result =
+        apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
+            chain_id,
+            block_header: BlockHeader::from_bytes(
+                hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
+            )?,
+            pred_header: BlockHeader::from_bytes(
+                hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
+            )?,
+            operations: ApplyBlockRequest::convert_operations(
+                test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                ),
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
+        }))
+        .unwrap();
+    let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result)?;
     perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
     assert_eq!(
         "lvl 3, fit 5, prio 12, 1 ops",
@@ -153,18 +184,26 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
             ipc_socket_path: None,
         },
     );
-    let context_config = TezosContextConfiguration {
+    let context_config = InitProtocolContextParams {
         storage,
         genesis: tezos_env.genesis.clone(),
+        genesis_max_operations_ttl: tezos_env
+            .genesis_additional_data()
+            .unwrap()
+            .max_operations_ttl,
         protocol_overrides: tezos_env.protocol_overrides.clone(),
         commit_genesis: true,
         enable_testchain: false,
         readonly: false,
-        sandbox_json_patch_context: None,
+        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
+        patch_context: tezos_env.patch_context_genesis_parameters.clone(),
+
         context_stats_db_path: None,
     };
 
-    let result = client::init_protocol_context(context_config).unwrap();
+    let result =
+        apply_encoded_message(ProtocolMessage::InitProtocolContextCall(context_config)).unwrap();
+    let result = expect_response!(InitProtocolContextResult, result).unwrap();
 
     let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
         None => panic!("we needed commit_genesis and here should be result of it"),
