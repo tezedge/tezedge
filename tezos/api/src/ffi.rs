@@ -357,20 +357,6 @@ impl From<TezosErrorTrace> for CallError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Error)]
-pub enum TezosRuntimeConfigurationError {
-    #[error("Change OCaml settings failed, message: {message}!")]
-    ChangeConfigurationError { message: String },
-}
-
-impl From<TezosErrorTrace> for TezosRuntimeConfigurationError {
-    fn from(error: TezosErrorTrace) -> Self {
-        TezosRuntimeConfigurationError::ChangeConfigurationError {
-            message: error.trace_json,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Error)]
 pub enum TezosStorageInitError {
     #[error("OCaml storage init failed, message: {message}!")]
     InitializeError { message: String },
@@ -889,11 +875,6 @@ pub enum ProtocolError {
     HelpersPreapplyError { reason: HelpersPreapplyError },
     #[error("Compute path call error: {reason}")]
     ComputePathError { reason: ComputePathError },
-    /// Error in configuration.
-    #[error("OCaml runtime configuration error: {reason}")]
-    TezosRuntimeConfigurationError {
-        reason: TezosRuntimeConfigurationError,
-    },
     /// OCaml part failed to initialize tezos storage.
     #[error("OCaml storage init error: {reason}")]
     OcamlStorageInitError { reason: TezosStorageInitError },

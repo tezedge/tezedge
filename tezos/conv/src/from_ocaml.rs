@@ -33,8 +33,8 @@ use tezos_api::ffi::{
     HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
     OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolDataError,
     ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosErrorTrace,
-    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-    ValidateOperationResponse, ValidateOperationResult,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
+    ValidateOperationResult,
 };
 use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
@@ -388,5 +388,4 @@ from_ocaml_tezos_error_trace!(HelpersPreapplyError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(TezosStorageInitError);
 from_ocaml_tezos_error_trace!(GetDataError);
 from_ocaml_tezos_error_trace!(FfiJsonEncoderError);
-from_ocaml_tezos_error_trace!(TezosRuntimeConfigurationError);
 from_ocaml_tezos_error_trace!(ComputePathError, tezos_api::ffi::CallError);

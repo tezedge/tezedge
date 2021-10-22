@@ -14,8 +14,8 @@ use tezos_api::ffi::{
     ComputePathResponse, FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest,
     HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper,
     ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
+    TezosRuntimeConfiguration, TezosStorageInitError, ValidateOperationError,
+    ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_context_api::{
     ContextKeyOwned, ContextValue, GenesisChain, PatchContext, ProtocolOverrides, StringTreeObject,
