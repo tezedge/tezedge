@@ -17,6 +17,7 @@ pub fn generate_nom_read_for_data(data: &DataWithEncoding) -> TokenStream {
         data.name.span()=>
         #[allow(unused_parens)]
         #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::redundant_closure_call)]
         impl tezos_encoding::nom::NomReader for #name {
             fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
                 #nom_read(bytes)
@@ -40,6 +41,7 @@ fn generate_nom_read(encoding: &Encoding) -> TokenStream {
         Encoding::List(size, encoding, span) => generate_list_nom_read(size, encoding, *span),
         Encoding::Sized(size, encoding, span) => generate_sized_nom_read(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_nom_read(size, encoding, *span),
+        Encoding::ShortDynamic(encoding, span) => generate_short_dynamic_nom_read(encoding, *span),
         Encoding::Dynamic(size, encoding, span) => generate_dynamic_nom_read(size, encoding, *span),
         Encoding::Zarith(span) => quote_spanned!(*span=> tezos_encoding::nom::zarith),
         Encoding::MuTez(span) => quote_spanned!(*span=> tezos_encoding::nom::mutez),
@@ -111,18 +113,15 @@ fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream 
 
 fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
-    let (fields, hash) = encoding.fields.iter().partition::<Vec<_>, _>(|f| {
-        if let FieldKind::Hash = f.kind {
-            false
-        } else {
-            true
-        }
-    });
+    let (fields, hash) = encoding
+        .fields
+        .iter()
+        .partition::<Vec<_>, _>(|f| !matches!(f.kind, FieldKind::Hash));
     let field1 = fields.iter().map(|field| field.name);
     let field2 = field1.clone();
     let field_name = fields
         .iter()
-        .map(|field| format!("{}::{}", name, field.name.to_string()));
+        .map(|field| format!("{}::{}", name, field.name));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
     if let Some(hash_field) = hash.first() {
         let field3 = field1.clone();
@@ -154,18 +153,15 @@ fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStrea
 
 fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
-    let (fields, hash) = encoding.fields.iter().partition::<Vec<_>, _>(|f| {
-        if let FieldKind::Hash = f.kind {
-            false
-        } else {
-            true
-        }
-    });
+    let (fields, hash) = encoding
+        .fields
+        .iter()
+        .partition::<Vec<_>, _>(|f| !matches!(f.kind, FieldKind::Hash));
     let field1 = fields.iter().map(|field| field.name);
     let field2 = field1.clone();
     let field_name = fields
         .iter()
-        .map(|field| format!("{}::{}", name, field.name.to_string()));
+        .map(|field| format!("{}::{}", name, field.name));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
     if let Some(hash_field) = hash.first() {
         let field3 = field1.clone();
@@ -198,7 +194,7 @@ fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStre
 
 fn generate_struct_field_nom_read(field: &FieldEncoding) -> TokenStream {
     match field.kind {
-        FieldKind::Encoded(ref encoding) => generate_nom_read(&encoding),
+        FieldKind::Encoded(ref encoding) => generate_nom_read(encoding),
         FieldKind::Skip => quote!(|input| Ok((input, Default::default()))),
         FieldKind::Hash => unreachable!(),
     }
@@ -233,7 +229,7 @@ fn generate_enum_nom_read(encoding: &EnumEncoding) -> TokenStream {
                 )*
                 {
                     return Err(
-                        nom::Err::Failure(
+                        nom::Err::Error(
                             tezos_encoding::nom::error::DecodeError::#unknown_tag_error(
                                 input,
                                 format!("0x{:.2X}", tag)
@@ -253,7 +249,7 @@ fn generate_tag_nom_read<'a>(tag: &Tag<'a>, enum_name: &syn::Ident) -> TokenStre
             quote_spanned!(tag_name.span()=> |bytes| Ok((bytes, #enum_name::#tag_name)))
         }
         encoding => {
-            let nom_read = generate_nom_read(&encoding);
+            let nom_read = generate_nom_read(encoding);
             let name = format!("{}::{}", enum_name, tag_name);
             quote_spanned!(tag_name.span()=> nom::combinator::map(tezos_encoding::nom::variant(#name, #nom_read), #enum_name::#tag_name))
         }
@@ -292,6 +288,11 @@ fn generate_sized_nom_read(size: &syn::Expr, encoding: &Encoding, span: Span) ->
 fn generate_bounded_nom_read(size: &syn::Expr, encoding: &Encoding, span: Span) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
     quote_spanned!(span=> tezos_encoding::nom::bounded(#size, #nom_read))
+}
+
+fn generate_short_dynamic_nom_read(encoding: &Encoding, span: Span) -> TokenStream {
+    let nom_read = generate_nom_read(encoding);
+    quote_spanned!(span=> tezos_encoding::nom::short_dynamic(#nom_read))
 }
 
 fn generate_dynamic_nom_read(

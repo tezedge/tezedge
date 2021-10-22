@@ -76,8 +76,8 @@ fn make_field(field: &syn::Field) -> Result<FieldEncoding> {
         None => {
             let encoding = make_type_encoding(&field.ty, meta)?;
             let encoding = make_bounded_encoding(meta, encoding)?;
-            assert_empty_meta(&meta)?;
-            FieldKind::Encoded(encoding)
+            assert_empty_meta(meta)?;
+            FieldKind::Encoded(Box::new(encoding))
         }
     };
     Ok(FieldEncoding { name, kind })
@@ -98,7 +98,7 @@ fn make_type_path_encoding<'a>(
 ) -> Result<Encoding<'a>> {
     let segment = path.segments.last().unwrap();
     match &segment.arguments {
-        syn::PathArguments::None => make_basic_encoding_from_type(&path, meta),
+        syn::PathArguments::None => make_basic_encoding_from_type(path, meta),
         syn::PathArguments::AngleBracketed(args) => {
             if args.args.len() != 1 {
                 return Err(error_spanned(&args.args, "Expected single argument"));
@@ -145,7 +145,7 @@ fn make_basic_encoding_from_type<'a>(
         } else {
             unreachable!()
         }
-    } else if let Some(mapped) = get_rust_to_primitive_mapping(&ident) {
+    } else if let Some(mapped) = get_rust_to_primitive_mapping(ident) {
         // direct mapping from Rust type to encoding
         assert_builtin_encoding(meta, &mapped)?;
         Encoding::Primitive(mapped, ident.span())
@@ -343,6 +343,8 @@ fn make_bounded_encoding<'a>(
             get_attribute_with_option(meta, &symbol::DYNAMIC, Some(&symbol::MAX), true)?
         {
             Encoding::Dynamic(dynamic.param, Box::new(encoding), dynamic.span)
+        } else if let Some(short_dynamic) = get_attribute(meta, &symbol::SHORT_DYNAMIC) {
+            Encoding::ShortDynamic(Box::new(encoding), short_dynamic.span())
         } else {
             return Ok(encoding);
         };
@@ -441,8 +443,7 @@ fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result
     let mut tags = Vec::new();
     for variant in variants {
         let meta = &mut get_encoding_meta(&variant.attrs)?;
-        let tag = make_tag(variant, meta, default_id)?;
-        default_id += 1;
+        let tag = make_tag(variant, meta, &mut default_id)?;
         tags.push(tag);
     }
     Ok(tags)
@@ -451,17 +452,23 @@ fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result
 fn make_tag<'a>(
     variant: &'a syn::Variant,
     meta: &mut Vec<syn::Meta>,
-    default_id: u16,
+    default_id: &mut u16,
 ) -> Result<Tag<'a>> {
     let id = get_attribute_value(meta, &symbol::TAG)?
         .map(|lit| {
             if let syn::Lit::Int(int_lit) = lit {
-                Ok(int_lit)
+                int_lit.base10_parse().map_err(|err| {
+                    error_spanned(
+                        &int_lit,
+                        format!("cannot parse {} as integer: {}", &int_lit, err),
+                    )
+                })
             } else {
                 Err(error_spanned(lit, "Integer literal expected"))
             }
         })
-        .unwrap_or_else(|| Ok(syn::LitInt::new(&default_id.to_string(), variant.span())))?;
+        .unwrap_or_else(|| Ok(*default_id))?;
+    *default_id = id + 1;
     let name = &variant.ident;
     let encoding = match &variant.fields {
         syn::Fields::Named(_) => {
@@ -482,7 +489,11 @@ fn make_tag<'a>(
         }
         syn::Fields::Unit => Encoding::Unit,
     };
-    Ok(Tag { id, name, encoding })
+    Ok(Tag {
+        id: syn::LitInt::new(&id.to_string(), variant.span()),
+        name,
+        encoding,
+    })
 }
 
 fn assert_empty_meta(meta: &[syn::Meta]) -> Result<()> {

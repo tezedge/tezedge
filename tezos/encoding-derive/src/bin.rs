@@ -13,6 +13,7 @@ pub fn generate_bin_write_for_data(data: &DataWithEncoding) -> TokenStream {
         data.name.span()=>
         #[allow(unused_parens)]
         #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::redundant_closure_call)]
         impl tezos_encoding::enc::BinWriter for #name {
             fn bin_write(&self, out: &mut Vec<u8>) -> tezos_encoding::enc::BinResult {
                 #bin_write(self, out)
@@ -38,6 +39,7 @@ fn generate_bin_write(encoding: &Encoding) -> TokenStream {
         Encoding::Bounded(size, encoding, span) => {
             generate_bounded_bin_write(size, encoding, *span)
         }
+        Encoding::ShortDynamic(encoding, span) => generate_short_dynamic_bin_write(encoding, *span),
         Encoding::Dynamic(size, encoding, span) => {
             generate_dynamic_bin_write(size, encoding, *span)
         }
@@ -78,9 +80,9 @@ fn generate_struct_bin_write(encoding: &StructEncoding) -> TokenStream {
     let field = fields_with_encoding.clone().map(|f| f.name);
     let field_name = fields_with_encoding
         .clone()
-        .map(|f| format!("{}::{}", encoding.name, f.name.to_string()));
+        .map(|f| format!("{}::{}", encoding.name, f.name));
     let field_bin_write =
-        fields_with_encoding.map(|f| generate_struct_field_bin_write(&f.encoding().unwrap()));
+        fields_with_encoding.map(|f| generate_struct_field_bin_write(f.encoding().unwrap()));
     quote_spanned! {
         encoding.name.span()=>
             (|data: &Self, out: &mut Vec<u8>| {
@@ -128,9 +130,9 @@ fn generate_tag_bin_write<'a>(
             )
         }
         encoding => {
-            let bin_write = generate_bin_write(&encoding);
+            let bin_write = generate_bin_write(encoding);
             quote_spanned!(tag_name.span()=>
-                           #enum_name::#tag_name(inner) => tezos_encoding::enc::variant_with_field(#name, #tag_encoding, #bin_write)(&#tag_id, &inner, out)
+                           #enum_name::#tag_name(inner) => tezos_encoding::enc::variant_with_field(#name, #tag_encoding, #bin_write)(&#tag_id, inner, out)
             )
         }
     }
@@ -168,6 +170,11 @@ fn generate_sized_bin_write(size: &syn::Expr, encoding: &Encoding, span: Span) -
 fn generate_bounded_bin_write(size: &syn::Expr, encoding: &Encoding, span: Span) -> TokenStream {
     let bin_write = generate_bin_write(encoding);
     quote_spanned!(span=> tezos_encoding::enc::bounded(#size, #bin_write))
+}
+
+fn generate_short_dynamic_bin_write(encoding: &Encoding, span: Span) -> TokenStream {
+    let bin_write = generate_bin_write(encoding);
+    quote_spanned!(span=> tezos_encoding::enc::short_dynamic(#bin_write))
 }
 
 fn generate_dynamic_bin_write(

@@ -19,9 +19,10 @@ use crypto::hash::{
 use crate::base::ConversionError;
 
 use super::SignatureCurve;
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),
@@ -123,7 +124,7 @@ impl SignaturePublicKey {
 }
 
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),

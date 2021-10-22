@@ -1,6 +1,7 @@
 //! Copyright (c) SimpleStaking and Tezedge Contributors
 //! SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::fmt;
 
 pub use tezos_encoding_derive::BinWriter;
@@ -177,12 +178,21 @@ pub fn put_byte(byte: &u8, out: &mut Vec<u8>) {
     out.push(*byte)
 }
 
-fn put_size(size: usize, out: &mut Vec<u8>) {
-    put_bytes(&(size as u32).to_be_bytes(), out);
+fn put_size(size: usize, out: &mut Vec<u8>) -> BinResult {
+    let size =
+        u32::try_from(size).map_err(|_| BinError::size_error((u32::MAX >> 2) as usize, size))?;
+    put_bytes(&size.to_be_bytes(), out);
+    Ok(())
 }
 
-pub fn bytes(bytes: &[u8], out: &mut Vec<u8>) -> BinResult {
-    out.extend_from_slice(bytes);
+fn put_short_size(size: usize, out: &mut Vec<u8>) -> BinResult {
+    let size = u8::try_from(size).map_err(|_| BinError::size_error(u8::MAX as usize, size))?;
+    put_bytes(&size.to_be_bytes(), out);
+    Ok(())
+}
+
+pub fn bytes<T: AsRef<[u8]>>(bytes: T, out: &mut Vec<u8>) -> BinResult {
+    out.extend_from_slice(bytes.as_ref());
     Ok(())
 }
 
@@ -249,6 +259,7 @@ encode_hash!(crypto::hash::CryptoboxPublicKeyHash);
 encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
 encode_hash!(crypto::hash::PublicKeyP256);
+encode_hash!(crypto::hash::Signature);
 
 pub fn sized<T>(
     size: usize,
@@ -266,7 +277,7 @@ pub fn sized<T>(
 }
 
 pub fn string(data: impl AsRef<str>, out: &mut Vec<u8>) -> BinResult {
-    put_size(data.as_ref().len(), out);
+    put_size(data.as_ref().len(), out)?;
     put_bytes(data.as_ref().as_bytes(), out);
     Ok(())
 }
@@ -330,7 +341,19 @@ pub fn dynamic<T>(
     move |data, out| {
         let mut tmp_out = Vec::new();
         serializer.serialize(data, &mut tmp_out)?;
-        put_size(tmp_out.len(), out);
+        put_size(tmp_out.len(), out)?;
+        out.extend(tmp_out);
+        Ok(())
+    }
+}
+
+pub fn short_dynamic<T>(
+    mut serializer: impl BinSerializer<T>,
+) -> impl FnMut(T, &mut Vec<u8>) -> BinResult {
+    move |data, out| {
+        let mut tmp_out = Vec::new();
+        serializer.serialize(data, &mut tmp_out)?;
+        put_short_size(tmp_out.len(), out)?;
         out.extend(tmp_out);
         Ok(())
     }
@@ -346,7 +369,7 @@ pub fn bounded_dynamic<T>(
         if tmp_out.len() > max_size {
             Err(BinError::size_error(max_size, tmp_out.len()))
         } else {
-            put_size(tmp_out.len(), out);
+            put_size(tmp_out.len(), out)?;
             out.extend(tmp_out);
             Ok(())
         }
@@ -486,6 +509,17 @@ mod test {
     }
 
     #[test]
+    fn short_dynamic() {
+        let mut out = Vec::new();
+        super::short_dynamic(serialize_slice)(&[1, 2, 3], &mut out).expect("Should not fail");
+        assert_eq!(out[0], 3);
+        assert_eq!(&out[1..], &[1, 2, 3]);
+
+        let mut out = Vec::new();
+        super::short_dynamic(serialize_slice)(&[0; 257], &mut out).expect_err("Should fail");
+    }
+
+    #[test]
     fn dynamic() {
         let mut out = Vec::new();
         super::dynamic(serialize_slice)(&[1, 2, 3], &mut out).expect("Should not fail");
@@ -551,5 +585,14 @@ mod test {
             err.iter().last().unwrap(),
             super::BinErrorKind::VariantError(..),
         ));
+    }
+
+    /// Test on compilation error for optional vec field.
+    #[test]
+    fn optional_sized_bytes() {
+        let data: Option<Vec<u8>> = Some(vec![0; 32]);
+        let mut out = Vec::new();
+        super::optional_field(super::sized(32, super::bytes))(&data, &mut out)
+            .expect("Should not fail");
     }
 }

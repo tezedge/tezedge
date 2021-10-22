@@ -3,14 +3,18 @@
 
 #![allow(dead_code)]
 
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Error};
 use criterion::{black_box, Criterion};
 use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite};
 
-pub fn read_data(file: &str) -> Result<Vec<u8>, Error> {
+pub fn read_data(file: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
     let dir =
         std::env::var("CARGO_MANIFEST_DIR").context(format!("`CARGO_MANIFEST_DIR` is not set"))?;
     let path = PathBuf::from(dir).join("resources").join(file);
@@ -24,7 +28,7 @@ pub fn read_data(file: &str) -> Result<Vec<u8>, Error> {
     Ok(data)
 }
 
-pub fn read_data_unwrap(file: &str) -> Vec<u8> {
+pub fn read_data_unwrap(file: impl AsRef<Path>) -> Vec<u8> {
     read_data(file).unwrap_or_else(|e| panic!("Unexpected error: {}", e))
 }
 

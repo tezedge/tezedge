@@ -60,6 +60,7 @@ pub const SIZE: Symbol = Symbol("size");
 pub const LIST: Symbol = Symbol("list");
 pub const BOUNDED: Symbol = Symbol("bounded");
 pub const DYNAMIC: Symbol = Symbol("dynamic");
+pub const SHORT_DYNAMIC: Symbol = Symbol("short_dynamic");
 
 pub const TAGS: Symbol = Symbol("tags");
 pub const IGNORE_UNKNOWN: Symbol = Symbol("ignore_unknown");
