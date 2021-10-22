@@ -785,14 +785,14 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
         .unwrap();
     let apply_block_result = expect_response!(ApplyBlockResult, apply_block_result);
     assert!(apply_block_result.is_err());
-    // FIXME: re-enable this
-    //assert_eq!(
-    //    ApplyBlockError::IncompleteOperations {
-    //        expected: 4,
-    //        actual: 1,
-    //    },
-    //    apply_block_result.unwrap_err()
-    //);
+
+    assert_eq!(
+        ApplyBlockError::IncompleteOperations {
+            expected: 4,
+            actual: 1,
+        },
+        apply_block_result.unwrap_err()
+    );
 }
 
 #[test]

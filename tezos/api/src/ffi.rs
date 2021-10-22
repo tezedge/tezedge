@@ -25,6 +25,7 @@ pub mod ffi_error_ids {
     pub const CALL_ERROR: &str = "ffi.call_error";
     pub const CALL_EXCEPTION: &str = "ffi.call_exception";
     pub const INCONSISTENT_OPERATIONS_HASH: &str = "ffi.inconsistent_operations_hash";
+    pub const INCOMPLETE_OPERATIONS: &str = "ffi.incomplete_operations";
     pub const PREDECESSOR_MISMATCH: &str = "ffi.predecessor_mismatch";
     pub const UNAVAILABLE_PROTOCOL: &str = "ffi.unavailable_protocol";
     pub const UNKNOWN_CONTEXT: &str = "ffi.unknown_context";
@@ -406,6 +407,17 @@ pub enum ApplyBlockError {
     InvalidRequestResponseData { message: String },
 }
 
+// Extracts the parameters from a JSON error coming from the protocol runner like:
+// [{"kind":"permanent","id":"ffi.incomplete_operations","expected":4,"actual":1}]
+// If cannot be parsed, returns 0 as the values.
+fn extract_incomplete_operation_values_from_json(json: &str) -> (usize, usize) {
+    let json = serde_json::from_str::<serde_json::Value>(json).unwrap_or(serde_json::Value::Null);
+    let expected = json[0]["expected"].as_u64().unwrap_or(0) as usize;
+    let actual = json[0]["actual"].as_u64().unwrap_or(0) as usize;
+
+    (expected, actual)
+}
+
 impl From<CallError> for ApplyBlockError {
     fn from(error: CallError) -> Self {
         match error {
@@ -421,6 +433,11 @@ impl From<CallError> for ApplyBlockError {
                 ffi_error_ids::PREDECESSOR_MISMATCH => ApplyBlockError::PredecessorMismatch {
                     message: trace_message,
                 },
+                ffi_error_ids::INCOMPLETE_OPERATIONS => {
+                    let (expected, actual) =
+                        extract_incomplete_operation_values_from_json(&trace_message);
+                    ApplyBlockError::IncompleteOperations { expected, actual }
+                }
                 _ => ApplyBlockError::FailedToApplyBlock {
                     message: trace_message,
                 },
