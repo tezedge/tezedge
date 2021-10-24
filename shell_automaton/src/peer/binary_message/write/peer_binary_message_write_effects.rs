@@ -5,6 +5,7 @@ use crate::peer::chunk::write::{
 };
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus};
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::{Action, Service, State};
 
 use super::{
@@ -146,6 +147,14 @@ pub fn peer_binary_message_write_effects<S>(
                     _ => {}
                 };
             }
+        }
+        Action::PeerBinaryMessageWriteError(action) => {
+            store.dispatch(
+                PeersGraylistAddressAction {
+                    address: action.address,
+                }
+                .into(),
+            );
         }
         _ => {}
     }

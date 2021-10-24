@@ -5,13 +5,21 @@ use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 
+use crate::yielded_operations::{
+    YieldedOperationsAddAction, YieldedOperationsExecuteAllAction,
+    YieldedOperationsExecuteNextInitAction, YieldedOperationsExecuteNextSuccessAction,
+};
+
 use crate::peer::binary_message::read::*;
 use crate::peer::binary_message::write::*;
 use crate::peer::chunk::read::*;
 use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
 use crate::peer::message::write::*;
-use crate::peer::{PeerTryReadAction, PeerTryWriteAction};
+use crate::peer::{
+    PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
+    PeerTryWriteLoopStartAction,
+};
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
 use crate::peer::connection::incoming::accept::*;
@@ -72,6 +80,11 @@ pub use redux_rs::{ActionId, ActionWithId};
 pub enum Action {
     Init,
 
+    YieldedOperationsAdd(YieldedOperationsAddAction),
+    YieldedOperationsExecuteAll(YieldedOperationsExecuteAllAction),
+    YieldedOperationsExecuteNextInit(YieldedOperationsExecuteNextInitAction),
+    YieldedOperationsExecuteNextSuccess(YieldedOperationsExecuteNextSuccessAction),
+
     PeersDnsLookupInit(PeersDnsLookupInitAction),
     PeersDnsLookupError(PeersDnsLookupErrorAction),
     PeersDnsLookupSuccess(PeersDnsLookupSuccessAction),
@@ -115,8 +128,10 @@ pub enum Action {
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),
 
-    PeerTryWrite(PeerTryWriteAction),
-    PeerTryRead(PeerTryReadAction),
+    PeerTryWriteLoopStart(PeerTryWriteLoopStartAction),
+    PeerTryWriteLoopFinish(PeerTryWriteLoopFinishAction),
+    PeerTryReadLoopStart(PeerTryReadLoopStartAction),
+    PeerTryReadLoopFinish(PeerTryReadLoopFinishAction),
 
     // chunk read
     PeerChunkReadInit(PeerChunkReadInitAction),

@@ -1,14 +1,26 @@
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-/// Try writing next part/message to the peer.
+use super::PeerIOLoopResult;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PeerTryWriteAction {
+pub struct PeerTryWriteLoopStartAction {
     pub address: SocketAddr,
 }
 
-/// Try reading from peer.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PeerTryReadAction {
+pub struct PeerTryWriteLoopFinishAction {
     pub address: SocketAddr,
+    pub result: PeerIOLoopResult,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerTryReadLoopStartAction {
+    pub address: SocketAddr,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerTryReadLoopFinishAction {
+    pub address: SocketAddr,
+    pub result: PeerIOLoopResult,
 }

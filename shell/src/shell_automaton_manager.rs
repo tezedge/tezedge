@@ -159,6 +159,8 @@ impl ShellAutomatonManager {
             peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
 
+            peer_max_io_syscalls: 64,
+
             peers_potential_max: p2p_config.peer_threshold.high * 5,
             peers_connected_max: p2p_config.peer_threshold.high,
 

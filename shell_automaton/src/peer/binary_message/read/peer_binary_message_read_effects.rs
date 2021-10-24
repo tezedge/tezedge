@@ -4,11 +4,14 @@ use tezos_messages::p2p::{
     encoding::{ack::AckMessage, metadata::MetadataMessage, peer::PeerMessageResponse},
 };
 
-use crate::peer::chunk::read::{PeerChunkRead, PeerChunkReadInitAction, PeerChunkReadState};
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
 use crate::peer::{PeerHandshaked, PeerStatus};
 use crate::service::Service;
+use crate::{
+    peer::chunk::read::{PeerChunkRead, PeerChunkReadInitAction, PeerChunkReadState},
+    peers::graylist::PeersGraylistAddressAction,
+};
 use crate::{Action, State};
 
 use super::{
@@ -293,6 +296,14 @@ pub fn peer_binary_message_read_effects<S>(
                     _ => {}
                 }
             }
+        }
+        Action::PeerBinaryMessageReadError(action) => {
+            store.dispatch(
+                PeersGraylistAddressAction {
+                    address: action.address,
+                }
+                .into(),
+            );
         }
         _ => {}
     }

@@ -7,7 +7,8 @@ use crate::peer::chunk::read::{
 };
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
-use crate::peer::{PeerHandshaked, PeerStatus, PeerTryReadAction};
+use crate::peer::{PeerHandshaked, PeerStatus, PeerTryReadLoopStartAction};
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::{Action, Service, State};
 
 pub fn peer_chunk_read_effects<S>(
@@ -18,12 +19,16 @@ pub fn peer_chunk_read_effects<S>(
 {
     match &action.action {
         Action::PeerChunkReadInit(action) => {
-            store.dispatch(
-                PeerTryReadAction {
-                    address: action.address,
+            if let Some(peer) = store.state.get().peers.get(&action.address) {
+                if peer.try_read_loop.can_be_started() {
+                    store.dispatch(
+                        PeerTryReadLoopStartAction {
+                            address: action.address,
+                        }
+                        .into(),
+                    );
                 }
-                .into(),
-            );
+            }
         }
         Action::PeerChunkReadPart(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
@@ -35,12 +40,14 @@ pub fn peer_chunk_read_effects<S>(
                             return match chunk_state {
                                 PeerChunkReadState::PendingSize { .. }
                                 | PeerChunkReadState::PendingBody { .. } => {
-                                    store.dispatch(
-                                        PeerTryReadAction {
-                                            address: action.address,
-                                        }
-                                        .into(),
-                                    );
+                                    if peer.try_read_loop.can_be_started() {
+                                        store.dispatch(
+                                            PeerTryReadLoopStartAction {
+                                                address: action.address,
+                                            }
+                                            .into(),
+                                        );
+                                    }
                                 }
                                 PeerChunkReadState::Ready { .. } => {
                                     store.dispatch(
@@ -79,12 +86,14 @@ pub fn peer_chunk_read_effects<S>(
                     | PeerBinaryMessageReadState::Pending { chunk, .. } => match &chunk.state {
                         PeerChunkReadState::PendingSize { .. }
                         | PeerChunkReadState::PendingBody { .. } => {
-                            store.dispatch(
-                                PeerTryReadAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            );
+                            if peer.try_read_loop.can_be_started() {
+                                store.dispatch(
+                                    PeerTryReadLoopStartAction {
+                                        address: action.address,
+                                    }
+                                    .into(),
+                                );
+                            }
                         }
                         PeerChunkReadState::EncryptedReady {
                             chunk_encrypted: chunk_content_encrypted,
@@ -150,6 +159,14 @@ pub fn peer_chunk_read_effects<S>(
                     _ => {}
                 };
             }
+        }
+        Action::PeerChunkReadError(action) => {
+            store.dispatch(
+                PeersGraylistAddressAction {
+                    address: action.address,
+                }
+                .into(),
+            );
         }
         _ => {}
     }

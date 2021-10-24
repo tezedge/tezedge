@@ -1,10 +1,8 @@
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{connection::incoming::PeerConnectionIncomingState, Peer, PeerQuota, PeerStatus},
-    State,
-};
+use crate::peer::connection::incoming::PeerConnectionIncomingState;
+use crate::peer::{Peer, PeerIOLoopState, PeerQuota, PeerStatus};
+use crate::{Action, State};
 
 use super::PeersAddIncomingPeerAction;
 
@@ -21,6 +19,8 @@ pub fn peers_add_reducer(state: &mut State, action: &ActionWithId<Action>) {
                         .into(),
                     ),
                     quota: PeerQuota::new(action.id),
+                    try_read_loop: PeerIOLoopState::Idle,
+                    try_write_loop: PeerIOLoopState::Idle,
                 });
             }
         }

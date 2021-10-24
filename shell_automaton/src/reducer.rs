@@ -3,6 +3,8 @@ use redux_rs::{chain_reducers, ActionWithId};
 use crate::action::Action;
 use crate::State;
 
+use crate::yielded_operations::yielded_operations_reducer;
+
 use crate::peer::binary_message::read::peer_binary_message_read_reducer;
 use crate::peer::binary_message::write::peer_binary_message_write_reducer;
 use crate::peer::chunk::read::peer_chunk_read_reducer;
@@ -41,6 +43,7 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
         action,
         // needs to be first!
         storage_state_snapshot_create_reducer,
+        yielded_operations_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,

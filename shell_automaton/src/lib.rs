@@ -23,6 +23,9 @@ pub use reducer::reducer;
 mod effects;
 pub use effects::effects;
 
+pub mod yielded_operations;
+use yielded_operations::YieldedOperationsExecuteAllAction;
+
 pub mod request;
 
 pub mod shell_compatibility_version;
@@ -97,12 +100,12 @@ where
     for<'a> &'a Events: IntoIterator<Item = &'a <Serv::Mio as MioService>::InternalEvent>,
 {
     pub fn make_progress(&mut self) {
-        let mio_timeout = self.store.state().config.min_time_interval();
+        let mio_timeout = self.store.state().mio_timeout();
 
         self.store
             .service()
             .mio()
-            .wait_for_events(&mut self.events, Some(mio_timeout));
+            .wait_for_events(&mut self.events, mio_timeout);
 
         let mut no_events = true;
 
@@ -119,6 +122,11 @@ where
 
         if no_events {
             self.store.dispatch(Action::MioTimeoutEvent);
+        }
+
+        if !self.store.state().yielded_operations.is_empty() {
+            self.store
+                .dispatch(YieldedOperationsExecuteAllAction {}.into());
         }
     }
 }

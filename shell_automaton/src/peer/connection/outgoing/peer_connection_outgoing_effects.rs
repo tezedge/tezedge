@@ -1,8 +1,6 @@
 use redux_rs::{ActionWithId, Store};
 
-use crate::peer::connection::PeerConnectionState;
 use crate::peer::handshaking::PeerHandshakingInitAction;
-use crate::peer::PeerStatus;
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::{MioService, RandomnessService, Service};
 use crate::{Action, State};
@@ -10,7 +8,6 @@ use crate::{Action, State};
 use super::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
     PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
-    PeerConnectionOutgoingState, PeerConnectionOutgoingSuccessAction,
 };
 
 pub fn peer_connection_outgoing_effects<S>(
@@ -47,32 +44,6 @@ pub fn peer_connection_outgoing_effects<S>(
         Action::PeerConnectionOutgoingPending(_) => {
             // try to connect to next random peer.
             store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
-        }
-        Action::P2pPeerEvent(event) => {
-            // when we receive first writable event from mio,
-            // that's when we know that we successfuly connected
-            // to the peer.
-            if !event.is_writable() {
-                return;
-            }
-            let address = event.address();
-
-            let peer = match store.state.get().peers.get(&address) {
-                Some(v) => v,
-                None => return,
-            };
-
-            match &peer.status {
-                PeerStatus::Connecting(connection_state) => match connection_state {
-                    PeerConnectionState::Outgoing(PeerConnectionOutgoingState::Pending {
-                        ..
-                    }) => {
-                        store.dispatch(PeerConnectionOutgoingSuccessAction { address }.into());
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
         }
         Action::PeerConnectionOutgoingSuccess(action) => store.dispatch(
             PeerHandshakingInitAction {

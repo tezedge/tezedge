@@ -1,10 +1,7 @@
 use redux_rs::ActionWithId;
 
-use crate::{
-    action::Action,
-    peer::{Peer, PeerQuota, PeerStatus},
-    State,
-};
+use crate::peer::{Peer, PeerIOLoopState, PeerQuota, PeerStatus};
+use crate::{Action, State};
 
 use super::PeersAddMultiAction;
 
@@ -22,6 +19,8 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithId<Action>)
                     entry.or_insert_with(|| Peer {
                         status: PeerStatus::Potential,
                         quota: PeerQuota::new(action.id),
+                        try_read_loop: PeerIOLoopState::Idle,
+                        try_write_loop: PeerIOLoopState::Idle,
                     });
                 }
             }

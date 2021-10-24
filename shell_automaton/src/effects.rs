@@ -5,6 +5,8 @@ use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::{Action, ActionId, State};
 
+use crate::yielded_operations::yielded_operations_effects;
+
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
 use crate::peer::binary_message::write::peer_binary_message_write_effects;
 use crate::peer::chunk::read::peer_chunk_read_effects;
@@ -84,6 +86,8 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
+
+    yielded_operations_effects(store, action);
 
     peer_effects(store, action);
 

@@ -57,6 +57,9 @@ pub struct Config {
     /// done within this time limitation, we will disconnect and blacklist the peer.
     pub peer_handshaking_timeout: Duration,
 
+    /// Limit for the number of allowed syscalls in one iteration/loop ("in one go").
+    pub peer_max_io_syscalls: usize,
+
     /// Maximum number of potential peers.
     pub peers_potential_max: usize,
 
@@ -109,6 +112,8 @@ pub fn default_config() -> Config {
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
+        peer_max_io_syscalls: 64,
+
         peers_potential_max: 80,
         peers_connected_max: 40,
 
@@ -145,6 +150,8 @@ pub fn test_config() -> Config {
         check_timeouts_interval: Duration::from_millis(100),
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
+
+        peer_max_io_syscalls: 64,
 
         peers_potential_max: 80,
         peers_connected_max: 40,

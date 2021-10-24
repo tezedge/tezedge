@@ -3,7 +3,8 @@ use tezos_messages::p2p::binary_message::BinaryChunk;
 
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
-use crate::peer::{PeerHandshaked, PeerStatus, PeerTryWriteAction};
+use crate::peer::{PeerHandshaked, PeerStatus, PeerTryWriteLoopStartAction};
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::{Action, Service, State};
 
 use super::{
@@ -145,12 +146,15 @@ pub fn peer_chunk_write_effects<S>(
                             chunk_state: PeerChunkWriteState::Pending { .. },
                             ..
                         } => {
-                            return store.dispatch(
-                                PeerTryWriteAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            );
+                            if peer.try_write_loop.can_be_started() {
+                                store.dispatch(
+                                    PeerTryWriteLoopStartAction {
+                                        address: action.address,
+                                    }
+                                    .into(),
+                                );
+                            }
+                            return;
                         }
                         PeerHandshakingStatus::MetadataMessageWritePending {
                             binary_message_state,
@@ -177,12 +181,14 @@ pub fn peer_chunk_write_effects<S>(
                             },
                         ..
                     } => {
-                        store.dispatch(
-                            PeerTryWriteAction {
-                                address: action.address,
-                            }
-                            .into(),
-                        );
+                        if peer.try_write_loop.can_be_started() {
+                            store.dispatch(
+                                PeerTryWriteLoopStartAction {
+                                    address: action.address,
+                                }
+                                .into(),
+                            );
+                        }
                     }
                     _ => {}
                 };
@@ -198,12 +204,14 @@ pub fn peer_chunk_write_effects<S>(
                         } => {
                             return match chunk_state {
                                 PeerChunkWriteState::Pending { .. } => {
-                                    store.dispatch(
-                                        PeerTryWriteAction {
-                                            address: action.address,
-                                        }
-                                        .into(),
-                                    );
+                                    if peer.try_write_loop.can_be_started() {
+                                        store.dispatch(
+                                            PeerTryWriteLoopStartAction {
+                                                address: action.address,
+                                            }
+                                            .into(),
+                                        );
+                                    }
                                 }
                                 PeerChunkWriteState::Ready { .. } => {
                                     store.dispatch(
@@ -234,12 +242,14 @@ pub fn peer_chunk_write_effects<S>(
                 match binary_message_state {
                     PeerBinaryMessageWriteState::Pending { chunk, .. } => match &chunk.state {
                         PeerChunkWriteState::Pending { .. } => {
-                            store.dispatch(
-                                PeerTryWriteAction {
-                                    address: action.address,
-                                }
-                                .into(),
-                            );
+                            if peer.try_write_loop.can_be_started() {
+                                store.dispatch(
+                                    PeerTryWriteLoopStartAction {
+                                        address: action.address,
+                                    }
+                                    .into(),
+                                );
+                            }
                         }
                         PeerChunkWriteState::Ready { .. } => {
                             store.dispatch(
@@ -255,6 +265,12 @@ pub fn peer_chunk_write_effects<S>(
                 };
             }
         }
+        Action::PeerChunkWriteError(action) => store.dispatch(
+            PeersGraylistAddressAction {
+                address: action.address,
+            }
+            .into(),
+        ),
         _ => {}
     }
 }

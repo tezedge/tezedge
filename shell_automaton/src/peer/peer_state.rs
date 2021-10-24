@@ -55,6 +55,46 @@ impl PeerStatus {
 pub struct Peer {
     pub status: PeerStatus,
     pub quota: PeerQuota,
+    pub try_read_loop: PeerIOLoopState,
+    pub try_write_loop: PeerIOLoopState,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerIOLoopState {
+    Idle,
+    Started { time: u64 },
+    Finished { time: u64, result: PeerIOLoopResult },
+}
+
+impl PeerIOLoopState {
+    pub fn can_be_started(&self) -> bool {
+        match self {
+            Self::Idle => true,
+            Self::Started { .. } => false,
+            Self::Finished { result, .. } => match result {
+                PeerIOLoopResult::NotReady => true,
+                PeerIOLoopResult::FullyConsumed => false,
+                PeerIOLoopResult::ByteQuotaReached => false,
+                PeerIOLoopResult::MaxIOSyscallBoundReached => false,
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerIOLoopResult {
+    /// We aren't ready for making more progress, even though resource
+    /// might not be fully consumed.
+    NotReady,
+
+    /// We fully consumed available resource.
+    FullyConsumed,
+
+    /// We reached the limit on maximum transfer for some interval.
+    ByteQuotaReached,
+
+    /// We reached the limit on max io syscalls for this iteration/loop.
+    MaxIOSyscallBoundReached,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

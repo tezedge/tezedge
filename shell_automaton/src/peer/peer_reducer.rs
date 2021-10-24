@@ -2,15 +2,21 @@ use redux_rs::ActionWithId;
 
 use crate::{Action, State};
 
+use super::chunk::read::PeerChunkReadPartAction;
+use super::chunk::write::PeerChunkWritePartAction;
 use super::{
-    chunk::{read::PeerChunkReadPartAction, write::PeerChunkWritePartAction},
-    PeerTryReadAction, PeerTryWriteAction,
+    PeerIOLoopState, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
+    PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
 };
 
 pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
     match &action.action {
-        Action::PeerTryRead(PeerTryReadAction { address }) => {
+        Action::PeerTryReadLoopStart(PeerTryReadLoopStartAction { address }) => {
             if let Some(peer) = state.peers.get_mut(address) {
+                peer.try_read_loop = PeerIOLoopState::Started {
+                    time: action.time_as_nanos(),
+                };
+
                 if peer.quota.bytes_read == 0 {
                     return;
                 }
@@ -25,8 +31,20 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
                 }
             }
         }
-        Action::PeerTryWrite(PeerTryWriteAction { address }) => {
+        Action::PeerTryReadLoopFinish(PeerTryReadLoopFinishAction { address, result }) => {
             if let Some(peer) = state.peers.get_mut(address) {
+                peer.try_read_loop = PeerIOLoopState::Finished {
+                    time: action.time_as_nanos(),
+                    result: result.clone(),
+                };
+            }
+        }
+        Action::PeerTryWriteLoopStart(PeerTryWriteLoopStartAction { address }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                peer.try_write_loop = PeerIOLoopState::Started {
+                    time: action.time_as_nanos(),
+                };
+
                 if peer.quota.bytes_written == 0 {
                     return;
                 }
@@ -39,6 +57,14 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
                     peer.quota.write_timestamp = action.id;
                     peer.quota.reject_write = false;
                 }
+            }
+        }
+        Action::PeerTryWriteLoopFinish(PeerTryWriteLoopFinishAction { address, result }) => {
+            if let Some(peer) = state.peers.get_mut(address) {
+                peer.try_write_loop = PeerIOLoopState::Finished {
+                    time: action.time_as_nanos(),
+                    result: result.clone(),
+                };
             }
         }
         Action::PeerChunkReadPart(PeerChunkReadPartAction { address, bytes }) => {
