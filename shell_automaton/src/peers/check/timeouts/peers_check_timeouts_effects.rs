@@ -25,7 +25,6 @@ fn check_timeout(
 ) -> Option<PeerTimeout> {
     Some(match &peer.status {
         PeerStatus::Potential => return None,
-        // TODO: detect connection timeouts as well.
         PeerStatus::Connecting(connecting) => {
             if current_time >= connecting.time() + peer_connecting_timeout {
                 return None;

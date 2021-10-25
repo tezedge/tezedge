@@ -162,10 +162,12 @@ pub enum Action {
     PeerBinaryMessageWriteError(PeerBinaryMessageWriteErrorAction),
 
     PeerMessageReadInit(PeerMessageReadInitAction),
+    PeerMessageReadError(PeerMessageReadErrorAction),
     PeerMessageReadSuccess(PeerMessageReadSuccessAction),
 
     PeerMessageWriteNext(PeerMessageWriteNextAction),
     PeerMessageWriteInit(PeerMessageWriteInitAction),
+    PeerMessageWriteError(PeerMessageWriteErrorAction),
     PeerMessageWriteSuccess(PeerMessageWriteSuccessAction),
 
     PeerHandshakingInit(PeerHandshakingInitAction),

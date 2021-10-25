@@ -5,8 +5,10 @@ use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
+use crate::peer::message::read::PeerMessageReadErrorAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::add::multi::PeersAddMultiAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::{RandomnessService, Service};
 use crate::{Action, State};
@@ -53,7 +55,13 @@ pub fn peer_message_read_effects<S>(
                     );
                 }
                 Err(err) => {
-                    eprintln!("TODO: encountered PeerMessageResponse decode error handling of which not implemented! {}", err);
+                    store.dispatch(
+                        PeerMessageReadErrorAction {
+                            address: action.address,
+                            error: err.into(),
+                        }
+                        .into(),
+                    );
                 }
             }
         }
@@ -99,6 +107,14 @@ pub fn peer_message_read_effects<S>(
             // try to read next message.
             store.dispatch(
                 PeerMessageReadInitAction {
+                    address: action.address,
+                }
+                .into(),
+            );
+        }
+        Action::PeerMessageReadError(action) => {
+            store.dispatch(
+                PeersGraylistAddressAction {
                     address: action.address,
                 }
                 .into(),

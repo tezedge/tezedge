@@ -1,22 +1,25 @@
-use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-use tezos_encoding::binary_reader::BinaryReaderError;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::peer::{
-    binary_message::write::PeerBinaryMessageWriteState, chunk::read::PeerChunkReadError,
-};
+use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PeerBinaryMessageReadError {
-    Chunk(PeerChunkReadError),
-    Decode(String),
+// TODO: include error in the state.
+
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum PeerMessageWriteError {
+    #[error("Error while encoding PeerMessage: {0}")]
+    Encode(String),
 }
 
-impl From<BinaryReaderError> for PeerBinaryMessageReadError {
-    fn from(error: BinaryReaderError) -> Self {
-        Self::Decode(error.to_string())
+impl From<BinaryWriterError> for PeerMessageWriteError {
+    fn from(err: BinaryWriterError) -> Self {
+        Self::Encode(err.to_string())
     }
 }
 

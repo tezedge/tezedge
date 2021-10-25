@@ -43,8 +43,6 @@ impl From<ActorsMessageTo> for NetworkChannelMsg {
 #[derive(Debug, Clone)]
 pub enum ActorsMessageFrom {
     PeerStalled(Arc<PeerId>),
-    /// Commands (dedicated to peer_manager)
-    /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
     Shutdown,

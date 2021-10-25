@@ -4,7 +4,8 @@ use tezos_messages::p2p::binary_message::BinaryWrite;
 use crate::peer::binary_message::write::{
     PeerBinaryMessageWriteSetContentAction, PeerBinaryMessageWriteState,
 };
-use crate::peer::message::write::PeerMessageWriteSuccessAction;
+use crate::peer::message::write::{PeerMessageWriteErrorAction, PeerMessageWriteSuccessAction};
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::Service;
 use crate::{Action, State};
 
@@ -58,7 +59,13 @@ pub fn peer_message_write_effects<S>(
                         .into(),
                     ),
                     Err(err) => {
-                        eprintln!("TODO: encountered PeerMessageResponse encode error handling of which not implemented! {}", err);
+                        store.dispatch(
+                            PeerMessageWriteErrorAction {
+                                address: action.address,
+                                error: err.into(),
+                            }
+                            .into(),
+                        );
                     }
                 }
             }
@@ -84,6 +91,14 @@ pub fn peer_message_write_effects<S>(
         Action::PeerMessageWriteSuccess(action) => {
             store.dispatch(
                 PeerMessageWriteNextAction {
+                    address: action.address,
+                }
+                .into(),
+            );
+        }
+        Action::PeerMessageWriteError(action) => {
+            store.dispatch(
+                PeersGraylistAddressAction {
                     address: action.address,
                 }
                 .into(),

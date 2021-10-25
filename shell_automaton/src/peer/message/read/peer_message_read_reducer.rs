@@ -33,6 +33,23 @@ pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithId<Action
                 }
             }
         }
+        Action::PeerMessageReadError(action) => {
+            if let Some(peer) = state.peers.get_mut(&action.address) {
+                match &mut peer.status {
+                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
+                        match message_read {
+                            PeerMessageReadState::Pending { .. } => {}
+                            _ => return,
+                        };
+
+                        *message_read = PeerMessageReadState::Error {
+                            error: action.error.clone(),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
         Action::PeerMessageReadSuccess(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
