@@ -9,7 +9,6 @@ use std::time::Duration;
 use slog::{debug, error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
-use shell::state::head_state::HeadState;
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
@@ -23,6 +22,7 @@ use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::state::head_state::HeadState;
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::persistent::sequence::Sequences;

@@ -590,8 +590,8 @@ mod tests {
     use crate::persistent::database::open_kv;
     use crate::persistent::open_cl;
     use crate::persistent::DbConfiguration;
-    use crate::BlockStorageReader;
     use crate::tests_common;
+    use crate::BlockStorageReader;
 
     use super::*;
     use crate::database;
@@ -646,7 +646,7 @@ mod tests {
         let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
         let maindb = Arc::new(TezedgeDatabase::new(
             TezedgeDatabaseBackendOptions::RocksDB(backend),
-            log.clone()
+            log.clone(),
         ));
         let commit_logs = Arc::new(
             open_cl(&path, vec![BlockStorage::descriptor()], log)

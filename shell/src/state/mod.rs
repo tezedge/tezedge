@@ -360,7 +360,6 @@ pub mod tests {
                 vec![],
             );
 
-
             actor_system
                 .actor_of_props::<ChainManager>(
                     "chain_manager_mock",

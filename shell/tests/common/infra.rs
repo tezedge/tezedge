@@ -20,7 +20,6 @@ use common::contains_all_keys;
 use crypto::hash::{BlockHash, OperationHash};
 use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
-use shell::state::head_state::HeadState;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::mempool::{
@@ -28,6 +27,7 @@ use shell::mempool::{
 };
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
+use shell::state::head_state::HeadState;
 use shell::PeerConnectionThreshold;
 use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::chain_meta_storage::ChainMetaStorageReader;
