@@ -48,9 +48,7 @@ pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
 use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
-pub use crate::shell_automaton_action_meta_storage::ShellAutomatonActionMetaStorage;
-pub use crate::shell_automaton_action_storage::ShellAutomatonActionStorage;
-pub use crate::shell_automaton_state_storage::ShellAutomatonStateStorage;
+pub use crate::shell_automaton::*;
 pub use crate::system_storage::SystemStorage;
 
 pub mod block_meta_storage;
@@ -66,9 +64,7 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
-pub mod shell_automaton_action_meta_storage;
-pub mod shell_automaton_action_storage;
-pub mod shell_automaton_state_storage;
+mod shell_automaton;
 pub mod system_storage;
 
 /// Extension of block header with block hash
