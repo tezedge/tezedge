@@ -123,6 +123,7 @@ pub enum Action {
     PeerDisconnect(PeerDisconnectAction),
     PeerDisconnected(PeerDisconnectedAction),
 
+    MioWaitForEvents,
     MioTimeoutEvent,
     P2pServerEvent(P2pServerEvent),
     P2pPeerEvent(P2pPeerEvent),

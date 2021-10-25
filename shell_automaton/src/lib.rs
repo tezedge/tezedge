@@ -102,6 +102,7 @@ where
     pub fn make_progress(&mut self) {
         let mio_timeout = self.store.state().mio_timeout();
 
+        self.store.dispatch(Action::MioWaitForEvents);
         self.store
             .service()
             .mio()
