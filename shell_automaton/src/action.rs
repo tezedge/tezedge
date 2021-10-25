@@ -5,9 +5,9 @@ use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 
-use crate::yielded_operations::{
-    YieldedOperationsAddAction, YieldedOperationsExecuteAllAction,
-    YieldedOperationsExecuteNextInitAction, YieldedOperationsExecuteNextSuccessAction,
+use crate::paused_loops::{
+    PausedLoopsAddAction, PausedLoopsResumeAllAction, PausedLoopsResumeNextInitAction,
+    PausedLoopsResumeNextSuccessAction,
 };
 
 use crate::peer::binary_message::read::*;
@@ -80,10 +80,10 @@ pub use redux_rs::{ActionId, ActionWithId};
 pub enum Action {
     Init,
 
-    YieldedOperationsAdd(YieldedOperationsAddAction),
-    YieldedOperationsExecuteAll(YieldedOperationsExecuteAllAction),
-    YieldedOperationsExecuteNextInit(YieldedOperationsExecuteNextInitAction),
-    YieldedOperationsExecuteNextSuccess(YieldedOperationsExecuteNextSuccessAction),
+    PausedLoopsAdd(PausedLoopsAddAction),
+    PausedLoopsResumeAll(PausedLoopsResumeAllAction),
+    PausedLoopsResumeNextInit(PausedLoopsResumeNextInitAction),
+    PausedLoopsResumeNextSuccess(PausedLoopsResumeNextSuccessAction),
 
     PeersDnsLookupInit(PeersDnsLookupInitAction),
     PeersDnsLookupError(PeersDnsLookupErrorAction),

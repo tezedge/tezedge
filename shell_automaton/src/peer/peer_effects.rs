@@ -2,8 +2,8 @@ use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
+use crate::paused_loops::{PausedLoop, PausedLoopsAddAction};
 use crate::service::{MioService, Service};
-use crate::yielded_operations::{YieldedOperation, YieldedOperationsAddAction};
 use crate::{Action, State};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
@@ -216,8 +216,8 @@ where
         }
         Action::PeerTryWriteLoopFinish(action) => match &action.result {
             PeerIOLoopResult::MaxIOSyscallBoundReached => store.dispatch(
-                YieldedOperationsAddAction {
-                    operation: YieldedOperation::PeerTryWriteLoop {
+                PausedLoopsAddAction {
+                    data: PausedLoop::PeerTryWrite {
                         peer_address: action.address,
                     },
                 }
@@ -326,8 +326,8 @@ where
         }
         Action::PeerTryReadLoopFinish(action) => match &action.result {
             PeerIOLoopResult::MaxIOSyscallBoundReached => store.dispatch(
-                YieldedOperationsAddAction {
-                    operation: YieldedOperation::PeerTryReadLoop {
+                PausedLoopsAddAction {
+                    data: PausedLoop::PeerTryRead {
                         peer_address: action.address,
                     },
                 }

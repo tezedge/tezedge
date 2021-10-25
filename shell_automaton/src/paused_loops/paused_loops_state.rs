@@ -3,30 +3,30 @@ use std::collections::VecDeque;
 use std::net::SocketAddr;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum YieldedOperation {
-    PeerTryWriteLoop { peer_address: SocketAddr },
-    PeerTryReadLoop { peer_address: SocketAddr },
+pub enum PausedLoop {
+    PeerTryWrite { peer_address: SocketAddr },
+    PeerTryRead { peer_address: SocketAddr },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum YieldedOperationCurrent {
+pub enum PausedLoopCurrent {
     None,
-    Init(YieldedOperation),
+    Init(PausedLoop),
     Success,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct YieldedOperationsState {
-    list: VecDeque<YieldedOperation>,
-    pub(super) current: YieldedOperationCurrent,
+pub struct PausedLoopsState {
+    list: VecDeque<PausedLoop>,
+    pub(super) current: PausedLoopCurrent,
 }
 
-impl YieldedOperationsState {
+impl PausedLoopsState {
     #[inline(always)]
     pub fn new() -> Self {
         Self {
             list: VecDeque::new(),
-            current: YieldedOperationCurrent::None,
+            current: PausedLoopCurrent::None,
         }
     }
 
@@ -41,12 +41,12 @@ impl YieldedOperationsState {
     }
 
     #[inline(always)]
-    pub(super) fn add(&mut self, op: YieldedOperation) {
-        self.list.push_back(op)
+    pub(super) fn add(&mut self, puased_loop: PausedLoop) {
+        self.list.push_back(puased_loop)
     }
 
     #[inline(always)]
-    pub(super) fn pop_front(&mut self) -> Option<YieldedOperation> {
+    pub(super) fn pop_front(&mut self) -> Option<PausedLoop> {
         self.list.pop_front()
     }
 }

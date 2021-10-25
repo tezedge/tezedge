@@ -23,8 +23,8 @@ pub use reducer::reducer;
 mod effects;
 pub use effects::effects;
 
-pub mod yielded_operations;
-use yielded_operations::YieldedOperationsExecuteAllAction;
+pub mod paused_loops;
+use paused_loops::PausedLoopsResumeAllAction;
 
 pub mod request;
 
@@ -125,9 +125,8 @@ where
             self.store.dispatch(Action::MioTimeoutEvent);
         }
 
-        if !self.store.state().yielded_operations.is_empty() {
-            self.store
-                .dispatch(YieldedOperationsExecuteAllAction {}.into());
+        if !self.store.state().paused_loops.is_empty() {
+            self.store.dispatch(PausedLoopsResumeAllAction {}.into());
         }
     }
 }

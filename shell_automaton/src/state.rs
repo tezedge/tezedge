@@ -5,10 +5,10 @@ use std::time::{Duration, SystemTime};
 use ::storage::persistent::BincodeEncoded;
 
 use crate::config::Config;
+use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
 use crate::storage::StorageState;
-use crate::yielded_operations::YieldedOperationsState;
 use crate::{Action, ActionKind};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,7 +41,7 @@ pub struct State {
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
 
-    pub yielded_operations: YieldedOperationsState,
+    pub paused_loops: PausedLoopsState,
 
     /// Action before the `last_action`.
     pub prev_action: ActionIdWithKind,
@@ -57,7 +57,7 @@ impl State {
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
 
-            yielded_operations: YieldedOperationsState::new(),
+            paused_loops: PausedLoopsState::new(),
 
             prev_action: ActionIdWithKind {
                 id: ActionId::ZERO,
@@ -100,10 +100,10 @@ impl State {
 
     #[inline(always)]
     pub fn mio_timeout(&self) -> Option<Duration> {
-        // If we have yielded operations, then set mio timeout to zero
+        // If we have paused loops, then set mio timeout to zero
         // so that epoll syscall for events returns instantly, instead
         // of blocking up until timeout or until there are some events.
-        if !self.yielded_operations.is_empty() {
+        if !self.paused_loops.is_empty() {
             Some(Duration::ZERO)
         } else {
             Some(self.config.min_time_interval())
