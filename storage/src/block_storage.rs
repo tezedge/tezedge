@@ -587,21 +587,15 @@ mod tests {
     use anyhow::Error;
     use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
-    use crate::persistent::database::open_kv;
-    use crate::persistent::open_cl;
-    use crate::persistent::DbConfiguration;
+    use tests_common::TmpStorage;
+
     use crate::tests_common;
     use crate::BlockStorageReader;
 
     use super::*;
-    use crate::database;
-    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
-    use crate::Sequences;
     use tezos_messages::p2p::binary_message::BinaryRead;
 
     fn mocked_block_storage(path: &str) -> Result<(Vec<BlockHeaderWithHash>, BlockStorage), Error> {
-        use rocksdb::Cache;
-
         let headers_str = vec![
             ("BMPpsdYyqRPUx4bPM187UguF29NUAxNhh5tXXrSNMbb6UKZf2iM", "00000001008fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424418da9c100000000000000060176f52f440c8e4ab99a2a4ef76474c4bcf4ee09238150ed77fd73fb3be1fe4af30000000c0000000800000000000000016ae39b9a0de0eff1d52ae16a9282747edf61f89e4bc72b943221ca94fd3b9b48000000024131"),
             ("BLq4AAun3eFcHWA8BJZgnUy6DEkSRZde69MziAh2ct4wCE1weCY", "0000000200dd7c2bbc9594cd39fe49f29637f6bff5ca9d50f11dd341508bfacf714b7e28e300000000000000100107eb8155a0827d5ef666e43b15acdea8adb58e3817aa6ca7ac4a9c55eb41ebd20000000c000000080000000000000002514aa7bfad26b4289f9225f722803ad5d62294c931e8ccd8d237ea7e87afb236000000024132"),
@@ -628,34 +622,10 @@ mod tests {
             std::fs::remove_dir_all(path).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let tmp_storage =
+            TmpStorage::create_to_out_dir(path).expect("failed to create tmp storage");
 
-        // logger
-        let log_level = tests_common::log_level();
-        let log = tests_common::create_logger(log_level);
-
-        let db = open_kv(
-            path,
-            vec![
-                BlockPrimaryIndex::descriptor(&cache),
-                PredecessorStorage::descriptor(&cache),
-            ],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
-        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-        let maindb = Arc::new(TezedgeDatabase::new(
-            TezedgeDatabaseBackendOptions::RocksDB(backend),
-            log.clone(),
-        ));
-        let commit_logs = Arc::new(
-            open_cl(&path, vec![BlockStorage::descriptor()], log)
-                .expect("Failed to open plain block_header storage"),
-        );
-        let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
-        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
-
-        let block_storage = BlockStorage::new(&persistent_storage);
+        let block_storage = BlockStorage::new(tmp_storage.storage());
 
         // initialize storage with a few blocks
         let mut predecessor_hash: BlockHash = blocks_in_mem[0].hash.clone();
@@ -678,13 +648,6 @@ mod tests {
         Ok((blocks_in_mem, block_storage))
     }
 
-    fn destroy_db(path: &str) {
-        use rocksdb::{Options, DB};
-        use std::fs;
-        assert!(DB::destroy(&Options::default(), path).is_ok());
-        fs::remove_dir_all(path).expect("Failed to remove mocked db dirs");
-    }
-
     #[test]
     fn block_storage_reader_get_test() -> Result<(), Error> {
         let path = "__block_storage_reader_get";
@@ -705,7 +668,6 @@ mod tests {
                 );
             }
         }
-        destroy_db(path);
         Ok(())
     }
 
@@ -729,7 +691,6 @@ mod tests {
                 );
             }
         }
-        destroy_db(path);
         Ok(())
     }
 
@@ -783,8 +744,6 @@ mod tests {
                     .collect::<Vec<BlockHash>>()
             );
         }
-
-        destroy_db(path);
         Ok(())
     }
 
@@ -863,8 +822,6 @@ mod tests {
                     .collect::<Vec<BlockHash>>()
             );
         }
-
-        destroy_db(path);
         Ok(())
     }
 
@@ -919,8 +876,6 @@ mod tests {
                     .collect::<Vec<BlockHash>>()
             );
         }
-
-        destroy_db(path);
         Ok(())
     }
 
@@ -999,8 +954,6 @@ mod tests {
                     .collect::<Vec<BlockHash>>()
             );
         }
-
-        destroy_db(path);
         Ok(())
     }
 }
