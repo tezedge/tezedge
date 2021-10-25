@@ -172,10 +172,13 @@ impl ChainFeeder {
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
                 tezos_writeable_api,
-                log,
+                log.clone(),
             )
             .spawn_feeder_thread("chain-feedr-ctx".into(), initialize_context_result_callback)
-            .map_err(|_| CreateError::Panicked)?;
+            .map_err(|e| {
+                warn!(log, "Failed to spawn chain feeder thread"; "reason" => format!("{}", e));
+                CreateError::Panicked
+            })?;
 
         sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
@@ -953,7 +956,9 @@ fn _apply_block(
 
     // check if not already applied
     if block_meta.is_applied() && !replay_mode {
-        info!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+        info!(log, "Block is already applied (feeder)";
+                   "block_header_hash" => block_hash.to_base58_check(),
+                   "block_header_level" => block.header.level());
         return Ok(None);
     }
 
@@ -976,6 +981,7 @@ fn _apply_block(
 
     debug!(log, "Block was applied";
            "block_header_hash" => block_hash.to_base58_check(),
+           "block_header_level" => block.header.level(),
            "context_hash" => apply_block_result.context_hash.to_base58_check(),
            "validation_result_message" => &apply_block_result.validation_result_message);
 
@@ -984,6 +990,7 @@ fn _apply_block(
         info!(log, "Block was validated with protocol with long processing";
               "commit_time" => format!("{:?}", commit_time_duration),
               "block_header_hash" => block_hash.to_base58_check(),
+              "block_header_level" => block.header.level(),
               "context_hash" => apply_block_result.context_hash.to_base58_check(),
               "protocol_call_elapsed" => format!("{:?}", protocol_call_elapsed));
     }
@@ -1004,7 +1011,7 @@ fn _apply_block(
     let store_result_elapsed = store_result_timer.elapsed();
 
     Ok(Some((
-        ProcessValidatedBlock::new(block, chain_id),
+        ProcessValidatedBlock::new(block, chain_id, Instant::now()),
         block_additional_data,
         BlockValidationTimer::new(
             validated_at_timer.elapsed(),

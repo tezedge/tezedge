@@ -56,6 +56,7 @@ pub struct NodeInfrastructure {
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
     pub actor_system: Arc<ActorSystem>,
     block_applier_thread_watcher: ThreadWatcher,
+    chain_manager_p2p_reader_thread_watcher: ThreadWatcher,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
     pub tmp_storage: TmpStorage,
@@ -232,7 +233,7 @@ impl NodeInfrastructure {
             initialize_chain_manager_result_callback_receiver,
         ) = create_oneshot_callback();
 
-        let chain_manager = ChainManager::actor(
+        let (chain_manager, chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
             &actor_system,
             block_applier.clone(),
             network_channel.clone(),
@@ -289,6 +290,7 @@ impl NodeInfrastructure {
             current_mempool_state_storage,
             tezos_env: tezos_env.clone(),
             block_applier_thread_watcher,
+            chain_manager_p2p_reader_thread_watcher,
             mempool_prevalidator_factory,
         })
     }
@@ -300,6 +302,7 @@ impl NodeInfrastructure {
             actor_system,
             tokio_runtime,
             block_applier_thread_watcher,
+            chain_manager_p2p_reader_thread_watcher,
             mempool_prevalidator_factory,
             ..
         } = self;
@@ -309,6 +312,11 @@ impl NodeInfrastructure {
         if let Err(e) = block_applier_thread_watcher.stop() {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => block_applier_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+        }
+        if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
+            warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
                        "reason" => format!("{}", e));
         }
         let mempool_thread_watchers = match mempool_prevalidator_factory
@@ -363,6 +371,12 @@ impl NodeInfrastructure {
             thread.thread().unpark();
             if let Err(e) = thread.join() {
                 warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        if let Some(thread) = chain_manager_p2p_reader_thread_watcher.thread() {
+            thread.thread().unpark();
+            if let Err(e) = thread.join() {
+                warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
             }
         }
         for mut mempool_thread_watcher in mempool_thread_watchers {

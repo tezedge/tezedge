@@ -327,7 +327,7 @@ fn block_on_actors(
         initialize_chain_manager_result_callback_receiver,
     ) = create_oneshot_callback();
 
-    let chain_manager = ChainManager::actor(
+    let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
@@ -464,6 +464,11 @@ fn block_on_actors(
                        "thread_name" => block_applier_thread_watcher.thread_name(),
                        "reason" => format!("{}", e));
         }
+        if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
+            warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+        }
         let mempool_thread_watchers = match mempool_prevalidator_factory
             .mempool_thread_watchers()
             .lock()
@@ -519,6 +524,12 @@ fn block_on_actors(
             thread.thread().unpark();
             if let Err(e) = thread.join() {
                 warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        if let Some(thread) = chain_manager_p2p_reader_thread_watcher.thread() {
+            thread.thread().unpark();
+            if let Err(e) = thread.join() {
+                warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
             }
         }
         for mut mempool_thread_watcher in mempool_thread_watchers {

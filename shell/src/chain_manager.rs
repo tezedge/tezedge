@@ -12,6 +12,7 @@
 //! -- ...
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -26,7 +27,7 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Net
 use networking::PeerId;
 use shell_integration::{
     dispatch_oneshot_result, InjectBlock, InjectBlockError, InjectBlockOneshotResultCallback,
-    MempoolOperationReceived, OneshotResultCallback, ResetMempool,
+    MempoolOperationReceived, OneshotResultCallback, ResetMempool, ThreadWatcher,
 };
 use storage::mempool_storage::MempoolOperationType;
 use storage::PersistentStorage;
@@ -37,6 +38,7 @@ use storage::{
 };
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
+use tezos_messages::p2p::encoding::limits::HISTORY_MAX_SIZE;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
@@ -105,11 +107,20 @@ pub struct AskPeersAboutCurrentHead {
 pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
+    result_roundtrip_timer: Arc<Instant>,
 }
 
 impl ProcessValidatedBlock {
-    pub fn new(block: Arc<BlockHeaderWithHash>, chain_id: Arc<ChainId>) -> Self {
-        Self { block, chain_id }
+    pub fn new(
+        block: Arc<BlockHeaderWithHash>,
+        chain_id: Arc<ChainId>,
+        result_roundtrip_timer: Instant,
+    ) -> Self {
+        Self {
+            block,
+            chain_id,
+            result_roundtrip_timer: Arc::new(result_roundtrip_timer),
+        }
     }
 }
 
@@ -181,6 +192,8 @@ pub struct ChainManager {
     mempool_prevalidator: Option<MempoolPrevalidatorBasicRef>,
     /// mempool factory
     mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
+    /// p2p reader
+    p2p_reader_sender: Arc<Mutex<P2pReaderSender>>,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -192,9 +205,6 @@ pub struct ChainManager {
     mempool_storage: MempoolStorage,
     /// Holds state of the blockchain
     chain_state: BlockchainState,
-
-    /// Node's identity public key - e.g. used for history computation
-    identity_peer_id: CryptoboxPublicKeyHash,
 
     /// Holds the state of all peers
     peers: HashMap<ActorUri, PeerState>,
@@ -246,7 +256,17 @@ impl ChainManager {
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
         first_initialization_done_result_callback: OneshotResultCallback<()>,
-    ) -> Result<ChainManagerRef, CreateError> {
+    ) -> Result<(ChainManagerRef, ThreadWatcher), CreateError> {
+        let (p2p_reader_sender, p2p_reader_thread_watcher) = spawn_p2p_reader_thread(
+            identity.peer_id(),
+            &persistent_storage,
+            sys.log(),
+        )
+        .map_err(|e| {
+            warn!(sys.log(), "Failed to spawn p2p reader thread"; "reason" => format!("{}", e));
+            CreateError::Panicked
+        })?;
+
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
             Props::new_args((
@@ -254,6 +274,7 @@ impl ChainManager {
                 network_channel,
                 shell_channel,
                 persistent_storage,
+                Arc::new(Mutex::new(p2p_reader_sender)),
                 tezos_readonly_prevalidation_api,
                 init_storage_data,
                 is_sandbox,
@@ -261,10 +282,10 @@ impl ChainManager {
                 current_mempool_state,
                 num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
-                identity.peer_id(),
                 Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
             )),
         )
+        .map(|actor| (actor, p2p_reader_thread_watcher))
     }
 
     /// The `ChainManager` is intended to serve as a singleton actor so that's why
@@ -298,7 +319,7 @@ impl ChainManager {
             mempool_storage,
             current_head_state,
             remote_current_head_state,
-            identity_peer_id,
+            p2p_reader_sender,
             ..
         } = self;
 
@@ -375,23 +396,17 @@ impl ChainManager {
                                     if let Some(current_head) =
                                         block_storage.get(current_head_local.block_hash())?
                                     {
-                                        // calculate history
-                                        let history = chain_state.get_history(
-                                            &current_head.hash,
-                                            &Seed::new(
-                                                identity_peer_id,
-                                                &peer.peer_id.peer_public_key_hash,
-                                            ),
-                                        )?;
-                                        // send message
-                                        let msg = CurrentBranchMessage::new(
-                                            chain_state.get_chain_id().as_ref().clone(),
-                                            CurrentBranch::new(
-                                                (*current_head.header).clone(),
-                                                history,
-                                            ),
+                                        let chain_id = chain_state.get_chain_id();
+                                        let caboose = chain_state.get_caboose(chain_id)?;
+
+                                        ChainManager::advertise_current_branch_to_p2p(
+                                            chain_id,
+                                            caboose,
+                                            &Arc::new(current_head),
+                                            std::iter::once(&*peer),
+                                            p2p_reader_sender,
+                                            &log,
                                         );
-                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 } else {
                                     warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
@@ -1109,37 +1124,36 @@ impl ChainManager {
     }
 
     /// Send CurrentBranch message to the p2p
-    fn advertise_current_branch_to_p2p(
-        &self,
+    fn advertise_current_branch_to_p2p<'a, I: Iterator<Item = &'a PeerState>>(
         chain_id: &ChainId,
-        block_header: &BlockHeaderWithHash,
-    ) -> Result<(), StorageError> {
-        let ChainManager {
-            peers,
-            chain_state,
-            identity_peer_id,
-            ..
-        } = self;
-
-        for peer in peers.values() {
-            tell_peer(
-                CurrentBranchMessage::new(
-                    chain_id.clone(),
-                    CurrentBranch::new(
-                        block_header.header.as_ref().clone(),
-                        // calculate history for each peer
-                        chain_state.get_history(
-                            &block_header.hash,
-                            &Seed::new(identity_peer_id, &peer.peer_id.peer_public_key_hash),
-                        )?,
-                    ),
-                )
-                .into(),
-                &peer.peer_id,
-            )
+        caboose: Option<Head>,
+        block_header: &Arc<BlockHeaderWithHash>,
+        peers: I,
+        p2p_reader_sender: &'a Arc<Mutex<P2pReaderSender>>,
+        log: &Logger,
+    ) {
+        // lock peers
+        match p2p_reader_sender.lock() {
+            Ok(p2p_reader_sender) => {
+                // dispatch in separate thread
+                for peer in peers {
+                    if let Err(e) = p2p_reader_sender.send(
+                        SendCurrentBranchToPeerRequest {
+                            peer_id: peer.peer_id.clone(),
+                            chain_id: chain_id.clone(),
+                            caboose: caboose.clone(),
+                            block_header: block_header.clone(),
+                        }
+                        .into(),
+                    ) {
+                        warn!(log, "Failed to schedule CurrentBranch message sending"; "reason" => format!("{}", e), "block_header_hash" => block_header.hash.to_base58_check());
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock for schedule CurrentBranch message sending"; "reason" => format!("{}", e), "block_header_hash" => block_header.hash.to_base58_check());
+            }
         }
-
-        Ok(())
     }
 
     /// Send CurrentHead message to the p2p
@@ -1305,20 +1319,36 @@ impl ChainManager {
         ctx: &Context<ChainManagerMsg>,
         validated_block: ProcessValidatedBlock,
     ) -> Result<(), StateError> {
-        let ProcessValidatedBlock { block, chain_id } = validated_block;
+        let ProcessValidatedBlock {
+            block,
+            chain_id,
+            result_roundtrip_timer,
+        } = validated_block;
+        let result_roundtrip_timer = result_roundtrip_timer.elapsed();
+        let log = ctx.system.log();
 
         // we try to set it as "new current head", if some means set, if none means just ignore block
         if let Some((new_head, new_head_result)) = self
             .current_head_state
             .try_update_new_current_head(&block, &self.current_mempool_state)?
         {
-            debug!(ctx.system.log(), "New current head";
-                                     "block_header_hash" => new_head.block_hash().to_base58_check(),
-                                     "level" => new_head.level(),
-                                     "result" => format!("{}", new_head_result)
-            );
-
             let mut is_bootstrapped = self.current_bootstrap_state.is_bootstrapped();
+
+            if is_bootstrapped {
+                info!(log, "New current head";
+                           "block_header_hash" => new_head.block_hash().to_base58_check(),
+                           "result_roundtrip_timer" => format!("{:?}", result_roundtrip_timer),
+                           "level" => new_head.level(),
+                           "result" => format!("{}", new_head_result)
+                );
+            } else {
+                debug!(log, "New current head";
+                            "block_header_hash" => new_head.block_hash().to_base58_check(),
+                            "result_roundtrip_timer" => format!("{:?}", result_roundtrip_timer),
+                            "level" => new_head.level(),
+                            "result" => format!("{}", new_head_result)
+                );
+            }
 
             // notify other actors that new current head was changed
             self.shell_channel.tell(
@@ -1349,7 +1379,7 @@ impl ChainManager {
                 );
 
                 if is_bootstrapped {
-                    info!(ctx.system.log(), "Bootstrapped (chain_manager)";
+                    info!(log, "Bootstrapped (chain_manager)";
                        "num_of_peers_for_bootstrap_threshold" => self.current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
                        "remote_best_known_level" => remote_best_known_level,
                        "reached_on_level" => chain_manager_current_level);
@@ -1362,12 +1392,19 @@ impl ChainManager {
             // we can do this, only if we are bootstrapped,
             // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
             if is_bootstrapped {
-                self.reset_mempool_if_needed(&ctx.myself, block.clone(), &ctx.system.log());
+                self.reset_mempool_if_needed(&ctx.myself, block.clone(), &log);
 
                 // advertise new branch or new head
                 match new_head_result {
                     HeadResult::BranchSwitch => {
-                        self.advertise_current_branch_to_p2p(&chain_id, &block)?;
+                        ChainManager::advertise_current_branch_to_p2p(
+                            &chain_id,
+                            self.chain_state.get_caboose(&chain_id)?,
+                            &block,
+                            self.peers.values(),
+                            &self.p2p_reader_sender,
+                            &log,
+                        );
                     }
                     HeadResult::HeadIncrement => {
                         self.advertise_current_head_to_p2p(
@@ -1413,6 +1450,7 @@ impl
         NetworkChannelRef,
         ShellChannelRef,
         PersistentStorage,
+        Arc<Mutex<P2pReaderSender>>,
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
         bool,
@@ -1420,7 +1458,6 @@ impl
         CurrentMempoolStateStorageRef,
         usize,
         Arc<MempoolPrevalidatorFactory>,
-        CryptoboxPublicKeyHash,
         Arc<Mutex<Option<OneshotResultCallback<()>>>>,
     )> for ChainManager
 {
@@ -1430,6 +1467,7 @@ impl
             network_channel,
             shell_channel,
             persistent_storage,
+            p2p_reader_sender,
             tezos_readonly_prevalidation_api,
             init_storage_data,
             is_sandbox,
@@ -1437,13 +1475,13 @@ impl
             current_mempool_state,
             num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
-            identity_peer_id,
             first_initialization_done_result_callback,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
             PersistentStorage,
+            Arc<Mutex<P2pReaderSender>>,
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
             bool,
@@ -1451,7 +1489,6 @@ impl
             CurrentMempoolStateStorageRef,
             usize,
             Arc<MempoolPrevalidatorFactory>,
-            CryptoboxPublicKeyHash,
             Arc<Mutex<Option<OneshotResultCallback<()>>>>,
         ),
     ) -> Self {
@@ -1462,6 +1499,7 @@ impl
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
+            p2p_reader_sender,
             chain_state: BlockchainState::new(
                 block_applier,
                 &persistent_storage,
@@ -1484,7 +1522,6 @@ impl
                 actor_received_messages_count: 0,
             },
             is_sandbox,
-            identity_peer_id,
             current_mempool_state,
             current_bootstrap_state: SynchronizationBootstrapState::new(
                 num_of_peers_for_bootstrap_threshold,
@@ -1897,4 +1934,103 @@ impl Receive<SubscribedResponse> for ChainManager {
             self.handle_first_initialization_done(ctx.system.log());
         }
     }
+}
+
+pub enum P2pReaderEvent {
+    SendCurrentBranchToPeer(SendCurrentBranchToPeerRequest),
+    ShuttingDown,
+}
+
+pub type P2pReaderSender = std::sync::mpsc::Sender<P2pReaderEvent>;
+
+pub struct SendCurrentBranchToPeerRequest {
+    peer_id: Arc<PeerId>,
+    chain_id: ChainId,
+    caboose: Option<Head>,
+    block_header: Arc<BlockHeaderWithHash>,
+}
+
+impl From<SendCurrentBranchToPeerRequest> for P2pReaderEvent {
+    fn from(request: SendCurrentBranchToPeerRequest) -> Self {
+        P2pReaderEvent::SendCurrentBranchToPeer(request)
+    }
+}
+
+/// Spawn inner thread for heavy readonly operations, like calculation of history...
+fn spawn_p2p_reader_thread(
+    identity_peer_id: CryptoboxPublicKeyHash,
+    persistent_storage: &PersistentStorage,
+    log: Logger,
+) -> Result<(P2pReaderSender, ThreadWatcher), anyhow::Error> {
+    // spawn thread which processes event
+    let thread_name = String::from("chain-p2p-reader");
+    let (event_sender, event_receiver) = std::sync::mpsc::channel();
+    let mut thread_watcher = {
+        let event_sender = event_sender.clone();
+        ThreadWatcher::start(
+            thread_name.clone(),
+            Box::new(move || {
+                event_sender
+                    .send(P2pReaderEvent::ShuttingDown)
+                    .map_err(|e| e.into())
+            }),
+        )
+    };
+
+    let thread = {
+        let run = thread_watcher.thread_running_status().clone();
+        let block_meta_storage = BlockMetaStorage::new(persistent_storage);
+
+        std::thread::Builder::new()
+            .name(thread_name)
+            .spawn(move || {
+
+                while run.load(Ordering::Acquire) {
+                    // let's handle event, if any
+                    if let Ok(event) = event_receiver.recv() {
+                        match event {
+                            P2pReaderEvent::SendCurrentBranchToPeer(SendCurrentBranchToPeerRequest {peer_id, chain_id, caboose, block_header}) => {
+                                // we needed to process this in separate thread, because history calculation in synced mainnet took around 100-400ms and varies
+                                // so for example when reconnecting, for 100 peers it means, 100x(100-400)ms = 10-40s delay for chain_manager processing
+
+                                // calculate history for peer
+                                match BlockchainState::compute_history(
+                                    &block_meta_storage,
+                                    caboose,
+                                    &block_header.hash,
+                                    HISTORY_MAX_SIZE,
+                                    &Seed::new(&identity_peer_id, &peer_id.peer_public_key_hash),
+                                ) {
+                                    Ok(history) => {
+                                        tell_peer(
+                                            CurrentBranchMessage::new(
+                                                chain_id,
+                                                CurrentBranch::new(
+                                                    block_header.header.as_ref().clone(),
+                                                    history,
+                                                ),
+                                            )
+                                                .into(),
+                                            &peer_id,
+                                        )
+                                    },
+                                    Err(e) => {
+                                        warn!(log, "Failed to calculate history for sending CurrentBranch"; "reason" => e);
+                                    }
+                                }
+                            }
+                            P2pReaderEvent::ShuttingDown => {
+                                // just finish the loop
+                                info!(log, "P2p reader thread worker received shutting down event");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                info!(log, "P2p reader thread finished");
+            })?
+    };
+    thread_watcher.set_thread(thread);
+    Ok((event_sender, thread_watcher))
 }
