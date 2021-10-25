@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn block_storage_reader_get_every_nth_test() -> Result<(), Error> {
-        let path = "__block_storage_reader_get_multiple_with_json_data";
+        let path = "__block_storage_reader_get_every_nth_data";
 
         {
             let (blocks_in_mem, block_storage) = mocked_block_storage(path)?;
