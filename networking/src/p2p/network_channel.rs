@@ -6,7 +6,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use riker::actors::*;
+use tezedge_actor_system::actors::*;
 
 use tezos_messages::p2p::encoding::advertise::AdvertiseMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;

@@ -7,22 +7,24 @@
 //! - bootstrap state is initialized from branch history, which is splitted to partitions
 //! - it is king of bingo, where we prepare block intervals, and we check/mark what is downloaded/applied, and what needs to be downloaded or applied
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use riker::actors::*;
-use slog::{info, warn, Logger};
+use rand::Rng;
+use slog::{debug, info, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::prelude::{GetCurrentBranchMessage, PeerMessageResponse};
+use tokio::sync::Semaphore;
 
-use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
-};
-use crate::state::data_requester::{DataRequester, DataRequesterRef};
+use crate::chain_manager::ChainManagerRef;
+use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::state::data_requester::{tell_peer, DataRequester, DataRequesterRef};
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::{ApplyBlockBatch, StateError};
@@ -38,6 +40,36 @@ pub enum AddBranchState {
 
 type PeerBranchSynchronizationDoneCallback = Box<dyn Fn(PeerBranchSynchronizationDone) + Send>;
 
+#[derive(Clone)]
+pub struct BootstrapStateConfiguration {
+    /// Timeout for request of block header from one peer
+    pub(crate) block_header_timeout: Duration,
+    /// Timeout for request of block operations
+    pub(crate) block_operations_timeout: Duration,
+    pub(crate) missing_new_branch_bootstrap_timeout: Duration,
+
+    max_bootstrap_branches_per_peer: usize,
+    apply_block_batch_maxsize: usize,
+}
+
+impl BootstrapStateConfiguration {
+    pub fn new(
+        block_header_timeout: Duration,
+        block_operations_timeout: Duration,
+        missing_new_branch_bootstrap_timeout: Duration,
+        max_bootstrap_branches_per_peer: usize,
+        apply_block_batch_maxsize: usize,
+    ) -> Self {
+        Self {
+            block_header_timeout,
+            block_operations_timeout,
+            missing_new_branch_bootstrap_timeout,
+            max_bootstrap_branches_per_peer,
+            apply_block_batch_maxsize,
+        }
+    }
+}
+
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
     /// Holds peers info
@@ -46,23 +78,40 @@ pub struct BootstrapState {
     /// Holds unique blocks cache, shared for all branch bootstraps to minimalize memory usage
     block_state_db: BlockStateDb,
 
+    /// We apply blocks by batches, and this queue will be like 'waiting room'
+    /// If one batch will pass, just then we send another one,
+    /// In case of failure, we remove conequent batches
+    apply_block_batch_queue: VecDeque<ApplyBlockBatch>,
+    /// Semaphore for limiting apply block batch queue processing, we need to send next batch, only if previous was done (success or failure)
+    /// We use semaphore with just 1 permit:
+    /// - if we have permit available, we can send next batch
+    /// - if we dont have permit, we cannot send next batch and we need to wait until permit will be returned (or dropped)
+    apply_block_batch_tickets: Arc<Semaphore>,
+
     /// Data requester
     data_requester: DataRequesterRef,
 
     /// Callback which should be triggered, when node finishes bootstrapp of any peer's branches
     peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
+
+    /// Configuration for bootstrap state (timeouts, maxsizes, ...)
+    cfg: BootstrapStateConfiguration,
 }
 
 impl BootstrapState {
     pub fn new(
         data_requester: DataRequesterRef,
         peer_branch_synchronization_done_callback: PeerBranchSynchronizationDoneCallback,
+        cfg: BootstrapStateConfiguration,
     ) -> Self {
         Self {
             peers: Default::default(),
             block_state_db: BlockStateDb::new(512),
             data_requester,
             peer_branch_synchronization_done_callback,
+            apply_block_batch_queue: VecDeque::with_capacity(1),
+            apply_block_batch_tickets: Arc::new(Semaphore::new(1)),
+            cfg,
         }
     }
 
@@ -76,29 +125,24 @@ impl BootstrapState {
         }
     }
 
-    pub fn check_stalled_peers<DP: Fn(&PeerId)>(
-        &mut self,
-        cfg: &PeerBranchBootstrapperConfiguration,
-        log: &Logger,
-        disconnect_peer: DP,
-    ) {
+    pub fn check_stalled_peers<DP: Fn(&PeerId)>(&mut self, log: &Logger, disconnect_peer: DP) {
         let stalled_peers = self.peers
             .values()
             .filter_map(|PeerBootstrapState { empty_bootstrap_state, peer_id, peer_queues, .. }| {
                 let mut is_stalled = None;
                 if let Some(empty_bootstrap_state) = empty_bootstrap_state.as_ref() {
                     // 1. check empty bootstrap branches
-                    if empty_bootstrap_state.elapsed() > cfg.missing_new_branch_bootstrap_timeout {
-                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (timeout: {:?})", cfg.missing_new_branch_bootstrap_timeout)));
+                    if empty_bootstrap_state.elapsed() > self.cfg.missing_new_branch_bootstrap_timeout {
+                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (timeout: {:?})", self.cfg.missing_new_branch_bootstrap_timeout)));
                     }
                 }
                 // 2. check penalty peer for not responding to our block header requests on time
                 if is_stalled.is_none() {
-                    match peer_queues.find_any_block_header_response_pending(cfg.block_header_timeout)
+                    match peer_queues.find_any_block_header_response_pending(self.cfg.block_header_timeout)
                     {
                         Ok(response_pending) => {
                             if let Some((pending_block, elapsed)) = response_pending {
-                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block header {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, cfg.block_header_timeout)));
+                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block header {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, self.cfg.block_header_timeout)));
                             }
                         }
                         Err(e) => {
@@ -112,11 +156,11 @@ impl BootstrapState {
                 // 2. check penalty peer for not responding to our block header requests on time
                 if is_stalled.is_none() {
                     match peer_queues
-                        .find_any_block_operations_response_pending(cfg.block_operations_timeout)
+                        .find_any_block_operations_response_pending(self.cfg.block_operations_timeout)
                     {
                         Ok(response_pending) => {
                             if let Some((pending_block, elapsed)) = response_pending {
-                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block operations {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, cfg.block_operations_timeout)));
+                                is_stalled = Some((peer_id.clone(), format!("Peer did not respond to our request for block operations {} on time (elapsed: {:?}, timeout: {:?})", pending_block.to_base58_check(), elapsed, self.cfg.block_operations_timeout)));
                             }
                         }
                         Err(e) => {
@@ -140,31 +184,46 @@ impl BootstrapState {
         }
     }
 
-    pub fn block_apply_failed(&mut self, failed_block: &BlockHash, log: &Logger) {
-        self.peers
-            .values_mut()
-            .for_each(|PeerBootstrapState { branches, peer_id, empty_bootstrap_state, .. }| {
-                branches
-                    .retain(|branch| {
-                        if branch.contains_block(failed_block) {
-                            warn!(log, "Peer's branch bootstrap contains failed block, so this branch bootstrap is removed";
-                               "block_hash" => failed_block.to_base58_check(),
-                               "to_level" => &branch.to_level,
-                               "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                            false
-                        } else {
-                            true
-                        }
-                    });
+    /// if block apply failed, means that we have serious problem (there could a lots of very different issue: wrong/hacked block, db issue, ...),
+    /// we dont know what to do in every case,
+    /// so we better:
+    /// - clean the state,
+    /// - disconnect some peers
+    /// - ask for new CurrentBranch from the rest of the peers peers
+    ///
+    ///  give change to other new peers
+    pub fn block_apply_failed<DP: Fn(&PeerId)>(
+        &mut self,
+        _: &BlockHash,
+        chain_id: ChainId,
+        log: &Logger,
+        disconnect_peer: DP,
+    ) {
+        // we clear the actual bootstrap state
+        self.apply_block_batch_queue.clear();
+        self.block_state_db.clear();
 
-                if branches.is_empty() && empty_bootstrap_state.is_none() {
-                    *empty_bootstrap_state = Some(Instant::now());
-                }
-            });
+        // randomly disconnect or ask GetCurrentBranch
+        let msg: Arc<PeerMessageResponse> = GetCurrentBranchMessage::new(chain_id).into();
+        let mut rng = rand::thread_rng();
+        self.peers.retain(|_, peer_state| {
+            // clear peer state
+            peer_state.empty_bootstrap_state = Some(Instant::now());
+            peer_state.is_bootstrapped = false;
+            peer_state.is_already_scheduled_ping_for_process_all_bootstrap_pipelines = false;
+            peer_state.branches.clear();
 
-        // remove from cache state
-        self.block_state_db
-            .remove_with_all_predecessors(failed_block);
+            // ask or disconnect
+            let retain_peer: bool = rng.gen();
+            if retain_peer {
+                tell_peer(msg.clone(), &peer_state.peer_id);
+            } else {
+                debug!(log, "Disconnecting peer (random selection), because of failed apply block";
+                            "peer_id" => peer_state.peer_id.peer_id_marker.clone(), "peer_ip" => peer_state.peer_id.peer_address.to_string(), "peer" => peer_state.peer_id.peer_ref.name(), "peer_uri" => peer_state.peer_id.peer_ref.uri().to_string());
+                disconnect_peer(&peer_state.peer_id);
+            }
+            retain_peer
+        });
     }
 
     pub fn blocks_scheduled_count(&self) -> usize {
@@ -206,6 +265,28 @@ impl BootstrapState {
                     },
                 )
             })
+    }
+
+    pub fn apply_block_batch_queue_stats(&self) -> (usize, usize, bool) {
+        // queue stats
+        let (waiting_batch_count, waiting_batch_blocks_count) = self
+            .apply_block_batch_queue
+            .iter()
+            .fold((0, 0), |(batches_count, blocks_count), next_batch| {
+                (
+                    batches_count + 1,
+                    blocks_count + next_batch.batch_total_size(),
+                )
+            });
+
+        // we expect max permits 1, so if no permits available, means that batch is in processing
+        let batch_in_progress = self.apply_block_batch_tickets.available_permits() == 0;
+
+        (
+            waiting_batch_count,
+            waiting_batch_blocks_count,
+            batch_in_progress,
+        )
     }
 
     pub fn next_lowest_missing_blocks(&self) -> Vec<(usize, &BlockRef)> {
@@ -261,12 +342,12 @@ impl BootstrapState {
         last_applied_block: BlockHash,
         missing_history: Vec<BlockHash>,
         to_level: Level,
-        max_bootstrap_branches_per_peer: usize,
         log: &Logger,
     ) -> AddBranchState {
         let BootstrapState {
             peers,
             block_state_db,
+            cfg,
             ..
         } = self;
 
@@ -294,8 +375,8 @@ impl BootstrapState {
                 }
 
                 // we handle just finite branches from one peer
-                if peer_state.branches.len() >= max_bootstrap_branches_per_peer {
-                    info!(log, "Peer has started already maximum ({}) branch pipelines, so we dont start new one", max_bootstrap_branches_per_peer;
+                if peer_state.branches.len() >= cfg.max_bootstrap_branches_per_peer {
+                    info!(log, "Peer has started already maximum ({}) branch pipelines, so we dont start new one", cfg.max_bootstrap_branches_per_peer;
                                     "to_level" => &to_level,
                                     "branches" => {
                                         peer_state
@@ -485,18 +566,13 @@ impl BootstrapState {
         }
     }
 
-    pub fn schedule_blocks_for_apply(
-        &mut self,
-        filter_peer: &Arc<PeerId>,
-        max_block_apply_batch: usize,
-        chain_id: &Arc<ChainId>,
-        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
-        log: &slog::Logger,
-    ) {
+    pub fn schedule_blocks_for_apply(&mut self, filter_peer: &Arc<PeerId>, log: &slog::Logger) {
         let BootstrapState {
             peers,
             block_state_db,
             data_requester,
+            cfg,
+            apply_block_batch_queue,
             ..
         } = self;
 
@@ -508,11 +584,10 @@ impl BootstrapState {
             let mut branches_to_remove: HashSet<Level> = HashSet::default();
             for branch in branches.iter_mut() {
                 if let Err(error) = branch.schedule_next_block_to_apply(
-                    max_block_apply_batch,
+                    cfg.apply_block_batch_maxsize,
+                    apply_block_batch_queue,
                     block_state_db,
                     data_requester,
-                    chain_id,
-                    peer_branch_bootstrapper,
                 ) {
                     warn!(log, "Failed to schedule blocks for apply";
                                "reason" => error,
@@ -621,6 +696,31 @@ impl BootstrapState {
 
             if branches.is_empty() && empty_bootstrap_state.is_none() {
                 *empty_bootstrap_state = Some(Instant::now());
+            }
+        }
+    }
+
+    pub fn try_call_apply_block_batch(
+        &mut self,
+        chain_id: &Arc<ChainId>,
+        chain_manager: &Arc<ChainManagerRef>,
+        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
+    ) {
+        // just skip for empty queue
+        if self.apply_block_batch_queue.is_empty() {
+            return;
+        }
+
+        // if we can aquire ticket, means that we can sent a next batch for application
+        if let Ok(permit) = self.apply_block_batch_tickets.clone().try_acquire_owned() {
+            if let Some(batch) = self.apply_block_batch_queue.pop_front() {
+                self.data_requester.call_apply_block_batch(
+                    chain_id.clone(),
+                    batch,
+                    chain_manager.clone(),
+                    peer_branch_bootstrapper.clone(),
+                    permit,
+                );
             }
         }
     }
@@ -824,11 +924,10 @@ impl BranchState {
 
     pub fn schedule_next_block_to_apply(
         &mut self,
-        max_block_apply_batch: usize,
+        apply_block_batch_maxsize: usize,
+        apply_block_batch_queue: &mut VecDeque<ApplyBlockBatch>,
         block_state_db: &mut BlockStateDb,
         data_requester: &DataRequester,
-        chain_id: &Arc<ChainId>,
-        peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
     ) -> Result<(), StateError> {
         // we can apply blocks just from the first "scheduled" interval
         // interval is removed all the time, when the last block of the interval is applied
@@ -916,13 +1015,9 @@ impl BranchState {
                             // start batch or continue existing one
                             if let Some(mut batch) = batch_for_apply {
                                 batch.add_successor(block_ref);
-                                if batch.successors_size() >= max_block_apply_batch {
+                                if batch.successors_size() >= apply_block_batch_maxsize {
                                     // schedule batch
-                                    data_requester.call_schedule_apply_block(
-                                        chain_id.clone(),
-                                        batch,
-                                        Some(peer_branch_bootstrapper.clone()),
-                                    );
+                                    apply_block_batch_queue.push_back(batch);
                                     // start new one
                                     batch_for_apply = None;
                                 } else {
@@ -931,7 +1026,7 @@ impl BranchState {
                             } else {
                                 batch_for_apply = Some(ApplyBlockBatch::start_batch(
                                     block_ref,
-                                    max_block_apply_batch,
+                                    apply_block_batch_maxsize,
                                 ));
                             }
 
@@ -952,11 +1047,7 @@ impl BranchState {
 
         if let Some(batch) = batch_for_apply {
             // schedule last batch
-            data_requester.call_schedule_apply_block(
-                chain_id.clone(),
-                batch,
-                Some(peer_branch_bootstrapper.clone()),
-            );
+            apply_block_batch_queue.push_back(batch);
         }
 
         // remove all previous already scheduled
@@ -988,8 +1079,6 @@ impl BranchState {
     }
 
     /// Notify state requested_block_hash has been applied
-    ///
-    /// <BM> callback wchic return (bool as downloaded, bool as applied, bool as are_operations_complete)
     pub fn block_applied(
         &mut self,
         applied_blocks: &mut HashSet<BlockRef>,
@@ -1015,15 +1104,15 @@ impl BranchState {
         }
 
         // 2. remove intervals, if contained in applied_blocks
-        // find first interval with the applied block block
+        // find the highest interval with the applied blocks
         let mut interval_to_handle = None;
         for (interval_idx, interval) in self.intervals.iter_mut().enumerate() {
             if applied_blocks.contains(&interval.start)
                 || applied_blocks.contains(&interval.seek)
                 || applied_blocks.contains(&interval.end)
             {
+                // we want to find the highest interval
                 interval_to_handle = Some((interval_idx, interval));
-                break;
             }
         }
 
@@ -1037,6 +1126,13 @@ impl BranchState {
                     .extend(block_state_db.remove_with_all_predecessors(&removed_interval.seek));
                 applied_blocks
                     .extend(block_state_db.remove_with_all_predecessors(&removed_interval.end));
+            } else if applied_blocks.contains(&interval.seek) {
+                // collect predecessors from seek/and start
+                applied_blocks.extend(block_state_db.remove_with_all_predecessors(&interval.start));
+                applied_blocks.extend(block_state_db.remove_with_all_predecessors(&interval.seek));
+
+                // we just reset seek to start
+                interval.start = interval.seek.clone();
             }
 
             // here we also need to remove all previous interval, because we dont need them anymore, when higher block was applied
@@ -1515,15 +1611,22 @@ impl BlockStateDb {
 
         removed_blocks
     }
+
+    pub fn clear(&mut self) {
+        self.blocks.clear();
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use serial_test::serial;
 
     use networking::p2p::network_channel::NetworkChannel;
+    use storage::tests_common::TmpStorage;
+    use storage::{BlockMetaStorage, OperationsMetaStorage};
 
-    use crate::shell_channel::ShellChannel;
     use crate::state::peer_state::DataQueuesLimits;
     use crate::state::tests::block;
     use crate::state::tests::prerequisites::{
@@ -1532,20 +1635,6 @@ mod tests {
     };
 
     use super::*;
-    use storage::tests_common::TmpStorage;
-    use storage::{BlockMetaStorage, OperationsMetaStorage};
-
-    // macro_rules! hash_set {
-    //     ( $( $x:expr ),* ) => {
-    //         {
-    //             let mut temp_set = HashSet::new();
-    //             $(
-    //                 temp_set.insert($x);
-    //             )*
-    //             temp_set
-    //         }
-    //     };
-    // }
 
     fn assert_interval(
         tested: &BranchInterval,
@@ -1556,21 +1645,65 @@ mod tests {
         assert_eq!(tested.end.as_ref(), &expected_right);
     }
 
+    fn assert_peer_branch_intervals(
+        peer_state: &PeerBootstrapState,
+        expected_intervals: Vec<BranchInterval>,
+    ) {
+        if expected_intervals.is_empty() {
+            assert!(peer_state.branches.is_empty());
+            return;
+        } else {
+            assert!(!peer_state.branches.is_empty());
+        }
+
+        let intervals = &peer_state.branches[0].intervals;
+        assert_eq!(intervals.len(), expected_intervals.len());
+
+        intervals
+            .iter()
+            .zip(expected_intervals)
+            .enumerate()
+            .for_each(|(idx, (interval, expected_interval))| {
+                assert_eq!(
+                    interval.start,
+                    expected_interval.start,
+                    "Interval {} start mismatch: {} vs {}",
+                    idx,
+                    interval.start.to_base58_check(),
+                    expected_interval.start.to_base58_check()
+                );
+                assert_eq!(
+                    interval.seek,
+                    expected_interval.seek,
+                    "Interval {} seek mismatch: {} vs {}",
+                    idx,
+                    interval.seek.to_base58_check(),
+                    expected_interval.seek.to_base58_check()
+                );
+                assert_eq!(
+                    interval.end,
+                    expected_interval.end,
+                    "Interval {} end mismatch: {} vs {}",
+                    idx,
+                    interval.end.to_base58_check(),
+                    expected_interval.end.to_base58_check()
+                );
+            });
+    }
+
     #[test]
     #[serial]
     fn test_bootstrap_state_add_new_branch() {
         // actors stuff
         let log = create_logger(slog::Level::Info);
-        let sys = create_test_actor_system(log.clone());
         let runtime = create_test_tokio_runtime();
+        let sys = create_test_actor_system(log.clone(), runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&sys).expect("Failed to create network channel");
-        let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
             .expect("failed to create tmp storage");
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state", shell_channel)
-                .expect("failed to create chain_feeder_mock");
+        let (chain_feeder_mock, _) = chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state")
+            .expect("failed to create chain_feeder_mock");
         let data_requester = Arc::new(DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
@@ -1582,6 +1715,13 @@ mod tests {
                 // doing nothing here
                 // chain_manager.tell(msg, None);
             });
+        let cfg = BootstrapStateConfiguration::new(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            10,
+            10,
+        );
 
         // peer1
         let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
@@ -1591,8 +1731,11 @@ mod tests {
         }));
 
         // empty state
-        let mut state =
-            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
+        let mut state = BootstrapState::new(
+            data_requester,
+            peer_branch_synchronization_done_callback,
+            cfg,
+        );
 
         // genesis
         let last_applied = block(0);
@@ -1616,7 +1759,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Added(false)
@@ -1656,7 +1798,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1678,7 +1819,6 @@ mod tests {
                 last_applied.clone(),
                 history,
                 20,
-                5,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1705,7 +1845,6 @@ mod tests {
                 last_applied.clone(),
                 history_to_merge,
                 29,
-                5,
                 &log,
             ),
             AddBranchState::Added(true)
@@ -1748,7 +1887,6 @@ mod tests {
                 last_applied.clone(),
                 history_to_merge,
                 129,
-                5,
                 &log,
             ),
             AddBranchState::Added(false)
@@ -1770,6 +1908,10 @@ mod tests {
             block(229),
         ];
 
+        // peer has two branches
+        // we reset max allowed branches to two, so we cannot add more branches,
+        state.cfg.max_bootstrap_branches_per_peer = 2;
+
         assert!(matches!(
             state.add_new_branch(
                 peer_id.clone(),
@@ -1777,7 +1919,6 @@ mod tests {
                 last_applied,
                 history_to_merge,
                 229,
-                2,
                 &log,
             ),
             AddBranchState::Ignored
@@ -1787,6 +1928,370 @@ mod tests {
         assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
         assert_eq!(2, peer_bootstrap_state.branches.len());
     }
+
+    #[test]
+    #[serial]
+    fn test_bootstrap_state_block_applied_remove_previous_intervals() {
+        // actors stuff
+        let log = create_logger(slog::Level::Info);
+        let runtime = create_test_tokio_runtime();
+        let sys = create_test_actor_system(log.clone(), runtime.handle().clone());
+        let network_channel =
+            NetworkChannel::actor(&sys).expect("Failed to create network channel");
+        let storage = TmpStorage::create_to_out_dir(
+            "__test_bootstrap_state_block_applied_remove_previous_intervals",
+        )
+        .expect("failed to create tmp storage");
+        let (chain_feeder_mock, _) = chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state")
+            .expect("failed to create chain_feeder_mock");
+        let data_requester = Arc::new(DataRequester::new(
+            BlockMetaStorage::new(storage.storage()),
+            OperationsMetaStorage::new(storage.storage()),
+            chain_feeder_mock,
+        ));
+
+        let is_bootstrapped = Arc::new(AtomicBool::new(false));
+        let peer_branch_synchronization_done_callback = {
+            let is_bootstrapped = is_bootstrapped.clone();
+            Box::new(move |_msg: PeerBranchSynchronizationDone| {
+                is_bootstrapped.store(true, Ordering::Release);
+            })
+        };
+        let cfg = BootstrapStateConfiguration::new(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            10,
+            10,
+        );
+
+        // peer1
+        let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
+        let peer_queues = Arc::new(DataQueues::new(DataQueuesLimits {
+            max_queued_block_headers_count: 10,
+            max_queued_block_operations_count: 10,
+        }));
+
+        let interval = |db: &BlockStateDb,
+                        state: BranchIntervalState,
+                        start: &BlockHash,
+                        seek: &BlockHash,
+                        end: &BlockHash|
+         -> BranchInterval {
+            BranchInterval {
+                state,
+                start: db.get_block_ref(start.clone()),
+                seek: db.get_block_ref(seek.clone()),
+                end: db.get_block_ref(end.clone()),
+            }
+        };
+
+        // empty state
+        let mut state = BootstrapState::new(
+            data_requester,
+            peer_branch_synchronization_done_callback,
+            cfg,
+        );
+        state.block_state_db = BlockStateDb::new(2);
+
+        // init block_state_db:
+        // [BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ, BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR],
+        // [BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR, BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9]
+        // [BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9, BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi]
+        // [BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi, BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc]
+        // [BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc, BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog]
+        // [BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog, BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh]
+        // [BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh, BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7]
+        let block_0 =
+            BlockHash::from_base58_check("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")
+                .expect("Failed to create BlockHash");
+        let block_1 =
+            BlockHash::from_base58_check("BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh")
+                .expect("Failed to create BlockHash");
+        let block_2 =
+            BlockHash::from_base58_check("BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog")
+                .expect("Failed to create BlockHash");
+        let block_3 =
+            BlockHash::from_base58_check("BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc")
+                .expect("Failed to create BlockHash");
+        let block_4 =
+            BlockHash::from_base58_check("BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi")
+                .expect("Failed to create BlockHash");
+        let block_5 =
+            BlockHash::from_base58_check("BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9")
+                .expect("Failed to create BlockHash");
+        let block_6 =
+            BlockHash::from_base58_check("BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR")
+                .expect("Failed to create BlockHash");
+        let block_7 =
+            BlockHash::from_base58_check("BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ")
+                .expect("Failed to create BlockHash");
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_7.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_6.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_6.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_5.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_5.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_4.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_4.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_3.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_3.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_2.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_2.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_1.clone()),
+            },
+        );
+        state.block_state_db.blocks.insert(
+            state.block_state_db.get_block_ref(block_1.clone()),
+            BlockState {
+                predecessor_block_hash: state.block_state_db.get_block_ref(block_0.clone()),
+            },
+        );
+
+        // init peer maps:
+        // Interval_0(ScheduledForApply, BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7 - BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7 - BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh),
+        // Interval_1(ScheduledForApply, BLFdjp8ddhUp4VsiUkuLxjABCySL3eXhRy4GGa1nCQMeFYrhKwh - BMTfPfBZW6WMmzrtJfvLmfyCN634kxJZpXkmj5tWJxdnjeEzuog - BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc),
+        // Interval_2(ScheduledForApply, BM2zHfMjjwt5kgN582kYc3BHyKuRYaoAyZaSKPZkJ3hMPhcYoRc - BKoEiJUgAnjkmakV1NoHWJqbTdA4xgZ83uhqNGM3fwJo5kzsmdi - BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9),
+        // Interval_3(ScheduledForApply, BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9 - BM2r6sK3ZY1pzt2YY4E1pWSUVGNiSeRC4dLdjsPWcJoBiRGHxf9 - BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR),
+        // Interval_4(ScheduledForApply, BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR - BLEdFytdaXrJzmwPr5UFukrvDUvZSMLBqzjy6syEk4scKtfGUmR - BLuAtqtQ6RpoBQyqZ9P93QwHZR5xcY5KZUz3te2np9QN87HgxQQ)),
+        state.peers.insert(
+            peer_id.peer_ref.uri().clone(),
+            PeerBootstrapState {
+                peer_id: peer_id.clone(),
+                peer_queues,
+                branches: vec![BranchState {
+                    to_level: 7,
+                    missing_operations: Default::default(),
+                    blocks_to_apply: vec![],
+                    intervals: vec![
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_0,
+                            &block_0,
+                            &block_1,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_1,
+                            &block_2,
+                            &block_3,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_3,
+                            &block_4,
+                            &block_5,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_5,
+                            &block_5,
+                            &block_6,
+                        ),
+                        interval(
+                            &state.block_state_db,
+                            BranchIntervalState::ScheduledForApply,
+                            &block_6,
+                            &block_6,
+                            &block_7,
+                        ),
+                    ],
+                }],
+                empty_bootstrap_state: None,
+                is_bootstrapped: false,
+                is_already_scheduled_ping_for_process_all_bootstrap_pipelines: false,
+            },
+        );
+
+        // block_applied 2 - should remove first interval and move seek to start
+        state.block_applied(&block_2, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_2,
+                    &block_2,
+                    &block_3,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_0));
+        assert!(!state.block_state_db.blocks.contains_key(&block_1));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 3 - should remove just first interval
+        state.block_applied(&block_3, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_2));
+        assert!(!state.block_state_db.blocks.contains_key(&block_3));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 3 (once more) - nothing changes, because 3 is just a begining of interval
+        state.block_applied(&block_3, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_3,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 4 - should just move seek to start
+        state.block_applied(&block_4, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_4,
+                    &block_4,
+                    &block_5,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_3));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 5 - just remove the first interval
+        state.block_applied(&block_5, &log);
+        assert_peer_branch_intervals(
+            state.peers.get(peer_id.peer_ref.uri()).unwrap(),
+            vec![
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_5,
+                    &block_5,
+                    &block_6,
+                ),
+                interval(
+                    &state.block_state_db,
+                    BranchIntervalState::ScheduledForApply,
+                    &block_6,
+                    &block_6,
+                    &block_7,
+                ),
+            ],
+        );
+        assert!(!state.block_state_db.blocks.contains_key(&block_4));
+        assert!(!state.block_state_db.blocks.contains_key(&block_5));
+        assert!(!is_bootstrapped.load(Ordering::Acquire));
+
+        // block_applied 7 - hitting the end of branch, should remove everything
+        state.block_applied(&block_7, &log);
+        assert_peer_branch_intervals(state.peers.get(peer_id.peer_ref.uri()).unwrap(), vec![]);
+        assert!(state.block_state_db.blocks.is_empty());
+        assert!(is_bootstrapped.load(Ordering::Acquire));
+    }
+
     //
     // #[test]
     // fn test_bootstrap_state_split_to_intervals() {

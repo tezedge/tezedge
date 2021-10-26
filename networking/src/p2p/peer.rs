@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::lock::Mutex;
-use riker::actors::*;
 use slog::{debug, info, o, trace, warn, Logger};
+use tezedge_actor_system::actors::*;
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -294,7 +294,7 @@ impl Actor for Peer {
         // quota replenish task
 
         let throttle_quota = self.throttle_quota.clone();
-        let log = ctx.system.log().clone();
+        let log = ctx.system.log();
         let stop = self.quota_update_stop.clone();
         self.tokio_executor.spawn(async move {
             loop {
@@ -540,7 +540,8 @@ pub async fn bootstrap(
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
-    let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
+    let (metadata_received, _) =
+        timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata";
                 "disable_mempool" => metadata_received.disable_mempool(),
                 "private_node" => metadata_received.private_node(),
@@ -585,7 +586,7 @@ pub async fn bootstrap(
     timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Ack)).await??;
 
     // receive ack
-    let ack_received = timeout(IO_TIMEOUT, msg_rx.read_message()).await??;
+    let (ack_received, _) = timeout(IO_TIMEOUT, msg_rx.read_message()).await??;
 
     match ack_received {
         AckMessage::Ack => {
@@ -640,12 +641,19 @@ async fn begin_process_incoming(
     while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
-                Ok(msg) => match throttle_quota.lock() {
+                Ok((mut msg, msg_len)) => match throttle_quota.lock() {
                     Ok(ref mut quota) => {
                         if quota.can_receive(&msg) {
                             let should_broadcast_message = net.rx_run.load(Ordering::Acquire);
                             if should_broadcast_message {
-                                trace!(log, "Message parsed successfully"; "msg" => format!("{:?}", &msg));
+                                msg.set_size_hint(msg_len);
+                                trace!(log, "Message parsed successfully";
+                                            "msg" => format!("{:?}", &msg),
+                                            "msg_size_hint" => msg.size_hint().map_or_else(
+                                                || 0,
+                                                |size_hint| size_hint,
+                                            ),
+                                );
                                 event_channel.tell(
                                     Publish {
                                         msg: PeerMessageReceived {
@@ -715,11 +723,11 @@ mod tests {
 
     use crypto::hash::CryptoboxPublicKeyHash;
     use futures::lock::Mutex;
-    use riker::{
+    use slog::{Drain, Level, Logger, KV};
+    use tezedge_actor_system::{
         actor::ActorRefFactory,
         actors::{ActorSystem, SystemBuilder, Tell},
     };
-    use slog::{Drain, Level, Logger, KV};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::{
         metadata::MetadataMessage,
@@ -775,7 +783,7 @@ mod tests {
                     let msg = record.msg().to_string();
                     if msg == "Cannot send message because its send quota is exceeded" {
                         self.warns.fetch_add(1, Ordering::Relaxed);
-                    } else if msg == String::from("Tx quota is exceeded") {
+                    } else if msg == "Tx quota is exceeded" {
                         record
                             .kv()
                             .serialize(record, &mut *self.ser.borrow_mut())
@@ -803,10 +811,11 @@ mod tests {
         Logger::root(drain, slog::o!())
     }
 
-    fn create_test_actor_system(log: Logger) -> ActorSystem {
+    fn create_test_actor_system(log: Logger, handle: tokio::runtime::Handle) -> ActorSystem {
         SystemBuilder::new()
             .name("create_actor_system")
             .log(log)
+            .exec(handle.into())
             .create()
             .expect("Failed to create test actor system")
     }
@@ -839,7 +848,7 @@ mod tests {
                 Arc::new(Mutex::new(None)),
                 peer_public_key_hash,
                 peer_id_marker,
-                MetadataMessage::new(false, false).clone(),
+                MetadataMessage::new(false, false),
                 NetworkVersion::new("".to_owned(), 0, 0),
                 "127.0.0.1:9732".parse().unwrap(),
             ),
@@ -862,13 +871,13 @@ mod tests {
             quota_exceeded.clone(),
             Level::Debug,
         );
-        let actor_system = create_test_actor_system(log.clone());
         let runtime = create_test_tokio_runtime();
+        let actor_system = create_test_actor_system(log.clone(), runtime.handle().clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let peer = create_test_peer(
             &actor_system,
-            network_channel.clone(),
+            network_channel,
             runtime.handle().clone(),
             log.clone(),
         );

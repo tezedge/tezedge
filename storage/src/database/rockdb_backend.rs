@@ -3,10 +3,12 @@ use crate::database::error::Error;
 use crate::database::tezedge_database::TezdegeDatabaseBackendKV;
 use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 use crate::persistent::database::default_kv_options;
-use crate::persistent::{DbConfiguration, SchemaError};
+use crate::persistent::DbConfiguration;
 use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch, WriteOptions, DB};
 use std::path::Path;
 use std::sync::Arc;
+
+use super::backend::BackendIterator;
 
 pub struct RocksDBBackend {
     db: Arc<rocksdb::DB>,
@@ -113,62 +115,41 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
         Ok(0)
     }
 
-    fn find(
-        &self,
+    fn find<'a>(
+        &'a self,
         column: &'static str,
         mode: BackendIteratorMode,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    ) -> Result<BackendIterator<'a>, Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
-        let rocks_db_iterator = match mode {
+
+        let iter = match mode {
             BackendIteratorMode::Start => self.db.iterator_cf(cf, rocksdb::IteratorMode::Start),
             BackendIteratorMode::End => self.db.iterator_cf(cf, rocksdb::IteratorMode::End),
             BackendIteratorMode::From(key, direction) => self
                 .db
                 .iterator_cf(cf, rocksdb::IteratorMode::From(&key, direction.into())),
         };
-        let mut results = Vec::new();
-        if let Some(limit) = limit {
-            let mut found = 0;
-            for (key, value) in rocks_db_iterator {
-                if filter((key.as_ref(), value.as_ref()))? && found < limit {
-                    results.push((key, value));
-                    found += 1;
-                }
-            }
-        } else {
-            for (key, value) in rocks_db_iterator {
-                if filter((key.as_ref(), value.as_ref()))? {
-                    results.push((key, value));
-                }
-            }
-        }
-        Ok(results)
+
+        Ok(Box::new(iter.map(|kv| Ok(kv))))
     }
 
-    fn find_by_prefix(
-        &self,
+    fn find_by_prefix<'a>(
+        &'a self,
         column: &'static str,
         key: &Vec<u8>,
         _: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    ) -> Result<BackendIterator<'a>, Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
-        let rocks_db_iterator = self.db.prefix_iterator_cf(cf, key);
-        let mut results = Vec::new();
-        for (key, value) in rocks_db_iterator {
-            if filter((key.as_ref(), value.as_ref()))? {
-                results.push((key, value));
-            }
-        }
-        Ok(results)
+
+        Ok(Box::new(
+            self.db.prefix_iterator_cf(cf, key).map(|kv| Ok(kv)),
+        ))
     }
 }
 

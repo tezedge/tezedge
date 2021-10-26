@@ -4,43 +4,67 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
 
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
-use riker::actors::ActorSystem;
 use slog::{error, Logger};
 use tokio::runtime::Handle;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::ShellChannelRef;
-use storage::PersistentStorage;
+use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
+use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
 
-use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
 mod openapi_handler;
 mod protocol_handler;
 mod router;
+pub(crate) mod rpc_server;
 mod shell_handler;
 
-/// Server environment parameters
-#[derive(Getters, Clone)]
-pub struct RpcServiceEnvironment {
+/// Thread safe reference to a shared RPC state
+pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
+
+/// Thread safe reference to a shared RPC environment configuration
+pub type RpcServiceEnvironmentRef = Arc<RpcServiceEnvironment>;
+
+/// Represents various collected information about
+/// internal state of the node.
+#[derive(CopyGetters, Getters)]
+pub struct RpcCollectedState {
     #[get = "pub(crate)"]
-    sys: ActorSystem,
+    current_head: Arc<BlockHeaderWithHash>,
+
+    // Wakers for open streams (monitors) that access the mempool state
+    streams: StreamWakers,
+}
+
+impl StreamCounter for RpcCollectedState {
+    fn get_streams(&self) -> &StreamWakers {
+        &self.streams
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers {
+        &mut self.streams
+    }
+}
+
+/// Server environment parameters
+#[derive(Getters)]
+pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
@@ -48,7 +72,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
-    shell_channel: ShellChannelRef,
+    shell_connector: ShellConnectorRef,
     #[get = "pub(crate)"]
     tezos_environment: TezosEnvironmentConfiguration,
     #[get = "pub(crate)"]
@@ -58,8 +82,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tokio_executor: Arc<Handle>,
 
-    #[get = "pub(crate)"]
-    main_chain_genesis_hash: BlockHash,
     #[get = "pub(crate)"]
     main_chain_id: ChainId,
 
@@ -78,9 +100,8 @@ pub struct RpcServiceEnvironment {
 
 impl RpcServiceEnvironment {
     pub fn new(
-        sys: ActorSystem,
         tokio_executor: Arc<Handle>,
-        shell_channel: ShellChannelRef,
+        shell_connector: ShellConnectorRef,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
@@ -89,25 +110,22 @@ impl RpcServiceEnvironment {
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
         main_chain_id: ChainId,
-        main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
         tezedge_is_enabled: bool,
-        log: &Logger,
+        log: Logger,
     ) -> Self {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
-            sys,
             tokio_executor,
-            shell_channel,
+            shell_connector,
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
             current_mempool_state_storage,
             main_chain_id,
-            main_chain_genesis_hash,
             state,
-            log: log.clone(),
+            log,
             tezedge_context,
             tezos_readonly_api,
             tezos_readonly_prevalidation_api,
@@ -169,7 +187,7 @@ pub fn spawn_server(
                         let original_path = req.uri().path();
                         let normalized_path = normalize_path(req.uri().path()).unwrap_or_else(|| original_path.to_owned());
 
-                        if let Some((method_and_handler, params)) = routes.find(&normalized_path.trim_end_matches('/')) {
+                        if let Some((method_and_handler, params)) = routes.find(normalized_path.trim_end_matches('/')) {
                             let MethodHandler {
                                 allowed_methods,
                                 handler,

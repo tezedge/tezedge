@@ -45,7 +45,7 @@ async fn can_read_chunks() -> Result<(), Error> {
 
     let mut builder = Builder::new();
     for data in &chunks {
-        let chunk = BinaryChunk::from_content(&data)?;
+        let chunk = BinaryChunk::from_content(data)?;
         builder.read(chunk.raw());
     }
     let mock = builder.build();
@@ -82,9 +82,13 @@ async fn can_read_message_swap() -> Result<(), Error> {
         new_log(),
     );
 
-    let recv_message = reader.read_message::<PeerMessageResponse>().await?;
+    let (recv_message, recv_message_len) = reader.read_message::<PeerMessageResponse>().await?;
+    let recv_message_as_bytes = recv_message.as_bytes()?;
 
-    assert_eq!(message.as_bytes()?, recv_message.as_bytes()?);
+    let message = message.as_bytes()?;
+    assert_eq!(message, recv_message_as_bytes);
+    assert_eq!(recv_message_as_bytes.len(), recv_message_len);
+    assert_eq!(message.len(), recv_message_len);
 
     Ok(())
 }
@@ -118,8 +122,12 @@ async fn can_read_message_block_header() -> Result<(), Error> {
     );
 
     for message in messages {
-        let recv_message = reader.read_message::<PeerMessageResponse>().await?;
-        assert_eq!(message, recv_message.as_bytes()?);
+        let (recv_message, recv_message_len) = reader.read_message::<PeerMessageResponse>().await?;
+        let recv_message_as_bytes = recv_message.as_bytes()?;
+
+        assert_eq!(message, recv_message_as_bytes);
+        assert_eq!(recv_message_as_bytes.len(), recv_message_len);
+        assert_eq!(message.len(), recv_message_len);
     }
 
     Ok(())
@@ -155,8 +163,12 @@ async fn can_read_message_block_header_small_chunks() -> Result<(), Error> {
     );
 
     for message in messages {
-        let recv_message = reader.read_message::<PeerMessageResponse>().await?;
+        let (recv_message, recv_message_len) = reader.read_message::<PeerMessageResponse>().await?;
+        let recv_message_as_bytes = recv_message.as_bytes()?;
+
         assert_eq!(message, recv_message.as_bytes()?);
+        assert_eq!(recv_message_as_bytes.len(), recv_message_len);
+        assert_eq!(message.len(), recv_message_len);
     }
 
     Ok(())

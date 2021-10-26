@@ -5,23 +5,14 @@
 
 use std::sync::Arc;
 
-use riker::actors::*;
+use tezedge_actor_system::actors::*;
 
-use crypto::hash::{BlockHash, ChainId};
-use storage::BlockHeaderWithHash;
-use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
-use tezos_messages::Head;
-
-use crate::state::StateError;
-use crate::utils::OneshotResultCallback;
+use crypto::hash::BlockHash;
+use shell_integration::notifications::NewCurrentHeadNotificationRef;
 
 /// Notify actors that system is about to shut down
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
-
-/// Request peers to send their current heads
-#[derive(Clone, Debug)]
-pub struct RequestCurrentHead;
 
 /// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
@@ -36,36 +27,17 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
-#[derive(Clone, Debug)]
-pub struct InjectBlock {
-    pub chain_id: Arc<ChainId>,
-    pub block_header: Arc<BlockHeaderWithHash>,
-    pub operations: Option<Vec<Vec<Operation>>>,
-    pub operation_paths: Option<Vec<Path>>,
-}
-
-pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), StateError>>;
-
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
     /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(
-        Head,
-        Arc<BlockHeaderWithHash>,
-        bool, /* is_bootstrapped */
-    ),
+    NewCurrentHead(NewCurrentHeadNotificationRef),
     BlockReceived(BlockReceived),
     BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
 
     /// Commands
-    AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
-    AdvertiseToP2pNewCurrentHead(Arc<ChainId>, Arc<BlockHash>),
-    AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
-    InjectBlock(InjectBlock, Option<InjectBlockOneshotResultCallback>),
-    RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }
 
@@ -87,12 +59,6 @@ impl From<ShuttingDown> for ShellChannelMsg {
     }
 }
 
-impl From<RequestCurrentHead> for ShellChannelMsg {
-    fn from(msg: RequestCurrentHead) -> Self {
-        ShellChannelMsg::RequestCurrentHead(msg)
-    }
-}
-
 /// Represents various topics
 pub enum ShellChannelTopic {
     /// Ordinary events generated from shell layer
@@ -100,9 +66,6 @@ pub enum ShellChannelTopic {
 
     /// Dedicated channel for new current head
     ShellNewCurrentHead,
-
-    /// Control event
-    ShellCommands,
 
     /// Shutdown event
     ShellShutdown,
@@ -113,7 +76,6 @@ impl From<ShellChannelTopic> for Topic {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
             ShellChannelTopic::ShellNewCurrentHead => Topic::from("shell.new_current_head"),
-            ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
             ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }
     }

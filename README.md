@@ -131,7 +131,7 @@ for most of the more popular Linux distributions:
 
 |  OS  |      Versions      |
 |----------|:-------------:|
-| Ubuntu |  16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10 |
+| Ubuntu |  16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10, 21.04, 21.10 |
 | Debian |  9, 10 |
 | OpenSUSE |  15.1, 15.2 |
 | CentOS |  8 |
@@ -167,7 +167,7 @@ If you want to build from source code, you need to install this before:
     ```
     - In OSX, using [Homebrew](https://brew.sh/):
     ```
-    brew install pkg-config gmp libev libsodium hidapi
+    brew install pkg-config gmp libev libsodium hidapi libffi
     ```
    - Sandbox/wallet requirements:
     ```
@@ -312,7 +312,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.7.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.9.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 

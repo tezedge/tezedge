@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 
+use slog::Logger;
+
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
 const DATA_FILE_NAME: &str = "table.data";
@@ -226,10 +228,11 @@ pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
 pub struct CommitLogs {
     base_path: PathBuf,
     commit_log_map: RwLock<HashMap<String, CommitLogRef>>,
+    log: Logger,
 }
 
 impl CommitLogs {
-    pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
+    pub(crate) fn new<P, I>(path: P, cfs: I, log: Logger) -> Result<Self, CommitLogError>
     where
         P: AsRef<Path>,
         I: IntoIterator<Item = CommitLogDescriptor>,
@@ -237,6 +240,7 @@ impl CommitLogs {
         let myself = Self {
             base_path: path.as_ref().into(),
             commit_log_map: RwLock::new(HashMap::new()),
+            log,
         };
 
         for descriptor in cfs.into_iter() {
@@ -278,14 +282,14 @@ impl CommitLogs {
     }
 
     /// Flush all registered commit logs.
-    pub fn flush(&self) -> Result<(), CommitLogError> {
+    fn flush(&self) -> Result<(), CommitLogError> {
         let commit_log_map =
             self.commit_log_map
                 .read()
                 .map_err(|e| CommitLogError::RwLockPoisonError {
                     error: e.to_string(),
                 })?;
-        for commit_log in commit_log_map.values() {
+        for (commit_log_idx, (commit_log_name, commit_log)) in commit_log_map.iter().enumerate() {
             let mut commit_log =
                 commit_log
                     .write()
@@ -293,22 +297,30 @@ impl CommitLogs {
                         error: e.to_string(),
                     })?;
             match commit_log.flush() {
-                Ok(_) => {}
-                Err(error) => {
-                    println!("Failed to flush commit logs, reason: {:?}", error)
+                Ok(_) => {
+                    slog::debug!(&self.log, "Successfully flushed commit log"; "commit_log_num" => (commit_log_idx + 1), "commit_log_name" => commit_log_name, "data_file_path" => format!("{:?}", commit_log.data_file_path))
+                }
+                Err(e) => {
+                    slog::error!(&self.log, "Failed to flush commit log"; "commit_log_name" => commit_log_name, "data_file_path" => format!("{:?}", commit_log.data_file_path), "reason" =>  e)
                 }
             }
         }
-
         Ok(())
+    }
+
+    pub fn flush_checked(&self) {
+        match self.flush() {
+            Ok(_) => slog::info!(&self.log, "Successfully flushed all commit logs"),
+            Err(e) => {
+                slog::error!(&self.log, "Failed to flush commit logs"; "reason" => format!("{:?}", e))
+            }
+        }
     }
 }
 
 impl Drop for CommitLogs {
     fn drop(&mut self) {
-        if let Err(e) = self.flush() {
-            println!("Failed to flush commit logs, reason: {:?}", e);
-        }
+        self.flush_checked();
     }
 }
 

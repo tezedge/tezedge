@@ -10,16 +10,19 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rand::Rng;
-use riker::actors::*;
 use slog::{info, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
+use crate::chain_feeder::{ApplyBlockDone, ApplyBlockFailed};
 use crate::chain_manager::ChainManagerRef;
-use crate::state::bootstrap_state::{AddBranchState, BootstrapState, InnerBlockState};
+use crate::state::bootstrap_state::{
+    AddBranchState, BootstrapState, BootstrapStateConfiguration, InnerBlockState,
+};
 use crate::state::data_requester::DataRequesterRef;
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
@@ -128,48 +131,6 @@ pub struct PingBootstrapPipelinesProcessing {
     peer_id: Option<Arc<PeerId>>,
 }
 
-/// Event is fired, when some batch was finished, so next can go
-#[derive(Clone, Debug)]
-pub struct ApplyBlockBatchDone {
-    pub last_applied: Arc<BlockHash>,
-}
-
-/// Event is fired, when some batch was not applied and error occured
-#[derive(Clone, Debug)]
-pub struct ApplyBlockBatchFailed {
-    pub failed_block: Arc<BlockHash>,
-}
-
-#[derive(Clone)]
-pub struct PeerBranchBootstrapperConfiguration {
-    /// Timeout for request of block header from one peer
-    pub(crate) block_header_timeout: Duration,
-    /// Timeout for request of block operations
-    pub(crate) block_operations_timeout: Duration,
-    pub(crate) missing_new_branch_bootstrap_timeout: Duration,
-
-    max_bootstrap_branches_per_peer: usize,
-    max_block_apply_batch: usize,
-}
-
-impl PeerBranchBootstrapperConfiguration {
-    pub fn new(
-        block_header_timeout: Duration,
-        block_operations_timeout: Duration,
-        missing_new_branch_bootstrap_timeout: Duration,
-        max_bootstrap_branches_per_peer: usize,
-        max_block_apply_batch: usize,
-    ) -> Self {
-        Self {
-            block_header_timeout,
-            block_operations_timeout,
-            missing_new_branch_bootstrap_timeout,
-            max_bootstrap_branches_per_peer,
-            max_block_apply_batch,
-        }
-    }
-}
-
 pub type PeerBranchBootstrapperRef = ActorRef<PeerBranchBootstrapperMsg>;
 
 #[actor(
@@ -178,8 +139,8 @@ pub type PeerBranchBootstrapperRef = ActorRef<PeerBranchBootstrapperMsg>;
     PingBootstrapPipelinesProcessing,
     UpdateBlockState,
     UpdateOperationsState,
-    ApplyBlockBatchDone,
-    ApplyBlockBatchFailed,
+    ApplyBlockDone,
+    ApplyBlockFailed,
     DisconnectStalledBootstraps,
     CleanPeerData,
     LogStats,
@@ -190,7 +151,9 @@ pub struct PeerBranchBootstrapper {
     bootstrap_state: BootstrapState,
     /// Count of received messages from the last log
     actor_received_messages_count: usize,
-    cfg: PeerBranchBootstrapperConfiguration,
+
+    /// parent reference to ChainManager
+    chain_manager: Arc<ChainManagerRef>,
 
     /// We dont want to stuck pipelines, so we schedule ping for all pipelines to continue
     /// If we scheduled one ping, we dont need to schedule another until the first one is resolved.
@@ -208,7 +171,7 @@ impl PeerBranchBootstrapper {
         chain_id: Arc<ChainId>,
         requester: DataRequesterRef,
         chain_manager: ChainManagerRef,
-        cfg: PeerBranchBootstrapperConfiguration,
+        cfg: BootstrapStateConfiguration,
     ) -> Result<PeerBranchBootstrapperRef, CreateError> {
         sys.actor_of_props::<PeerBranchBootstrapper>(
             &format!("peer-branch-bootstrapper-{}", &chain_id.to_base58_check()),
@@ -277,7 +240,7 @@ impl PeerBranchBootstrapper {
         let PeerBranchBootstrapper {
             bootstrap_state,
             chain_id,
-            cfg,
+            chain_manager,
             ..
         } = self;
 
@@ -287,18 +250,63 @@ impl PeerBranchBootstrapper {
         // schedule missing operations for download
         bootstrap_state.schedule_operations_to_download(&filter_peer, log);
 
-        // schedule missing operations for download
-        bootstrap_state.schedule_blocks_for_apply(
-            &filter_peer,
-            cfg.max_block_apply_batch,
-            chain_id,
-            &ctx.myself,
-            log,
-        );
+        // schedule downloaded blocks as batch for block application
+        bootstrap_state.schedule_blocks_for_apply(&filter_peer, log);
+
+        // try to fire latest batch for block application (if possible)
+        bootstrap_state.try_call_apply_block_batch(chain_id, chain_manager, &ctx.myself);
 
         // check, if we completed any pipeline
-
         bootstrap_state.check_bootstrapped_branches(&Some(filter_peer), log);
+    }
+
+    fn log_state_and_stats(&mut self, title: &str, log: &Logger) {
+        let processing_blocks_scheduled_for_apply = self.bootstrap_state.blocks_scheduled_count();
+        let (
+            processing_peer_branches,
+            (
+                processing_block_intervals,
+                processing_block_intervals_open,
+                processing_block_intervals_scheduled_for_apply,
+            ),
+        ) = self.bootstrap_state.block_intervals_stats();
+
+        // count queue batches
+        let (
+            apply_block_batch_count,
+            apply_block_batch_blocks_count,
+            apply_block_batch_in_progress,
+        ) = self.bootstrap_state.apply_block_batch_queue_stats();
+
+        info!(log, "{}", title;
+                   "actor_received_messages_count" => self.get_and_clear_actor_received_messages_count(),
+                   "peers_count" => self.bootstrap_state.peers_count(),
+                   "peers_branches" => processing_peer_branches,
+                   "peers_branches_level" => {
+                        itertools::join(
+                            &self.bootstrap_state
+                                .peers_branches_level()
+                                .iter()
+                                .map(|(to_level, block)| format!("{} ({})", to_level, block.to_base58_check()))
+                                .collect::<HashSet<_>>(),
+                            ", ",
+                        )
+                   },
+                   "block_intervals" => processing_block_intervals,
+                   "block_intervals_open" => processing_block_intervals_open,
+                   "block_intervals_scheduled_for_apply" => processing_block_intervals_scheduled_for_apply,
+                   "block_intervals_next_lowest_missing_blocks" => {
+                        self.bootstrap_state
+                            .next_lowest_missing_blocks()
+                            .iter()
+                            .map(|(interval_idx, block)| format!("{} (i:{})", block.to_base58_check(), interval_idx))
+                            .collect::<Vec<_>>().join(", ")
+                   },
+                   "blocks_scheduled_for_apply" => processing_blocks_scheduled_for_apply,
+                   "apply_block_batch_count" => apply_block_batch_count,
+                   "apply_block_batch_blocks_count" => apply_block_batch_blocks_count,
+                   "apply_block_batch_in_progress" => apply_block_batch_in_progress,
+        );
     }
 }
 
@@ -307,7 +315,7 @@ impl
         Arc<ChainId>,
         DataRequesterRef,
         ChainManagerRef,
-        PeerBranchBootstrapperConfiguration,
+        BootstrapStateConfiguration,
     )> for PeerBranchBootstrapper
 {
     fn create_args(
@@ -315,23 +323,27 @@ impl
             Arc<ChainId>,
             DataRequesterRef,
             ChainManagerRef,
-            PeerBranchBootstrapperConfiguration,
+            BootstrapStateConfiguration,
         ),
     ) -> Self {
-        let peer_branch_synchronization_done_callback =
+        let chain_manager = Arc::new(chain_manager);
+        let peer_branch_synchronization_done_callback = {
+            let chain_manager = chain_manager.clone();
             Box::new(move |msg: PeerBranchSynchronizationDone| {
                 chain_manager.tell(msg, None);
-            });
+            })
+        };
 
         PeerBranchBootstrapper {
             chain_id,
             bootstrap_state: BootstrapState::new(
                 requester,
                 peer_branch_synchronization_done_callback,
+                cfg,
             ),
             actor_received_messages_count: 0,
-            cfg,
             is_already_scheduled_ping_for_process_all_bootstrap_pipelines: false,
+            chain_manager,
         }
     }
 }
@@ -375,8 +387,8 @@ impl Actor for PeerBranchBootstrapper {
             }
             PeerBranchBootstrapperMsg::UpdateBlockState(_) => "UpdateBlockState",
             PeerBranchBootstrapperMsg::UpdateOperationsState(_) => "UpdateOperationsState",
-            PeerBranchBootstrapperMsg::ApplyBlockBatchDone(_) => "ApplyBlockBatchDone",
-            PeerBranchBootstrapperMsg::ApplyBlockBatchFailed(_) => "ApplyBlockBatchFailed",
+            PeerBranchBootstrapperMsg::ApplyBlockDone(_) => "ApplyBlockDone",
+            PeerBranchBootstrapperMsg::ApplyBlockFailed(_) => "ApplyBlockFailed",
             PeerBranchBootstrapperMsg::DisconnectStalledBootstraps(_) => {
                 "DisconnectStalledBootstraps"
             }
@@ -460,7 +472,6 @@ impl Receive<StartBranchBootstraping> for PeerBranchBootstrapper {
             msg.last_applied_block,
             msg.missing_history,
             msg.to_level,
-            self.cfg.max_bootstrap_branches_per_peer,
             &log,
         );
 
@@ -496,6 +507,7 @@ impl Receive<UpdateBranchBootstraping> for PeerBranchBootstrapper {
             let log = ctx.system.log();
             info!(log, "Branch bootstrapping process was updated with new block";
                        "new_block" => msg.current_head.hash.to_base58_check(),
+                       "new_to_level" => msg.current_head.header.level(),
                        "peer_id" => msg.peer_id.peer_id_marker.clone(), "peer_ip" => msg.peer_id.peer_address.to_string(), "peer" => msg.peer_id.peer_ref.name(), "peer_uri" => msg.peer_id.peer_ref.uri().to_string(),
             );
             // process
@@ -549,41 +561,9 @@ impl Receive<LogStats> for PeerBranchBootstrapper {
     type Msg = PeerBranchBootstrapperMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _: LogStats, _: Sender) {
-        let processing_blocks_scheduled_for_apply = self.bootstrap_state.blocks_scheduled_count();
-        let (
-            processing_peer_branches,
-            (
-                processing_block_intervals,
-                processing_block_intervals_open,
-                processing_block_intervals_scheduled_for_apply,
-            ),
-        ) = self.bootstrap_state.block_intervals_stats();
-
-        info!(ctx.system.log(), "Peer branch bootstrapper processing info";
-                   "actor_received_messages_count" => self.get_and_clear_actor_received_messages_count(),
-                   "peers_count" => self.bootstrap_state.peers_count(),
-                   "peers_branches" => processing_peer_branches,
-                   "peers_branches_level" => {
-                        itertools::join(
-                            &self.bootstrap_state
-                                .peers_branches_level()
-                                .iter()
-                                .map(|(to_level, block)| format!("{} ({})", to_level, block.to_base58_check()))
-                                .collect::<HashSet<_>>(),
-                            ", ",
-                        )
-                   },
-                   "block_intervals" => processing_block_intervals,
-                   "block_intervals_open" => processing_block_intervals_open,
-                   "block_intervals_scheduled_for_apply" => processing_block_intervals_scheduled_for_apply,
-                   "block_intervals_next_lowest_missing_blocks" => {
-                        self.bootstrap_state
-                            .next_lowest_missing_blocks()
-                            .iter()
-                            .map(|(interval_idx, block)| format!("{} (i:{})", block.to_base58_check(), interval_idx))
-                            .collect::<Vec<_>>().join(", ")
-                   },
-                   "blocks_scheduled_for_apply" => processing_blocks_scheduled_for_apply,
+        self.log_state_and_stats(
+            "Peer branch bootstrapper processing info",
+            &ctx.system.log(),
         );
     }
 }
@@ -633,36 +613,82 @@ impl Receive<UpdateOperationsState> for PeerBranchBootstrapper {
     }
 }
 
-impl Receive<ApplyBlockBatchDone> for PeerBranchBootstrapper {
+impl Receive<ApplyBlockDone> for PeerBranchBootstrapper {
     type Msg = PeerBranchBootstrapperMsg;
 
-    fn receive(
-        &mut self,
-        ctx: &Context<Self::Msg>,
-        msg: ApplyBlockBatchDone,
-        _: Option<BasicActorRef>,
-    ) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlockDone, _: Option<BasicActorRef>) {
+        let PeerBranchBootstrapper {
+            bootstrap_state,
+            chain_id,
+            chain_manager,
+            ..
+        } = self;
+
         // process message
-        self.bootstrap_state
-            .block_applied(&msg.last_applied, &ctx.system.log());
+        let ApplyBlockDone {
+            last_applied,
+            mut permit,
+        } = msg;
+        bootstrap_state.block_applied(&last_applied, &ctx.system.log());
+
+        // allow next call
+        if let Some(permit) = permit.take() {
+            drop(permit);
+        }
+
+        // try to fire latest batch for block application (if possible)
+        bootstrap_state.try_call_apply_block_batch(chain_id, chain_manager, &ctx.myself);
 
         // schedule ping for other pipelines
         self.schedule_process_all_bootstrap_pipelines(ctx);
     }
 }
 
-impl Receive<ApplyBlockBatchFailed> for PeerBranchBootstrapper {
+impl Receive<ApplyBlockFailed> for PeerBranchBootstrapper {
     type Msg = PeerBranchBootstrapperMsg;
 
     fn receive(
         &mut self,
         ctx: &Context<Self::Msg>,
-        msg: ApplyBlockBatchFailed,
+        msg: ApplyBlockFailed,
         _: Option<BasicActorRef>,
     ) {
+        let log = ctx.system.log();
+        self.log_state_and_stats(
+            &format!(
+                "Peer branch bootstrapper (apply block {} failed) - state before",
+                msg.failed_block.to_base58_check()
+            ),
+            &log,
+        );
+
         // process message
-        self.bootstrap_state
-            .block_apply_failed(&msg.failed_block, &ctx.system.log());
+        let ApplyBlockFailed {
+            failed_block,
+            mut permit,
+        } = msg;
+
+        self.bootstrap_state.block_apply_failed(
+            &failed_block,
+            self.chain_id.as_ref().clone(),
+            &log,
+            |peer| {
+                ctx.system.stop(peer.peer_ref.clone());
+            },
+        );
+
+        // allow next call
+        if let Some(permit) = permit.take() {
+            drop(permit);
+        }
+
+        self.log_state_and_stats(
+            &format!(
+                "Peer branch bootstrapper (apply block {} failed) - state after",
+                failed_block.to_base58_check()
+            ),
+            &log,
+        );
 
         // schedule ping for other pipelines
         self.schedule_process_all_bootstrap_pipelines(ctx);
@@ -681,13 +707,11 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         let log = ctx.system.log();
 
         let PeerBranchBootstrapper {
-            bootstrap_state,
-            cfg,
-            ..
+            bootstrap_state, ..
         } = self;
 
         bootstrap_state.check_bootstrapped_branches(&None, &log);
-        bootstrap_state.check_stalled_peers(cfg, &log, |peer| {
+        bootstrap_state.check_stalled_peers(&log, |peer| {
             ctx.system.stop(peer.peer_ref.clone());
         });
 

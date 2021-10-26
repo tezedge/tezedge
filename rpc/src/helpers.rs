@@ -6,16 +6,14 @@ use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
 use anyhow::bail;
-use chrono::SecondsFormat;
 use hex::FromHexError;
 use hyper::{Body, Request};
-use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
-use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
+use shell_integration::Prevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
@@ -311,18 +309,27 @@ impl BlockHeaderInfo {
     }
 }
 
-impl Into<HashMap<String, Value>> for InnerBlockHeader {
-    fn into(self) -> HashMap<String, Value> {
+impl From<InnerBlockHeader> for HashMap<String, Value> {
+    fn from(inner_block_header: InnerBlockHeader) -> Self {
         let mut map: HashMap<String, Value> = HashMap::new();
-        map.insert("level".to_string(), self.level.into());
-        map.insert("proto".to_string(), self.proto.into());
-        map.insert("predecessor".to_string(), self.predecessor.into());
-        map.insert("timestamp".to_string(), self.timestamp.into());
-        map.insert("validation_pass".to_string(), self.validation_pass.into());
-        map.insert("operations_hash".to_string(), self.operations_hash.into());
-        map.insert("fitness".to_string(), self.fitness.into());
-        map.insert("context".to_string(), self.context.into());
-        map.extend(self.protocol_data);
+        map.insert("level".to_string(), inner_block_header.level.into());
+        map.insert("proto".to_string(), inner_block_header.proto.into());
+        map.insert(
+            "predecessor".to_string(),
+            inner_block_header.predecessor.into(),
+        );
+        map.insert("timestamp".to_string(), inner_block_header.timestamp.into());
+        map.insert(
+            "validation_pass".to_string(),
+            inner_block_header.validation_pass.into(),
+        );
+        map.insert(
+            "operations_hash".to_string(),
+            inner_block_header.operations_hash.into(),
+        );
+        map.insert("fitness".to_string(), inner_block_header.fitness.into());
+        map.insert("context".to_string(), inner_block_header.context.into());
+        map.extend(inner_block_header.protocol_data);
         map
     }
 }
@@ -531,12 +538,8 @@ pub(crate) fn parse_block_hash(
             .map_err(|e| RpcServiceError::UnexpectedError {
                 reason: format!("Lock state error: {}", e),
             })?;
-        match state_read.current_head().as_ref() {
-            Some(current_head) => Ok((current_head.hash.clone(), current_head.header.level())),
-            None => Err(RpcServiceError::UnexpectedError {
-                reason: "Head not initialized".to_string(),
-            }),
-        }
+        let current_head: &BlockHeaderWithHash = state_read.current_head().as_ref();
+        Ok((current_head.hash.clone(), current_head.header.level()))
     };
 
     let genesis_block_hash = || -> Result<BlockHash, RpcServiceError> {
@@ -729,87 +732,15 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
     })
 }
 
-#[derive(Serialize, Debug)]
-pub(crate) struct Prevalidator {
-    chain_id: String,
-    status: WorkerStatus,
-    // TODO: implement the json structure form ocaml's RPC
-    // TODO: missing Tezos fields
-    // information
-    // pipelines
-}
-
-#[derive(Serialize, Debug)]
-pub struct WorkerStatus {
-    phase: WorkerStatusPhase,
-    since: String,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(untagged)]
-pub enum WorkerStatusPhase {
-    #[serde(rename = "running")]
-    Running,
-}
-
 /// Returns all prevalidator actors
 pub(crate) fn get_prevalidators(
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<Prevalidator>, RpcServiceError> {
-    // find potential actors
-    let prevalidator_actors = env
-        .sys()
-        .user_root()
-        .children()
-        .filter(|actor_ref| {
-            MempoolPrevalidator::is_mempool_prevalidator_actor_name(actor_ref.name())
+    env.shell_connector()
+        .find_mempool_prevalidators()
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("{:?}", e),
         })
-        .collect::<Vec<_>>();
-
-    if !prevalidator_actors.is_empty() {
-        // resolve active prevalidators
-        let mut result = Vec::with_capacity(prevalidator_actors.len());
-        for prevalidator_actor in prevalidator_actors {
-            // get mempool state
-            let mempool_state = env.current_mempool_state_storage().read()?;
-            if let Some(mempool_prevalidator) = mempool_state.prevalidator() {
-                let prevalidator_actor_chain_id =
-                    MempoolPrevalidator::resolve_chain_id_from_mempool_prevalidator_actor_name(
-                        prevalidator_actor.name(),
-                    );
-                let accept_mempool_prevalidator =
-                    if let Some(chain_id) = prevalidator_actor_chain_id {
-                        mempool_prevalidator.chain_id.to_base58_check() == *chain_id
-                    } else {
-                        false
-                    };
-
-                if accept_mempool_prevalidator {
-                    result.push(Prevalidator {
-                        chain_id: mempool_prevalidator.chain_id.to_base58_check(),
-                        status: WorkerStatus {
-                            phase: WorkerStatusPhase::Running,
-                            since: {
-                                match mempool_state.prevalidator_started() {
-                                    Some(since) => {
-                                        since.to_rfc3339_opts(SecondsFormat::Millis, true)
-                                    }
-                                    // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
-                                    None => env
-                                        .sys()
-                                        .start_date()
-                                        .to_rfc3339_opts(SecondsFormat::Millis, true),
-                                }
-                            },
-                        },
-                    })
-                }
-            }
-        }
-        Ok(result)
-    } else {
-        Ok(vec![])
-    }
 }
 
 #[cfg(test)]

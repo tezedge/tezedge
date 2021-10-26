@@ -1,6 +1,6 @@
 [package]
 name = "networking"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -10,9 +10,9 @@ bytes = "1"
 thiserror = "1.0"
 futures = "0.3"
 hex = "0.4"
-riker = "0.4"
+tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
-tokio = { version = "1.8", features = ["time", "net", "io-util", "rt-multi-thread", "macros"] }
+tokio = { version = "1.12", features = ["time", "net", "io-util", "rt-multi-thread", "macros"] }
 lazy_static = "1.4"
 # local dependencies
 crypto = { path = "../crypto" }

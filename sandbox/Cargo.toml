@@ -1,6 +1,6 @@
 [package]
 name = "sandbox"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["Adrian Nagy <adrian.nagy@simplestaking.com>"]
 edition = "2018"
 default-run = "sandbox"
@@ -10,14 +10,14 @@ anyhow = "1.0"
 clap = "2.33"
 thiserror = "1.0"
 itertools = "0.10"
-nix = "0.19"
+nix = "0.23"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = { version = "2.7", features = ["nested-values", "max_level_trace", "release_max_level_debug"] }
 slog-async = "2.6"
 slog-term = "2.8"
-tokio = { version = "1.8", features = ["full"] }
+tokio = { version = "1.12", features = ["full"] }
 warp = "0.3"
 wait-timeout = "0.2"
 # local dependencies

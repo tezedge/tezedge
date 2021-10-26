@@ -123,7 +123,7 @@ impl BlockMetaStorage {
         };
 
         // create/update record for block predecessor
-        match self.get(&block_header.header.predecessor())?.as_mut() {
+        match self.get(block_header.header.predecessor())?.as_mut() {
             Some(meta) => {
                 let block_hash = &block_header.hash;
 
@@ -133,7 +133,7 @@ impl BlockMetaStorage {
                     false => {
                         // here we have some previous successors
                         // if does not contains block_hash, means that we detected reorg or new branch
-                        if !meta.successors.contains(&block_hash) {
+                        if !meta.successors.contains(block_hash) {
                             warn!(
                                 log, "Extending successors - means detected reorg or new branch";
                                 "block_hash_predecessor" => block_header.header.predecessor().to_base58_check(),
@@ -155,7 +155,7 @@ impl BlockMetaStorage {
 
                 if need_change {
                     meta.successors.push(block_hash.clone());
-                    self.put(block_header.header.predecessor(), &meta)?;
+                    self.put(block_header.header.predecessor(), meta)?;
                 }
             }
             None => {
@@ -731,40 +731,40 @@ impl BlockAdditionalData {
     }
 }
 
-impl
-    Into<(
+impl From<BlockAdditionalData>
+    for (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
-    )> for BlockAdditionalData
+    )
 {
-    fn into(
-        self,
+    fn from(
+        data: BlockAdditionalData,
     ) -> (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
     ) {
-        (self.block_metadata_hash, self.ops_metadata_hash)
+        (data.block_metadata_hash, data.ops_metadata_hash)
     }
 }
 
-impl
-    Into<(
+impl From<BlockAdditionalData>
+    for (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
         u16,
-    )> for BlockAdditionalData
+    )
 {
-    fn into(
-        self,
+    fn from(
+        data: BlockAdditionalData,
     ) -> (
         Option<BlockMetadataHash>,
         Option<OperationMetadataListListHash>,
         u16,
     ) {
         (
-            self.block_metadata_hash,
-            self.ops_metadata_hash,
-            self.max_operations_ttl,
+            data.block_metadata_hash,
+            data.ops_metadata_hash,
+            data.max_operations_ttl,
         )
     }
 }
@@ -799,6 +799,7 @@ mod tests {
     use super::*;
     use crate::database;
     use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+    use crate::tests_common;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -926,6 +927,10 @@ mod tests {
     fn merge_meta_value_test() {
         use rocksdb::{Cache, Options, DB};
 
+        // logger
+        let log_level = tests_common::log_level();
+        let log = tests_common::create_logger(log_level);
+
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
@@ -940,7 +945,7 @@ mod tests {
             )
             .unwrap();
             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend), log);
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
@@ -1040,8 +1045,8 @@ mod tests {
                 idx.try_into()?,
                 vec![44; 4].try_into().unwrap(),
             );
-            storage.put(&block_hash, &v)?;
-            storage.store_predecessors(&block_hash, &v)?;
+            storage.put(block_hash, &v)?;
+            storage.store_predecessors(block_hash, &v)?;
             predecessor = block_hash.clone();
         }
 

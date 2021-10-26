@@ -575,9 +575,26 @@ impl TezedgeIndex {
     fn synchronize_interned_strings_to_repository(&self) -> Result<(), MerkleError> {
         let storage = self.storage.borrow();
         let mut repository = self.repository.write()?;
-        repository.synchronize_strings(&storage.strings)?;
+        repository.synchronize_strings_from(&storage.strings);
 
         Ok(())
+    }
+
+    /// A clone of `Self` but with a clear storage with strings in sync to the `repository` strings.
+    fn with_clear_storage(&self) -> Result<Self, MerkleError> {
+        let storage: Rc<RefCell<Storage>> = Default::default();
+
+        {
+            let repository = self.repository.read()?;
+
+            repository.synchronize_strings_into(&mut storage.borrow_mut().strings);
+        }
+
+        Ok(Self {
+            storage,
+            patch_context: Rc::clone(&self.patch_context),
+            repository: Arc::clone(&self.repository),
+        })
     }
 }
 
@@ -612,23 +629,28 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
             }
         };
 
-        let mut storage = self.storage.borrow_mut();
-        storage.clear();
+        // TODO: should we always be copying this value? is it possibe
+        // to keep the latest version around and copy only when not different?
+        let index = self.with_clear_storage()?;
 
-        let commit = match self.fetch_commit(hash_id, &mut storage)? {
-            Some(commit) => commit,
-            None => return Ok(None),
+        let dir_id = {
+            let mut storage = index.storage.borrow_mut();
+
+            let commit = match self.fetch_commit(hash_id, &mut storage)? {
+                Some(commit) => commit,
+                None => return Ok(None),
+            };
+
+            match self.fetch_directory(commit.root_hash, &mut storage)? {
+                Some(dir_id) => dir_id,
+                None => return Ok(None),
+            }
         };
 
-        let dir_id = match self.fetch_directory(commit.root_hash, &mut storage)? {
-            Some(dir_id) => dir_id,
-            None => return Ok(None),
-        };
-
-        let tree = WorkingTree::new_with_directory(self.clone(), dir_id);
+        let tree = WorkingTree::new_with_directory(index.clone(), dir_id);
 
         Ok(Some(TezedgeContext::new(
-            self.clone(),
+            index,
             Some(hash_id),
             Some(Rc::new(tree)),
         )))

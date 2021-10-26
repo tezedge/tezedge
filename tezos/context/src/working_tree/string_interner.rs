@@ -120,11 +120,11 @@ impl PartialEq for StringInterner {
 impl Eq for StringInterner {}
 
 impl StringInterner {
-    /// This extends `Self::all_strings` from `other`.
+    /// This extends `Self::all_strings` and `Self::string_to_offset` from `other`.
     ///
-    /// The other fields (`string_to_offset` and `big_strings`) are not considered
+    /// The other fields (`big_strings`) is not considered
     /// because this method is used to update the repository:
-    /// The repository doesn't need those 2 fields.
+    /// The repository doesn't need that field.
     pub fn extend_from(&mut self, other: &Self) {
         if self == other {
             return;
@@ -135,6 +135,7 @@ impl StringInterner {
         // Append the missing chunk into Self
         let self_len = self.all_strings.len();
         self.all_strings.push_str(&other.all_strings[self_len..]);
+        self.string_to_offset.extend(&other.string_to_offset);
 
         debug_assert_eq!(self.all_strings, other.all_strings);
     }

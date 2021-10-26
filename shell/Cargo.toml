@@ -1,6 +1,6 @@
 [package]
 name = "shell"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -14,18 +14,19 @@ getset = "0.1"
 hex = "0.4"
 itertools = "0.10"
 lazy_static = "1.4"
-nix = "0.19"
+nix = "0.23"
 page_size = "0.4.1"
 rand = "0.7.3"
 regex = "1.5"
-riker = "0.4"
+tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "1.8", features = ["time"] }
+tokio = { version = "1.12", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
+shell_integration = { path = "../shell-integration" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }
@@ -40,7 +41,7 @@ slog-async = "2.6"
 slog-term = "2.8"
 fs_extra = "1.2.0"
 zip = "0.5.5"
-tokio = { version = "1.8", features = ["sync"] }
+tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)

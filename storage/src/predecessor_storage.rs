@@ -17,7 +17,7 @@ use crate::{PersistentStorage, StorageError};
 pub type PredecessorsIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<PredecessorStorage> + Sync + Send;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PredecessorKey {
     block_hash: BlockHash,
     exponent_slot: u32,

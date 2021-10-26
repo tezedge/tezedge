@@ -439,6 +439,29 @@ impl ProtocolServiceError {
             }
         )
     }
+
+    pub fn is_restart_required(&self) -> bool {
+        match self {
+            ProtocolServiceError::IpcError { .. }
+            | ProtocolServiceError::UnexpectedMessage { .. }
+            | ProtocolServiceError::ContextIpcServerError { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
+        error: ProtocolServiceError,
+        log_callback: LC,
+    ) -> Result<(), ProtocolServiceError> {
+        if error.is_restart_required() {
+            // we need to refresh protocol runner endpoint, so propagate error
+            Err(error)
+        } else {
+            // just log error
+            log_callback(error);
+            Ok(())
+        }
+    }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
@@ -469,23 +492,6 @@ impl From<IpcError> for ProtocolServiceError {
 impl From<ProtocolError> for ProtocolServiceError {
     fn from(error: ProtocolError) -> Self {
         ProtocolServiceError::ProtocolError { reason: error }
-    }
-}
-
-pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
-    error: ProtocolServiceError,
-    log_callback: LC,
-) -> Result<(), ProtocolServiceError> {
-    match error {
-        ProtocolServiceError::IpcError { .. } | ProtocolServiceError::UnexpectedMessage { .. } => {
-            // we need to refresh protocol runner endpoint, so propagate error
-            Err(error)
-        }
-        _ => {
-            // just log error
-            log_callback(error);
-            Ok(())
-        }
     }
 }
 

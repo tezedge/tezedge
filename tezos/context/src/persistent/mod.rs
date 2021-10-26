@@ -85,8 +85,10 @@ pub trait KeyValueStoreBackend {
     ///
     /// The string interner must have been updated with the `update_strings` method.
     fn get_str(&self, string_id: StringId) -> Option<&str>;
-    /// Update the `StringInterner`.
-    fn synchronize_strings(&mut self, string_interner: &StringInterner) -> Result<(), DBError>;
+    /// Update the repository `StringInterner` to be in sync with `string_interner`.
+    fn synchronize_strings_from(&mut self, string_interner: &StringInterner);
+    /// Update `string_interner` to be in sync with the repository `StringInterner`.
+    fn synchronize_strings_into(&self, string_interner: &mut StringInterner);
 }
 
 /// Possible errors for schema

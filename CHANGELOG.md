@@ -29,6 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+
+## [1.9.0] - 2021-10-26
+
+### Added
+
+- Support for Ubuntu 21
+
+### Changed
+
+- Shell refactor and simplify communication between actors
+- Upgrade to Tokio 1.12
+- `riker` dependency replaced with `tezedge-actor-system` dependency
+
+### Removed
+
+- Removed `riker` dependency from `rpc` module
+
+### Fixed
+
+- Optimize `chains/{chain_id}/mempool/monitor_operations` and `monitor/heads/{chain_id}` RPCs.
+- Controlled startup for chain_manager - run p2p only after ChainManager is subscribed to NetworkChannel
+- ChainFeeder block application improved error handling with retry policy on protocol-runner restart
+- Added set_size_hint after decoding read_message to avoid unnecessary recounting for websocket monitoring
+
 ## [1.8.0] - 2021-09-20
 
 ### Added
@@ -538,7 +562,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/tezedge/tezedge/releases/v1.9.0
 [1.8.0]: https://github.com/tezedge/tezedge/releases/v1.8.0
 [1.7.1]: https://github.com/tezedge/tezedge/releases/v1.7.1
 [1.7.0]: https://github.com/tezedge/tezedge/releases/v1.7.0

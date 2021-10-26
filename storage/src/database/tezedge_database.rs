@@ -5,10 +5,13 @@ use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::IteratorMode;
 use serde::{Deserialize, Serialize};
+use slog::Logger;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+
+use super::backend::BackendIterator;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -56,19 +59,13 @@ pub trait KVStore<S: KeyValueSchema> {
 }
 
 pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
-    fn find(
-        &self,
-        mode: IteratorMode<S>,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    fn find<'a>(&'a self, mode: IteratorMode<'a, S>) -> Result<BackendIterator<'a>, Error>;
 
-    fn find_by_prefix(
-        &self,
+    fn find_by_prefix<'a>(
+        &'a self,
         key: &S::Key,
         max_key_len: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    ) -> Result<BackendIterator<'a>, Error>;
 }
 
 // TODO - TE-498: Todo Change name
@@ -139,22 +136,40 @@ impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabas
 
 pub struct TezedgeDatabase {
     backend: Arc<TezedgeDatabaseBackend>,
+    log: slog::Logger,
 }
 
 impl TezedgeDatabase {
-    pub fn new(backend_option: TezedgeDatabaseBackendOptions) -> Self {
+    pub fn new(backend_option: TezedgeDatabaseBackendOptions, log: Logger) -> Self {
         match backend_option {
             TezedgeDatabaseBackendOptions::SledDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
+                log: log.clone(),
             },
             TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
+                log: log.clone(),
             },
         }
     }
 
-    pub fn flush(&self) -> Result<usize, Error> {
+    fn flush(&self) -> Result<usize, Error> {
         self.backend.flush()
+    }
+
+    pub fn flush_checked(&self) {
+        match self.flush() {
+            Err(e) => {
+                slog::error!(&self.log, "Failed to flush database"; "reason" => format!("{:?}", e))
+            }
+            Ok(_) => slog::info!(&self.log, "Successfully flushed main database"),
+        }
+    }
+}
+
+impl Drop for TezedgeDatabase {
+    fn drop(&mut self) {
+        self.flush_checked();
     }
 }
 
@@ -208,12 +223,7 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 }
 
 impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase {
-    fn find(
-        &self,
-        mode: IteratorMode<S>,
-        limit: Option<usize>,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    fn find<'a>(&'a self, mode: IteratorMode<S>) -> Result<BackendIterator<'a>, Error> {
         let mode = match mode {
             IteratorMode::Start => BackendIteratorMode::Start,
             IteratorMode::End => BackendIteratorMode::End,
@@ -221,18 +231,17 @@ impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase 
                 BackendIteratorMode::From(key.encode()?, direction)
             }
         };
-        self.backend.find(S::column_name(), mode, limit, filter)
+        self.backend.find(S::column_name(), mode)
     }
 
-    fn find_by_prefix(
-        &self,
+    fn find_by_prefix<'a>(
+        &'a self,
         key: &<S as KeyValueSchema>::Key,
         max_key_len: usize,
-        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
-    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    ) -> Result<BackendIterator<'a>, Error> {
         let key = key.encode()?;
         self.backend
-            .find_by_prefix(S::column_name(), &key, max_key_len, filter)
+            .find_by_prefix(S::column_name(), &key, max_key_len)
     }
 }
 

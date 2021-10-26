@@ -1,6 +1,6 @@
 [package]
 name = "light-node"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 default-run = "light-node"
@@ -11,12 +11,12 @@ thiserror = "1.0"
 fs_extra = "1.2.0"
 futures = "0.3"
 jemallocator = "0.3.2"
-riker = "0.4"
+tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
 rlimit = "0.5"
 serde_json = "1.0"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 strum = "0.20"
-tokio = { version = "1.8", features = ["rt-multi-thread", "signal"] }
+tokio = { version = "1.12", features = ["rt-multi-thread", "signal"] }
 num_cpus = "1.13"
 # Local dependencies
 crypto = { path = "../crypto" }
@@ -29,6 +29,7 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
+shell_integration = { path = "../shell-integration" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
 ipc = { path = "../ipc" }

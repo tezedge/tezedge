@@ -98,11 +98,11 @@ impl SystemStorage {
     }
 
     #[inline]
-    pub fn set_chain_name(&mut self, chain_name: &String) -> Result<(), StorageError> {
+    pub fn set_chain_name(&mut self, chain_name: &str) -> Result<(), StorageError> {
         self.kv
             .put(
                 &Self::CHAIN_NAME.to_string(),
-                &SystemValue::String(chain_name.clone()),
+                &SystemValue::String(chain_name.to_string()),
             )
             .map_err(StorageError::from)
     }

@@ -35,7 +35,7 @@ pub use crate::block_meta_storage::{
     BlockAdditionalData, BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader,
 };
 pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
-pub use crate::chain_meta_storage::ChainMetaStorage;
+pub use crate::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use crate::commit_log::{CommitLogError, CommitLogs};
 pub use crate::constants_storage::ConstantsStorage;
 pub use crate::cycle_eras_storage::CycleErasStorage;
@@ -294,7 +294,7 @@ pub fn store_applied_block_result(
         block_result.block_header_proto_metadata_bytes,
         block_result.operations_proto_metadata_bytes,
     );
-    block_storage.put_block_json_data(&block_hash, block_json_data)?;
+    block_storage.put_block_json_data(block_hash, block_json_data)?;
 
     // store additional data
     let block_additional_data = BlockAdditionalData::new(
@@ -320,12 +320,12 @@ pub fn store_applied_block_result(
         },
         block_result.ops_metadata_hashes,
     );
-    block_meta_storage.put_block_additional_data(&block_hash, &block_additional_data)?;
+    block_meta_storage.put_block_additional_data(block_hash, &block_additional_data)?;
 
     // TODO: check context checksum or context_hash
 
     // populate predecessor storage
-    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
+    block_meta_storage.store_predecessors(block_hash, block_metadata)?;
 
     // populate cycle data if is present in the response
     for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {
@@ -347,7 +347,7 @@ pub fn store_applied_block_result(
     // if everything is stored and ok, we can considere this block as applied
     // mark current head as applied
     block_metadata.set_is_applied(true);
-    block_meta_storage.put(&block_hash, &block_metadata)?;
+    block_meta_storage.put(block_hash, block_metadata)?;
 
     // return additional data for later use
     Ok(block_additional_data)
@@ -371,11 +371,11 @@ pub fn store_commit_genesis_result(
     // if everything is stored and ok, we can considere genesis block as applied
     // if storage is empty, initialize with genesis
     block_meta_storage.put(
-        &genesis_block_hash,
-        &block_meta_storage::Meta::genesis_meta(&genesis_block_hash, chain_id, true),
+        genesis_block_hash,
+        &block_meta_storage::Meta::genesis_meta(genesis_block_hash, chain_id, true),
     )?;
     operations_meta_storage.put(
-        &genesis_block_hash,
+        genesis_block_hash,
         &operations_meta_storage::Meta::genesis_meta(),
     )?;
 
@@ -385,10 +385,10 @@ pub fn store_commit_genesis_result(
         bock_result.block_header_proto_metadata_bytes,
         bock_result.operations_proto_metadata_bytes,
     );
-    block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
+    block_storage.put_block_json_data(genesis_block_hash, block_json_data)?;
 
     // set genesis as current head - it is empty storage
-    match block_storage.get(&genesis_block_hash)? {
+    match block_storage.get(genesis_block_hash)? {
         Some(genesis) => {
             let head = Head::new(
                 genesis.hash,
@@ -397,9 +397,9 @@ pub fn store_commit_genesis_result(
             );
 
             // init chain data
-            chain_meta_storage.set_genesis(&chain_id, head.clone())?;
-            chain_meta_storage.set_caboose(&chain_id, head.clone())?;
-            chain_meta_storage.set_current_head(&chain_id, head)?;
+            chain_meta_storage.set_genesis(chain_id, head.clone())?;
+            chain_meta_storage.set_caboose(chain_id, head.clone())?;
+            chain_meta_storage.set_current_head(chain_id, head)?;
 
             Ok(())
         }
@@ -454,7 +454,7 @@ pub fn initialize_storage_with_genesis_block(
 
     // TODO: TE-238 - remove assign_to_context
     // context assign
-    block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
+    block_storage.assign_to_context(&genesis_with_hash.hash, context_hash)?;
 
     info!(log,
         "Storage initialized with genesis block";
@@ -462,6 +462,31 @@ pub fn initialize_storage_with_genesis_block(
         "context_hash" => context_hash.to_base58_check(),
     );
     Ok(genesis_with_hash)
+}
+
+pub fn hydrate_current_head(
+    init_storage_data: &StorageInitInfo,
+    persistent_storage: &PersistentStorage,
+) -> Result<Arc<BlockHeaderWithHash>, StorageError> {
+    // check last stored current_head
+    let current_head = match ChainMetaStorage::new(persistent_storage)
+        .get_current_head(&init_storage_data.chain_id)?
+    {
+        Some(head) => head,
+        None => {
+            return Err(StorageError::MissingKey {
+                when: "current_head".into(),
+            })
+        }
+    };
+
+    // get block_header data
+    match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
+        Some(block) => Ok(Arc::new(block)),
+        None => Err(StorageError::MissingKey {
+            when: "current_head_header".into(),
+        }),
+    }
 }
 
 /// Helper module to easily initialize databases
@@ -510,7 +535,7 @@ pub mod initializer {
                 crate::MempoolStorage::descriptor(cache),
                 crate::ChainMetaStorage::descriptor(cache),
                 crate::PredecessorStorage::descriptor(cache),
-                crate::BlockAdditionalData::descriptor(&cache),
+                crate::BlockAdditionalData::descriptor(cache),
                 crate::CycleMetaStorage::descriptor(cache),
                 crate::CycleErasStorage::descriptor(cache),
                 crate::ConstantsStorage::descriptor(cache),
@@ -570,9 +595,9 @@ pub mod initializer {
         expected_main_chain: &MainChain,
         backend_config: TezedgeDatabaseBackendConfiguration,
     ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
-        let db = Arc::new(open_main_db(kv, config, backend_config)?);
+        let db = Arc::new(open_main_db(kv, config, backend_config, log.clone())?);
 
-        match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
+        match check_database_compatibility(db.clone(), db_version, expected_main_chain, log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
                 name: format!("Database is incompatible with version {}", db_version),
             }),
@@ -628,8 +653,8 @@ pub mod initializer {
                     }
                 }
                 None => {
-                    system_info.set_chain_id(&tezos_env_main_chain_id)?;
-                    system_info.set_chain_name(&tezos_env_main_chain_name)?;
+                    system_info.set_chain_id(tezos_env_main_chain_id)?;
+                    system_info.set_chain_name(tezos_env_main_chain_name)?;
                     (true, "-none-".to_string(), tezos_env_main_chain_name)
                 }
             };
@@ -676,14 +701,11 @@ impl PersistentStorage {
     }
 
     pub fn flush_dbs(&mut self) {
-        let clog = self.clog.flush();
-        let db = self.main_db.flush();
-
-        if clog.is_err() || db.is_err() {
-            println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}",
-                clog, db,
-            );
+        if Arc::strong_count(&self.clog) == 1 {
+            self.clog.flush_checked();
+        }
+        if Arc::strong_count(&self.main_db) == 1 {
+            self.main_db.flush_checked();
         }
     }
 }
@@ -701,6 +723,8 @@ pub mod tests_common {
 
     use anyhow::Error;
 
+    use slog::{Drain, Level, Logger};
+
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
     use crate::mempool_storage::MempoolStorage;
@@ -713,8 +737,11 @@ pub mod tests_common {
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
+        path: TmpStoragePath,
+    }
+
+    struct TmpStoragePath {
         path: PathBuf,
-        remove_on_destroy: bool,
     }
 
     impl TmpStorage {
@@ -725,14 +752,14 @@ pub mod tests_common {
         }
 
         pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-            Self::initialize(path, true, true)
+            Self::initialize(path, true)
         }
 
-        pub fn initialize<P: AsRef<Path>>(
-            path: P,
-            remove_if_exists: bool,
-            remove_on_destroy: bool,
-        ) -> Result<Self, Error> {
+        pub fn initialize<P: AsRef<Path>>(path: P, remove_if_exists: bool) -> Result<Self, Error> {
+            // logger
+            let log_level = log_level();
+            let log = create_logger(log_level);
+
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists
             if Path::new(&path).exists() && remove_if_exists {
@@ -800,9 +827,9 @@ pub mod tests_common {
             };
             // db storage - is used for db and sequences
 
-            let maindb = Arc::new(TezedgeDatabase::new(backend));
+            let maindb = Arc::new(TezedgeDatabase::new(backend, log.clone()));
             // commit log storage
-            let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
+            let clog = open_cl(&path, vec![BlockStorage::descriptor()], log)?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
@@ -810,8 +837,7 @@ pub mod tests_common {
                     Arc::new(clog),
                     Arc::new(Sequences::new(maindb, 1000)),
                 ),
-                path,
-                remove_on_destroy,
+                path: TmpStoragePath { path },
             })
         }
 
@@ -820,16 +846,86 @@ pub mod tests_common {
         }
 
         pub fn path(&self) -> &PathBuf {
-            &self.path
+            &self.path.path
         }
     }
 
-    impl Drop for TmpStorage {
-        fn drop(&mut self) {
-            let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
-            if self.remove_on_destroy {
-                let _ = fs::remove_dir_all(&self.path);
+    pub fn create_logger(level: Level) -> Logger {
+        let drain = slog_async::Async::new(
+            slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+                .build()
+                .fuse(),
+        )
+        .build()
+        .filter_level(level)
+        .fuse();
+
+        Logger::root(drain, slog::o!())
+    }
+
+    pub fn log_level() -> Level {
+        env::var("LOG_LEVEL")
+            .unwrap_or_else(|_| "info".to_string())
+            .parse::<Level>()
+            .unwrap()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::TmpStorage;
+        use crate::{ChainId, ChainMetaStorage, Head};
+        use std::{
+            convert::{TryFrom, TryInto},
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
+            thread,
+            time::Duration,
+        };
+
+        #[test]
+        fn test_storage_stuck() {
+            let tmp_storage = TmpStorage::create("target/tmp_storage").expect("create a storage");
+            let index = ChainMetaStorage::new(tmp_storage.storage());
+            let running = Arc::new(AtomicBool::new(true));
+            let num_threads = 4;
+            let threads = (0..num_threads)
+                .map(|i| {
+                    let running = running.clone();
+                    let index = index.clone();
+                    thread::spawn(move || {
+                        let chain_id =
+                            |x: u32| ChainId::try_from(x.to_be_bytes().to_vec()).unwrap();
+                        let block = |level| {
+                            Head::new(
+                                "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe"
+                                    .try_into()
+                                    .unwrap(),
+                                level * 2,
+                                vec![],
+                            )
+                        };
+
+                        let mut level = i as i32;
+                        let mut id = 0x123456 + i;
+                        while running.load(Ordering::SeqCst) {
+                            index.set_current_head(&chain_id(id), block(level)).unwrap();
+                            id += num_threads;
+                            level += num_threads as i32;
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            thread::sleep(Duration::from_secs(1));
+            running.store(false, Ordering::SeqCst);
+
+            for thread in threads {
+                thread.join().unwrap();
             }
+
+            drop(tmp_storage);
         }
     }
 }

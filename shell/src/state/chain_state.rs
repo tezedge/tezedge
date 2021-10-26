@@ -4,8 +4,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use riker::actors::*;
 use slog::Logger;
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
@@ -17,21 +17,20 @@ use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,
 };
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::current_branch::CurrentBranchMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, limits::HISTORY_MAX_SIZE};
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
-    StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
+    PeerBranchBootstrapper, PeerBranchBootstrapperRef, StartBranchBootstraping, UpdateBlockState,
+    UpdateOperationsState,
 };
-use crate::state::bootstrap_state::InnerBlockState;
+use crate::state::bootstrap_state::{BootstrapStateConfiguration, InnerBlockState};
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
-use crate::state::head_state::CurrentHeadRef;
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
 use crate::validation;
@@ -135,7 +134,7 @@ impl BlockchainState {
     pub fn can_accept_branch(
         &self,
         branch: &CurrentBranchMessage,
-        current_head: &CurrentHeadRef,
+        current_head: impl AsRef<Head>,
     ) -> Result<bool, StateError> {
         // validate chain which we operate on
         if self.chain_id.as_ref() != branch.chain_id() {
@@ -145,26 +144,23 @@ impl BlockchainState {
             return Ok(false);
         }
 
-        if let Some(current_head) = current_head.read()?.as_ref() {
-            // (only_if_fitness_increases) we can accept branch if increases fitness
-            if validation::is_fitness_increases(
-                current_head,
-                branch.current_branch().current_head().fitness(),
-            ) {
-                return Ok(true);
-            }
-
-            Ok(false)
-        } else {
-            Ok(true)
+        let current_head = current_head.as_ref();
+        // (only_if_fitness_increases) we can accept branch if increases fitness
+        if validation::is_fitness_increases(
+            current_head,
+            branch.current_branch().current_head().fitness(),
+        ) {
+            return Ok(true);
         }
+
+        Ok(false)
     }
 
     /// Validate if we can accept head
     pub fn can_accept_head(
         &self,
         head: &CurrentHeadMessage,
-        current_head: &CurrentHeadRef,
+        current_head: impl AsRef<Head>,
         api: &ProtocolController,
     ) -> Result<BlockAcceptanceResult, StateError> {
         // validate chain which we operate on
@@ -178,52 +174,50 @@ impl BlockchainState {
         }
 
         // we need our current head at first
-        if let Some(current_head) = current_head.read()?.as_ref() {
-            // same header means only mempool operations were changed
-            if validation::is_same_head(current_head, validated_header)? {
-                return Ok(BlockAcceptanceResult::AcceptBlock);
-            }
+        let current_head = current_head.as_ref();
 
-            // (future block)
-            if validation::is_future_block(validated_header)? {
-                return Ok(BlockAcceptanceResult::IgnoreBlock);
-            }
+        // same header means only mempool operations were changed
+        if validation::is_same_head(current_head, validated_header)? {
+            return Ok(BlockAcceptanceResult::AcceptBlock);
+        }
 
-            // (only_if_fitness_increases) we can accept head if increases fitness
-            if !validation::is_fitness_increases_or_same(current_head, validated_header.fitness()) {
-                return Ok(BlockAcceptanceResult::IgnoreBlock);
-            }
+        // (future block)
+        if validation::is_future_block(validated_header)? {
+            return Ok(BlockAcceptanceResult::IgnoreBlock);
+        }
 
-            // lets try to find protocol for validated_block
-            let (protocol_hash, predecessor_header, missing_predecessor) =
-                self.resolve_protocol(validated_header, current_head)?;
+        // (only_if_fitness_increases) we can accept head if increases fitness
+        if !validation::is_fitness_increases_or_same(current_head, validated_header.fitness()) {
+            return Ok(BlockAcceptanceResult::IgnoreBlock);
+        }
 
-            // if missing predecessor
-            if missing_predecessor {
-                return Ok(BlockAcceptanceResult::UnknownBranch);
-            }
+        // lets try to find protocol for validated_block
+        let (protocol_hash, predecessor_header, missing_predecessor) =
+            self.resolve_protocol(validated_header, current_head)?;
 
-            // if we have protocol lets validate
-            if let Some(protocol_hash) = protocol_hash {
-                // lets check strict multipass validation
-                match validation::check_multipass_validation(
-                    head.chain_id(),
-                    protocol_hash,
-                    validated_header,
-                    predecessor_header,
-                    api,
-                ) {
-                    Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
-                    None => Ok(BlockAcceptanceResult::AcceptBlock),
-                }
-            } else {
-                // if we came here, we dont know protocol to trigger validation
-                // so probably we dont have predecessor procesed yet
-                // so we trigger current branch request from peer
-                Ok(BlockAcceptanceResult::UnknownBranch)
+        // if missing predecessor
+        if missing_predecessor {
+            return Ok(BlockAcceptanceResult::UnknownBranch);
+        }
+
+        // if we have protocol lets validate
+        if let Some(protocol_hash) = protocol_hash {
+            // lets check strict multipass validation
+            match validation::check_multipass_validation(
+                head.chain_id(),
+                protocol_hash,
+                validated_header,
+                predecessor_header,
+                api,
+            ) {
+                Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
+                None => Ok(BlockAcceptanceResult::AcceptBlock),
             }
         } else {
-            Ok(BlockAcceptanceResult::IgnoreBlock)
+            // if we came here, we dont know protocol to trigger validation
+            // so probably we dont have predecessor procesed yet
+            // so we trigger current branch request from peer
+            Ok(BlockAcceptanceResult::UnknownBranch)
         }
     }
 
@@ -426,7 +420,7 @@ impl BlockchainState {
                         self.chain_id.clone(),
                         self.requester.clone(),
                         chain_manager_ref.clone(),
-                        PeerBranchBootstrapperConfiguration::new(
+                        BootstrapStateConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,
                             bootstrap_constants::MISSING_NEW_BRANCH_BOOTSTRAP_TIMEOUT,
@@ -623,22 +617,12 @@ impl BlockchainState {
         &self.chain_id
     }
 
-    pub fn get_history(
-        &self,
-        head: &BlockHash,
-        seed: &Seed,
-    ) -> Result<Vec<BlockHash>, StorageError> {
-        Self::compute_history(
-            &self.block_meta_storage,
-            self.chain_meta_storage.get_caboose(&self.chain_id)?,
-            head,
-            HISTORY_MAX_SIZE,
-            seed,
-        )
+    pub fn get_caboose(&self, chain_id: &ChainId) -> Result<Option<Head>, StorageError> {
+        self.chain_meta_storage.get_caboose(chain_id)
     }
 
     /// Resulted history is sorted: "from oldest block to newest"
-    fn compute_history(
+    pub fn compute_history(
         block_meta_storage: &BlockMetaStorage,
         caboose: Option<Head>,
         head: &BlockHash,

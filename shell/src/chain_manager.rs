@@ -12,18 +12,23 @@
 //! -- ...
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{format_err, Error};
 use itertools::{Itertools, MinMaxResult};
-use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
+use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::PeerId;
+use shell_integration::{
+    dispatch_oneshot_result, InjectBlock, InjectBlockError, InjectBlockOneshotResultCallback,
+    MempoolOperationReceived, OneshotResultCallback, ResetMempool, ThreadWatcher,
+};
 use storage::mempool_storage::MempoolOperationType;
 use storage::PersistentStorage;
 use storage::{
@@ -33,32 +38,32 @@ use storage::{
 };
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::limits::HISTORY_MAX_SIZE;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_feeder::ChainFeederRef;
-use crate::mempool::mempool_prevalidator::{
-    MempoolOperationReceived, MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg, ResetMempool,
-};
+use crate::mempool::mempool_prevalidator::{MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg};
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
 use crate::shell_channel::{
-    AllBlockOperationsReceived, BlockReceived, InjectBlock, InjectBlockOneshotResultCallback,
-    ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
+    AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
-use crate::state::head_state::CurrentHeadRef;
-use crate::state::peer_state::{tell_peer, PeerState};
+use crate::state::data_requester::tell_peer;
+use crate::state::head_state::{
+    has_any_higher_than, HeadResult, HeadState, RemoteBestKnownCurrentHead,
+};
+use crate::state::peer_state::PeerState;
 use crate::state::synchronization_state::{
-    PeerBranchSynchronizationDone, SynchronizationBootstrapStateRef,
+    PeerBranchSynchronizationDone, SynchronizationBootstrapState,
 };
 use crate::state::StateError;
 use crate::subscription::*;
-use crate::utils::dispatch_oneshot_result;
 use crate::validation;
+use shell_integration::notifications::NewCurrentHeadNotification;
 
 /// How often to ask all connected peers for current head
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
@@ -90,79 +95,51 @@ pub struct CheckMempoolCompleteness;
 /// Message commands [`ChainManager`] to ask all connected peers for their current head.
 #[derive(Clone, Debug)]
 pub struct AskPeersAboutCurrentHead {
-    last_received_timeout: Duration,
+    /// Optional, if Some timeout, we check it from the current_head_response_last, if timeout exceeded, we can request once more
+    /// If None, we request immediatelly
+    pub last_received_timeout: Option<Duration>,
+}
+
+/// Message commands [`ChainCurrentHeadManager`] to process applied block.
+/// Chain_feeder propagates if block successfully validated and applied
+/// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
+#[derive(Clone, Debug)]
+pub struct ProcessValidatedBlock {
+    pub block: Arc<BlockHeaderWithHash>,
+    chain_id: Arc<ChainId>,
+    result_roundtrip_timer: Arc<Instant>,
+}
+
+impl ProcessValidatedBlock {
+    pub fn new(
+        block: Arc<BlockHeaderWithHash>,
+        chain_id: Arc<ChainId>,
+        result_roundtrip_timer: Instant,
+    ) -> Self {
+        Self {
+            block,
+            chain_id,
+            result_roundtrip_timer: Arc::new(result_roundtrip_timer),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InjectBlockRequest {
+    pub request: InjectBlock,
+    pub result_callback: Option<InjectBlockOneshotResultCallback>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdvertiseToP2pNewMempool {
+    pub chain_id: ChainId,
+    pub mempool_head: BlockHash,
+    pub mempool: Mempool,
 }
 
 /// Message commands [`ChainManager`] to log its internal stats.
 #[derive(Clone, Debug)]
 pub struct LogStats;
-
-/// This struct holds info about local and remote "current" head
-#[derive(Clone, Debug)]
-struct CurrentHead {
-    /// Represents local current head. Value here is the same as the
-    /// hash of the last applied block.
-    local: CurrentHeadRef,
-    /// Remote current head. This represents info about
-    /// the current branch with the highest level received from network.
-    remote: CurrentHeadRef,
-}
-
-impl CurrentHead {
-    fn need_update_remote_level(&self, new_remote_level: i32) -> Result<bool, StateError> {
-        match &self.remote.read()?.as_ref() {
-            None => Ok(true),
-            Some(current_remote_head) => Ok(new_remote_level > *current_remote_head.level()),
-        }
-    }
-
-    fn update_remote_head(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StateError> {
-        // TODO: maybe fitness check?
-        if self.need_update_remote_level(block_header.header.level())? {
-            let mut remote = self.remote.write()?;
-            *remote = Some(Head::new(
-                block_header.hash.clone(),
-                block_header.header.level(),
-                block_header.header.fitness().to_vec(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn local_debug_info(&self) -> Result<(String, i32, String), StateError> {
-        match &self.local.read()?.as_ref() {
-            None => Ok(("-none-".to_string(), 0_i32, "-none-".to_string())),
-            Some(head) => Ok(head.to_debug_info()),
-        }
-    }
-
-    fn remote_debug_info(&self) -> Result<(String, i32, String), StateError> {
-        match &self.remote.read()?.as_ref() {
-            None => Ok(("-none-".to_string(), 0_i32, "-none-".to_string())),
-            Some(head) => Ok(head.to_debug_info()),
-        }
-    }
-
-    fn has_any_higher_than(&self, level_to_check: Level) -> Result<bool, StateError> {
-        // check remote head
-        // TODO: maybe fitness check?
-        if let Some(remote_head) = self.remote.read()?.as_ref() {
-            if remote_head.level() > &level_to_check {
-                return Ok(true);
-            }
-        }
-
-        // check local head
-        // TODO: maybe fitness check?
-        if let Some(local_head) = self.local.read()?.as_ref() {
-            if local_head.level() > &level_to_check {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-}
 
 /// Holds various stats with info about internal synchronization.
 struct Stats {
@@ -200,6 +177,10 @@ impl Stats {
     NetworkChannelMsg,
     ShellChannelMsg,
     PeerBranchSynchronizationDone,
+    ProcessValidatedBlock,
+    InjectBlockRequest,
+    AdvertiseToP2pNewMempool,
+    SubscribedResponse,
     SystemEvent
 )]
 pub struct ChainManager {
@@ -211,6 +192,8 @@ pub struct ChainManager {
     mempool_prevalidator: Option<MempoolPrevalidatorBasicRef>,
     /// mempool factory
     mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
+    /// p2p reader
+    p2p_reader_sender: Arc<Mutex<P2pReaderSender>>,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -223,20 +206,20 @@ pub struct ChainManager {
     /// Holds state of the blockchain
     chain_state: BlockchainState,
 
-    /// Node's identity public key - e.g. used for history computation
-    identity_peer_id: CryptoboxPublicKeyHash,
-
     /// Holds the state of all peers
     peers: HashMap<ActorUri, PeerState>,
     /// Current head information
-    current_head: CurrentHead,
+    current_head_state: HeadState,
+    /// Holds "best" known remote head
+    remote_current_head_state: RemoteBestKnownCurrentHead,
     /// Internal stats
     stats: Stats,
 
     /// Holds ref to global current shared mempool state
     current_mempool_state: CurrentMempoolStateStorageRef,
+
     /// Holds bootstrapped state
-    current_bootstrap_state: SynchronizationBootstrapStateRef,
+    current_bootstrap_state: SynchronizationBootstrapState,
 
     /// Indicates that system is shutting down
     shutting_down: bool,
@@ -245,6 +228,12 @@ pub struct ChainManager {
 
     /// Protocol runner pool dedicated to prevalidation
     tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+
+    /// Used just for very first initialization of ChainManager, because ChainManager subscribes to NetworkChannel in [`pre_start`], but this initialization is asynchronous,
+    /// so there is possiblity, that PeerManager could open p2p socket before ChainManager is subscribed to p2p messages, this could lead to dismissed p2p messages or PeerBootstrapped messages,
+    ///
+    /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because tezedge_actor_system's do not loose messages when actor is restarting
+    first_initialization_done_result_callback: Arc<Mutex<Option<OneshotResultCallback<()>>>>,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -261,13 +250,23 @@ impl ChainManager {
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         is_sandbox: bool,
-        local_current_head_state: CurrentHeadRef,
-        remote_current_head_state: CurrentHeadRef,
+        hydrated_current_head: Head,
         current_mempool_state: CurrentMempoolStateStorageRef,
-        current_bootstrap_state: SynchronizationBootstrapStateRef,
+        num_of_peers_for_bootstrap_threshold: usize,
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
-    ) -> Result<ChainManagerRef, CreateError> {
+        first_initialization_done_result_callback: OneshotResultCallback<()>,
+    ) -> Result<(ChainManagerRef, ThreadWatcher), CreateError> {
+        let (p2p_reader_sender, p2p_reader_thread_watcher) = spawn_p2p_reader_thread(
+            identity.peer_id(),
+            &persistent_storage,
+            sys.log(),
+        )
+        .map_err(|e| {
+            warn!(sys.log(), "Failed to spawn p2p reader thread"; "reason" => format!("{}", e));
+            CreateError::Panicked
+        })?;
+
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
             Props::new_args((
@@ -275,17 +274,18 @@ impl ChainManager {
                 network_channel,
                 shell_channel,
                 persistent_storage,
+                Arc::new(Mutex::new(p2p_reader_sender)),
                 tezos_readonly_prevalidation_api,
                 init_storage_data,
                 is_sandbox,
-                local_current_head_state,
-                remote_current_head_state,
+                hydrated_current_head,
                 current_mempool_state,
-                current_bootstrap_state,
+                num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
-                identity.peer_id(),
+                Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
             )),
         )
+        .map(|actor| (actor, p2p_reader_thread_watcher))
     }
 
     /// The `ChainManager` is intended to serve as a singleton actor so that's why
@@ -317,8 +317,9 @@ impl ChainManager {
             operations_storage,
             stats,
             mempool_storage,
-            current_head,
-            identity_peer_id,
+            current_head_state,
+            remote_current_head_state,
+            p2p_reader_sender,
             ..
         } = self;
 
@@ -334,7 +335,7 @@ impl ChainManager {
                     tell_peer(
                         GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
                             .into(),
-                        peer,
+                        &peer.peer_id,
                     );
                 }
             }
@@ -364,7 +365,7 @@ impl ChainManager {
                                 );
 
                                 // at first, check if we can accept branch or just ignore it
-                                if !chain_state.can_accept_branch(&message, &current_head.local)? {
+                                if !chain_state.can_accept_branch(message, current_head_state)? {
                                     let head = message.current_branch().current_head();
                                     debug!(log, "Ignoring received (low) current branch";
                                                     "branch" => head.message_typed_hash::<BlockHash>()?.to_base58_check(),
@@ -376,11 +377,8 @@ impl ChainManager {
 
                                     // update remote heads
                                     peer.update_current_head(&message_current_head);
-                                    if let Err(e) =
-                                        current_head.update_remote_head(&message_current_head)
-                                    {
-                                        warn!(log, "Failed to update remote head (by current branch)"; "reason" => e);
-                                    }
+                                    remote_current_head_state
+                                        .update_remote_head(&message_current_head);
 
                                     // schedule to download missing branch blocks
                                     chain_state.schedule_history_bootstrap(
@@ -394,33 +392,21 @@ impl ChainManager {
                             }
                             PeerMessage::GetCurrentBranch(message) => {
                                 if chain_state.get_chain_id().as_ref() == &message.chain_id {
-                                    if let Some(current_head_local) = current_head
-                                        .local
-                                        .read()
-                                        .map_err(StateError::from)?
-                                        .as_ref()
+                                    let current_head_local = current_head_state.as_ref();
+                                    if let Some(current_head) =
+                                        block_storage.get(current_head_local.block_hash())?
                                     {
-                                        if let Some(current_head) =
-                                            block_storage.get(current_head_local.block_hash())?
-                                        {
-                                            // calculate history
-                                            let history = chain_state.get_history(
-                                                &current_head.hash,
-                                                &Seed::new(
-                                                    &identity_peer_id,
-                                                    &peer.peer_id.peer_public_key_hash,
-                                                ),
-                                            )?;
-                                            // send message
-                                            let msg = CurrentBranchMessage::new(
-                                                chain_state.get_chain_id().as_ref().clone(),
-                                                CurrentBranch::new(
-                                                    (*current_head.header).clone(),
-                                                    history,
-                                                ),
-                                            );
-                                            tell_peer(msg.into(), peer);
-                                        }
+                                        let chain_id = chain_state.get_chain_id();
+                                        let caboose = chain_state.get_caboose(chain_id)?;
+
+                                        ChainManager::advertise_current_branch_to_p2p(
+                                            chain_id,
+                                            caboose,
+                                            &Arc::new(current_head),
+                                            std::iter::once(&*peer),
+                                            p2p_reader_sender,
+                                            &log,
+                                        );
                                     }
                                 } else {
                                     warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
@@ -457,34 +443,28 @@ impl ChainManager {
                                     if let Some(block) = block_storage.get(block_hash)? {
                                         let msg: BlockHeaderMessage =
                                             (*block.header).clone().into();
-                                        tell_peer(msg.into(), peer);
+                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 }
                             }
                             PeerMessage::GetCurrentHead(message) => {
                                 if chain_state.get_chain_id().as_ref() == message.chain_id() {
-                                    if let Some(current_head_local) = current_head
-                                        .local
-                                        .read()
-                                        .map_err(StateError::from)?
-                                        .as_ref()
+                                    let current_head_local = current_head_state.as_ref();
+                                    if let Some(current_head) =
+                                        block_storage.get(current_head_local.block_hash())?
                                     {
-                                        if let Some(current_head) =
-                                            block_storage.get(current_head_local.block_hash())?
-                                        {
-                                            let msg = CurrentHeadMessage::new(
-                                                chain_state.get_chain_id().as_ref().clone(),
-                                                current_head.header.as_ref().clone(),
-                                                Self::resolve_mempool_to_send_to_peer(
-                                                    &peer,
-                                                    self.mempool_prevalidator_factory
-                                                        .p2p_disable_mempool,
-                                                    self.current_mempool_state.clone(),
-                                                    &current_head_local,
-                                                )?,
-                                            );
-                                            tell_peer(msg.into(), peer);
-                                        }
+                                        let msg = CurrentHeadMessage::new(
+                                            chain_state.get_chain_id().as_ref().clone(),
+                                            current_head.header.as_ref().clone(),
+                                            Self::resolve_mempool_to_send_to_peer(
+                                                peer,
+                                                self.mempool_prevalidator_factory
+                                                    .p2p_disable_mempool,
+                                                self.current_mempool_state.clone(),
+                                                current_head_local,
+                                            )?,
+                                        );
+                                        tell_peer(msg.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -511,7 +491,7 @@ impl ChainManager {
                                         // TODO: TE-369 - is this necessery?
                                         // notify others that new all operations for block were received
                                         let block_meta = block_meta_storage
-                                            .get(&block_hash)?
+                                            .get(block_hash)?
                                             .ok_or_else(|| StorageError::MissingKey {
                                                 when: "Processing PeerMessage::OperationsForBlocks"
                                                     .into(),
@@ -542,7 +522,7 @@ impl ChainManager {
 
                                     let key = get_op.into();
                                     if let Some(op) = operations_storage.get(&key)? {
-                                        tell_peer(op.into(), peer);
+                                        tell_peer(op.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -550,16 +530,11 @@ impl ChainManager {
                                 peer.current_head_response_last = Instant::now();
 
                                 // process current head only if we are bootstrapped
-                                if self
-                                    .current_bootstrap_state
-                                    .read()
-                                    .map_err(StateError::from)?
-                                    .is_bootstrapped()
-                                {
+                                if self.current_bootstrap_state.is_bootstrapped() {
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
-                                        &message,
-                                        &current_head.local,
+                                        message,
+                                        &current_head_state,
                                         &self.tezos_readonly_prevalidation_api.pool.get()?.api,
                                     )? {
                                         BlockAcceptanceResult::AcceptBlock => {
@@ -572,11 +547,8 @@ impl ChainManager {
                                                 message.current_block_header().level(),
                                             );
                                             peer.update_current_head(&message_current_head);
-                                            if let Err(e) = current_head
-                                                .update_remote_head(&message_current_head)
-                                            {
-                                                warn!(log, "Failed to update remote head (by current head)"; "reason" => e);
-                                            }
+                                            remote_current_head_state
+                                                .update_remote_head(&message_current_head);
 
                                             // process downloaded block directly
                                             Self::process_downloaded_header(
@@ -590,15 +562,10 @@ impl ChainManager {
 
                                             // here we accept head, which also means that we know predecessor
                                             // so we can schedule to download diff (last_applied_block .. current_head)
-                                            let mut history = Vec::with_capacity(1);
-                                            if let Some(cur) = &current_head
-                                                .local
-                                                .read()
-                                                .map_err(StateError::from)?
-                                                .as_ref()
-                                            {
-                                                history.push(cur.block_hash().clone());
-                                            }
+                                            let mut history = Vec::with_capacity(2);
+                                            history.push(
+                                                current_head_state.as_ref().block_hash().clone(),
+                                            );
 
                                             // this schedule, ensure to download all operations from this peer (if not already)
                                             chain_state.schedule_history_bootstrap(
@@ -654,7 +621,7 @@ impl ChainManager {
                                                     message.chain_id().clone(),
                                                 )
                                                 .into(),
-                                                peer,
+                                                &peer.peer_id,
                                             );
                                         }
                                         BlockAcceptanceResult::MutlipassValidationError(error) => {
@@ -711,7 +678,7 @@ impl ChainManager {
                                                         message.chain_id().clone(),
                                                     )
                                                     .into(),
-                                                    peer,
+                                                    &peer.peer_id,
                                                 );
                                             }
                                         }
@@ -724,8 +691,8 @@ impl ChainManager {
                                 for operation_hash in requested_operations {
                                     // TODO: where to look for operations for advertised mempool?
                                     // TODO: if not found here, check regular operation storage?
-                                    if let Some(found) = mempool_storage.find(&operation_hash)? {
-                                        tell_peer(found.into(), peer);
+                                    if let Some(found) = mempool_storage.find(operation_hash)? {
+                                        tell_peer(found.into(), &peer.peer_id);
                                     }
                                 }
                             }
@@ -741,7 +708,7 @@ impl ChainManager {
                                         let result = match validation::prevalidate_operation(
                                             chain_state.get_chain_id(),
                                             &operation_hash,
-                                            &operation,
+                                            operation,
                                             &self.current_mempool_state,
                                             &self.tezos_readonly_prevalidation_api.pool.get()?.api,
                                             block_storage,
@@ -844,76 +811,10 @@ impl ChainManager {
         Ok(())
     }
 
-    fn process_shell_channel_message(
-        &mut self,
-        ctx: &Context<ChainManagerMsg>,
-        msg: ShellChannelMsg,
-    ) -> Result<(), Error> {
-        match msg {
-            ShellChannelMsg::AdvertiseToP2pNewMempool(chain_id, block_hash, new_mempool) => {
-                // get header and send it to p2p
-                if let Some(header) = self.block_storage.get(&block_hash)? {
-                    self.advertise_current_head_to_p2p(
-                        &chain_id,
-                        header.header,
-                        new_mempool.as_ref().clone(),
-                        true,
-                    );
-                } else {
-                    return Err(format_err!(
-                        "BlockHeader ({}) was not found!",
-                        block_hash.to_base58_check()
-                    ));
-                }
-            }
-            ShellChannelMsg::AdvertiseToP2pNewCurrentHead(chain_id, block_hash) => {
-                // get header and send it to p2p
-                if let Some(header) = self.block_storage.get(&block_hash)? {
-                    self.advertise_current_head_to_p2p(
-                        &chain_id,
-                        header.header,
-                        Mempool::default(),
-                        false,
-                    );
-                } else {
-                    return Err(format_err!(
-                        "BlockHeader ({}) was not found!",
-                        block_hash.to_base58_check()
-                    ));
-                }
-            }
-            ShellChannelMsg::AdvertiseToP2pNewCurrentBranch(chain_id, block_hash) => {
-                // get header and send it to p2p
-                if let Some(header) = self.block_storage.get(&block_hash)? {
-                    self.advertise_current_branch_to_p2p(&chain_id, &header)?;
-                } else {
-                    return Err(format_err!(
-                        "BlockHeader ({}) was not found!",
-                        block_hash.to_base58_check()
-                    ));
-                }
-            }
-            ShellChannelMsg::InjectBlock(inject_block, result_callback) => {
-                self.process_injected_block(inject_block, result_callback, ctx)?;
-            }
-            ShellChannelMsg::RequestCurrentHead(_) => {
-                let ChainManager {
-                    peers, chain_state, ..
-                } = self;
-                let msg: Arc<PeerMessageResponse> =
-                    GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into();
-                peers.iter_mut().for_each(|(_, peer)| {
-                    peer.current_head_request_last = Instant::now();
-                    tell_peer(msg.clone(), peer)
-                });
-            }
-            ShellChannelMsg::ShuttingDown(_) => {
-                self.shutting_down = true;
-            }
-            _ => (),
+    fn process_shell_channel_message(&mut self, msg: ShellChannelMsg) {
+        if let ShellChannelMsg::ShuttingDown(_) = msg {
+            self.shutting_down = true;
         }
-
-        Ok(())
     }
 
     fn process_downloaded_header(
@@ -972,7 +873,7 @@ impl ChainManager {
             Ok(data) => data,
             Err(e) => {
                 if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                    Err(StateError::ProcessingError {
+                    Err(InjectBlockError {
                         reason: format!(
                             "Failed to store injected block, block_hash: {}, reason: {}",
                             block_header_with_hash.hash.to_base58_check(),
@@ -1013,7 +914,7 @@ impl ChainManager {
                     Some(operations) => operations,
                     None => {
                         if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                            Err(StateError::ProcessingError {
+                            Err(InjectBlockError {
                                 reason: format!(
                                     "Missing operations in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
@@ -1032,7 +933,7 @@ impl ChainManager {
                     Some(op_paths) => op_paths,
                     None => {
                         if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                            Err(StateError::ProcessingError {
+                            Err(InjectBlockError {
                                 reason: format!(
                                     "Missing operation paths in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
@@ -1059,7 +960,7 @@ impl ChainManager {
                         Some(path) => path.to_owned(),
                         None => {
                             if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                                Err(StateError::ProcessingError {reason: format!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check())})
+                                Err(InjectBlockError {reason: format!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check())})
                             }) {
                                 warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
@@ -1100,7 +1001,7 @@ impl ChainManager {
                         }
                         Err(e) => {
                             if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                                Err(StateError::ProcessingError {reason: format!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                                Err(InjectBlockError {reason: format!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
                             }) {
                                 warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
@@ -1114,10 +1015,11 @@ impl ChainManager {
             if let Err(e) = self.chain_state.requester().try_apply_block(
                 chain_id,
                 block_header_with_hash.hash.clone(),
+                Arc::new(ctx.myself()),
                 result_callback.clone(),
             ) {
                 if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                    Err(StateError::ProcessingError {reason: format!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                    Err(InjectBlockError {reason: format!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
                 }) {
                     warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                 }
@@ -1126,7 +1028,7 @@ impl ChainManager {
         } else {
             warn!(log, "Injected duplicated block - will be ignored!");
             if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                Err(StateError::ProcessingError {
+                Err(InjectBlockError {
                     reason: format!(
                         "Injected duplicated block - will be ignored!, block_hash: {}",
                         block_header_with_hash.hash.to_base58_check()
@@ -1146,11 +1048,11 @@ impl ChainManager {
     /// "bootstrapped peer" means, that peer.current_level <= chain_manager.current_level
     fn resolve_is_bootstrapped(
         &mut self,
+        chain_manager: &ChainManagerRef,
         msg: &PeerBranchSynchronizationDone,
-        ctx: &Context<ChainManagerMsg>,
         log: &Logger,
     ) -> Result<(), StateError> {
-        if self.current_bootstrap_state.read()?.is_bootstrapped() {
+        if self.current_bootstrap_state.is_bootstrapped() {
             // TODO: TE-386 - global queue for requested operations
             if let Some(peer_state) = self.peers.get_mut(msg.peer().peer_ref.uri()) {
                 peer_state.missing_operations_for_blocks.clear();
@@ -1159,24 +1061,15 @@ impl ChainManager {
             return Ok(());
         }
 
-        let chain_manager_current_level = self
-            .current_head
-            .local
-            .read()?
-            .as_ref()
-            .map(|head| *head.level())
-            .unwrap_or(0);
+        let chain_manager_current_level = *self.current_head_state.as_ref().level();
 
-        let remote_best_known_level = self
-            .current_head
-            .remote
-            .read()?
-            .as_ref()
-            .map(|head| *head.level())
-            .unwrap_or(0);
+        let remote_best_known_level = match self.remote_current_head_state.as_ref() {
+            Some(head) => *head.level(),
+            None => 0,
+        };
 
         if let Some(peer_state) = self.peers.get_mut(msg.peer().peer_ref.uri()) {
-            self.current_bootstrap_state.write()?.update_by_peer_state(
+            self.current_bootstrap_state.update_by_peer_state(
                 msg,
                 peer_state,
                 remote_best_known_level,
@@ -1187,71 +1080,36 @@ impl ChainManager {
             peer_state.missing_operations_for_blocks.clear();
         }
 
-        let mut can_activate_mempool = false;
         let mut advertise_current_head = None;
         {
             // lock and log
-            let current_bootstrap_state = self.current_bootstrap_state.read()?;
-            if current_bootstrap_state.is_bootstrapped() {
+            if self.current_bootstrap_state.is_bootstrapped() {
                 info!(log, "Bootstrapped (chain_manager)";
-                       "num_of_peers_for_bootstrap_threshold" => current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
+                       "num_of_peers_for_bootstrap_threshold" => self.current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
                        "remote_best_known_level" => remote_best_known_level,
                        "reached_on_level" => chain_manager_current_level);
-                drop(current_bootstrap_state);
 
                 // here we reached bootstrapped state, so we need to do more things
                 // 1. reset mempool with current_head
                 // 2. advertise current_head to network
-                if let Some(current_head) = self.current_head.local.read()?.as_ref() {
-                    // get current header
-                    if let Some(header) = self.block_storage.get(current_head.block_hash())? {
-                        advertise_current_head = Some(Arc::new(header));
-
-                        // notify mempool if enabled
-                        if !self.mempool_prevalidator_factory.p2p_disable_mempool {
-                            can_activate_mempool = true;
-                        }
-                    } else {
-                        return Err(StateError::ProcessingError {
-                            reason: format!(
-                                "BlockHeader ({}) was not found!",
-                                current_head.block_hash().to_base58_check()
-                            ),
-                        });
-                    }
+                let current_head = self.current_head_state.as_ref();
+                // get current header
+                if let Some(header) = self.block_storage.get(current_head.block_hash())? {
+                    advertise_current_head = Some(Arc::new(header));
+                } else {
+                    return Err(StateError::ProcessingError {
+                        reason: format!(
+                            "BlockHeader ({}) was not found!",
+                            current_head.block_hash().to_base58_check()
+                        ),
+                    });
                 }
             }
         }
 
         if let Some(block) = advertise_current_head {
             // start mempool if needed
-            if can_activate_mempool {
-                if let Err(e) = self.start_mempool_if_needed(
-                    self.chain_state.get_chain_id().as_ref().clone(),
-                    &ctx.system,
-                    log,
-                ) {
-                    warn!(log, "(Chain manager) Failed to start mempool prevalidator";
-                                "chain_id" => self.chain_state.get_chain_id().to_base58_check(),
-                                "reason" => e,
-                    );
-                }
-
-                // ping mempool to reset head
-                if let Some(mempool_prevalidator) = self.mempool_prevalidator.as_ref() {
-                    if mempool_prevalidator
-                        .try_tell(
-                            MempoolPrevalidatorMsg::ResetMempool(ResetMempool {
-                                block: block.clone(),
-                            }),
-                            None,
-                        )
-                        .is_err()
-                    {
-                        warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_manager");
-                    }
-                }
-            }
+            self.reset_mempool_if_needed(chain_manager, block.clone(), log);
 
             // advertise our current_head
             self.advertise_current_head_to_p2p(
@@ -1266,37 +1124,36 @@ impl ChainManager {
     }
 
     /// Send CurrentBranch message to the p2p
-    fn advertise_current_branch_to_p2p(
-        &self,
+    fn advertise_current_branch_to_p2p<'a, I: Iterator<Item = &'a PeerState>>(
         chain_id: &ChainId,
-        block_header: &BlockHeaderWithHash,
-    ) -> Result<(), StorageError> {
-        let ChainManager {
-            peers,
-            chain_state,
-            identity_peer_id,
-            ..
-        } = self;
-
-        for peer in peers.values() {
-            tell_peer(
-                CurrentBranchMessage::new(
-                    chain_id.clone(),
-                    CurrentBranch::new(
-                        block_header.header.as_ref().clone(),
-                        // calculate history for each peer
-                        chain_state.get_history(
-                            &block_header.hash,
-                            &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
-                        )?,
-                    ),
-                )
-                .into(),
-                peer,
-            )
+        caboose: Option<Head>,
+        block_header: &Arc<BlockHeaderWithHash>,
+        peers: I,
+        p2p_reader_sender: &'a Arc<Mutex<P2pReaderSender>>,
+        log: &Logger,
+    ) {
+        // lock peers
+        match p2p_reader_sender.lock() {
+            Ok(p2p_reader_sender) => {
+                // dispatch in separate thread
+                for peer in peers {
+                    if let Err(e) = p2p_reader_sender.send(
+                        SendCurrentBranchToPeerRequest {
+                            peer_id: peer.peer_id.clone(),
+                            chain_id: chain_id.clone(),
+                            caboose: caboose.clone(),
+                            block_header: block_header.clone(),
+                        }
+                        .into(),
+                    ) {
+                        warn!(log, "Failed to schedule CurrentBranch message sending"; "reason" => format!("{}", e), "block_header_hash" => block_header.hash.to_base58_check());
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock for schedule CurrentBranch message sending"; "reason" => format!("{}", e), "block_header_hash" => block_header.hash.to_base58_check());
+            }
         }
-
-        Ok(())
     }
 
     /// Send CurrentHead message to the p2p
@@ -1359,7 +1216,7 @@ impl ChainManager {
 
             let can_send_msg = !(ignore_msg_with_empty_mempool && msg_is_mempool_empty);
             if can_send_msg {
-                tell_peer(msg, peer)
+                tell_peer(msg, &peer.peer_id)
             }
         });
     }
@@ -1392,18 +1249,198 @@ impl ChainManager {
         }
     }
 
-    fn start_mempool_if_needed(
+    fn reset_mempool_if_needed(
         &mut self,
-        chain_id: ChainId,
-        sys: &ActorSystem,
+        chain_manager: &ChainManagerRef,
+        block: Arc<BlockHeaderWithHash>,
         log: &Logger,
-    ) -> Result<(), StateError> {
-        if self.mempool_prevalidator.is_none() {
-            self.mempool_prevalidator = self
-                .mempool_prevalidator_factory
-                .get_or_start_mempool(chain_id, sys, log)?;
+    ) {
+        // skip mempool if disabled
+        if self.mempool_prevalidator_factory.p2p_disable_mempool {
+            return;
         }
+
+        // closure for sending message to mempool_prevalidator
+        let send_reset_to_mempool = |mempool_prevalidator: &MempoolPrevalidatorBasicRef| {
+            if mempool_prevalidator
+                .try_tell(
+                    MempoolPrevalidatorMsg::ResetMempool(ResetMempool { block }),
+                    None,
+                )
+                .is_err()
+            {
+                warn!(log, "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_manager");
+            }
+        };
+
+        // check existing prevalidator
+        match self.mempool_prevalidator.as_ref() {
+            Some(mempool_prevalidator) => {
+                // if prevalidator already initialized, lets ping him
+                send_reset_to_mempool(mempool_prevalidator)
+            }
+            None => {
+                let chain_id = self.chain_state.get_chain_id();
+                // if not initialized yet, we need to start one
+                match self
+                    .mempool_prevalidator_factory
+                    .get_or_start_mempool(chain_id.as_ref().clone(), chain_manager)
+                {
+                    Ok(new_mempool_prevalidator) => {
+                        // ping prevalidator
+                        send_reset_to_mempool(&new_mempool_prevalidator);
+                        // store reference for later reuse
+                        self.mempool_prevalidator = Some(new_mempool_prevalidator);
+                    }
+                    Err(err) => {
+                        warn!(log, "Failed to instantiate mempool_prevalidator";
+                                   "chain_id" => chain_id.to_base58_check(),
+                                   "caller" => "chain_manager",
+                                   "reason" => format!("{}", err));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handles validated block.
+    ///
+    /// This logic is equivalent to [chain_validator.ml][let on_request]
+    /// if applied block is winner we need to:
+    /// - set current head
+    /// - set bootstrapped flag
+    /// - broadcast new current head/branch to peers (if bootstrapped)
+    /// - start test chain (if needed) (TODO: TE-123 - not implemented yet)
+    /// - update checkpoint (TODO: TE-210 - not implemented yet)
+    /// - reset mempool_prevalidator
+    /// ...
+    fn process_applied_block(
+        &mut self,
+        ctx: &Context<ChainManagerMsg>,
+        validated_block: ProcessValidatedBlock,
+    ) -> Result<(), StateError> {
+        let ProcessValidatedBlock {
+            block,
+            chain_id,
+            result_roundtrip_timer,
+        } = validated_block;
+        let result_roundtrip_timer = result_roundtrip_timer.elapsed();
+        let log = ctx.system.log();
+
+        // we try to set it as "new current head", if some means set, if none means just ignore block
+        if let Some((new_head, new_head_result)) = self
+            .current_head_state
+            .try_update_new_current_head(&block, &self.current_mempool_state)?
+        {
+            let mut is_bootstrapped = self.current_bootstrap_state.is_bootstrapped();
+
+            if is_bootstrapped {
+                info!(log, "New current head";
+                           "block_header_hash" => new_head.block_hash().to_base58_check(),
+                           "result_roundtrip_timer" => format!("{:?}", result_roundtrip_timer),
+                           "level" => new_head.level(),
+                           "result" => format!("{}", new_head_result)
+                );
+            } else {
+                debug!(log, "New current head";
+                            "block_header_hash" => new_head.block_hash().to_base58_check(),
+                            "result_roundtrip_timer" => format!("{:?}", result_roundtrip_timer),
+                            "level" => new_head.level(),
+                            "result" => format!("{}", new_head_result)
+                );
+            }
+
+            // notify other actors that new current head was changed
+            self.shell_channel.tell(
+                Publish {
+                    msg: ShellChannelMsg::NewCurrentHead(Arc::new(
+                        NewCurrentHeadNotification::new(
+                            chain_id.clone(),
+                            block.clone(),
+                            is_bootstrapped,
+                        ),
+                    )),
+                    topic: ShellChannelTopic::ShellNewCurrentHead.into(),
+                },
+                None,
+            );
+
+            if !is_bootstrapped {
+                let chain_manager_current_level = new_head.level();
+
+                let remote_best_known_level = match self.remote_current_head_state.as_ref() {
+                    Some(head) => *head.level(),
+                    None => 0,
+                };
+
+                is_bootstrapped = self.current_bootstrap_state.update_by_new_local_head(
+                    remote_best_known_level,
+                    *chain_manager_current_level,
+                );
+
+                if is_bootstrapped {
+                    info!(log, "Bootstrapped (chain_manager)";
+                       "num_of_peers_for_bootstrap_threshold" => self.current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
+                       "remote_best_known_level" => remote_best_known_level,
+                       "reached_on_level" => chain_manager_current_level);
+                }
+            }
+
+            // TODO: TE-369 - lazy feature, if multiple messages are waiting in queue, we just want to send the last one as first one and the other discard
+
+            // broadcast new head/branch to other peers
+            // we can do this, only if we are bootstrapped,
+            // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
+            if is_bootstrapped {
+                self.reset_mempool_if_needed(&ctx.myself, block.clone(), &log);
+
+                // advertise new branch or new head
+                match new_head_result {
+                    HeadResult::BranchSwitch => {
+                        ChainManager::advertise_current_branch_to_p2p(
+                            &chain_id,
+                            self.chain_state.get_caboose(&chain_id)?,
+                            &block,
+                            self.peers.values(),
+                            &self.p2p_reader_sender,
+                            &log,
+                        );
+                    }
+                    HeadResult::HeadIncrement => {
+                        self.advertise_current_head_to_p2p(
+                            &chain_id,
+                            block.header.clone(),
+                            Mempool::default(),
+                            false,
+                        );
+                    }
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    pub(crate) fn handle_first_initialization_done(&self, log: Logger) {
+        // lets handle first initialization
+        match self.first_initialization_done_result_callback.lock() {
+            Ok(mut first_initialization_done_result_callback) => {
+                // here we take out the callback to be used just once
+                if let Some(first_initialization_done_result_callback) =
+                    first_initialization_done_result_callback.take()
+                {
+                    if let Err(e) = dispatch_oneshot_result(
+                        Some(first_initialization_done_result_callback),
+                        || (),
+                    ) {
+                        warn!(log, "Failed to dispatch initialization result for ChainManager"; "reason" => format!("{}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock first_initialization_done_result_callback"; "reason" => format!("{}", e));
+            }
+        }
     }
 }
 
@@ -1413,15 +1450,15 @@ impl
         NetworkChannelRef,
         ShellChannelRef,
         PersistentStorage,
+        Arc<Mutex<P2pReaderSender>>,
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
         bool,
-        CurrentHeadRef,
-        CurrentHeadRef,
+        Head,
         CurrentMempoolStateStorageRef,
-        SynchronizationBootstrapStateRef,
+        usize,
         Arc<MempoolPrevalidatorFactory>,
-        CryptoboxPublicKeyHash,
+        Arc<Mutex<Option<OneshotResultCallback<()>>>>,
     )> for ChainManager
 {
     fn create_args(
@@ -1430,29 +1467,29 @@ impl
             network_channel,
             shell_channel,
             persistent_storage,
+            p2p_reader_sender,
             tezos_readonly_prevalidation_api,
             init_storage_data,
             is_sandbox,
-            local_current_head_state,
-            remote_current_head_state,
+            hydrated_current_head,
             current_mempool_state,
-            current_bootstrap_state,
+            num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
-            identity_peer_id,
+            first_initialization_done_result_callback,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
             PersistentStorage,
+            Arc<Mutex<P2pReaderSender>>,
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
             bool,
-            CurrentHeadRef,
-            CurrentHeadRef,
+            Head,
             CurrentMempoolStateStorageRef,
-            SynchronizationBootstrapStateRef,
+            usize,
             Arc<MempoolPrevalidatorFactory>,
-            CryptoboxPublicKeyHash,
+            Arc<Mutex<Option<OneshotResultCallback<()>>>>,
         ),
     ) -> Self {
         ChainManager {
@@ -1462,17 +1499,20 @@ impl
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
+            p2p_reader_sender,
             chain_state: BlockchainState::new(
                 block_applier,
                 &persistent_storage,
-                Arc::new(init_storage_data.chain_id),
-                Arc::new(init_storage_data.genesis_block_header_hash),
+                Arc::new(init_storage_data.chain_id.clone()),
+                Arc::new(init_storage_data.genesis_block_header_hash.clone()),
             ),
             peers: HashMap::new(),
-            current_head: CurrentHead {
-                local: local_current_head_state,
-                remote: remote_current_head_state,
-            },
+            current_head_state: HeadState::new(
+                &persistent_storage,
+                hydrated_current_head,
+                Arc::new(init_storage_data.chain_id),
+            ),
+            remote_current_head_state: RemoteBestKnownCurrentHead::new(),
             shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
@@ -1482,12 +1522,15 @@ impl
                 actor_received_messages_count: 0,
             },
             is_sandbox,
-            identity_peer_id,
             current_mempool_state,
-            current_bootstrap_state,
+            current_bootstrap_state: SynchronizationBootstrapState::new(
+                num_of_peers_for_bootstrap_threshold,
+                false,
+            ),
             mempool_prevalidator: None,
             mempool_prevalidator_factory,
             tezos_readonly_prevalidation_api,
+            first_initialization_done_result_callback,
         }
     }
 }
@@ -1496,10 +1539,58 @@ impl Actor for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        // subscribe chain_manager to all required channels
+        subscribe_with_response_to_network_events(
+            &self.network_channel,
+            ctx.myself(),
+            SubscribedResponse {
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+            }
+            .into(),
+        );
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_commands(&self.shell_channel, ctx.myself());
+
+        let log = ctx.system.log();
+
+        // just rehydrate and check mempool if needed refresh for current_head (in case of ChainManager's restart - can happen?)
+        match self.current_head_state.reload_current_head_state() {
+            Ok(Some(previous)) => {
+                let (previous_block_hash, previous_level, previous_fitness) =
+                    previous.to_debug_info();
+                let (current_block_hash, current_level, current_fitness) =
+                    self.current_head_state.as_ref().to_debug_info();
+                info!(log, "Current head was reloaded";
+                           "block_hash" => format!("{} -> {}", previous_block_hash, current_block_hash),
+                           "level" => format!("{} -> {}", previous_level, current_level),
+                           "fitness" => format!("{} -> {}", previous_fitness, current_fitness))
+            }
+            Ok(None) => (/* nothing changed, so nothing to do */),
+            Err(e) => warn!(log, "Failed to reload current head"; "reason" => e),
+        };
+
+        // check is_bootstrapped and potentially run mempool and reset with current_head
+        if self.current_bootstrap_state.is_bootstrapped() {
+            info!(log, "Bootstrapped on startup (chain_manager)";
+                       "num_of_peers_for_bootstrap_threshold" => self.current_bootstrap_state.num_of_peers_for_bootstrap_threshold());
+
+            // if bootstrapped, run mempool with actual current_head
+            match self
+                .block_storage
+                .get(self.current_head_state.as_ref().block_hash())
+            {
+                Ok(Some(current_block_header)) => {
+                    self.reset_mempool_if_needed(&ctx.myself, Arc::new(current_block_header), &log)
+                }
+                Ok(None) => warn!(
+                    log,
+                    "Failed to find current head block header for reseting mempool"
+                ),
+                Err(e) => {
+                    warn!(log, "Failed to read current head block header for reseting mempool"; "reason" => format!("{}", e))
+                }
+            }
+        }
 
         ctx.schedule::<Self::Msg, _>(
             ASK_CURRENT_HEAD_INITIAL_DELAY,
@@ -1507,7 +1598,7 @@ impl Actor for ChainManager {
             ctx.myself(),
             None,
             AskPeersAboutCurrentHead {
-                last_received_timeout: CURRENT_HEAD_LAST_RECEIVED_ACCEPT_TIMEOUT,
+                last_received_timeout: Some(CURRENT_HEAD_LAST_RECEIVED_ACCEPT_TIMEOUT),
             }
             .into(),
         );
@@ -1534,38 +1625,6 @@ impl Actor for ChainManager {
             }
             .into(),
         );
-    }
-
-    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        let log = ctx.system.log();
-        let mut can_start_mempool = false;
-
-        match self.current_bootstrap_state.read() {
-            Ok(current_bootstrap_state) => {
-                if current_bootstrap_state.is_bootstrapped() {
-                    info!(log, "Bootstrapped on startup (chain_manager)";
-                       "num_of_peers_for_bootstrap_threshold" => current_bootstrap_state.num_of_peers_for_bootstrap_threshold());
-                    can_start_mempool = true;
-                }
-            }
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to read current_bootstrap_state on startup"; "reason" => format!("{}", e));
-            }
-        }
-
-        // run mempool if needed
-        if can_start_mempool {
-            if let Err(e) = self.start_mempool_if_needed(
-                self.chain_state.get_chain_id().as_ref().clone(),
-                &ctx.system,
-                &log,
-            ) {
-                warn!(log, "Failed to start mempool prevalidator on startup";
-                           "chain_id" => self.chain_state.get_chain_id().to_base58_check(),
-                           "reason" => e,
-                );
-            }
-        }
 
         info!(log, "Chain manager started";
                    "main_chain_id" => self.chain_state.get_chain_id().to_base58_check());
@@ -1609,33 +1668,11 @@ impl Receive<LogStats> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
-        let (local, local_level, local_fitness) = match self.current_head.local_debug_info() {
-            Ok(result) => result,
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to collect local head debug info"; "reason" => e);
-                (
-                    "-failed-to-collect-".to_string(),
-                    0,
-                    "-failed-to-collect-".to_string(),
-                )
-            }
-        };
+        let (local, local_level, local_fitness) = self.current_head_state.as_ref().to_debug_info();
 
-        let (remote, remote_level, remote_fitness) = match self.current_head.remote_debug_info() {
-            Ok(result) => result,
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to collect local head debug info"; "reason" => e);
-                (
-                    "-failed-to-collect-".to_string(),
-                    0,
-                    "-failed-to-collect-".to_string(),
-                )
-            }
-        };
-
-        let bootstrapped = match self.current_bootstrap_state.try_read() {
-            Ok(result) => result.is_bootstrapped().to_string(),
-            Err(_) => "-failed-to-collect-".to_string(),
+        let (remote, remote_level, remote_fitness) = match self.remote_current_head_state.as_ref() {
+            Some(remote_head) => remote_head.to_debug_info(),
+            None => ("-none-".to_string(), 0, "-none-".to_string()),
         };
 
         info!(log, "Head info";
@@ -1645,7 +1682,7 @@ impl Receive<LogStats> for ChainManager {
             "remote" => remote,
             "remote_level" => remote_level,
             "remote_fitness" => remote_fitness,
-            "bootstrapped" => bootstrapped);
+            "bootstrapped" => self.current_bootstrap_state.is_bootstrapped());
         info!(log, "Blocks, operations, messages info";
             "last_received_block_headers_count" => self.stats.get_and_clear_unseen_block_headers_count(),
             "last_received_block_operations_count" => self.stats.get_and_clear_unseen_block_operations_count(),
@@ -1706,14 +1743,7 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                 let current_head_response_pending = state.current_head_request_last > state.current_head_response_last;
                 let mempool_operations_response_pending = state.mempool_operations_request_last > state.mempool_operations_response_last;
                 let known_higher_head = match state.current_head_level {
-                    Some(peer_level) => match self.current_head.has_any_higher_than(peer_level) {
-                        Ok(result) => result,
-                        Err(_) => {
-                            warn!(ctx.system.log(), "Failed to collect current local head";
-                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                            false
-                        }
-                    },
+                    Some(peer_level) => has_any_higher_than(&self.current_head_state, &self.remote_current_head_state, peer_level),
                     None => true,
                 };
 
@@ -1734,18 +1764,17 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                                                 }
                                             },
                                             "node_current_level_remote" => {
-                                                if let Ok((_, remote_level, _)) = self.current_head.remote_debug_info() {
-                                                    remote_level.to_string()
-                                                } else {
-                                                    "-failed-to-collect".to_string()
+                                                match self.remote_current_head_state.as_ref() {
+                                                    Some(remote_head) => {
+                                                        let (_, remote_level, _) = remote_head.to_debug_info();
+                                                        remote_level.to_string()
+                                                    }
+                                                    None => "-none-".to_string(),
                                                 }
                                             },
                                             "node_current_level_local" => {
-                                                if let Ok((_, local_level, _)) = self.current_head.local_debug_info() {
-                                                    local_level.to_string()
-                                                } else {
-                                                    "-failed-to-collect".to_string()
-                                                }
+                                                let (_, local_level, _) = self.current_head_state.as_ref().to_debug_info();
+                                                local_level.to_string()
                                             },
                                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
@@ -1796,13 +1825,8 @@ impl Receive<NetworkChannelMsg> for ChainManager {
 impl Receive<ShellChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match self.process_shell_channel_message(ctx, msg) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e))
-            }
-        }
+    fn receive(&mut self, _: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
+        self.process_shell_channel_message(msg);
     }
 }
 
@@ -1818,14 +1842,21 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
         let ChainManager {
             peers, chain_state, ..
         } = self;
+
+        let p2p_msg: Arc<PeerMessageResponse> =
+            GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into();
         peers.iter_mut().for_each(|(_, peer)| {
-            if peer.current_head_response_last.elapsed() > msg.last_received_timeout {
-                tell_peer(
-                    GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into(),
-                    peer,
-                )
+            let can_request = match msg.last_received_timeout {
+                Some(last_received_timeout) => {
+                    peer.current_head_response_last.elapsed() > last_received_timeout
+                }
+                None => true,
+            };
+            if can_request {
+                peer.current_head_request_last = Instant::now();
+                tell_peer(p2p_msg.clone(), &peer.peer_id)
             }
-        })
+        });
     }
 }
 
@@ -1833,8 +1864,173 @@ impl Receive<PeerBranchSynchronizationDone> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: PeerBranchSynchronizationDone, _: Sender) {
-        if let Err(e) = self.resolve_is_bootstrapped(&msg, ctx, &ctx.system.log()) {
+        if let Err(e) = self.resolve_is_bootstrapped(&ctx.myself, &msg, &ctx.system.log()) {
             warn!(ctx.system.log(), "Failed to resolve is_bootstrapped for chain manager"; "msg" => format!("{:?}", msg), "reason" => format!("{:?}", e))
         }
     }
+}
+
+impl Receive<ProcessValidatedBlock> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ProcessValidatedBlock, _: Sender) {
+        match self.process_applied_block(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to process validated block"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<InjectBlockRequest> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: InjectBlockRequest, _: Sender) {
+        let InjectBlockRequest {
+            request,
+            result_callback,
+        } = msg;
+        match self.process_injected_block(request, result_callback, ctx) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to inject block"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<AdvertiseToP2pNewMempool> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AdvertiseToP2pNewMempool, _: Sender) {
+        let AdvertiseToP2pNewMempool {
+            chain_id,
+            mempool_head,
+            mempool,
+        } = msg;
+        // get header and send it to p2p
+        match self.block_storage.get(&mempool_head) {
+            Ok(Some(header)) => {
+                self.advertise_current_head_to_p2p(&chain_id, header.header, mempool, true)
+            }
+            Ok(None) => warn!(
+                ctx.system.log(),
+                "Failed to spread mempool to p2p - blockHeader ({}) was not found",
+                mempool_head.to_base58_check()
+            ),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to spread mempool to p2p - blockHeader ({}) was not retrieved", mempool_head.to_base58_check(); "reason" => e)
+            }
+        }
+    }
+}
+
+impl Receive<SubscribedResponse> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SubscribedResponse, _: Sender) {
+        if msg.topic == NetworkChannelTopic::NetworkEvents.into() {
+            self.handle_first_initialization_done(ctx.system.log());
+        }
+    }
+}
+
+pub enum P2pReaderEvent {
+    SendCurrentBranchToPeer(SendCurrentBranchToPeerRequest),
+    ShuttingDown,
+}
+
+pub type P2pReaderSender = std::sync::mpsc::Sender<P2pReaderEvent>;
+
+pub struct SendCurrentBranchToPeerRequest {
+    peer_id: Arc<PeerId>,
+    chain_id: ChainId,
+    caboose: Option<Head>,
+    block_header: Arc<BlockHeaderWithHash>,
+}
+
+impl From<SendCurrentBranchToPeerRequest> for P2pReaderEvent {
+    fn from(request: SendCurrentBranchToPeerRequest) -> Self {
+        P2pReaderEvent::SendCurrentBranchToPeer(request)
+    }
+}
+
+/// Spawn inner thread for heavy readonly operations, like calculation of history...
+fn spawn_p2p_reader_thread(
+    identity_peer_id: CryptoboxPublicKeyHash,
+    persistent_storage: &PersistentStorage,
+    log: Logger,
+) -> Result<(P2pReaderSender, ThreadWatcher), anyhow::Error> {
+    // spawn thread which processes event
+    let thread_name = String::from("chain-p2p-reader");
+    let (event_sender, event_receiver) = std::sync::mpsc::channel();
+    let mut thread_watcher = {
+        let event_sender = event_sender.clone();
+        ThreadWatcher::start(
+            thread_name.clone(),
+            Box::new(move || {
+                event_sender
+                    .send(P2pReaderEvent::ShuttingDown)
+                    .map_err(|e| e.into())
+            }),
+        )
+    };
+
+    let thread = {
+        let run = thread_watcher.thread_running_status().clone();
+        let block_meta_storage = BlockMetaStorage::new(persistent_storage);
+
+        std::thread::Builder::new()
+            .name(thread_name)
+            .spawn(move || {
+
+                while run.load(Ordering::Acquire) {
+                    // let's handle event, if any
+                    if let Ok(event) = event_receiver.recv() {
+                        match event {
+                            P2pReaderEvent::SendCurrentBranchToPeer(SendCurrentBranchToPeerRequest {peer_id, chain_id, caboose, block_header}) => {
+                                // we needed to process this in separate thread, because history calculation in synced mainnet took around 100-400ms and varies
+                                // so for example when reconnecting, for 100 peers it means, 100x(100-400)ms = 10-40s delay for chain_manager processing
+
+                                // calculate history for peer
+                                match BlockchainState::compute_history(
+                                    &block_meta_storage,
+                                    caboose,
+                                    &block_header.hash,
+                                    HISTORY_MAX_SIZE,
+                                    &Seed::new(&identity_peer_id, &peer_id.peer_public_key_hash),
+                                ) {
+                                    Ok(history) => {
+                                        tell_peer(
+                                            CurrentBranchMessage::new(
+                                                chain_id,
+                                                CurrentBranch::new(
+                                                    block_header.header.as_ref().clone(),
+                                                    history,
+                                                ),
+                                            )
+                                                .into(),
+                                            &peer_id,
+                                        )
+                                    },
+                                    Err(e) => {
+                                        warn!(log, "Failed to calculate history for sending CurrentBranch"; "reason" => e);
+                                    }
+                                }
+                            }
+                            P2pReaderEvent::ShuttingDown => {
+                                // just finish the loop
+                                info!(log, "P2p reader thread worker received shutting down event");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                info!(log, "P2p reader thread finished");
+            })?
+    };
+    thread_watcher.set_thread(thread);
+    Ok((event_sender, thread_watcher))
 }

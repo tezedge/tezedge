@@ -6,7 +6,6 @@
 
 use thiserror::Error;
 
-pub mod chain_current_head_manager;
 pub mod chain_feeder;
 pub mod chain_manager;
 pub mod mempool;
@@ -15,7 +14,6 @@ pub mod peer_manager;
 pub mod shell_channel;
 pub mod state;
 pub mod stats;
-pub mod utils;
 pub mod validation;
 
 /// Constant tells about p2p feature versions, which this shell is compatible with
@@ -86,11 +84,9 @@ impl PeerConnectionThreshold {
 }
 
 pub mod subscription {
-    use riker::actors::*;
+    use tezedge_actor_system::actors::*;
 
     use networking::p2p::network_channel::NetworkChannelTopic;
-
-    use crate::shell_channel::ShellChannelTopic;
 
     #[inline]
     pub fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
@@ -123,6 +119,25 @@ pub mod subscription {
     }
 
     #[inline]
+    pub fn subscribe_with_response_to_network_events<M, E>(
+        network_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+        response: M,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        network_channel.tell(
+            SubscribeWithResponse {
+                actor: Box::new(myself.clone()),
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+                response: AnyMessage::new(response, true),
+            },
+            Some(myself.into()),
+        );
+    }
+
+    #[inline]
     pub(crate) fn subscribe_to_network_commands<M, E>(
         network_channel: &ChannelRef<E>,
         myself: ActorRef<M>,
@@ -148,7 +163,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellEvents.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellEvents.into(),
             },
             None,
         );
@@ -165,24 +180,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellNewCurrentHead.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub(crate) fn subscribe_to_shell_commands<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellCommands.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellNewCurrentHead.into(),
             },
             None,
         );
@@ -197,7 +195,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellShutdown.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );
@@ -233,6 +231,83 @@ pub mod subscription {
             },
             None,
         );
+    }
+}
+
+/// Module implements shell integration based on actual shell constalation.
+/// In case of new architecture (state machine, ..., whatever),
+/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ProposerHandle or whatever
+pub mod connector {
+    use std::sync::Arc;
+
+    use crypto::hash::ChainId;
+    use shell_integration::*;
+
+    use crate::chain_manager::{AskPeersAboutCurrentHead, ChainManagerRef, InjectBlockRequest};
+    use crate::mempool::MempoolPrevalidatorFactory;
+
+    pub struct ShellConnectorSupport {
+        chain_manager: ChainManagerRef,
+        mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
+    }
+
+    impl ShellConnectorSupport {
+        pub fn new(
+            chain_manager: ChainManagerRef,
+            mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
+        ) -> Self {
+            ShellConnectorSupport {
+                chain_manager,
+                mempool_prevalidator_factory,
+            }
+        }
+    }
+
+    impl ShellConnector for ShellConnectorSupport {
+        fn request_current_head_from_connected_peers(&self) {
+            // actual implementation use tezedge_actor_system and sends command to shell_channel
+            use tezedge_actor_system::actors::*;
+
+            self.chain_manager.tell(
+                AskPeersAboutCurrentHead {
+                    last_received_timeout: None,
+                },
+                None,
+            );
+        }
+
+        fn find_mempool_prevalidators(&self) -> Result<Vec<Prevalidator>, UnexpectedError> {
+            self.mempool_prevalidator_factory
+                .find_mempool_prevalidators()
+        }
+
+        fn find_mempool_prevalidator_caller(
+            &self,
+            chain_id: &ChainId,
+        ) -> Option<Box<dyn MempoolPrevalidatorCaller>> {
+            self.mempool_prevalidator_factory
+                .find_mempool_prevalidator_caller(chain_id)
+                .map(|c| Box::new(c) as Box<dyn MempoolPrevalidatorCaller>)
+        }
+    }
+
+    impl InjectBlockConnector for ShellConnectorSupport {
+        fn inject_block(
+            &self,
+            request: InjectBlock,
+            result_callback: Option<InjectBlockOneshotResultCallback>,
+        ) {
+            // actual implementation use tezedge_actor_system and sends command to shell_channel
+            use tezedge_actor_system::actors::*;
+
+            self.chain_manager.tell(
+                InjectBlockRequest {
+                    request,
+                    result_callback,
+                },
+                None,
+            );
+        }
     }
 }
 

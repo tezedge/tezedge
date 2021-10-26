@@ -1,6 +1,6 @@
 [package]
 name = "tezos_wrapper"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -8,13 +8,13 @@ edition = "2018"
 getset = "0.1"
 thiserror = "1.0"
 lazy_static = "1.4"
-nix = "0.19"
+nix = "0.23"
 rand = "0.7.3"
 r2d2 = "0.8.9"
 serde = { version = "1.0", features = ["derive"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 strum_macros = "0.20"
-tokio = { version = "1.8", features = ["full"] }
+tokio = { version = "1.12", features = ["full"] }
 # local dependencies
 ipc = { path = "../../ipc" }
 crypto = { path = "../../crypto" }
