@@ -692,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "crypto"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "base58",
@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_ack_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_advertise_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_block_header_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_connection_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_branch_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_head_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_metadata_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operation_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operations_for_blocks_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1179,7 +1179,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_peer_response_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1188,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_protocol_message"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1494,7 +1494,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "light-node"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "clap",
  "crypto",
@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "logging"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "chrono",
  "libflate",
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "monitoring"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "crypto",
  "erased-serde",
@@ -1929,7 +1929,7 @@ dependencies = [
 
 [[package]]
 name = "networking"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -2366,7 +2366,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-runner"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "clap",
  "crypto",
@@ -2611,7 +2611,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
@@ -2715,7 +2715,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "shell"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2940,7 +2940,7 @@ dependencies = [
 
 [[package]]
 name = "shell_integration"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "crypto",
@@ -3131,7 +3131,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3297,7 +3297,7 @@ dependencies = [
 
 [[package]]
 name = "tezos-sys"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "colored",
  "fs_extra",
@@ -3310,7 +3310,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_api"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_client"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3351,7 +3351,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "blake2",
@@ -3381,7 +3381,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "lazy_static",
  "parse-display",
@@ -3408,7 +3408,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3421,7 +3421,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "criterion",
@@ -3441,7 +3441,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_lib_storage_ffi"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "ocaml-interop",
  "tempfile",
@@ -3451,7 +3451,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3479,14 +3479,14 @@ dependencies = [
 
 [[package]]
 name = "tezos_spsc"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "tezos_timing"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "crypto",
  "once_cell",
@@ -3497,7 +3497,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_wrapper"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "crypto",
  "getset",
