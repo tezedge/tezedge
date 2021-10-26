@@ -159,7 +159,9 @@ pub(crate) fn get_known_heads(
     // 2. collect head hashes and predecessors if necessary
     for head in heads_to_process {
         if length_param > 1 {
-            let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
+            let head_hash_base58 = head.hash.to_base58_check();
+            let mut head_with_predecessors: Vec<String> = vec![head_hash_base58.clone()];
+            to_ignore.insert(head_hash_base58);
             let mut block_hash = head.hash.clone();
             for _ in 0..length_param - 1 {
                 if let Some(direct_predecessor) =
