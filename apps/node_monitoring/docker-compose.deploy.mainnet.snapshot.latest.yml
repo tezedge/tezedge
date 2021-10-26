@@ -31,7 +31,7 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.9.0-frame-pointers-enabled
+    image: tezedge/tezedge:v1.9.0-RC1-frame-pointers-enabled
     pid: host
     network_mode: host
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--context-stats-db-path", "context-stats-db", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
@@ -45,30 +45,14 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
-    depends_on: 
+    depends_on:
       - "tezedge-memprof"
 
-  ocaml-node:
-    image: tezos/tezos:v9-release
-    pid: host
-    network_mode: host
-    entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --history-mode archive --network ${TEZOS_NETWORK-mainnet}"
-    logging:
-      # Produce syslogs instead of terminal logs
-      driver: "syslog"
-      options:
-        # Send the logs to syslog (UDP only) server (running on debugger)
-        syslog-address: "udp://0.0.0.0:11001"  # Port must match debugger syslog port in 'ports' section
-        # Always in same RFC 5424 format (with microseconds precision)
-        syslog-format: "rfc5424micro"
-    volumes:
-      - "ocaml-shared-data:/var/run/tezos/node"
-
   explorer:
-    image: tezedge/tezedge-explorer:v1.7.1
+    image: tezedge/tezedge-explorer:latest
     environment:
       # need a better way to provide such information
-      - API=[{"id":"tezedge","type":"tezedge","name":"tezedge.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"octez","type":"octez","name":"octez.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18733","p2p_port":9733,"features":[{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
+      - API=[{"id":"tezedge","type":"tezedge","name":"tezedge.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
 
@@ -77,7 +61,7 @@ services:
     network_mode: host
     image: tezedge/node-monitoring:latest
     pid: "host"
-    command: ["--tezedge-nodes", "tezedge:18732:/tmp/tezedge", "--ocaml-nodes", "ocaml:18733:/var/run/tezos/node", "--debugger-path", "/tmp/debugger", "--wait-for-nodes", "--rpc-port", "38732"]
+    command: ["--tezedge-nodes", "tezedge:18732:/tmp/tezedge", "--debugger-path", "/tmp/debugger", "--wait-for-nodes", "--rpc-port", "38732"]
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
       - "ocaml-shared-data:/var/run/tezos/node"
@@ -85,7 +69,11 @@ services:
 
 volumes:
   tezedge-shared-data:
-    external: false
+      driver: local
+      driver_opts:
+        o: bind
+        type: none
+        device: /home/dev/data-mainnet
   ocaml-shared-data:
     external: false
   debugger-data:

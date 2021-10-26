@@ -18,7 +18,7 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.9.0
     pid: host
     network_mode: host
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}", "--context-stats-db-path", "context-stats-db"]
@@ -34,7 +34,7 @@ services:
       - "tezedge-debug-data:/tmp/tezedge"
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.7
+    image: tezedge/tezedge-explorer:v1.7.1
     environment:
       # need a better way to provide such information
       - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"tezedge","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4444/resources/tezedge"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
