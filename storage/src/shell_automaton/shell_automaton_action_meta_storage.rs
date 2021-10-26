@@ -9,29 +9,43 @@ use serde::{Deserialize, Serialize};
 
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
 
 pub type ShellAutomatonActionMetaIndexStorageKV =
     dyn TezedgeDatabaseWithIterator<ShellAutomatonActionMetaStorage> + Sync + Send;
 
-#[derive(Clone, Copy)]
-pub struct ShellAutomatonActionMetaKey;
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum ShellAutomatonActionMetaKey {
+    Stats = 1,
+    Graph,
+}
 
 impl Encoder for ShellAutomatonActionMetaKey {
-    fn encode(&self) -> Result<Vec<u8>, crate::persistent::SchemaError> {
-        Ok(vec![0])
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        Ok(vec![*self as u8])
     }
 }
 
 impl Decoder for ShellAutomatonActionMetaKey {
-    fn decode(_: &[u8]) -> Result<Self, crate::persistent::SchemaError> {
-        Ok(ShellAutomatonActionMetaKey {})
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        let key = match bytes.get(0) {
+            Some(v) => *v,
+            None => return Err(SchemaError::DecodeError),
+        };
+
+        use ShellAutomatonActionMetaKey::*;
+
+        Ok(match key {
+            x if x == Stats as u8 => Stats,
+            x if x == Graph as u8 => Graph,
+            _ => return Err(SchemaError::DecodeError),
+        })
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ShellAutomatonActionMeta {
+pub struct ShellAutomatonActionStats {
     /// Total number of times this action kind was executed.
     pub total_calls: u64,
     /// Sum of durations from this action till the next one in nanoseconds.
@@ -39,19 +53,19 @@ pub struct ShellAutomatonActionMeta {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ShellAutomatonActionMetas {
-    pub metas: HashMap<String, ShellAutomatonActionMeta>,
+pub struct ShellAutomatonActionsStats {
+    pub stats: HashMap<String, ShellAutomatonActionStats>,
 }
 
-impl ShellAutomatonActionMetas {
+impl ShellAutomatonActionsStats {
     pub fn new() -> Self {
         Self {
-            metas: HashMap::new(),
+            stats: HashMap::new(),
         }
     }
 }
 
-impl BincodeEncoded for ShellAutomatonActionMetas {}
+impl crate::persistent::BincodeEncoded for ShellAutomatonActionsStats {}
 
 /// Storage for shell_automaton::Action.
 ///
@@ -62,8 +76,6 @@ pub struct ShellAutomatonActionMetaStorage {
 }
 
 impl ShellAutomatonActionMetaStorage {
-    const KEY: ShellAutomatonActionMetaKey = ShellAutomatonActionMetaKey {};
-
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
             kv: persistent_storage.main_db(),
@@ -71,19 +83,46 @@ impl ShellAutomatonActionMetaStorage {
     }
 
     #[inline]
-    pub fn get(&self) -> Result<Option<ShellAutomatonActionMetas>, StorageError> {
-        self.kv.get(&Self::KEY).map_err(StorageError::from)
+    pub fn get_stats(&self) -> Result<Option<ShellAutomatonActionsStats>, StorageError> {
+        Ok(self
+            .kv
+            .get(&ShellAutomatonActionMetaKey::Stats)?
+            .map(|encoded| ShellAutomatonActionsStats::decode(&encoded))
+            .transpose()?)
     }
 
     #[inline]
-    pub fn set(&self, meta: &ShellAutomatonActionMetas) -> Result<(), StorageError> {
-        self.kv.put(&Self::KEY, meta).map_err(StorageError::from)
+    pub fn set_stats(&self, meta: &ShellAutomatonActionsStats) -> Result<(), StorageError> {
+        Ok(self
+            .kv
+            .put(&ShellAutomatonActionMetaKey::Stats, &meta.encode()?)?)
+    }
+    #[inline]
+    pub fn get_graph<T>(&self) -> Result<Option<T>, StorageError>
+    where
+        T: Decoder,
+    {
+        Ok(self
+            .kv
+            .get(&ShellAutomatonActionMetaKey::Graph)?
+            .map(|encoded| T::decode(&encoded))
+            .transpose()?)
+    }
+
+    #[inline]
+    pub fn set_graph<T>(&self, graph: &T) -> Result<(), StorageError>
+    where
+        T: Encoder,
+    {
+        Ok(self
+            .kv
+            .put(&ShellAutomatonActionMetaKey::Graph, &graph.encode()?)?)
     }
 }
 
 impl KeyValueSchema for ShellAutomatonActionMetaStorage {
     type Key = ShellAutomatonActionMetaKey;
-    type Value = ShellAutomatonActionMetas;
+    type Value = Vec<u8>;
 }
 
 impl RocksDbKeyValueSchema for ShellAutomatonActionMetaStorage {

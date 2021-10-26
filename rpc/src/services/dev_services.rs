@@ -7,19 +7,20 @@
 // to reproduce the same functionality.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
 use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
+use shell_automaton::service::storage_service::ActionGraph;
 use shell_automaton::{Action, ActionWithId};
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
-use shell_automaton::{ActionId, ActionKind};
+use shell_automaton::ActionId;
 use storage::cycle_eras_storage::CycleEra;
 use storage::database::backend::BoxedSliceKV;
 use storage::database::error::Error as DBError;
@@ -653,13 +654,13 @@ pub(crate) async fn get_shell_automaton_actions_stats(
 ) -> anyhow::Result<ShellAutomatonActionsStats> {
     let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
 
-    let meta = match action_meta_storage.get()? {
+    let meta = match action_meta_storage.get_stats()? {
         Some(v) => v,
         None => return Ok(Default::default()),
     };
 
     Ok(meta
-        .metas
+        .stats
         .into_iter()
         .map(|(action_kind, meta)| {
             (
@@ -673,64 +674,22 @@ pub(crate) async fn get_shell_automaton_actions_stats(
         .collect())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActionGraphNode {
-    action_id: usize,
-    action_kind: ActionKind,
-    next_actions: Vec<usize>,
-}
-
 pub(crate) async fn get_shell_automaton_actions_graph(
     env: &RpcServiceEnvironment,
-) -> anyhow::Result<Vec<ActionGraphNode>> {
-    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
 
-    let mut action_indices = HashMap::new();
-    let mut next_actions = Vec::new();
+    let graph: ActionGraph = action_meta_storage.get_graph()?.unwrap_or_default();
 
-    tokio::task::spawn_blocking(move || {
-        let mut action_it = action_storage
-            .find(IteratorMode::Start)?
-            .map(shell_automaton_actions_decode_map)
-            .map(|result| result.map(|action| action.into()));
-        let action = action_it.next().unwrap()?;
-        action_indices.insert(action, 0);
-        next_actions.push(HashSet::new());
-        let mut pred_action_index = 0;
-
-        for result in action_it {
-            let action = result?;
-            let action_index = if let Some(action_index) = action_indices.get(&action) {
-                *action_index
-            } else {
-                let action_index = action_indices.len();
-                action_indices.insert(action, action_index);
-                next_actions.push(HashSet::new());
-                action_index
-            };
-            next_actions[pred_action_index].insert(action_index);
-            pred_action_index = action_index;
-        }
-
-        let mut actions_graph = action_indices.into_iter().collect::<Vec<_>>();
-        actions_graph.sort_by_key(|(_, k)| *k);
-        let actions_graph = actions_graph
-            .into_iter()
-            .enumerate()
-            .map(|(i, (s, i2))| {
-                assert_eq!(i, i2);
-                let mut next_actions: Vec<_> = next_actions[i].iter().cloned().collect();
-                next_actions.sort();
-                ActionGraphNode {
-                    action_id: i,
-                    action_kind: s,
-                    next_actions,
-                }
+    Ok(graph
+        .into_iter()
+        .enumerate()
+        .map(|(action_id, node)| {
+            serde_json::json!({
+                "actionId": action_id,
+                "actionKind": node.action_kind,
+                "nextActions": node.next_actions,
             })
-            .collect::<Vec<_>>();
-
-        Ok(actions_graph)
-    })
-    .await?
+        })
+        .collect())
 }

@@ -74,7 +74,13 @@ pub use redux_rs::{ActionId, ActionWithId};
 )]
 #[enum_kind(
     ActionKind,
-    derive(strum_macros::Display, Serialize, Deserialize, Hash)
+    derive(
+        strum_macros::EnumIter,
+        strum_macros::Display,
+        Serialize,
+        Deserialize,
+        Hash
+    )
 )]
 #[serde(tag = "kind", content = "content")]
 pub enum Action {

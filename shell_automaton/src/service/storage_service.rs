@@ -1,10 +1,15 @@
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::thread;
-use storage::shell_automaton_action_meta_storage::{
-    ShellAutomatonActionMeta, ShellAutomatonActionMetas,
-};
 
+use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
+
+use storage::persistent::BincodeEncoded;
+use storage::shell_automaton_action_meta_storage::{
+    ShellAutomatonActionStats, ShellAutomatonActionsStats,
+};
 use storage::{
     BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionMetaStorage,
     ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
@@ -107,6 +112,41 @@ pub struct StorageServiceDefault {
     worker_channel: StorageWorkerRequester,
 }
 
+#[derive(Serialize, Deserialize, Default)]
+pub struct ActionGraph(Vec<ActionGraphNode>);
+
+impl IntoIterator for ActionGraph {
+    type IntoIter = std::vec::IntoIter<ActionGraphNode>;
+    type Item = ActionGraphNode;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Deref for ActionGraph {
+    type Target = Vec<ActionGraphNode>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ActionGraph {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl BincodeEncoded for ActionGraph {}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionGraphNode {
+    pub action_kind: ActionKind,
+    pub next_actions: BTreeSet<usize>,
+}
+
 impl StorageServiceDefault {
     fn run_worker(storage: PersistentStorage, mut channel: StorageWorkerResponder) {
         use StorageRequestPayload::*;
@@ -118,11 +158,21 @@ impl StorageServiceDefault {
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
 
+        let mut action_meta_update_prev_action_kind = None;
+        let mut action_graph = ActionGraph(
+            ActionKind::iter()
+                .map(|action_kind| ActionGraphNode {
+                    action_kind,
+                    next_actions: BTreeSet::new(),
+                })
+                .collect(),
+        );
+
         let mut action_metas = action_meta_storage
-            .get()
+            .get_stats()
             .ok()
             .flatten()
-            .unwrap_or_else(|| ShellAutomatonActionMetas::new());
+            .unwrap_or_else(|| ShellAutomatonActionsStats::new());
 
         while let Ok(req) = channel.recv() {
             let result = match req.payload {
@@ -147,19 +197,27 @@ impl StorageServiceDefault {
                     action_kind,
                     duration_nanos,
                 } => {
+                    if let Some(prev_action_kind) = action_meta_update_prev_action_kind.clone() {
+                        action_graph[prev_action_kind as usize]
+                            .next_actions
+                            .insert(action_kind as usize);
+                        let _ = action_meta_storage.set_graph(&action_graph);
+                    }
+
                     let meta = action_metas
-                        .metas
+                        .stats
                         .entry(action_kind.to_string())
-                        .or_insert_with(|| ShellAutomatonActionMeta {
+                        .or_insert_with(|| ShellAutomatonActionStats {
                             total_calls: 0,
                             total_duration: 0,
                         });
 
                     meta.total_calls += 1;
                     meta.total_duration += duration_nanos;
+                    action_meta_update_prev_action_kind = Some(action_kind);
 
                     action_meta_storage
-                        .set(&action_metas)
+                        .set_stats(&action_metas)
                         .map(|_| ActionMetaUpdateSuccess(action_id))
                         .map_err(|err| ActionMetaUpdateError(err.into()))
                 }
