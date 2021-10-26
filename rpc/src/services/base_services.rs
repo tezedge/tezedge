@@ -107,7 +107,6 @@ pub(crate) fn get_known_heads(
                 result_heads.push(block);
             }
         }
-        result_heads.reverse();
         result_heads
     } else {
         // TODO: Get the current head from the shared state, not the storage
@@ -182,6 +181,7 @@ pub(crate) fn get_known_heads(
         }
     }
 
+    res.reverse();
     Ok(res)
 }
 
