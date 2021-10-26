@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use clap::{App, Arg};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::{env, fmt};
@@ -79,8 +80,8 @@ pub struct SlackConfiguration {
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
     let app = App::new("Tezedge deploy monitoring app")
-        .version("0.10.0")
-        .author("SimpleStaking and the project contributors")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(
             Arg::with_name("config-file")

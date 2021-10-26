@@ -349,6 +349,9 @@ pub mod tests {
 
             let initialize_result: Option<OneshotResultCallback<()>> = None;
 
+            // we dont need here receiver and working channel, if so, we need to create channel outside
+            let (p2p_reader_sender, _) = std::sync::mpsc::channel();
+
             actor_system
                 .actor_of_props::<ChainManager>(
                     "chain_manager_mock",
@@ -357,6 +360,7 @@ pub mod tests {
                         network_channel,
                         shell_channel,
                         persistent_storage,
+                        Arc::new(Mutex::new(p2p_reader_sender)),
                         tezos_readonly_api_pool,
                         init_data,
                         false,
@@ -368,7 +372,6 @@ pub mod tests {
                         current_mempool_state_storage,
                         0,
                         mempool_prevalidator_factory,
-                        Identity::generate(0f64)?.peer_id(),
                         Arc::new(Mutex::new(initialize_result)),
                     )),
                 )

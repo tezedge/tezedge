@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::env;
 use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
@@ -35,8 +36,8 @@ macro_rules! parse_validator_fn {
 
 fn sandbox_app() -> App<'static, 'static> {
     let app = App::new("Tezos Light Node Launcher")
-        .version("0.3.1")
-        .author("SimpleStaking and the project contributors")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(
             Arg::with_name("light-node-path")

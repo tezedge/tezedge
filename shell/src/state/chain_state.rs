@@ -17,9 +17,9 @@ use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,
 };
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::current_branch::CurrentBranchMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, limits::HISTORY_MAX_SIZE};
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
@@ -617,22 +617,12 @@ impl BlockchainState {
         &self.chain_id
     }
 
-    pub fn get_history(
-        &self,
-        head: &BlockHash,
-        seed: &Seed,
-    ) -> Result<Vec<BlockHash>, StorageError> {
-        Self::compute_history(
-            &self.block_meta_storage,
-            self.chain_meta_storage.get_caboose(&self.chain_id)?,
-            head,
-            HISTORY_MAX_SIZE,
-            seed,
-        )
+    pub fn get_caboose(&self, chain_id: &ChainId) -> Result<Option<Head>, StorageError> {
+        self.chain_meta_storage.get_caboose(chain_id)
     }
 
     /// Resulted history is sorted: "from oldest block to newest"
-    fn compute_history(
+    pub fn compute_history(
         block_meta_storage: &BlockMetaStorage,
         caboose: Option<Head>,
         head: &BlockHash,

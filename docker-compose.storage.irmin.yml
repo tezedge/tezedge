@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-with-irmin-storage:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.9.0
     pid: host
     network_mode: host
     command: [ "--network=mainnet", "--p2p-port=4444", "--rpc-port=4445", "--websocket-address=0.0.0.0:4446", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=irmin", "--context-stats-db-path", "context-stats-db" ]
@@ -13,7 +13,7 @@ services:
       - "tezedge-with-irmin-storage-data:/tmp/tezedge"
 
   tezedge-explorer-with-irmin-storage:
-    image: tezedge/tezedge-explorer:v1.6.1
+    image: tezedge/tezedge-explorer:v1.7.1
     hostname: tezedge-explorer-with-irmin-storage
     environment:
       - API=[{"id":"tezedge-with-irmin-storage","name":"tezedge-with-irmin-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4445","p2p_port":4444,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4446"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4447/resources/tezedge"}]}]
@@ -24,7 +24,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:latest
+    image: tezedge/node-monitoring:v1.9.0
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:4445:/tmp/tezedge", "--wait-for-nodes", "--rpc-port", "4447"]
     volumes:

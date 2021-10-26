@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.9.0
     command: [
         "--network", "${TEZOS_NETWORK}",
         "--p2p-port=9732",
@@ -35,7 +35,7 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.7
+    image: tezedge/tezedge-explorer:v1.7.1
     environment:
       API: >
         [
