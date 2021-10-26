@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.8.0
     command: [
         "--network", "${TEZOS_NETWORK}",
         "--p2p-port=9732",

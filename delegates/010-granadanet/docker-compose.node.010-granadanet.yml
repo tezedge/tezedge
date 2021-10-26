@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-node:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.8.0
     command: [
         "--network=granadanet",
         "--p2p-port=12534",
@@ -26,7 +26,7 @@ services:
       - default
 
   tezedge-explorer:
-    image: tezedge/tezedge-explorer:v1.6.7
+    image: tezedge/tezedge-explorer:v1.7.1
     depends_on:
       - tezedge-node
     hostname: tezedge-explorer

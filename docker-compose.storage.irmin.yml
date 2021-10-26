@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-with-irmin-storage:
-    image: tezedge/tezedge:v1.7.0
+    image: tezedge/tezedge:v1.8.0
     pid: host
     network_mode: host
     command: [ "--network=mainnet", "--p2p-port=4444", "--rpc-port=4445", "--websocket-address=0.0.0.0:4446", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=irmin", "--context-stats-db-path", "context-stats-db" ]
