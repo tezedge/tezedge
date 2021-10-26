@@ -148,19 +148,17 @@ pub(crate) fn get_known_heads(
 
     // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
     // this avoids duplication)
-    // let mut to_ignore: HashSet<String> = heads_to_process
-    //     .iter()
-    //     .map(|head| head.hash.to_base58_check())
-    //     .collect();
+    let heads_base58: HashSet<String> = heads_to_process
+        .iter()
+        .map(|head| head.hash.to_base58_check())
+        .collect();
 
     let mut to_ignore: HashSet<String> = HashSet::new();
 
     // 2. collect head hashes and predecessors if necessary
     for head in heads_to_process {
         if length_param > 1 {
-            let head_hash_base58 = head.hash.to_base58_check();
-            let mut head_with_predecessors: Vec<String> = vec![head_hash_base58.clone()];
-            to_ignore.insert(head_hash_base58);
+            let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
             let mut block_hash = head.hash.clone();
             for _ in 0..length_param - 1 {
                 if let Some(direct_predecessor) =
@@ -173,6 +171,9 @@ pub(crate) fn get_known_heads(
                     head_with_predecessors.push(direct_predecessor_hash.clone());
                     to_ignore.insert(direct_predecessor_hash.clone());
                     block_hash = direct_predecessor;
+                    if heads_base58.contains(&direct_predecessor_hash) {
+                        break;
+                    }
                 }
             }
             res.push(head_with_predecessors);
