@@ -25,21 +25,21 @@
 2. #### **Download snapshot data**
 
    _If you want to run node from empty storage, you can skip this step._
-   At first, you need to check, which (latest) snapshot to download, open a browser here: http://65.21.165.81/
+   At first, you need to check, which (latest) snapshot to download, open a browser here: http://snapshots.tezedge.com/
 
    There are two ways how to download the snapshot data:
 
    a) **http download**
    ```
    cd $HOME/data-mainnet
-   wget -m -np -nH --cut-dirs=2 -R 'index.html*,identity.json,tezedge.log*' http://65.21.165.81/tezedge_.../_data/
+   wget -m -np -nH --cut-dirs=2 -R 'index.html*,identity.json,tezedge.log*' http://snapshots.tezedge.com/tezedge_.../_data/
    ```
 
    b) **scp download**
    _For user/password please contact [jurajselep@viablesystems.io](jurajselep@viablesystems.io)_
    ```
    cd $HOME/data-mainnet
-   scp -r <user>@65.21.165.81:/usr/local/etc/tezedge-data/tezedge_.../ $HOME/data-mainnet
+   scp -r <user>@snapshots.tezedge.com:/usr/local/etc/tezedge-data/tezedge_.../ $HOME/data-mainnet
    passwd: <password>
    ```
 
