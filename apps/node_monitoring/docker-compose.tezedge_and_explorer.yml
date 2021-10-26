@@ -33,7 +33,7 @@ services:
       - TEZOS_STORAGE=index-log-size=5_000_000
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.10
+    image: tezedge/tezedge-explorer:v1.7.1
     environment:
       # need a better way to provide such information
       - API=[{"id":"rust","type":"tezedge","name":"rust.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP}:4927"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]},{"id":"ocaml","type":"octez","name":"ocaml.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18733","p2p_port":9733,"features":[{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]}]

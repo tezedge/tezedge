@@ -24,7 +24,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:latest
+    image: tezedge/node-monitoring:v1.9.0
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:5555:/tmp/tezedge", "--wait-for-nodes", "--rpc-port", "5557"]
     volumes:
