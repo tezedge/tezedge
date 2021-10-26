@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -158,6 +159,7 @@ impl StorageServiceDefault {
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
 
+        let mut last_time_meta_saved = Instant::now();
         let mut action_meta_update_prev_action_kind = None;
         let mut action_graph = ActionGraph(
             ActionKind::iter()
@@ -201,7 +203,6 @@ impl StorageServiceDefault {
                         action_graph[prev_action_kind as usize]
                             .next_actions
                             .insert(action_kind as usize);
-                        let _ = action_meta_storage.set_graph(&action_graph);
                     }
 
                     let meta = action_metas
@@ -216,15 +217,23 @@ impl StorageServiceDefault {
                     meta.total_duration += duration_nanos;
                     action_meta_update_prev_action_kind = Some(action_kind);
 
-                    action_meta_storage
-                        .set_stats(&action_metas)
-                        .map(|_| ActionMetaUpdateSuccess(action_id))
-                        .map_err(|err| ActionMetaUpdateError(err.into()))
+                    Ok(ActionMetaUpdateSuccess(action_id))
                 }
             };
 
             if let Some(req_id) = req.id {
                 let _ = channel.send(StorageResponse::new(req_id, result));
+            }
+
+            // Persist metas every 1 sec.
+            if Instant::now()
+                .duration_since(last_time_meta_saved)
+                .as_secs()
+                >= 1
+            {
+                let _ = action_meta_storage.set_graph(&action_graph);
+                let _ = action_meta_storage.set_stats(&action_metas);
+                last_time_meta_saved = Instant::now();
             }
         }
     }
