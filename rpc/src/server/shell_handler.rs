@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::sync::Arc;
 
 use hyper::body::Buf;
@@ -14,7 +15,9 @@ use crate::helpers::{
     create_rpc_request, parse_async, parse_block_hash, parse_chain_id, RpcServiceError,
     MAIN_CHAIN_ID,
 };
-use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
+use crate::server::{
+    HResult, HasMultipleValues, HasSingleValue, Params, Query, RpcServiceEnvironment,
+};
 use crate::services::{base_services, stream_services};
 use crate::{
     empty,
@@ -147,34 +150,21 @@ pub async fn blocks(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let length = query.get_str("length").unwrap_or("0");
-    let head_param = query.get_str("head").unwrap_or("head");
+    let length_param: u32 = query.get_u64("length").unwrap_or(1).try_into()?;
     // TODO: mutliparameter
-    let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
-    // TODO: implement min_date query arg
-
-    // Quick hack to handle the normal case that is not working right now (returns an empty array
-    // instead of an array with the hash of the head)
-    if head_param == "head" {
-        return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
-    }
+    let head_param = query.get_multiple_str("head");
+    let min_date_param = query.get_i64("min_date");
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
 
-    let block_hashes = base_services::get_block_hashes(
+    let block_hashes = base_services::get_known_heads(
         chain_id,
-        head,
-        None,
-        length.parse::<usize>()?,
+        length_param,
+        head_param,
+        min_date_param,
         env.persistent_storage(),
-    )
-    .map(|hashes| {
-        hashes
-            .iter()
-            .map(|block| block.to_base58_check())
-            .collect::<Vec<String>>()
-    });
+    );
 
     result_to_json_response(block_hashes, env.log())
 }

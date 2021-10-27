@@ -1002,7 +1002,7 @@ fn _apply_block(
         block_storage,
         block_meta_storage,
         &block_hash,
-        apply_block_result,
+        apply_block_result.clone(),
         &mut block_meta,
         cycle_meta_storage,
         cycle_eras_storage,
@@ -1011,7 +1011,7 @@ fn _apply_block(
     let store_result_elapsed = store_result_timer.elapsed();
 
     Ok(Some((
-        ProcessValidatedBlock::new(block, chain_id, Instant::now()),
+        ProcessValidatedBlock::new(block, chain_id, Instant::now(), apply_block_result.last_allowed_fork_level),
         block_additional_data,
         BlockValidationTimer::new(
             validated_at_timer.elapsed(),

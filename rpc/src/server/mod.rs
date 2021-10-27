@@ -13,6 +13,7 @@ use std::{
 use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
+use itertools::Itertools;
 use slog::{error, Logger};
 use tokio::runtime::Handle;
 
@@ -272,6 +273,11 @@ pub trait HasSingleValue {
             .and_then(|value| value.parse::<u64>().ok())
     }
 
+    fn get_i64(&self, key: &str) -> Option<i64> {
+        self.get_str(key)
+            .and_then(|value| value.parse::<i64>().ok())
+    }
+
     fn get_usize(&self, key: &str) -> Option<usize> {
         self.get_str(key)
             .and_then(|value| value.parse::<usize>().ok())
@@ -294,5 +300,34 @@ impl HasSingleValue for Query {
         self.get(key)
             .map(|values| values.iter().next().map(String::as_str))
             .flatten()
+    }
+}
+
+pub trait HasMultipleValues {
+    fn get_multiple_str(&self, key: &str) -> Option<Vec<&str>>;
+
+    fn get_multiple_u64(&self, key: &str) -> Option<Vec<u64>> {
+        self.get_multiple_str(key).map(|value| {
+            value
+                .iter()
+                .filter_map(|val| val.parse::<u64>().ok())
+                .collect()
+        })
+    }
+
+    fn get_multiple_usize(&self, key: &str) -> Option<Vec<usize>> {
+        self.get_multiple_str(key).map(|value| {
+            value
+                .iter()
+                .filter_map(|val| val.parse::<usize>().ok())
+                .collect()
+        })
+    }
+}
+
+impl HasMultipleValues for Query {
+    fn get_multiple_str(&self, key: &str) -> Option<Vec<&str>> {
+        self.get(key)
+            .map(|value| value.iter().map(|v| v.as_str()).collect())
     }
 }

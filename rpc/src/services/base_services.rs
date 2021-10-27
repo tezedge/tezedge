@@ -1,15 +1,27 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
+use std::convert::TryInto;
+use std::num::TryFromIntError;
 use std::sync::Arc;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{BlockAdditionalData, BlockHeaderWithHash, PersistentStorage};
+use crypto::base58::FromBase58CheckError;
+use crypto::hash::{BlockHash, ChainId, ContextHash, Hash};
+use itertools::Itertools;
+use storage::predecessor_storage::PredecessorSearch;
+use storage::{
+    block_storage, BlockAdditionalData, BlockHeaderWithHash, ChainMetaStorage,
+    ChainMetaStorageReader, PersistentStorage,
+};
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
 };
 use tezos_context::{context_key_owned, StringTreeObject};
+use tezos_messages::base::fitness_comparator::FitnessWrapper;
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::current_head;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
@@ -49,6 +61,12 @@ pub(crate) fn get_block_hashes(
 ) -> Result<Vec<BlockHash>, RpcServiceError> {
     Ok(match every_nth_level {
         Some(every_nth_level) => {
+            let every_nth_level: u32 =
+                every_nth_level.try_into().map_err(|e: TryFromIntError| {
+                    RpcServiceError::UnexpectedError {
+                        reason: e.to_string(),
+                    }
+                })?;
             BlockStorage::new(persistent_storage).get_every_nth(every_nth_level, &block_hash, limit)
         }
         None => BlockStorage::new(persistent_storage).get_multiple_without_json(&block_hash, limit),
@@ -56,6 +74,109 @@ pub(crate) fn get_block_hashes(
     .into_iter()
     .map(|block_header| block_header.hash)
     .collect::<Vec<BlockHash>>())
+}
+
+pub(crate) fn get_known_heads(
+    chain_id: ChainId,
+    length_param: u32,
+    head_param: Option<Vec<&str>>,
+    min_date_param: Option<i64>,
+    persistent_storage: &PersistentStorage,
+) -> Result<Vec<Vec<String>>, RpcServiceError> {
+    let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
+
+    let mut res: Vec<Vec<String>> = vec![];
+
+    // 1. collect all the blocks we consider as heads
+    let heads_to_process = if let Some(head_param) = head_param {
+        let mut result_heads = vec![];
+
+        for head in head_param {
+            // The query arg head must contian a valid block hash in base58 form
+            let head_hash = match BlockHash::from_base58_check(head) {
+                Ok(hash) => hash,
+                Err(e) => {
+                    return Err(RpcServiceError::InvalidParameters {
+                        reason: e.to_string(),
+                    })
+                }
+            };
+
+            if let Some(block) = block_storage.get(&head_hash)? {
+                result_heads.push(block);
+            }
+        }
+        result_heads.reverse();
+        result_heads
+    } else {
+        // TODO: Get the current head from the shared state, not the storage
+        let mut result_heads = vec![];
+        if let Some(current_head) = chain_meta_storage.get_current_head(&chain_id)? {
+            if let Some(block) = block_storage.get(current_head.block_hash())? {
+                result_heads.push(block)
+            }
+        } else {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: "No current head in storage".into(),
+            });
+        };
+
+        // TODO: Get the current head from the shared state, not the storage
+        // TODO: add the alternate heads to the rpc state?
+        if let Some(alternate_heads) = chain_meta_storage.get_alternate_heads(&chain_id)? {
+            for head in alternate_heads {
+                if let Some(block) = block_storage.get(head.block_hash())? {
+                    result_heads.push(block);
+                }
+            }
+        } else {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: "No alternate heads in storage".into(),
+            });
+        };
+
+        // filter out older heads, if min_date query arg is present
+        if let Some(min_date) = min_date_param {
+            result_heads.retain(|head| min_date <= head.header.timestamp());
+        }
+        // sort the heads by fitness
+        result_heads.sort_by(|a, b| {
+            FitnessWrapper::new(a.header.fitness()).cmp(&FitnessWrapper::new(b.header.fitness()))
+        });
+        result_heads
+    };
+
+    // build a set of head hashes, so we can ignore them in the predecessor search (They will have they predecessors listed separatelly,
+    // this avoids duplication)
+    let mut to_ignore: HashSet<String> = HashSet::new();
+
+    // 2. collect head hashes and predecessors if necessary
+    for head in heads_to_process {
+        if length_param > 1 {
+            let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
+            let mut block_hash = head.hash.clone();
+            if !to_ignore.contains(&head.hash.to_base58_check()) {
+                for _ in 0..length_param - 1 {
+                    if let Some(direct_predecessor) =
+                        block_storage.find_block_at_distance(block_hash.clone(), 1)?
+                    {
+                        let direct_predecessor_hash = direct_predecessor.to_base58_check();
+                        if to_ignore.contains(&direct_predecessor_hash) {
+                            break;
+                        }
+                        head_with_predecessors.push(direct_predecessor_hash.clone());
+                        to_ignore.insert(direct_predecessor_hash.clone());
+                        block_hash = direct_predecessor;
+                    }
+                }
+            }
+            res.push(head_with_predecessors);
+        } else {
+            res.push(vec![head.hash.to_base58_check()]);
+        }
+    }
+    Ok(res)
 }
 
 /// Get block metadata

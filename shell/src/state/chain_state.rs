@@ -12,6 +12,7 @@ use crypto::seeded_step::{Seed, Step};
 use networking::PeerId;
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
+use storage::predecessor_storage::PredecessorSearch;
 use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
@@ -1125,8 +1126,13 @@ mod tests {
                 let meta = block_meta_storage
                     .put_block_header(&new_block, chain_id, log)
                     .expect("failed to store block metadata");
-                block_meta_storage
-                    .store_predecessors(&new_block.hash, &meta)
+                block_storage
+                    .store_predecessors(
+                        &new_block.hash,
+                        meta.predecessor()
+                            .as_ref()
+                            .expect("No predecessor foudn in meta"),
+                    )
                     .expect("failed to store block predecessors");
 
                 let new_block = blocks.header(successor);
@@ -1136,8 +1142,13 @@ mod tests {
                 let meta = block_meta_storage
                     .put_block_header(&new_block, chain_id, log)
                     .expect("failed to store block metadata");
-                block_meta_storage
-                    .store_predecessors(&new_block.hash, &meta)
+                block_storage
+                    .store_predecessors(
+                        &new_block.hash,
+                        meta.predecessor()
+                            .as_ref()
+                            .expect("No predecessor foudn in meta"),
+                    )
                     .expect("failed to store block predecessors");
 
                 successor

@@ -41,7 +41,7 @@ pub fn ts_to_rfc3339(ts: i64) -> Result<String, TimestampOutOfRangeError> {
 /// This common struct holds info (hash, level, fitness) about block used as head,
 /// e.g. for fast computations without need to access storage
 /// (if you need here more attributes from block_header, consider refactor block_header with this struct as shell_header)
-#[derive(Clone, Debug, Getters, Serialize, Deserialize)]
+#[derive(Clone, Debug, Getters, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Head {
     // TODO: TE-369 - Arc refactor
     /// BlockHash of head.

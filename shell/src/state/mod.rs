@@ -176,6 +176,7 @@ pub mod tests {
     }
 
     pub(crate) mod prerequisites {
+        use std::collections::HashSet;
         use std::convert::{TryFrom, TryInto};
         use std::env;
         use std::fs;
@@ -210,6 +211,7 @@ pub mod tests {
         use crate::chain_manager::{ChainManager, ChainManagerRef};
         use crate::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
         use crate::shell_channel::ShellChannelRef;
+        use crate::state::head_state::HeadState;
         use crate::state::peer_state::{DataQueuesLimits, PeerState};
 
         pub(crate) fn test_peer(
@@ -352,6 +354,12 @@ pub mod tests {
             // we dont need here receiver and working channel, if so, we need to create channel outside
             let (p2p_reader_sender, _) = std::sync::mpsc::channel();
 
+            let genesis_head = Head::new(
+                "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
+                1,
+                vec![],
+            );
+
             actor_system
                 .actor_of_props::<ChainManager>(
                     "chain_manager_mock",
@@ -359,15 +367,17 @@ pub mod tests {
                         block_applier,
                         network_channel,
                         shell_channel,
-                        persistent_storage,
+                        persistent_storage.clone(),
                         Arc::new(Mutex::new(p2p_reader_sender)),
                         tezos_readonly_api_pool,
-                        init_data,
+                        init_data.clone(),
                         false,
-                        Head::new(
-                            "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
-                            1,
-                            vec![],
+                        HeadState::new(
+                            &persistent_storage,
+                            genesis_head.clone(),
+                            genesis_head,
+                            HashSet::new(),
+                            Arc::new(init_data.chain_id),
                         ),
                         current_mempool_state_storage,
                         0,

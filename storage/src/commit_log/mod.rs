@@ -329,10 +329,6 @@ impl Location {
     pub fn new(offset: u64) -> Self {
         Self(offset, 0)
     }
-
-    pub(crate) fn offset(&self) -> u64 {
-        self.0
-    }
 }
 
 #[cfg(test)]

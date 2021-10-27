@@ -6,7 +6,8 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
+use std::num::TryFromIntError;
 use std::vec;
 
 use anyhow::bail;
@@ -261,8 +262,19 @@ pub(crate) fn get_blocks(
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
 
     let blocks = match every_nth_level {
-        Some(every_nth_level) => BlockStorage::new(env.persistent_storage())
-            .get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
+        Some(every_nth_level) => {
+            let every_nth_level: u32 =
+                every_nth_level.try_into().map_err(|e: TryFromIntError| {
+                    RpcServiceError::UnexpectedError {
+                        reason: e.to_string(),
+                    }
+                })?;
+            BlockStorage::new(env.persistent_storage()).get_every_nth_with_json_data(
+                every_nth_level,
+                &block_hash,
+                limit,
+            )
+        }
         None => BlockStorage::new(env.persistent_storage())
             .get_multiple_with_json_data(&block_hash, limit),
     }?

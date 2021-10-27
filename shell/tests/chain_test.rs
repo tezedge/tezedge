@@ -23,13 +23,14 @@ use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
-use storage::{BlockMetaStorage, BlockMetaStorageReader};
+use storage::{BlockMetaStorage, BlockMetaStorageReader, ChainMetaStorage, ChainMetaStorageReader};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranch, CurrentBranchMessage};
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
+use tezos_messages::Head;
 
 pub mod common;
 
@@ -358,6 +359,23 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), anyhow::Er
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(2)?));
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(3)?));
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(4)?));
+
+    let chain_meta_storage = ChainMetaStorage::new(node.tmp_storage.storage());
+
+    // Head struct for head on level 3
+    let block_on_level_3 = db_branch_1.get(&db_branch_1.block_hash(3)?)?.unwrap();
+    let head_struct_for_level_3 = Head::new(
+        db_branch_1.block_hash(3)?,
+        block_on_level_3.level(),
+        block_on_level_3.fitness().clone(),
+    );
+
+    let alternate_heads = chain_meta_storage
+        .get_alternate_heads(&node.tezos_env.main_chain_id()?)?
+        .unwrap();
+
+    // after a branch switch, the head on level 3 (the previous current_head) should be added to the alternate heads
+    assert!(alternate_heads.contains(&head_struct_for_level_3));
 
     // stop nodes
     drop(mocked_peer_node_branch_2);

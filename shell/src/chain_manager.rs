@@ -108,6 +108,7 @@ pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
     result_roundtrip_timer: Arc<Instant>,
+    last_allowed_fork_level: i32,
 }
 
 impl ProcessValidatedBlock {
@@ -115,11 +116,13 @@ impl ProcessValidatedBlock {
         block: Arc<BlockHeaderWithHash>,
         chain_id: Arc<ChainId>,
         result_roundtrip_timer: Instant,
+        last_allowed_fork_level: i32,
     ) -> Self {
         Self {
             block,
             chain_id,
             result_roundtrip_timer: Arc::new(result_roundtrip_timer),
+            last_allowed_fork_level,
         }
     }
 }
@@ -250,7 +253,7 @@ impl ChainManager {
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         is_sandbox: bool,
-        hydrated_current_head: Head,
+        hydrated_current_head_state: HeadState,
         current_mempool_state: CurrentMempoolStateStorageRef,
         num_of_peers_for_bootstrap_threshold: usize,
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
@@ -278,7 +281,7 @@ impl ChainManager {
                 tezos_readonly_prevalidation_api,
                 init_storage_data,
                 is_sandbox,
-                hydrated_current_head,
+                hydrated_current_head_state,
                 current_mempool_state,
                 num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
@@ -1323,14 +1326,18 @@ impl ChainManager {
             block,
             chain_id,
             result_roundtrip_timer,
+            last_allowed_fork_level,
         } = validated_block;
         let result_roundtrip_timer = result_roundtrip_timer.elapsed();
         let log = ctx.system.log();
 
         // we try to set it as "new current head", if some means set, if none means just ignore block
-        if let Some((new_head, new_head_result)) = self
-            .current_head_state
-            .try_update_new_current_head(&block, &self.current_mempool_state)?
+        if let Some((new_head, new_head_result)) =
+            self.current_head_state.try_update_new_current_head(
+                &block,
+                &self.current_mempool_state,
+                last_allowed_fork_level,
+            )?
         {
             let mut is_bootstrapped = self.current_bootstrap_state.is_bootstrapped();
 
@@ -1454,7 +1461,7 @@ impl
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
         bool,
-        Head,
+        HeadState,
         CurrentMempoolStateStorageRef,
         usize,
         Arc<MempoolPrevalidatorFactory>,
@@ -1471,7 +1478,7 @@ impl
             tezos_readonly_prevalidation_api,
             init_storage_data,
             is_sandbox,
-            hydrated_current_head,
+            hydratated_current_head_state,
             current_mempool_state,
             num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
@@ -1485,7 +1492,7 @@ impl
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
             bool,
-            Head,
+            HeadState,
             CurrentMempoolStateStorageRef,
             usize,
             Arc<MempoolPrevalidatorFactory>,
@@ -1507,11 +1514,12 @@ impl
                 Arc::new(init_storage_data.genesis_block_header_hash.clone()),
             ),
             peers: HashMap::new(),
-            current_head_state: HeadState::new(
-                &persistent_storage,
-                hydrated_current_head,
-                Arc::new(init_storage_data.chain_id),
-            ),
+            current_head_state: hydratated_current_head_state,
+            // current_head_state: HeadState::new(
+            //     &persistent_storage,
+            //     hydrated_current_head_state,
+            //     Arc::new(init_storage_data.chain_id),
+            // ),
             remote_current_head_state: RemoteBestKnownCurrentHead::new(),
             shutting_down: false,
             stats: Stats {

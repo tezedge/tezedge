@@ -27,11 +27,12 @@ use shell::mempool::{
 };
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
+use shell::state::head_state::HeadState;
 use shell::PeerConnectionThreshold;
 use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::chain_meta_storage::ChainMetaStorageReader;
+use storage::hydrate_current_head;
 use storage::tests_common::TmpStorage;
-use storage::{hydrate_current_head, BlockHeaderWithHash};
 use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
@@ -39,7 +40,6 @@ use tezos_api::ffi::{
     TezosRuntimeConfiguration,
 };
 use tezos_identity::Identity;
-use tezos_messages::Head;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
@@ -218,13 +218,19 @@ impl NodeInfrastructure {
             }
         };
 
-        let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
-            hydrate_current_head(&init_storage_data, &persistent_storage)
-                .expect("Failed to load current_head from database");
-        let hydrated_current_head = Head::new(
-            hydrated_current_head_block.hash.clone(),
-            hydrated_current_head_block.header.level(),
-            hydrated_current_head_block.header.fitness().clone(),
+        let (
+            _hydrated_current_head_block,
+            hydrated_current_head,
+            hydrated_checkpoint,
+            hydrated_alternate_heads,
+        ) = hydrate_current_head(&init_storage_data, &persistent_storage)
+            .expect("Failed to load current_head from database");
+        let hydrated_current_head_state = HeadState::new(
+            &persistent_storage,
+            hydrated_current_head,
+            hydrated_checkpoint,
+            hydrated_alternate_heads,
+            Arc::new(init_storage_data.chain_id.clone()),
         );
 
         info!(log, "Initializing chain manager...");
@@ -242,7 +248,7 @@ impl NodeInfrastructure {
             tezos_readonly_api_pool,
             init_storage_data,
             is_sandbox,
-            hydrated_current_head,
+            hydrated_current_head_state,
             current_mempool_state_storage.clone(),
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
             mempool_prevalidator_factory.clone(),

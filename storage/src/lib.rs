@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 #![feature(allocator_api)]
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -151,6 +152,10 @@ pub enum StorageError {
     MainDBError { error: database::error::Error },
     #[error("Deserialization: {error}")]
     SerdeJsonError { error: serde_json::Error },
+    #[error("Calculated distance between head and target level cannot be negative")]
+    NegativeDistanceError,
+    #[error("Requested predecessor at distance not found")]
+    PredecessorNotFound,
 }
 
 impl From<DBError> for StorageError {
@@ -325,7 +330,9 @@ pub fn store_applied_block_result(
     // TODO: check context checksum or context_hash
 
     // populate predecessor storage
-    block_meta_storage.store_predecessors(block_hash, block_metadata)?;
+    if let Some(predecessor) = block_metadata.predecessor() {
+        block_storage.store_predecessors(block_hash, predecessor)?;
+    }
 
     // populate cycle data if is present in the response
     for cycle_data in block_result.cycle_rolls_owner_snapshots.into_iter() {
@@ -399,7 +406,9 @@ pub fn store_commit_genesis_result(
             // init chain data
             chain_meta_storage.set_genesis(chain_id, head.clone())?;
             chain_meta_storage.set_caboose(chain_id, head.clone())?;
-            chain_meta_storage.set_current_head(chain_id, head)?;
+            chain_meta_storage.set_current_head(chain_id, head.clone())?;
+            chain_meta_storage.set_checkpoint(chain_id, head)?;
+            chain_meta_storage.set_alternate_heads(chain_id, HashSet::new())?;
 
             Ok(())
         }
@@ -467,11 +476,11 @@ pub fn initialize_storage_with_genesis_block(
 pub fn hydrate_current_head(
     init_storage_data: &StorageInitInfo,
     persistent_storage: &PersistentStorage,
-) -> Result<Arc<BlockHeaderWithHash>, StorageError> {
+) -> Result<(Arc<BlockHeaderWithHash>, Head, Head, HashSet<Head>), StorageError> {
+    let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
+
     // check last stored current_head
-    let current_head = match ChainMetaStorage::new(persistent_storage)
-        .get_current_head(&init_storage_data.chain_id)?
-    {
+    let current_head = match chain_meta_storage.get_current_head(&init_storage_data.chain_id)? {
         Some(head) => head,
         None => {
             return Err(StorageError::MissingKey {
@@ -480,13 +489,46 @@ pub fn hydrate_current_head(
         }
     };
 
+    // check last stored checkpoint
+    let checkpoint = match chain_meta_storage.get_checkpoint(&init_storage_data.chain_id)? {
+        Some(checkpoint) => checkpoint,
+        None => {
+            return Err(StorageError::MissingKey {
+                when: "checkpoint".into(),
+            })
+        }
+    };
+
+    // check last stored alternate heads
+    let alternate_heads =
+        match chain_meta_storage.get_alternate_heads(&init_storage_data.chain_id)? {
+            Some(alternate_heads) => alternate_heads.into_iter().collect::<HashSet<Head>>(),
+            None => {
+                return Err(StorageError::MissingKey {
+                    when: "alternate_heads".into(),
+                })
+            }
+        };
+
     // get block_header data
-    match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
-        Some(block) => Ok(Arc::new(block)),
-        None => Err(StorageError::MissingKey {
-            when: "current_head_header".into(),
-        }),
-    }
+    let current_head_block =
+        match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
+            Some(block) => Arc::new(block),
+            None => {
+                return Err(StorageError::MissingKey {
+                    when: "current_head_header".into(),
+                })
+            }
+        };
+
+    // TODO: add checks that all the blocks inlcuded in the response are in the block storage as well
+
+    Ok((
+        current_head_block,
+        current_head,
+        checkpoint,
+        alternate_heads,
+    ))
 }
 
 /// Helper module to easily initialize databases
@@ -524,8 +566,8 @@ pub mod initializer {
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
+                // TODO: separate predecessor storage from BlockMetaStorage?
                 crate::block_storage::BlockPrimaryIndex::descriptor(cache),
-                crate::block_storage::BlockByLevelIndex::descriptor(cache),
                 crate::block_storage::BlockByContextHashIndex::descriptor(cache),
                 crate::BlockMetaStorage::descriptor(cache),
                 crate::OperationsStorage::descriptor(cache),
@@ -775,7 +817,6 @@ pub mod tests_common {
                     path.join("db"),
                     vec![
                         block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                        block_storage::BlockByLevelIndex::descriptor(&db_cache),
                         block_storage::BlockByContextHashIndex::descriptor(&db_cache),
                         BlockMetaStorage::descriptor(&db_cache),
                         OperationsStorage::descriptor(&db_cache),
@@ -804,7 +845,6 @@ pub mod tests_common {
                     path.join("db"),
                     vec![
                         block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                        block_storage::BlockByLevelIndex::descriptor(&db_cache),
                         block_storage::BlockByContextHashIndex::descriptor(&db_cache),
                         BlockMetaStorage::descriptor(&db_cache),
                         OperationsStorage::descriptor(&db_cache),

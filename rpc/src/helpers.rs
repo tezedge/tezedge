@@ -10,14 +10,15 @@ use hex::FromHexError;
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use storage::predecessor_storage::PredecessorSearch;
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell_integration::Prevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
-    BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
-    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError,
+    BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage, BlockStorage,
+    BlockStorageReader, ChainMetaStorage, StorageError,
 };
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::binary_message::MessageHashError;
