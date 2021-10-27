@@ -156,17 +156,19 @@ pub(crate) fn get_known_heads(
         if length_param > 1 {
             let mut head_with_predecessors: Vec<String> = vec![head.hash.to_base58_check()];
             let mut block_hash = head.hash.clone();
-            for _ in 0..length_param - 1 {
-                if let Some(direct_predecessor) =
-                    block_storage.find_block_at_distance(block_hash.clone(), 1)?
-                {
-                    let direct_predecessor_hash = direct_predecessor.to_base58_check();
-                    if to_ignore.contains(&direct_predecessor_hash) {
-                        break;
+            if !to_ignore.contains(&head.hash.to_base58_check()) {
+                for _ in 0..length_param - 1 {
+                    if let Some(direct_predecessor) =
+                        block_storage.find_block_at_distance(block_hash.clone(), 1)?
+                    {
+                        let direct_predecessor_hash = direct_predecessor.to_base58_check();
+                        if to_ignore.contains(&direct_predecessor_hash) {
+                            break;
+                        }
+                        head_with_predecessors.push(direct_predecessor_hash.clone());
+                        to_ignore.insert(direct_predecessor_hash.clone());
+                        block_hash = direct_predecessor;
                     }
-                    head_with_predecessors.push(direct_predecessor_hash.clone());
-                    to_ignore.insert(direct_predecessor_hash.clone());
-                    block_hash = direct_predecessor;
                 }
             }
             res.push(head_with_predecessors);
