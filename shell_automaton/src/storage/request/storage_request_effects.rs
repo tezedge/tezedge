@@ -3,7 +3,6 @@ use redux_rs::{ActionWithId, Store};
 use crate::action::Action;
 use crate::service::storage_service::StorageRequest;
 use crate::service::{Service, StorageService};
-use crate::storage::block_header::put::StorageBlockHeaderPutNextInitAction;
 use crate::State;
 
 use super::{
@@ -75,7 +74,6 @@ pub fn storage_request_effects<S>(
                 }
                 .into(),
             );
-            store.dispatch(StorageBlockHeaderPutNextInitAction {}.into());
         }
         Action::StorageRequestSuccess(action) => {
             store.dispatch(
@@ -84,7 +82,6 @@ pub fn storage_request_effects<S>(
                 }
                 .into(),
             );
-            store.dispatch(StorageBlockHeaderPutNextInitAction {}.into());
         }
         _ => {}
     }

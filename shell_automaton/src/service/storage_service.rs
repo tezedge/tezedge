@@ -12,8 +12,8 @@ use storage::shell_automaton_action_meta_storage::{
     ShellAutomatonActionStats, ShellAutomatonActionsStats,
 };
 use storage::{
-    BlockHeaderWithHash, BlockStorage, PersistentStorage, ShellAutomatonActionMetaStorage,
-    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
+    PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
+    ShellAutomatonStateStorage, StorageError,
 };
 
 use crate::request::RequestId;
@@ -47,8 +47,6 @@ impl From<StorageError> for StorageErrorTmp {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestPayload {
-    BlockHeaderWithHashPut(BlockHeaderWithHash),
-
     StateSnapshotPut(Arc<State>),
     ActionPut(Box<ActionWithId<Action>>),
     ActionMetaUpdate {
@@ -62,8 +60,6 @@ pub enum StorageRequestPayload {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseSuccess {
-    BlockHeaderWithHashPutSuccess(bool),
-
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
     ActionMetaUpdateSuccess(ActionId),
@@ -71,8 +67,6 @@ pub enum StorageResponseSuccess {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseError {
-    BlockHeaderWithHashPutError(StorageErrorTmp),
-
     StateSnapshotPutError(StorageErrorTmp),
     ActionPutError(StorageErrorTmp),
     ActionMetaUpdateError(StorageErrorTmp),
@@ -154,7 +148,6 @@ impl StorageServiceDefault {
         use StorageResponseError::*;
         use StorageResponseSuccess::*;
 
-        let block_storage = BlockStorage::new(&storage);
         let snapshot_storage = ShellAutomatonStateStorage::new(&storage);
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
@@ -178,11 +171,6 @@ impl StorageServiceDefault {
 
         while let Ok(req) = channel.recv() {
             let result = match req.payload {
-                BlockHeaderWithHashPut(block_header_with_hash) => block_storage
-                    .put_block_header(&block_header_with_hash)
-                    .map(|res| BlockHeaderWithHashPutSuccess(res))
-                    .map_err(|err| BlockHeaderWithHashPutError(err.into())),
-
                 StateSnapshotPut(state) => {
                     let last_action_id = state.last_action.id();
                     snapshot_storage

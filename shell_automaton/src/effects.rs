@@ -26,7 +26,6 @@ use crate::peers::check::timeouts::peers_check_timeouts_effects;
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 
-use crate::storage::block_header::put::storage_block_header_put_effects;
 use crate::storage::request::storage_request_effects;
 use crate::storage::state_snapshot::create::{
     storage_state_snapshot_create_effects, StorageStateSnapshotCreateAction,
@@ -111,7 +110,6 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peers_check_timeouts_effects(store, action);
     peers_graylist_effects(store, action);
 
-    storage_block_header_put_effects(store, action);
     storage_request_effects(store, action);
 
     actors_effects(store, action);

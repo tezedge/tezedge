@@ -50,10 +50,6 @@ use crate::peers::graylist::{
 };
 use crate::peers::remove::PeersRemoveAction;
 
-use crate::storage::block_header::put::{
-    StorageBlockHeaderPutNextInitAction, StorageBlockHeaderPutNextPendingAction,
-    StorageBlockHeadersPutAction,
-};
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
     StorageRequestInitAction, StorageRequestPendingAction, StorageRequestSuccessAction,
@@ -200,10 +196,6 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
-
-    StorageBlockHeadersPut(StorageBlockHeadersPutAction),
-    StorageBlockHeaderPutNextInit(StorageBlockHeaderPutNextInitAction),
-    StorageBlockHeaderPutNextPending(StorageBlockHeaderPutNextPendingAction),
 
     StorageStateSnapshotCreate(StorageStateSnapshotCreateAction),
 
