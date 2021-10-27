@@ -2655,7 +2655,7 @@ dependencies = [
 [[package]]
 name = "redux-rs"
 version = "0.1.0"
-source = "git+https://github.com/binier/redux-rs.git#8d06d9d47a013d5e1f406f2ac133f3a9ed6bdff3"
+source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0#8d06d9d47a013d5e1f406f2ac133f3a9ed6bdff3"
 dependencies = [
  "serde 1.0.130",
 ]
@@ -3071,7 +3071,7 @@ dependencies = [
 
 [[package]]
 name = "shell_automaton"
-version = "0.1.0"
+version = "1.10.0"
 dependencies = [
  "bincode",
  "bytes",
