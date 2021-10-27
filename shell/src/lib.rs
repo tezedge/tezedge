@@ -140,23 +140,6 @@ pub mod subscription {
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_network_commands<M, E>(
-        network_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        network_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: NetworkChannelTopic::NetworkCommands.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
     pub fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
     where
         M: Message,

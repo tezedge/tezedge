@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 use slog::{debug, info, warn, Logger};
-use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::PeerId;

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use slog::Logger;
-use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, OperationHash};
 use networking::PeerId;

@@ -112,7 +112,7 @@ impl MonitoredOperation {
             let monitored_op = MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
-                hash: op_hash,
+                _hash: op_hash,
                 protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
                 error: None,
             };
@@ -149,7 +149,7 @@ impl MonitoredOperation {
             let monitored_op = MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
-                hash: op_hash,
+                _hash: op_hash,
                 protocol_data: serde_json::from_str(
                     &errored_op
                         .protocol_data_json_with_error_json
