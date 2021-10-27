@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use redux_rs::{ActionWithId, Store};
 use std::io::{self, Read, Write};
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;

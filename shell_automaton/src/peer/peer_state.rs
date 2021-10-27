@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use derive_more::From;
 use redux_rs::ActionId;
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use redux_rs::{chain_reducers, ActionWithId};
 
 use crate::action::Action;

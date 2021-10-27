@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod peer_handshaking_state;
 pub use peer_handshaking_state::*;
 

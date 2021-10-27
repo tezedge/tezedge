@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod peers_dns_lookup_state;
 pub use peers_dns_lookup_state::*;
 

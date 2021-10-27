@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod peer_binary_message_write_state;
 pub use peer_binary_message_write_state::*;
 

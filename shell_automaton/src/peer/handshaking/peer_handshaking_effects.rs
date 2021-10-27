@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::nonce::generate_nonces;
 use crypto::proof_of_work::{PowError, PowResult};

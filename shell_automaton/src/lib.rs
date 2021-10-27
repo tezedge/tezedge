@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 #![feature(deadline_api)]
 
 use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::{mpsc, Arc};
 
 /// Error when sending request to the responder/worker.

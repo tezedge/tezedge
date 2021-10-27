@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use derive_more::From;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};

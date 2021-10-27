@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod peer_connection_incoming_accept_state;
 pub use peer_connection_incoming_accept_state::*;
 

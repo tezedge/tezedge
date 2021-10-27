@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};

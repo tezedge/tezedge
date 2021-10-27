@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;

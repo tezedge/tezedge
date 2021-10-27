@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use tezedge_actor_system::actors::*;

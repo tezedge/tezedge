@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::{Action, ActionWithId, State};
 
 use super::PausedLoopCurrent;
