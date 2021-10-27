@@ -40,23 +40,24 @@ pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 //     convert = "{(_chain_id.clone(), block_hash.clone(), every_nth_level, limit)}",
 //     result = true
 // )]
-pub(crate) fn get_block_hashes(
-    _chain_id: ChainId,
-    block_hash: BlockHash,
-    every_nth_level: Option<i32>,
-    limit: usize,
-    persistent_storage: &PersistentStorage,
-) -> Result<Vec<BlockHash>, RpcServiceError> {
-    Ok(match every_nth_level {
-        Some(every_nth_level) => {
-            BlockStorage::new(persistent_storage).get_every_nth(every_nth_level, &block_hash, limit)
-        }
-        None => BlockStorage::new(persistent_storage).get_multiple_without_json(&block_hash, limit),
-    }?
-    .into_iter()
-    .map(|block_header| block_header.hash)
-    .collect::<Vec<BlockHash>>())
-}
+// TODO: TE-685
+// pub(crate) fn get_block_hashes(
+//     _chain_id: ChainId,
+//     block_hash: BlockHash,
+//     every_nth_level: Option<i32>,
+//     limit: usize,
+//     persistent_storage: &PersistentStorage,
+// ) -> Result<Vec<BlockHash>, RpcServiceError> {
+//     Ok(match every_nth_level {
+//         Some(every_nth_level) => {
+//             BlockStorage::new(persistent_storage).get_every_nth(every_nth_level, &block_hash, limit)
+//         }
+//         None => BlockStorage::new(persistent_storage).get_multiple_without_json(&block_hash, limit),
+//     }?
+//     .into_iter()
+//     .map(|block_header| block_header.hash)
+//     .collect::<Vec<BlockHash>>())
+// }
 
 /// Get block metadata
 #[cached(
