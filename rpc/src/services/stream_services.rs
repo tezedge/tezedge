@@ -78,7 +78,7 @@ pub struct MonitoredOperation {
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
     #[serde(skip_serializing)]
-    _hash: String,
+    hash: String,
     #[serde(skip_serializing)]
     error: Option<String>,
 }
@@ -112,7 +112,7 @@ impl MonitoredOperation {
             let monitored_op = MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
-                _hash: op_hash,
+                hash: op_hash,
                 protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
                 error: None,
             };
@@ -149,7 +149,7 @@ impl MonitoredOperation {
             let monitored_op = MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
-                _hash: op_hash,
+                hash: op_hash,
                 protocol_data: serde_json::from_str(
                     &errored_op
                         .protocol_data_json_with_error_json
