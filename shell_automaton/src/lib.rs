@@ -39,16 +39,27 @@ pub mod peers;
 use peers::dns_lookup::PeersDnsLookupInitAction;
 
 pub mod storage;
-use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub mod rpc;
 
 pub mod actors;
 
 pub mod service;
+use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use service::MioService;
-pub use service::{Service, ServiceDefault};
+pub use service::{Service, ServiceDefault, StorageService};
+
 pub type Port = u16;
+
+pub fn save_state_snapshot<Serv>(store: &mut Store<State, Serv, Action>)
+where
+    Serv: Service,
+{
+    let _ = store.service.storage().request_send(StorageRequest {
+        id: None,
+        payload: StorageRequestPayload::StateSnapshotPut(Box::new(store.state.get().clone())),
+    });
+}
 
 pub struct ShellAutomaton<Serv, Events> {
     /// Container for internal events.
@@ -74,8 +85,7 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         P: IntoIterator<Item = (String, Port)>,
     {
         // Persist initial state.
-        self.store
-            .dispatch(StorageStateSnapshotCreateAction {}.into());
+        save_state_snapshot(&mut self.store);
 
         // TODO: create action for it.
         if let Err(err) = self

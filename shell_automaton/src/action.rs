@@ -57,7 +57,6 @@ use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
     StorageRequestInitAction, StorageRequestPendingAction, StorageRequestSuccessAction,
 };
-use crate::storage::state_snapshot::create::StorageStateSnapshotCreateAction;
 
 pub use redux_rs::{ActionId, ActionWithId};
 
@@ -199,8 +198,6 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
-
-    StorageStateSnapshotCreate(StorageStateSnapshotCreateAction),
 
     StorageRequestCreate(StorageRequestCreateAction),
     StorageRequestInit(StorageRequestInitAction),

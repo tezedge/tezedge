@@ -6,7 +6,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
-use crate::{Action, ActionId, State};
+use crate::{save_state_snapshot, Action, ActionId, State};
 
 use crate::paused_loops::paused_loops_effects;
 
@@ -30,9 +30,6 @@ use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 
 use crate::storage::request::storage_request_effects;
-use crate::storage::state_snapshot::create::{
-    storage_state_snapshot_create_effects, StorageStateSnapshotCreateAction,
-};
 
 use crate::rpc::rpc_effects;
 
@@ -78,7 +75,7 @@ fn applied_actions_count_effects<S: Service>(
     _action: &ActionWithId<Action>,
 ) {
     if store.state().applied_actions_count % 10000 == 0 {
-        store.dispatch(StorageStateSnapshotCreateAction {}.into());
+        save_state_snapshot(store);
     }
 }
 
@@ -87,7 +84,6 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     // log_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
-    storage_state_snapshot_create_effects(store, action);
 
     paused_loops_effects(store, action);
 

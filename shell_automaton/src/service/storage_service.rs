@@ -50,7 +50,7 @@ impl From<StorageError> for StorageErrorTmp {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestPayload {
-    StateSnapshotPut(Arc<State>),
+    StateSnapshotPut(Box<State>),
     ActionPut(Box<ActionWithId<Action>>),
     ActionMetaUpdate {
         action_id: ActionId,

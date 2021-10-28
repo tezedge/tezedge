@@ -29,7 +29,6 @@ use crate::peers::graylist::peers_graylist_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
 use crate::storage::request::storage_request_reducer;
-use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithId<Action>) {
     state.set_last_action(action);
@@ -43,8 +42,6 @@ pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
     chain_reducers!(
         state,
         action,
-        // needs to be first!
-        storage_state_snapshot_create_reducer,
         paused_loops_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
