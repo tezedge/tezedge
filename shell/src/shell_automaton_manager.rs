@@ -115,7 +115,13 @@ impl ShellAutomatonManager {
             seed
         });
 
-        let mio_service = MioServiceDefault::new(listener_addr);
+        let mio_service = MioServiceDefault::new(
+            listener_addr,
+            // Buffer size for reading. Chunk size is 2 bytes (u16) and that is
+            // the max number of bytes that we will want to read from kernel at
+            // any given point.
+            u16::MAX as usize,
+        );
         let (rpc_service, rpc_channel) = RpcServiceDefault::new(mio_service.waker(), 128);
 
         let storage_service =

@@ -37,12 +37,12 @@ pub trait MioService {
     fn peer_connection_incoming_listen_stop(&mut self);
     fn peer_connection_incoming_accept(
         &mut self,
-    ) -> Result<(PeerToken, &mut MioPeer<Self::PeerStream>), PeerConnectionIncomingAcceptError>;
+    ) -> Result<(PeerToken, MioPeerRefMut<Self::PeerStream>), PeerConnectionIncomingAcceptError>;
 
     fn peer_connection_init(&mut self, address: SocketAddr) -> io::Result<PeerToken>;
     fn peer_disconnect(&mut self, token: PeerToken);
 
-    fn peer_get(&mut self, token: PeerToken) -> Option<&mut MioPeer<Self::PeerStream>>;
+    fn peer_get(&mut self, token: PeerToken) -> Option<MioPeerRefMut<Self::PeerStream>>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -87,6 +87,41 @@ impl<Stream> MioPeer<Stream> {
     }
 }
 
+pub struct MioPeerRefMut<'a, Stream> {
+    /// Pre-allocated buffer that will be used as a temporary container
+    /// for doing read syscall.
+    buffer: &'a mut [u8],
+    pub address: SocketAddr,
+    pub stream: &'a mut Stream,
+}
+
+impl<'a, Stream> MioPeerRefMut<'a, Stream> {
+    pub fn new(buffer: &'a mut [u8], address: SocketAddr, stream: &'a mut Stream) -> Self {
+        Self {
+            buffer,
+            address,
+            stream,
+        }
+    }
+}
+
+impl<'a, S: Read> MioPeerRefMut<'a, S> {
+    #[inline]
+    pub fn read(&mut self, limit: usize) -> io::Result<&[u8]> {
+        let limit = limit.min(self.buffer.len());
+        let read_bytes = self.stream.read(&mut self.buffer[0..limit])?;
+
+        Ok(&self.buffer[0..read_bytes])
+    }
+}
+
+impl<'a, S: Write> MioPeerRefMut<'a, S> {
+    #[inline(always)]
+    pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stream.write(buf)
+    }
+}
+
 pub struct MioServiceDefault {
     listen_addr: SocketAddr,
 
@@ -96,6 +131,10 @@ pub struct MioServiceDefault {
     /// for that backlog. So if queue of incoming connections get to
     /// this limit, more connections will be instantly rejected.
     backlog_size: u32,
+
+    /// Pre-allocated buffer that will be (re)used as a temporary
+    /// container for doing read syscalls when reading from peer.
+    buffer: Vec<u8>,
 
     poll: mio::Poll,
     waker: Arc<mio::Waker>,
@@ -107,14 +146,16 @@ pub struct MioServiceDefault {
 impl MioServiceDefault {
     const DEFAULT_BACKLOG_SIZE: u32 = 255;
 
-    pub fn new(listen_addr: SocketAddr) -> Self {
+    pub fn new(listen_addr: SocketAddr, buffer_size: usize) -> Self {
         let poll = mio::Poll::new().expect("failed to create mio::Poll");
         let waker = Arc::new(
             mio::Waker::new(poll.registry(), MIO_WAKE_TOKEN).expect("failed to create mio::Waker"),
         );
+
         Self {
             listen_addr,
             backlog_size: Self::DEFAULT_BACKLOG_SIZE,
+            buffer: vec![0; buffer_size],
             poll,
             waker,
             server: None,
@@ -206,8 +247,9 @@ impl MioService for MioServiceDefault {
 
     fn peer_connection_incoming_accept(
         &mut self,
-    ) -> Result<(PeerToken, &mut MioPeer<Self::PeerStream>), PeerConnectionIncomingAcceptError>
+    ) -> Result<(PeerToken, MioPeerRefMut<Self::PeerStream>), PeerConnectionIncomingAcceptError>
     {
+        let buffer = &mut self.buffer;
         let server = &mut self.server;
         let poll = &mut self.poll;
         let peers = &mut self.peers;
@@ -229,7 +271,9 @@ impl MioService for MioServiceDefault {
                 .map_err(|err| PeerConnectionIncomingAcceptError::poll_register_error(err))?;
 
             let peer = peer_entry.insert(MioPeer::new(address.into(), stream));
-            Ok((PeerToken::new_unchecked(token.0), peer))
+            let peer_ref_mut = MioPeerRefMut::new(buffer, peer.address, &mut peer.stream);
+
+            Ok((PeerToken::new_unchecked(token.0), peer_ref_mut))
         } else {
             Err(PeerConnectionIncomingAcceptError::ServerNotListening)
         }
@@ -267,7 +311,11 @@ impl MioService for MioServiceDefault {
         }
     }
 
-    fn peer_get(&mut self, token: PeerToken) -> Option<&mut MioPeer<Self::PeerStream>> {
-        self.peers.get_mut(token.index())
+    fn peer_get(&mut self, token: PeerToken) -> Option<MioPeerRefMut<Self::PeerStream>> {
+        let buffer = &mut self.buffer;
+        match self.peers.get_mut(token.index()) {
+            Some(peer) => Some(MioPeerRefMut::new(buffer, peer.address, &mut peer.stream)),
+            None => None,
+        }
     }
 }

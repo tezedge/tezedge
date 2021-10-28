@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use redux_rs::{ActionWithId, Store};
-use std::io::{self, Read, Write};
+use std::io;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::paused_loops::{PausedLoop, PausedLoopsAddAction};
@@ -153,8 +153,8 @@ where
                     _ => return finish(store, action.address, PeerIOLoopResult::NotReady),
                 };
 
-                let peer_stream = match store.service.mio().peer_get(peer_token) {
-                    Some(peer) => &mut peer.stream,
+                let mut mio_peer = match store.service.mio().peer_get(peer_token) {
+                    Some(peer) => peer,
                     None => return store.dispatch(PeerDisconnectAction { address }.into()),
                 };
 
@@ -191,7 +191,7 @@ where
                     _ => return finish(store, address, PeerIOLoopResult::NotReady),
                 };
 
-                match peer_stream.write(&chunk.raw()[*prev_written..]) {
+                match mio_peer.write(&chunk.raw()[*prev_written..]) {
                     Ok(written) if written > 0 => store.dispatch(
                         PeerChunkWritePartAction {
                             address: action.address,
@@ -252,8 +252,8 @@ where
                     _ => return finish(store, action.address, PeerIOLoopResult::NotReady),
                 };
 
-                let peer_stream = match store.service.mio().peer_get(peer_token) {
-                    Some(peer) => &mut peer.stream,
+                let mut mio_peer = match store.service.mio().peer_get(peer_token) {
+                    Some(peer) => peer,
                     None => return store.dispatch(PeerDisconnectAction { address }.into()),
                 };
 
@@ -298,16 +298,10 @@ where
                 };
                 debug_assert!(bytes_to_read > 0);
 
-                let mut buff = vec![0; bytes_to_read];
-                match peer_stream.read(&mut buff) {
-                    Ok(bytes) if bytes > 0 => {
-                        store.dispatch(
-                            PeerChunkReadPartAction {
-                                address,
-                                bytes: buff[..bytes].to_vec(),
-                            }
-                            .into(),
-                        );
+                match mio_peer.read(bytes_to_read) {
+                    Ok(bytes) if bytes.len() > 0 => {
+                        let bytes = bytes.to_vec();
+                        store.dispatch(PeerChunkReadPartAction { address, bytes }.into());
                     }
                     Ok(_) => return finish(store, address, PeerIOLoopResult::FullyConsumed),
                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
