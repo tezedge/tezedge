@@ -230,8 +230,6 @@ impl ShellAutomatonManager {
 
 impl Drop for ShellAutomatonManager {
     fn drop(&mut self) {
-        info!(self.log, "Closing Tezedge state manager");
-
         let ShellAutomatonManager {
             shell_automaton_sender,
             ..
