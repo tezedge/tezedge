@@ -89,12 +89,6 @@ pub struct RpcServiceEnvironment {
     tezedge_context: TezedgeContextClient,
     #[get = "pub(crate)"]
     tezos_protocol_api: Arc<ProtocolRunnerApi>,
-    //#[get = "pub(crate)"]
-    //tezos_readonly_api: Arc<TezosApiConnectionPool>,
-    //#[get = "pub(crate)"]
-    //tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-    //#[get = "pub(crate)"]
-    //tezos_without_context_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     context_stats_db_path: Option<PathBuf>,
     pub tezedge_is_enabled: bool,
@@ -109,9 +103,6 @@ impl RpcServiceEnvironment {
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
-        //tezos_readonly_api: Arc<TezosApiConnectionPool>,
-        //tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        //tezos_without_context_api: Arc<TezosApiConnectionPool>,
         main_chain_id: ChainId,
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
@@ -131,9 +122,6 @@ impl RpcServiceEnvironment {
             log,
             tezedge_context,
             tezos_protocol_api,
-            //tezos_readonly_api,
-            //tezos_readonly_prevalidation_api,
-            //tezos_without_context_api,
             context_stats_db_path,
             tezedge_is_enabled,
         }

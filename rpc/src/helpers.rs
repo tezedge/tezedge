@@ -25,7 +25,6 @@ use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
-//use tezos_wrapper::InternalPoolError;
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
@@ -108,14 +107,6 @@ impl From<serde_json::Error> for RpcServiceError {
         }
     }
 }
-
-//impl From<InternalPoolError> for RpcServiceError {
-//    fn from(error: InternalPoolError) -> Self {
-//        Self::UnexpectedError {
-//            reason: format!("{}", error),
-//        }
-//    }
-//}
 
 impl<T> From<PoisonError<T>> for RpcServiceError {
     fn from(pe: PoisonError<T>) -> Self {

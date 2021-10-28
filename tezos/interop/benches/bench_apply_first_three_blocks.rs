@@ -3,8 +3,6 @@
 #![feature(test)]
 extern crate test;
 
-// TODO: move these benchmarks somewhere else
-
 use std::time::Instant;
 use test::Bencher;
 

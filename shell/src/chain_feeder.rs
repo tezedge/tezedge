@@ -161,12 +161,12 @@ impl ChainFeeder {
         sys: &impl ActorRefFactory,
         persistent_storage: PersistentStorage,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
-        tokio_runtime: &tokio::runtime::Handle,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
         initialize_context_result_callback: InitializeContextOneshotResultCallback,
     ) -> Result<(ChainFeederRef, ThreadWatcher), CreateError> {
+        let tokio_runtime = tezos_protocol_api.tokio_runtime.clone();
         // spawn inner thread
         let (block_applier_event_sender, block_applier_thread_watcher) =
             BlockApplierThreadSpawner::new(
@@ -179,7 +179,7 @@ impl ChainFeeder {
             .spawn_feeder_thread(
                 "chain-feedr-ctx".into(),
                 initialize_context_result_callback,
-                tokio_runtime,
+                &tokio_runtime,
             )
             .map_err(|e| {
                 warn!(log, "Failed to spawn chain feeder thread"; "reason" => format!("{}", e));
@@ -483,7 +483,6 @@ impl BlockApplierThreadSpawner {
 
                 while apply_block_run.load(Ordering::Acquire) {
                     info!(log, "Chain feeding starting");
-                    // TODO now: pass api object instead, and make connection inside
                     let result = tokio_runtime.block_on(tezos_protocol_api.writable_connection());
                     match result {
                         Ok(mut protocol_controller) => match feed_chain_to_protocol(
@@ -506,12 +505,9 @@ impl BlockApplierThreadSpawner {
                             &log,
                         ) {
                             Ok(()) => {
-                                //protocol_controller.set_release_on_return_to_pool();
                                 debug!(log, "Feed chain to protocol finished")
                             }
                             Err(err) => {
-                                // this will restart protocol-runner on error
-                                //protocol_controller.set_release_on_return_to_pool();
                                 if apply_block_run.load(Ordering::Acquire) {
                                     match &err {
                                         FeedChainError::InitializeContextError {reason} => {
@@ -827,10 +823,8 @@ fn _handle_apply_block_request(
                 // now we need to analyse error:
                 // 1. or if protocol_runner just failed (OOM killer, some unexpected ipc error, ...) and restart could be enougth
                 // 2. or if we need to stop the batch processing and report wrong batch without restarting
-                let need_to_restart_context = match &e {
-                    ApplyBlockBatchError::ProtocolServiceError { .. } => true,
-                    _ => false,
-                };
+                let need_to_restart_context =
+                    matches!(&e, ApplyBlockBatchError::ProtocolServiceError { .. });
 
                 // callback for handling failed batch
                 let handle_as_failed =

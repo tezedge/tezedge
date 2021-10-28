@@ -324,7 +324,6 @@ pub mod tests {
             block_applier: chain_feeder::ChainFeederRef,
             persistent_storage: PersistentStorage,
             tezos_protocol_api: Arc<ProtocolRunnerApi>,
-            tokio_runtime: &tokio::runtime::Runtime,
         ) -> Result<ChainManagerRef, anyhow::Error> {
             let init_data = StorageInitInfo {
                 chain_id: ChainId::try_from("NetXgtSLGNJvNye")?,
@@ -342,7 +341,6 @@ pub mod tests {
                 persistent_storage.clone(),
                 current_mempool_state_storage.clone(),
                 Arc::clone(&tezos_protocol_api),
-                tokio_runtime.handle(),
                 true,
             ));
 
@@ -372,7 +370,6 @@ pub mod tests {
                         0,
                         mempool_prevalidator_factory,
                         Arc::new(Mutex::new(initialize_result)),
-                        tokio_runtime.handle().clone(),
                     )),
                 )
                 .map_err(|e| e.into())

@@ -138,8 +138,10 @@ impl TezosContextStorageConfiguration {
 pub struct TezosContextConfiguration {
     pub storage: TezosContextStorageConfiguration,
     pub genesis: GenesisChain,
+    // TODO: move protocol_overrides elsewhere, out of the context
     pub protocol_overrides: ProtocolOverrides,
     pub commit_genesis: bool,
+    // TODO: move enable_testchain elsewhere, out of the context
     pub enable_testchain: bool,
     pub readonly: bool,
     pub sandbox_json_patch_context: Option<PatchContext>,

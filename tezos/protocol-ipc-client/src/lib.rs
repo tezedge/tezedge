@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module implements a client that provides access to the protocol runners.
+
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
@@ -86,7 +88,9 @@ impl ProtocolRunnerConfiguration {
     }
 }
 
-// TODO: differentiate between writable and readonly?
+// TODO: differentiate between writable and readonly runners?
+
+/// Representation of a running protocol runner instance.
 pub struct ProtocolRunnerInstance {
     configuration: ProtocolRunnerConfiguration,
     socket_path: PathBuf,
@@ -175,7 +179,8 @@ impl ProtocolRunnerInstance {
     pub async fn writable_connection(&mut self) -> Result<ProtocolRunnerConnection, IpcError> {
         if self.shutdown_issued {
             return Err(IpcError::OtherError {
-                reason: "Cannot get a connection to a protocol runner that has been shutdown".to_string(),
+                reason: "Cannot get a connection to a protocol runner that has been shutdown"
+                    .to_string(),
             });
         }
 
@@ -221,7 +226,7 @@ impl ProtocolRunnerInstance {
         timeout: Option<Duration>,
     ) -> Result<(), ProtocolRunnerError> {
         let start = Instant::now();
-        let timeout = timeout.unwrap_or(Duration::from_secs(3));
+        let timeout = timeout.unwrap_or_else(|| Duration::from_secs(3));
 
         loop {
             if self.socket_path.exists() {
@@ -239,7 +244,7 @@ impl ProtocolRunnerInstance {
     }
 
     fn spawn_process(
-        executable_path: &PathBuf,
+        executable_path: &Path,
         socket_path: &Path,
         endpoint_name: &str,
         log_level: &Level,
@@ -433,19 +438,22 @@ impl IpcIO {
         &mut self,
         read_timeout: Option<Duration>,
     ) -> Result<NodeMessage, async_ipc::IpcError> {
-        if let Some(read_timeout) = read_timeout {
-            Ok(self.rx.try_receive(read_timeout).await?)
+        let result = if let Some(read_timeout) = read_timeout {
+            self.rx.try_receive(read_timeout).await?
         } else {
-            self.rx.receive().await
-        }
+            self.rx.receive().await?
+        };
+        Ok(result)
     }
 }
 
+/// Manages the execution of the protocol runners and access to their functionality.
 pub struct ProtocolRunnerApi {
     pub(crate) writable_instance: RwLock<ProtocolRunnerInstance>,
-    pub(crate) tokio_runtime: tokio::runtime::Handle,
+    pub tokio_runtime: tokio::runtime::Handle,
 }
 
+/// Guard value that issues a shutdown of the protocol runner API infrastructure once dropped.
 pub struct ProtocolRunnerApiShutdownGuard {
     api: Arc<ProtocolRunnerApi>,
 }
@@ -476,6 +484,7 @@ impl ProtocolRunnerApi {
         }
     }
 
+    /// Spawns protocol runners and returns once they start accepting connections.
     pub async fn start(&mut self, timeout: Option<Duration>) -> Result<(), ProtocolRunnerError> {
         let mut instance = self.writable_instance.write().await;
 
@@ -485,16 +494,19 @@ impl ProtocolRunnerApi {
         Ok(())
     }
 
+    /// Shuts down all protocol runners.
     pub async fn shutdown(&self) {
         self.writable_instance.write().await.shutdown();
     }
 
+    /// Returns a guard value that will issue a shutdown of the protocol runner API infrastructure once dropped.
     pub fn shutdown_on_drop(self: &Arc<Self>) -> ProtocolRunnerApiShutdownGuard {
         ProtocolRunnerApiShutdownGuard {
-            api: Arc::clone(&self),
+            api: Arc::clone(self),
         }
     }
 
+    /// Obtains a connection to a protocol runner instance with write access to the context.
     pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
         // TODO: pool connections
         self.writable_instance
@@ -504,9 +516,20 @@ impl ProtocolRunnerApi {
             .await
     }
 
+    /// Like [`Self::writable_connection`] but callable from non-async functions.
+    pub fn writable_connection_sync(&self) -> Result<ProtocolRunnerConnection, IpcError> {
+        tokio::task::block_in_place(|| self.tokio_runtime.block_on(self.writable_connection()))
+    }
+
+    /// Obtains a connection to a protocol runner instance with read access to the context.
     pub async fn readable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
         // TODO: reimplement once readonly instances have been added
         self.writable_connection().await
+    }
+
+    /// Like [`Self::readable_connection`] but callable from non-async functions.
+    pub fn readable_connection_sync(&self) -> Result<ProtocolRunnerConnection, IpcError> {
+        tokio::task::block_in_place(|| self.tokio_runtime.block_on(self.readable_connection()))
     }
 }
 
@@ -544,17 +567,19 @@ macro_rules! handle_request {
 
 impl ProtocolRunnerConnection {
     const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
-    const DEFAULT_TIMEOUT_LONG: Duration = Duration::from_secs(300);
-    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 2);
-    const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
-    const BEGIN_APPLICATION_TIMEOUT: Duration = Duration::from_secs(120);
-    const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
-    const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
-    const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
-    const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Duration::from_secs(600);
-    const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
-    const JSON_ENCODE_DATA_TIMEOUT: Duration = Duration::from_secs(30);
-    const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Duration::from_secs(15);
+    const DEFAULT_TIMEOUT_LONG: Duration = Duration::from_secs(60 * 2);
+    const DEFAULT_TIMEOUT_VERY_LONG: Duration = Duration::from_secs(60 * 30);
+
+    const APPLY_BLOCK_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_VERY_LONG;
+    const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const BEGIN_APPLICATION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const VALIDATE_OPERATION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const CALL_PROTOCOL_HEAVY_RPC_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_VERY_LONG;
+    const COMPUTE_PATH_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const JSON_ENCODE_DATA_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
 
     /// Apply block
     pub async fn apply_block(
@@ -989,7 +1014,7 @@ impl ProtocolRunnerConnection {
             ContextGetKeyValuesByPrefix(params),
             ContextGetKeyValuesByPrefixResult(result),
             ContextGetKeyValuesByPrefixError,
-            Some(Self::DEFAULT_TIMEOUT_LONG),
+            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
         )
     }
 
@@ -1010,7 +1035,7 @@ impl ProtocolRunnerConnection {
             ContextGetTreeByPrefix(params),
             ContextGetTreeByPrefixResult(result),
             ContextGetKeyValuesByPrefixError,
-            Some(Self::DEFAULT_TIMEOUT_LONG),
+            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
         )
     }
 }

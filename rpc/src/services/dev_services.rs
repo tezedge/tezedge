@@ -266,7 +266,7 @@ pub(crate) async fn get_blocks(
             .get_multiple_with_json_data(&block_hash, limit),
     }?;
 
-    // TODO: using a single connection here, but could connect to multiple runners, worth it?
+    // NOTE: using a single connection here, but could connect to multiple runners, worth it?
     let mut connection = env.tezos_protocol_api().readable_connection().await?;
 
     let mut result = Vec::with_capacity(blocks.len());
@@ -305,16 +305,7 @@ pub(crate) async fn get_blocks(
                 cycle_position,
             });
         }
-        // TODO: show warning?
-        /* else {
-            bail!(
-                "No additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            )
-        } */
     }
-    //.filter_map(Result::ok)
-    //.collect::<Vec<SlimBlockData>>();
     Ok(result)
 }
 

@@ -74,8 +74,6 @@ impl NodeInfrastructure {
         identity: Identity,
         pow_target: f64,
         (log, log_level): (Logger, Level),
-        // TODO: runtime configuration
-        (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
     ) -> Result<Self, anyhow::Error> {
         warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -164,7 +162,6 @@ impl NodeInfrastructure {
             persistent_storage.clone(),
             current_mempool_state_storage.clone(),
             tezos_protocol_api.clone(),
-            tokio_runtime.handle(),
             p2p_disable_mempool,
         ));
 
@@ -174,7 +171,6 @@ impl NodeInfrastructure {
             actor_system.as_ref(),
             persistent_storage.clone(),
             tezos_protocol_api.clone(),
-            tokio_runtime.handle(),
             init_storage_data.clone(),
             tezos_env.clone(),
             log.clone(),
@@ -222,7 +218,6 @@ impl NodeInfrastructure {
             mempool_prevalidator_factory.clone(),
             identity.clone(),
             initialize_chain_manager_result_callback,
-            tokio_runtime.handle(),
         )
         .expect("Failed to create chain manager");
 

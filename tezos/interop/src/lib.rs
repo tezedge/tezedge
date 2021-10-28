@@ -1,5 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
+// Cannot enable because of the call to `initialize_tezedge_ipc_callbacks`.
+// Once dynamic linking has been got rid of this can be re-enabled.
 //#![forbid(unsafe_code)]
 
 use std::sync::Once;

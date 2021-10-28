@@ -21,12 +21,13 @@ pub fn wait(pid: libc::pid_t) -> bool {
     unsafe {
         let mut status: i32 = 0;
         let options: i32 = 0;
-        return match libc::waitpid(pid, &mut status as *mut i32, options) {
+
+        match libc::waitpid(pid, &mut status as *mut i32, options) {
             -1 => {
                 panic!("error occured libc::waitpid problem")
             }
             _pid => true,
-        };
+        }
     }
 }
 

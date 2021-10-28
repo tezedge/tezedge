@@ -166,8 +166,8 @@ pub(crate) async fn get_block_header(
     let block_json_data = &block_header_with_json_data.1;
 
     Ok(Arc::new(BlockHeaderInfo::try_new(
-        &block_header,
-        &block_json_data,
+        block_header,
+        block_json_data,
         &block_additional_data,
         &chain_id,
     )?))
@@ -190,7 +190,7 @@ pub(crate) fn get_block_shell_header_or_fail(
         .and_then(|block_header| {
             BlockHeaderShellInfo::try_new(&block_header).map_err(RpcServiceError::from)
         })
-        .map(|block_header| Arc::new(block_header))
+        .map(Arc::new)
 }
 
 #[cached(
@@ -209,7 +209,7 @@ pub(crate) fn live_blocks(
 
     // get max_ttl for requested block
     let max_ttl: usize = crate::services::base_services::get_additional_data_or_fail(
-        &chain_id,
+        chain_id,
         &block_hash,
         env.persistent_storage(),
     )?
@@ -413,7 +413,7 @@ pub(crate) async fn get_block_operations_validation_pass(
     env: &RpcServiceEnvironment,
     validation_pass: usize,
 ) -> Result<Arc<BlockValidationPass>, RpcServiceError> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
+    let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         Ok(Arc::new(block_validation_pass.clone()))
     } else {
@@ -442,7 +442,7 @@ pub(crate) async fn get_block_operation(
     validation_pass: usize,
     operation_index: usize,
 ) -> Result<Arc<BlockOperation>, RpcServiceError> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
+    let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         if let Some(operation) = block_validation_pass.get(operation_index) {
             Ok(Arc::new(operation.clone()))
@@ -545,7 +545,7 @@ pub(crate) async fn get_block(
             .map(|x| hex::encode(&x))
             .collect(),
         context: block_header.header.context().to_base58_check(),
-        protocol_data: serde_json::from_str(&block_header_proto_json).unwrap_or_default(),
+        protocol_data: serde_json::from_str(block_header_proto_json).unwrap_or_default(),
     };
 
     // TODO: TE-521 - rewrite encoding part to rust - this two calls could be parallelized (once we have our encodings in rust)
@@ -599,7 +599,7 @@ pub(crate) fn get_additional_data_or_fail(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockAdditionalData>, RpcServiceError> {
-    match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash) {
+    match BlockMetaStorage::new(persistent_storage).get_additional_data(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
@@ -623,7 +623,7 @@ pub(crate) fn get_raw_block_header_with_hash(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockHeaderWithHash>, RpcServiceError> {
-    match BlockStorage::new(persistent_storage).get(&block_hash) {
+    match BlockStorage::new(persistent_storage).get(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
@@ -648,7 +648,7 @@ pub(crate) fn get_block_with_json_data(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<(BlockHeaderWithHash, BlockJsonData)>, RpcServiceError> {
-    match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash) {
+    match BlockStorage::new(persistent_storage).get_with_json_data(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(

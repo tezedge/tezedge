@@ -114,7 +114,6 @@ pub struct Identity {
 
 #[derive(Debug, Clone)]
 pub struct Ffi {
-    // TODO: protocol runner configuration
     pub protocol_runner: PathBuf,
     pub zcash_param: ZcashParams,
 }
@@ -684,52 +683,6 @@ pub fn tezos_app() -> App<'static, 'static> {
     app
 }
 
-// TODO: reimplement after multiple processes have been added
-//fn pool_cfg(
-//    args: &clap::ArgMatches,
-//    pool_name_discriminator: &str,
-//) -> TezosApiConnectionPoolConfiguration {
-//    TezosApiConnectionPoolConfiguration {
-//        min_connections: 0,
-//        /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
-//        max_connections: args
-//            .value_of(&format!(
-//                "ffi-{}pool-max-connections",
-//                pool_name_discriminator
-//            ))
-//            .unwrap_or("10")
-//            .parse::<u8>()
-//            .expect("Provided value cannot be converted to number"),
-//        connection_timeout: args
-//            .value_of(&format!(
-//                "ffi-{}pool-connection-timeout-in-secs",
-//                pool_name_discriminator
-//            ))
-//            .unwrap_or("60")
-//            .parse::<u16>()
-//            .map(|seconds| Duration::from_secs(seconds as u64))
-//            .expect("Provided value cannot be converted to number"),
-//        max_lifetime: args
-//            .value_of(&format!(
-//                "ffi-{}pool-max-lifetime-in-secs",
-//                pool_name_discriminator
-//            ))
-//            .unwrap_or("21600")
-//            .parse::<u16>()
-//            .map(|seconds| Duration::from_secs(seconds as u64))
-//            .expect("Provided value cannot be converted to number"),
-//        idle_timeout: args
-//            .value_of(&format!(
-//                "ffi-{}pool-idle-timeout-in-secs",
-//                pool_name_discriminator
-//            ))
-//            .unwrap_or("1800")
-//            .parse::<u16>()
-//            .map(|seconds| Duration::from_secs(seconds as u64))
-//            .expect("Provided value cannot be converted to number"),
-//    }
-//}
-
 fn resolve_tezos_network_config(
     args: &clap::ArgMatches,
 ) -> (TezosEnvironment, TezosEnvironmentConfiguration) {
@@ -931,9 +884,11 @@ impl Environment {
                     .expect("Provided value cannot be converted to number"),
             );
 
-            let mut options = fs_extra::dir::CopyOptions::default();
-            options.content_only = true;
-            options.overwrite = true;
+            let options = fs_extra::dir::CopyOptions {
+                content_only: true,
+                overwrite: true,
+                ..fs_extra::dir::CopyOptions::default()
+            };
 
             fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
 
@@ -1089,7 +1044,7 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
-                websocket_cfg: args.value_of("websocket-address").map_or(None, |address| {
+                websocket_cfg: args.value_of("websocket-address").and_then(|address| {
                     address.parse::<SocketAddr>().map_or(None, |socket_addrs| {
                         let max_connections = args
                             .value_of("websocket-max-connections")

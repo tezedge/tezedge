@@ -74,7 +74,6 @@ fn ipc_fork_and_client_exchange() -> Result<(), anyhow::Error> {
 
 #[test]
 #[serial]
-#[ignore] // TODO enable once proper timeout has been implemented
 fn ipc_accept_timeout() -> Result<(), anyhow::Error> {
     let tokio_runtime = common::create_tokio_runtime();
 

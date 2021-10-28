@@ -234,9 +234,6 @@ pub struct ChainManager {
     ///
     /// we dont rely on restarting ChainManager, but if that occures, it is ok, that we ignore this, because tezedge_actor_system's do not loose messages when actor is restarting
     first_initialization_done_result_callback: Arc<Mutex<Option<OneshotResultCallback<()>>>>,
-
-    /// Tokio runtime handle
-    tokio_runtime: tokio::runtime::Handle,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -259,7 +256,6 @@ impl ChainManager {
         mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
         first_initialization_done_result_callback: OneshotResultCallback<()>,
-        tokio_runtime: &tokio::runtime::Handle,
     ) -> Result<(ChainManagerRef, ThreadWatcher), CreateError> {
         let (p2p_reader_sender, p2p_reader_thread_watcher) = spawn_p2p_reader_thread(
             identity.peer_id(),
@@ -287,7 +283,6 @@ impl ChainManager {
                 num_of_peers_for_bootstrap_threshold,
                 mempool_prevalidator_factory,
                 Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
-                tokio_runtime.clone(),
             )),
         )
         .map(|actor| (actor, p2p_reader_thread_watcher))
@@ -326,7 +321,6 @@ impl ChainManager {
             remote_current_head_state,
             p2p_reader_sender,
             tezos_protocol_api,
-            tokio_runtime,
             ..
         } = self;
 
@@ -538,10 +532,8 @@ impl ChainManager {
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
-                                    let mut connection = tokio::task::block_in_place(|| {
-                                        tokio_runtime
-                                            .block_on(tezos_protocol_api.readable_connection())
-                                    })?;
+                                    let mut connection =
+                                        tezos_protocol_api.readable_connection_sync()?;
 
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
@@ -716,16 +708,14 @@ impl ChainManager {
 
                                 match peer.queued_mempool_operations.remove(&operation_hash) {
                                     Some(operation_type) => {
-                                        let mut connection = tokio::task::block_in_place(|| {
-                                            tokio_runtime
-                                                .block_on(tezos_protocol_api.readable_connection())
-                                        })?;
+                                        let mut connection =
+                                            tezos_protocol_api.readable_connection_sync()?;
 
                                         // do prevalidation before add the operation to mempool
                                         let current_mempool_state =
                                             Arc::clone(&self.current_mempool_state);
                                         let result = tokio::task::block_in_place(|| {
-                                            tokio_runtime.block_on(
+                                            tezos_protocol_api.tokio_runtime.block_on(
                                                 validation::prevalidate_operation(
                                                     chain_state.get_chain_id(),
                                                     &operation_hash,
@@ -1484,7 +1474,6 @@ impl
         usize,
         Arc<MempoolPrevalidatorFactory>,
         Arc<Mutex<Option<OneshotResultCallback<()>>>>,
-        tokio::runtime::Handle,
     )> for ChainManager
 {
     fn create_args(
@@ -1502,7 +1491,6 @@ impl
             num_of_peers_for_bootstrap_threshold,
             mempool_prevalidator_factory,
             first_initialization_done_result_callback,
-            tokio_runtime,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
@@ -1517,7 +1505,6 @@ impl
             usize,
             Arc<MempoolPrevalidatorFactory>,
             Arc<Mutex<Option<OneshotResultCallback<()>>>>,
-            tokio::runtime::Handle,
         ),
     ) -> Self {
         ChainManager {
@@ -1533,7 +1520,7 @@ impl
                 &persistent_storage,
                 Arc::new(init_storage_data.chain_id.clone()),
                 Arc::new(init_storage_data.genesis_block_header_hash.clone()),
-                tokio_runtime.clone(),
+                tezos_protocol_api.tokio_runtime.clone(),
             ),
             peers: HashMap::new(),
             current_head_state: HeadState::new(
@@ -1560,7 +1547,6 @@ impl
             mempool_prevalidator_factory,
             tezos_protocol_api,
             first_initialization_done_result_callback,
-            tokio_runtime,
         }
     }
 }

@@ -319,7 +319,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             genesis_context_hash: genesis_context_hash.clone(),
             chain_id: chain_id.clone(),
             genesis_protocol_hash: genesis_additional_data.next_protocol_hash.clone(),
-            genesis_max_operations_ttl: genesis_additional_data.max_operations_ttl.into(),
+            genesis_max_operations_ttl: genesis_additional_data.max_operations_ttl,
         },
     ))
     .unwrap();
@@ -360,7 +360,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             JsonEncodeApplyBlockOperationsMetadataParams {
                 chain_id: chain_id.clone(),
                 operations: vec![],
-                operations_metadata_bytes: genesis_data.operations_proto_metadata_bytes.clone(),
+                operations_metadata_bytes: genesis_data.operations_proto_metadata_bytes,
                 protocol_hash: genesis_additional_data.protocol_hash.clone(),
                 next_protocol_hash: genesis_additional_data.next_protocol_hash.clone(),
             },
@@ -610,7 +610,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
     let apply_block_result_metadata_json =
         apply_encoded_message(ProtocolMessage::JsonEncodeApplyBlockResultMetadata(
             JsonEncodeApplyBlockResultMetadataParams {
-                context_hash: genesis_context_hash.clone(),
+                context_hash: genesis_context_hash,
                 metadata_bytes: apply_block_result.block_header_proto_metadata_bytes.clone(),
                 max_operations_ttl,
                 protocol_hash: apply_block_result.protocol_hash.clone(),
@@ -643,13 +643,13 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
     let apply_block_operations_metadata_json =
         apply_encoded_message(ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(
             JsonEncodeApplyBlockOperationsMetadataParams {
-                chain_id: chain_id.clone(),
+                chain_id,
                 operations,
                 operations_metadata_bytes: apply_block_result
                     .operations_proto_metadata_bytes
                     .clone(),
                 protocol_hash: apply_block_result.protocol_hash.clone(),
-                next_protocol_hash: apply_block_result.next_protocol_hash.clone(),
+                next_protocol_hash: apply_block_result.next_protocol_hash,
             },
         ))
         .unwrap();
@@ -680,7 +680,7 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
     // apply second block - level 2
     let apply_block_result =
         apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
-            chain_id: chain_id,
+            chain_id,
             block_header: BlockHeader::from_bytes(
                 hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap(),
             )

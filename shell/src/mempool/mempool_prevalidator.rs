@@ -70,7 +70,6 @@ impl MempoolPrevalidator {
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
-        tokio_runtime: &tokio::runtime::Handle,
         log: Logger,
     ) -> Result<(MempoolPrevalidatorRef, ThreadWatcher), CreateError> {
         let thread_name = format!("mmpl-{}", chain_id.to_base58_check());
@@ -92,7 +91,7 @@ impl MempoolPrevalidator {
         let mempool_thread = {
             let validator_run = mempool_thread_watcher.thread_running_status().clone();
             let chain_id = chain_id.clone();
-            let tokio_runtime = tokio_runtime.clone();
+            let tokio_runtime = tezos_protocol_api.tokio_runtime.clone();
 
             thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
@@ -100,10 +99,7 @@ impl MempoolPrevalidator {
                 let mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
-                    let result = tokio::task::block_in_place(|| {
-                        tokio_runtime.block_on(tezos_protocol_api.readable_connection())
-                    });
-                    match result {
+                    match tezos_protocol_api.readable_connection_sync() {
                         Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
@@ -118,18 +114,17 @@ impl MempoolPrevalidator {
                             &log,
                         ) {
                             Ok(()) => {
-                                //protocol_controller.set_release_on_return_to_pool();
                                 info!(log, "Mempool - prevalidation process finished")
                             }
                             Err(err) => {
-                                //protocol_controller.set_release_on_return_to_pool();
                                 if validator_run.load(Ordering::Acquire) {
                                     warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                 }
                             }
                         },
-                        Err(_err) => {
-                            //warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "pool_name" => tezos_readonly_api.pool_name.clone(), "reason" => format!("{:?}", err))
+                        Err(err) => {
+                            // TODO: this cannot happen anymore, there are no pools and protocol runners always accept connections
+                            warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "reason" => format!("{:?}", err))
                         }
                     }
                 }

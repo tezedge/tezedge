@@ -3,23 +3,24 @@
 #![feature(test)]
 extern crate test;
 
-use std::path::{Path, PathBuf};
+// TODO: reimplement with new async IPC architecture once multiple processes have been added
 
-use anyhow::format_err;
-use async_ipc::temp_sock;
-use slog::{Level, Logger};
-
-use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_context_api::{
-    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
-};
-use tezos_protocol_ipc_client::{ProtocolRunnerConfiguration, ProtocolRunnerInstance};
+// use std::path::{Path, PathBuf};
+//
+// use anyhow::format_err;
+// use async_ipc::temp_sock;
+// use slog::{Level, Logger};
+//
+// use tezos_api::environment::TezosEnvironmentConfiguration;
+// use tezos_api::ffi::TezosRuntimeConfiguration;
+// use tezos_context_api::{
+//     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+//     TezosContextTezEdgeStorageConfiguration,
+// };
+// use tezos_protocol_ipc_client::{ProtocolRunnerConfiguration, ProtocolRunnerInstance};
 
 pub mod common;
 
-// TODO: reimplement with new async IPC architecture
 //#[ignore]
 //#[test]
 //#[serial]
@@ -35,7 +36,7 @@ pub mod common;
 //    let mut flags_readonly = test_data::init_flags_readonly(number_of_endpoints);
 //
 //    let context_db_path = PathBuf::from(common::prepare_empty_dir(
-//        "__shell_test_mutliple_protocol_runners",
+//        "__shell_test_multiple_protocol_runners",
 //    ));
 //
 //    let tokio_runtime = create_tokio_runtime();
@@ -383,49 +384,49 @@ pub mod common;
 //    Ok(())
 //}
 
-mod test_data {
-    use std::collections::HashMap;
-    use std::collections::VecDeque;
-
-    use lazy_static::lazy_static;
-    use rand::Rng;
-
-    use tezos_api::environment::{
-        default_networks, TezosEnvironment, TezosEnvironmentConfiguration,
-    };
-
-    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
-
-    lazy_static! {
-        pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> =
-            default_networks();
-    }
-
-    /// Initialize all to readonly true and one set randomly to as 'write/false'
-    pub fn init_flags_readonly(count: i32) -> VecDeque<bool> {
-        // initialize all to readonly true
-        let mut flags_readonly = VecDeque::new();
-
-        // and one set randomly to as 'write/false'
-        let mut rng = rand::thread_rng();
-        let rand_index = rng.gen_range(0, count);
-
-        for i in 0..count {
-            if rand_index == i {
-                flags_readonly.push_back(false);
-            } else {
-                flags_readonly.push_back(true);
-            }
-        }
-
-        assert_eq!(flags_readonly.len(), count as usize);
-        let mut count_false = 0;
-        for f in &flags_readonly {
-            if !f {
-                count_false += 1;
-            }
-        }
-        assert_eq!(count_false, 1);
-        flags_readonly
-    }
-}
+// mod test_data {
+//     use std::collections::HashMap;
+//     use std::collections::VecDeque;
+//
+//     use lazy_static::lazy_static;
+//     use rand::Rng;
+//
+//     use tezos_api::environment::{
+//         default_networks, TezosEnvironment, TezosEnvironmentConfiguration,
+//     };
+//
+//     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
+//
+//     lazy_static! {
+//         pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> =
+//             default_networks();
+//     }
+//
+//     /// Initialize all to readonly true and one set randomly to as 'write/false'
+//     pub fn init_flags_readonly(count: i32) -> VecDeque<bool> {
+//         // initialize all to readonly true
+//         let mut flags_readonly = VecDeque::new();
+//
+//         // and one set randomly to as 'write/false'
+//         let mut rng = rand::thread_rng();
+//         let rand_index = rng.gen_range(0, count);
+//
+//         for i in 0..count {
+//             if rand_index == i {
+//                 flags_readonly.push_back(false);
+//             } else {
+//                 flags_readonly.push_back(true);
+//             }
+//         }
+//
+//         assert_eq!(flags_readonly.len(), count as usize);
+//         let mut count_false = 0;
+//         for f in &flags_readonly {
+//             if !f {
+//                 count_false += 1;
+//             }
+//         }
+//         assert_eq!(count_false, 1);
+//         flags_readonly
+//     }
+// }

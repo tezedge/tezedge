@@ -80,7 +80,6 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -162,7 +161,6 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -283,7 +281,6 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), anyhow::Er
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -391,7 +388,6 @@ fn test_process_current_heads_to_level3() -> Result<(), anyhow::Error> {
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -484,7 +480,6 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Resu
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (false, false),
     )?;
 
     // register network channel listener
@@ -642,7 +637,6 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (true, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -862,7 +856,6 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), any
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        (true, true),
     )?;
 
     // wait for storage initialization to genesis

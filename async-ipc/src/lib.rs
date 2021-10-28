@@ -7,12 +7,12 @@
 //! The IPC is implemented as unix domain sockets. Functionality is similar to how network sockets work.
 //!
 
+use std::env;
 use std::fs;
 use std::iter;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
-use std::{env, thread};
+use std::time::Duration;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
@@ -21,34 +21,27 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::time::error::Elapsed;
 
 /// IPC communication errors
 #[derive(Debug, Error)]
 pub enum IpcError {
     #[error("Receive message length error: {reason}")]
     ReceiveMessageLengthError { reason: io::Error },
-    #[error("Failed to spawn thread: {reason}")]
-    ThreadError { reason: io::Error },
     #[error("Receive message error: {reason}")]
     ReceiveMessageError { reason: io::Error },
     #[error("Send error: {reason}")]
     SendError { reason: io::Error },
     #[error("Accept connection timed out, timout: {timeout:?}")]
     AcceptTimeout { timeout: Duration },
-    #[error("Receive message timed out - handle WouldBlock scenario if needed")]
-    ReceiveMessageTimeout,
-    #[error("Discard message timed out")]
-    DiscardMessageTimeout,
+    #[error("Receive message timed out after {elapsed}")]
+    ReceiveMessageTimeout { elapsed: Elapsed },
     #[error("Connection error: {reason}")]
     ConnectionError { reason: io::Error },
     #[error("Serialization error: {reason}")]
     SerializationError { reason: String },
     #[error("Deserialization error: {reason}")]
     DeserializationError { reason: String },
-    #[error("Split stream error: {reason}")]
-    SplitError { reason: io::Error },
-    #[error("Socker configuration error: {reason}")]
-    SocketConfigurationError { reason: io::Error },
     #[error("IPC error: {reason}")]
     OtherError { reason: String },
 }
@@ -61,8 +54,7 @@ impl<S> IpcSender<S> {
     ///
     /// This closes only the sending part of the IPC channel.
     async fn shutdown(&mut self) -> io::Result<()> {
-        self.0.shutdown().await?;
-        Ok(())
+        self.0.shutdown().await
     }
 }
 
@@ -89,6 +81,15 @@ impl<S: Serialize> IpcSender<S> {
     }
 }
 
+impl<S> Drop for IpcSender<S> {
+    fn drop(&mut self) {
+        if let Ok(tokio_runtime) = tokio::runtime::Handle::try_current() {
+            // We only do this shutdown if the runtime is available, otherwise there is nothing to do.
+            let _ = tokio::task::block_in_place(|| tokio_runtime.block_on(self.shutdown()).ok());
+        }
+    }
+}
+
 /// Represents receiving end of the IPC channel.
 pub struct IpcReceiver<R>(OwnedReadHalf, PhantomData<R>);
 
@@ -100,11 +101,11 @@ where
     /// In case of timeout, can be IpcError::ReceiveMessageTimeout handled
     ///
     /// `read_timeout` - set read timeout before receive
-    /// `reset_read_timeout` - set read timeout after receive
-    pub async fn try_receive(&mut self, read_timeout: Option<Duration>) -> Result<R, IpcError> {
-        // TODO: add timeouts
-        let receive_result = self.receive().await;
-        receive_result
+    pub async fn try_receive(&mut self, read_timeout: Duration) -> Result<R, IpcError> {
+        match tokio::time::timeout(read_timeout, self.receive()).await {
+            Ok(result) => result,
+            Err(elapsed) => Err(IpcError::ReceiveMessageTimeout { elapsed }),
+        }
     }
 
     /// Read bytes from established IPC channel and deserialize into a rust type.
@@ -181,25 +182,10 @@ where
         &mut self,
         timeout: Duration,
     ) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
-        // very simple retry logic
-        // TODO: revise this, timeout doesn't work like that in tokio
-        let deadline = Instant::now() + timeout;
-        let stream = loop {
-            match self.listener.accept().await {
-                Ok(connection) => break connection,
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    if deadline.checked_duration_since(Instant::now()).is_some() {
-                        // ok, lets retry
-                        thread::sleep(Duration::from_millis(50))
-                    } else {
-                        // deadline is over
-                        return Err(IpcError::AcceptTimeout { timeout });
-                    }
-                }
-                Err(e) => {
-                    return Err(IpcError::ConnectionError { reason: e });
-                }
-            }
+        let stream = match tokio::time::timeout(timeout, self.listener.accept()).await {
+            Ok(Ok(connection)) => connection,
+            Ok(Err(error)) => return Err(IpcError::ConnectionError { reason: error }),
+            Err(_) => return Err(IpcError::AcceptTimeout { timeout }),
         };
 
         split(stream.0)

@@ -168,9 +168,9 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
             predecessor: predecessor_hash,
             timestamp: block_header.timestamp(),
             validation_passes: block_header.validation_pass() as i32,
-            operations_hash: operations_hash,
+            operations_hash,
             fitness: block_header.fitness(),
-            context: context,
+            context,
         }
     }
 }
@@ -433,7 +433,7 @@ impl_to_ocaml_record! {
     ContextGetTreeByPrefixRequest => OCamlContextGetTreeByPrefixRequest {
         context_hash: OCamlContextHash,
         prefix: OCamlList<String>,
-        depth: Option<OCamlInt> => depth.clone().map(|depth| depth as i32),
+        depth: Option<OCamlInt> => (*depth).map(|depth| depth as i32),
     }
 }
 

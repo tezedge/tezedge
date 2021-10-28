@@ -45,7 +45,6 @@ pub struct MempoolPrevalidatorFactory {
     persistent_storage: PersistentStorage,
     current_mempool_state: CurrentMempoolStateStorageRef,
     tezos_protocol_api: Arc<ProtocolRunnerApi>,
-    tokio_runtime: tokio::runtime::Handle,
     /// Indicates if mempool is disabled to propagate to p2p
     pub p2p_disable_mempool: bool,
     mempool_thread_watchers: Arc<Mutex<HashMap<ActorUri, ThreadWatcher>>>,
@@ -58,7 +57,6 @@ impl MempoolPrevalidatorFactory {
         persistent_storage: PersistentStorage,
         current_mempool_state: CurrentMempoolStateStorageRef,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
-        tokio_runtime: &tokio::runtime::Handle,
         p2p_disable_mempool: bool,
     ) -> Self {
         Self {
@@ -67,7 +65,6 @@ impl MempoolPrevalidatorFactory {
             persistent_storage,
             current_mempool_state,
             tezos_protocol_api,
-            tokio_runtime: tokio_runtime.clone(),
             p2p_disable_mempool,
             mempool_thread_watchers: Arc::new(Mutex::new(Default::default())),
         }
@@ -115,7 +112,6 @@ impl MempoolPrevalidatorFactory {
                     self.current_mempool_state.clone(),
                     chain_id,
                     Arc::clone(&self.tezos_protocol_api),
-                    &self.tokio_runtime,
                     self.log.clone(),
                 )
                 .map_err(|e| MempoolPrevalidatorInitError::CreateError {

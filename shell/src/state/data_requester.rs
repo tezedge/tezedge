@@ -815,7 +815,6 @@ mod tests {
             chain_feeder_mock.clone(),
             storage.storage().clone(),
             tezos_protocol_api,
-            &tokio_runtime,
         )?);
 
         // requester instance
