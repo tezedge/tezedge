@@ -9,7 +9,7 @@
 //! use serde::{Serialize, Deserialize};
 //! #[derive(Serialize, Deserialize)]
 //! pub struct SomeAction {
-//!     #[serde(with = "io_error_kind::serde")]
+//!     #[serde(with = "shell_automaton::io_error_kind::serde")]
 //!     error: std::io::ErrorKind,
 //! }
 //! ```
