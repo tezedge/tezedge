@@ -110,13 +110,10 @@ where
     /// Read bytes from established IPC channel and deserialize into a rust type.
     pub async fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 4];
-        self.0.read_exact(&mut msg_len_buf).await.map_err(|err| {
-            if err.kind() == io::ErrorKind::WouldBlock {
-                IpcError::ReceiveMessageTimeout
-            } else {
-                IpcError::ReceiveMessageLengthError { reason: err }
-            }
-        })?;
+        self.0
+            .read_exact(&mut msg_len_buf)
+            .await
+            .map_err(|err| IpcError::ReceiveMessageLengthError { reason: err })?;
 
         let msg_len = i32::from_be_bytes(msg_len_buf) as usize;
 

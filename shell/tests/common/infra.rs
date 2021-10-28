@@ -10,14 +10,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use async_ipc::temp_sock;
 use slog::{info, warn, Level, Logger};
 use tezedge_actor_system::actors::*;
 use tezedge_actor_system::system::SystemBuilder;
-use tezos_messages::p2p::encoding::protocol::ProtocolMessage;
-use tezos_protocol_ipc_client::{
-    ProtocolRunnerApi, ProtocolRunnerConfiguration, ProtocolRunnerInstance,
-};
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
@@ -123,9 +119,8 @@ impl NodeInfrastructure {
         .expect("Failed to resolve init storage chain data");
 
         let tokio_runtime = create_tokio_runtime();
-        let socket_path = temp_sock();
 
-        let protocol_runner_instance = ProtocolRunnerInstance::spawn(
+        let mut tezos_protocol_api = ProtocolRunnerApi::new(
             ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: common::is_ocaml_log_enabled(),
@@ -138,22 +133,15 @@ impl NodeInfrastructure {
                 common::protocol_runner_executable_path(),
                 log_level,
             ),
-            &socket_path,
-            "writable-protocol-runner".to_string(),
             tokio_runtime.handle(),
             log.clone(),
-        )
-        .unwrap();
-        //let _child = protocol_runner_instance.spawn(log.clone()).unwrap();
+        );
 
         tokio_runtime
-            .block_on(protocol_runner_instance.wait_for_socket(None))
-            .expect("Timeout when waiting for protocol-runner to start listening for connections");
+            .block_on(tezos_protocol_api.start(None))
+            .expect("Failed to launch protocol runner");
 
-        let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
-            protocol_runner_instance,
-            tokio_runtime.handle(),
-        ));
+        let tezos_protocol_api = Arc::new(tezos_protocol_api);
 
         let current_mempool_state_storage = init_mempool_state_storage();
 

@@ -6,7 +6,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_ipc::temp_sock;
 use slog::{debug, error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
@@ -39,9 +38,7 @@ use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::Head;
-use tezos_protocol_ipc_client::{
-    ProtocolRunnerApi, ProtocolRunnerConfiguration, ProtocolRunnerInstance,
-};
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::configuration::Environment;
 use crate::notification_integration::RpcNotificationCallbackActor;
@@ -204,27 +201,17 @@ fn block_on_actors(
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
-    // TODO here: probably better to handle this logic elsewhere (in ProtocolRunnerApi)
-    let socket_path = temp_sock();
     let protocol_runner_configuration = create_protocol_runner_configuration(&env);
-    let protocol_runner_instance = ProtocolRunnerInstance::spawn(
+    let mut tezos_protocol_api = ProtocolRunnerApi::new(
         protocol_runner_configuration,
-        &socket_path,
-        "protocol-runner".into(),
         tokio_runtime.handle(),
         log.clone(),
-    )
-    .expect("Failed to launch protocol runner");
-
-    // Wait for protocol-runner to start listening
+    );
     tokio_runtime
-        .block_on(protocol_runner_instance.wait_for_socket(None))
-        .expect("Timeout when waiting for protocol-runner to start listening for connections");
+        .block_on(tezos_protocol_api.start(None))
+        .expect("Failed to launch protocol runner");
 
-    let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
-        protocol_runner_instance,
-        tokio_runtime.handle(),
-    ));
+    let tezos_protocol_api = Arc::new(tezos_protocol_api);
 
     // pool and event server dedicated for applying blocks to chain
     //    let tezos_writeable_api_pool = Arc::new(

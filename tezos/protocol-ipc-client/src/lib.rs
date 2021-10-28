@@ -93,6 +93,9 @@ pub struct ProtocolRunnerInstance {
     endpoint_name: String,
     tokio_runtime: tokio::runtime::Handle,
     child_process_handle: Option<Child>,
+    context_stats_db_path: Option<PathBuf>,
+    patch_context: Option<PatchContext>,
+    shutdown_issued: bool,
     log: Logger,
 }
 
@@ -105,67 +108,114 @@ impl Drop for ProtocolRunnerInstance {
 impl ProtocolRunnerInstance {
     pub const PROCESS_TERMINATE_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
-    pub fn without_spawn(
+    pub fn new(
         configuration: ProtocolRunnerConfiguration,
         socket_path: &Path,
         endpoint_name: String,
         tokio_runtime: &tokio::runtime::Handle,
         log: Logger,
-    ) -> Result<Self, ProtocolRunnerError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             configuration,
             socket_path: socket_path.to_path_buf(),
             endpoint_name,
             tokio_runtime: tokio_runtime.clone(),
             child_process_handle: None,
+            context_stats_db_path: None,
+            patch_context: None,
+            shutdown_issued: false,
             log,
-        })
+        }
     }
 
-    pub fn spawn(
-        configuration: ProtocolRunnerConfiguration,
-        socket_path: &Path,
-        endpoint_name: String,
-        tokio_runtime: &tokio::runtime::Handle,
-        log: Logger,
-    ) -> Result<Self, ProtocolRunnerError> {
+    /// Spawns the protocol runner process if it is not running already
+    pub fn spawn(&mut self) -> Result<(), ProtocolRunnerError> {
+        if self.child_process_handle.is_some() {
+            return Ok(());
+        }
+
+        // Remove the socket file so that [`Self::wait_for_socket`] doesn't
+        // prematurely find it before the protocol runner has started listening
+        std::fs::remove_file(&self.socket_path).ok();
+
         let ProtocolRunnerConfiguration {
             executable_path,
             log_level,
             ..
-        } = &configuration;
-        let child_process_handle = Some(Self::spawn_process(
+        } = &self.configuration;
+        self.child_process_handle = Some(Self::spawn_process(
             executable_path,
-            socket_path,
-            &endpoint_name,
+            &self.socket_path,
+            &self.endpoint_name,
             log_level,
-            log.clone(),
-            tokio_runtime,
+            self.log.clone(),
+            &self.tokio_runtime,
         )?);
+        self.shutdown_issued = false;
 
-        // TODO: duplicating stuff from configuration
-        Ok(Self {
-            configuration,
-            socket_path: socket_path.to_path_buf(),
-            endpoint_name,
-            tokio_runtime: tokio_runtime.clone(),
-            child_process_handle,
-            log,
-        })
+        Ok(())
     }
 
-    pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
-        // TODO: pool connections
+    /// Returns `true` if the protocol runner process is running
+    pub fn is_alive(&mut self) -> bool {
+        if let Some(child) = &mut self.child_process_handle {
+            let running = Self::is_running(child);
+
+            if !running {
+                self.child_process_handle = None
+            }
+
+            running
+        } else {
+            false
+        }
+    }
+
+    /// Obtain a writable connection to this protocol runner
+    pub async fn writable_connection(&mut self) -> Result<ProtocolRunnerConnection, IpcError> {
+        if self.shutdown_issued {
+            return Err(IpcError::OtherError {
+                reason: "Cannot get a connection to a protocol runner that has been shutdown".to_string(),
+            });
+        }
+
+        let must_initialize: bool;
+        if !self.is_alive() {
+            self.spawn().unwrap(); // TODO: remove unwrap
+            self.wait_for_socket(None).await.ok();
+            must_initialize = true;
+        } else {
+            must_initialize = false;
+        }
         let ipc_client = async_ipc::IpcClient::new(&self.socket_path);
         let (rx, tx) = ipc_client.connect().await?;
         let io = IpcIO { rx, tx };
 
-        Ok(ProtocolRunnerConnection {
+        let mut connection = ProtocolRunnerConnection {
             configuration: self.configuration.clone(),
             io,
-        })
+        };
+
+        if must_initialize {
+            connection
+                .init_protocol_for_write(
+                    false,
+                    &self.patch_context,
+                    self.context_stats_db_path.clone(),
+                )
+                .await
+                .map_err(|err| IpcError::OtherError {
+                    reason: format!(
+                        "Failed when re-initializing the protocol runner for writing, reason: {}",
+                        err
+                    ),
+                })?;
+        }
+
+        Ok(connection)
     }
 
+    /// Wait for socket to be ready (means that protocol-runner server started listening)
     pub async fn wait_for_socket(
         &self,
         timeout: Option<Duration>,
@@ -234,12 +284,12 @@ impl ProtocolRunnerInstance {
     }
 
     /// Checks if process is running
-    pub fn is_running(process: &mut tokio::process::Child) -> bool {
+    fn is_running(process: &mut tokio::process::Child) -> bool {
         matches!(process.try_wait(), Ok(None))
     }
 
     /// Logs exit status
-    pub fn log_exit_status(process: &mut tokio::process::Child, log: &Logger) {
+    fn log_exit_status(process: &mut tokio::process::Child, log: &Logger) {
         match process.try_wait() {
             Ok(None) => (),
             Ok(Some(status)) => {
@@ -257,6 +307,12 @@ impl ProtocolRunnerInstance {
     }
 
     pub fn shutdown(&mut self) {
+        if self.shutdown_issued || !self.is_alive() {
+            return;
+        }
+
+        self.shutdown_issued = true;
+
         let mut child_process_handle =
             if let Some(child) = std::mem::take(&mut self.child_process_handle) {
                 child
@@ -402,13 +458,31 @@ impl Drop for ProtocolRunnerApiShutdownGuard {
 
 impl ProtocolRunnerApi {
     pub fn new(
-        writable_instance: ProtocolRunnerInstance,
+        configuration: ProtocolRunnerConfiguration,
         tokio_runtime: &tokio::runtime::Handle,
+        log: Logger,
     ) -> Self {
+        let socket_path = async_ipc::temp_sock();
+        let writable_instance = ProtocolRunnerInstance::new(
+            configuration,
+            &socket_path,
+            "writable-protocol-runner".into(),
+            tokio_runtime,
+            log.clone(),
+        );
         Self {
             writable_instance: RwLock::new(writable_instance),
             tokio_runtime: tokio_runtime.clone(),
         }
+    }
+
+    pub async fn start(&mut self, timeout: Option<Duration>) -> Result<(), ProtocolRunnerError> {
+        let mut instance = self.writable_instance.write().await;
+
+        instance.spawn()?;
+        instance.wait_for_socket(timeout).await?;
+
+        Ok(())
     }
 
     pub async fn shutdown(&self) {
@@ -424,7 +498,7 @@ impl ProtocolRunnerApi {
     pub async fn writable_connection(&self) -> Result<ProtocolRunnerConnection, IpcError> {
         // TODO: pool connections
         self.writable_instance
-            .read()
+            .write()
             .await
             .writable_connection()
             .await
@@ -443,7 +517,8 @@ pub struct ProtocolRunnerConnection {
 
 macro_rules! handle_request {
     ($io:expr, $msg:ident $(($($arg:ident),+))?, $resp:ident($result:ident), $error:ident, $timeout:expr $(,)?) => {{
-        $io.send(&ProtocolMessage::$msg $(($($arg),+))?).await?;
+        let msg = ProtocolMessage::$msg $(($($arg),+))?;
+        $io.send(&msg).await?;
 
         match $io.try_receive($timeout).await? {
             NodeMessage::$resp($result) => {
@@ -782,16 +857,22 @@ impl ProtocolRunnerConnection {
         self.change_runtime_configuration(self.configuration.runtime_configuration.clone())
             .await?;
         let environment = self.configuration.environment.clone();
-        self.init_protocol_context(
-            self.configuration.storage.clone(),
-            &environment,
-            commit_genesis,
-            self.configuration.enable_testchain,
-            false,
-            patch_context.clone(),
-            context_stats_db_path,
-        )
-        .await
+        let result = self
+            .init_protocol_context(
+                self.configuration.storage.clone(),
+                &environment,
+                commit_genesis,
+                self.configuration.enable_testchain,
+                false,
+                patch_context.clone(),
+                context_stats_db_path,
+            )
+            .await?;
+
+        // Initialize the contexct IPC server to serve reads from readonly protocol runners
+        self.init_context_ipc_server().await?;
+
+        Ok(result)
     }
 
     /// Initialize protocol environment from default configuration (readonly).

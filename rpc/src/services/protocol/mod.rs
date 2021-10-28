@@ -596,18 +596,6 @@ pub(crate) async fn call_protocol_rpc_with_cache(
     let mut controller = env.tezos_protocol_api().readable_connection().await?;
     let result = controller.call_protocol_rpc(request).await;
 
-    // The protocol runner is considerable to be in an broken state
-    // if we get a timeout in a second call after which we got a timeout
-    // already. In that case we shut that protocol runner down.
-    //    let broken_protocol_runner = match &result {
-    //        Ok(_) => false,
-    //        Err(error) => error.is_ipc_timeout_chain(),
-    //    };
-    //
-    //    if broken_protocol_runner {
-    //        controller.set_release_on_return_to_pool();
-    //    }
-
     // TODO: retry on other errors?
 
     let response = result?;

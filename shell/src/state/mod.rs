@@ -185,7 +185,6 @@ pub mod tests {
         use std::sync::mpsc::{channel, Receiver};
         use std::sync::{Arc, Mutex};
 
-        use async_ipc::temp_sock;
         use futures::lock::Mutex as TokioMutex;
         use slog::{Drain, Level, Logger};
         use tezedge_actor_system::actors::*;
@@ -205,9 +204,7 @@ pub mod tests {
         use tezos_identity::Identity;
         use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
         use tezos_messages::Head;
-        use tezos_protocol_ipc_client::{
-            ProtocolRunnerApi, ProtocolRunnerConfiguration, ProtocolRunnerInstance,
-        };
+        use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
         use crate::chain_feeder;
         use crate::chain_manager::{ChainManager, ChainManagerRef};
@@ -403,7 +400,6 @@ pub mod tests {
                 enable_testchain: true,
                 patch_context_genesis_parameters: None,
             };
-            let socket_path = temp_sock();
             let storage = TezosContextStorageConfiguration::IrminOnly(
                 TezosContextIrminStorageConfiguration {
                     data_dir: prepare_empty_dir("create_tezos_readonly_api_pool_for_test"),
@@ -421,17 +417,11 @@ pub mod tests {
                 "we-dont-need-protocol-runner-here".into(),
                 slog::Level::Debug,
             );
-            let protocol_runner_instance = ProtocolRunnerInstance::without_spawn(
+
+            let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
                 protocol_runner_configuration,
-                &socket_path,
-                "protocol-runner-for-test".into(),
                 tokio_runtime.handle(),
                 log.clone(),
-            )
-            .unwrap();
-            let tezos_protocol_api = Arc::new(ProtocolRunnerApi::new(
-                protocol_runner_instance,
-                tokio_runtime.handle(),
             ));
 
             tezos_protocol_api

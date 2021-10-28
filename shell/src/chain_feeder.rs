@@ -15,8 +15,7 @@ use anyhow::{format_err, Error};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 use tezos_protocol_ipc_client::{
-    handle_protocol_service_error, ProtocolRunnerApi, ProtocolRunnerConnection,
-    ProtocolServiceError,
+    ProtocolRunnerApi, ProtocolRunnerConnection, ProtocolServiceError,
 };
 use thiserror::Error;
 
@@ -488,7 +487,6 @@ impl BlockApplierThreadSpawner {
                     let result = tokio_runtime.block_on(tezos_protocol_api.writable_connection());
                     match result {
                         Ok(mut protocol_controller) => match feed_chain_to_protocol(
-
                             &tezos_env,
                             &init_storage_data,
                             &apply_block_run,
@@ -1194,10 +1192,6 @@ pub(crate) fn initialize_protocol_context(
         &init_storage_data.patch_context,
         init_storage_data.context_stats_db_path.clone(),
     ))?;
-
-    // TODO - TE-261: what happens if this fails?
-    // Initialize the contexct IPC server to serve reads from readonly protocol runners
-    tokio_runtime.block_on(protocol_controller.init_context_ipc_server())?;
 
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info), "need_commit_genesis" => need_commit_genesis);
