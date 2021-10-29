@@ -65,7 +65,8 @@ pub(crate) mod bootstrap_constants {
 }
 
 pub enum BlockAcceptanceResult {
-    AcceptBlock,
+    /// bool - true, means it is exactly the same as current head
+    AcceptBlock(bool),
     IgnoreBlock,
     UnknownBranch,
     MutlipassValidationError(ProtocolServiceError),
@@ -178,7 +179,7 @@ impl BlockchainState {
 
         // same header means only mempool operations were changed
         if validation::is_same_head(current_head, validated_header)? {
-            return Ok(BlockAcceptanceResult::AcceptBlock);
+            return Ok(BlockAcceptanceResult::AcceptBlock(true));
         }
 
         // (future block)
@@ -211,7 +212,7 @@ impl BlockchainState {
                 api,
             ) {
                 Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
-                None => Ok(BlockAcceptanceResult::AcceptBlock),
+                None => Ok(BlockAcceptanceResult::AcceptBlock(false)),
             }
         } else {
             // if we came here, we dont know protocol to trigger validation
@@ -455,13 +456,15 @@ impl BlockchainState {
     /// Process block_header, stores/updates storages,
     /// schedules missing stuff to peer
     ///
-    /// Returns bool - true, if it is a new block or false for previosly stored
+    /// Returns:
+    ///     bool - true, if it is a new block or false for previosly stored
+    ///     bool - true, if it is already applied
     pub fn process_block_header_from_peer(
         &mut self,
         received_block: &BlockHeaderWithHash,
         log: &Logger,
         peer_id: &Arc<PeerId>,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<(bool, bool), StorageError> {
         // store block
         let is_new_block = self.block_storage.put_block_header(received_block)?;
 
@@ -488,7 +491,7 @@ impl BlockchainState {
             );
         }
 
-        Ok(is_new_block)
+        Ok((is_new_block, block_metadata.is_applied()))
     }
 
     /// Process block_header, stores/updates storages, schedules missing stuff

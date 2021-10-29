@@ -44,6 +44,19 @@ impl PeerId {
     }
 }
 
+impl Eq for PeerId {}
+impl PartialEq for PeerId {
+    fn eq(&self, other: &Self) -> bool {
+        self.peer_ref == other.peer_ref
+    }
+}
+impl std::hash::Hash for PeerId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        use tezedge_actor_system::actors::ActorReference;
+        self.peer_ref.uri().hash(state);
+    }
+}
+
 /// Local peer info
 pub struct LocalPeerInfo {
     /// port where remote node can establish new connection

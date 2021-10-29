@@ -43,16 +43,6 @@ impl PeerBranchSynchronizationDone {
 
 pub type SynchronizationBootstrapStateRef = Arc<RwLock<SynchronizationBootstrapState>>;
 
-/// Inits empty mempool state storage
-pub fn init_synchronization_bootstrap_state_storage(
-    num_of_peers_for_bootstrap_threshold: usize,
-) -> SynchronizationBootstrapStateRef {
-    Arc::new(RwLock::new(SynchronizationBootstrapState::new(
-        num_of_peers_for_bootstrap_threshold,
-        false,
-    )))
-}
-
 /// Manages bootstrap status based on number of bootstrapped peers
 pub struct SynchronizationBootstrapState {
     /// Indicates threshold for minimal count of bootstrapped peers to mark chain_manager as bootstrapped
