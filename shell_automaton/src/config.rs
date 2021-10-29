@@ -75,6 +75,11 @@ pub struct Config {
     /// Duration after which graylisted peer will timeout and be whitelisted.
     pub peers_graylist_timeout: Duration,
 
+    /// If `Some(interval)` record/persist state snapshots to storage
+    /// every `interval` actions.
+    /// If `None`, only persist initial state snapshot.
+    pub record_state_snapshots_with_interval: Option<u64>,
+
     /// Record/Persist actions.
     pub record_actions: bool,
 
@@ -123,6 +128,7 @@ pub fn default_config() -> Config {
         peers_graylist_disable: false,
         peers_graylist_timeout: Duration::from_secs(15 * 60),
 
+        record_state_snapshots_with_interval: None,
         record_actions: false,
 
         quota: Quota {
@@ -162,6 +168,7 @@ pub fn test_config() -> Config {
         peers_graylist_disable: false,
         peers_graylist_timeout: Duration::from_secs(15 * 60),
 
+        record_state_snapshots_with_interval: None,
         record_actions: false,
 
         quota: Quota {

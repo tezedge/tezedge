@@ -74,8 +74,12 @@ fn applied_actions_count_effects<S: Service>(
     store: &mut Store<State, S, Action>,
     _action: &ActionWithId<Action>,
 ) {
-    if store.state().applied_actions_count % 10000 == 0 {
-        save_state_snapshot(store);
+    let state = store.state();
+
+    if let Some(interval) = state.config.record_state_snapshots_with_interval {
+        if state.applied_actions_count % interval == 0 {
+            save_state_snapshot(store);
+        }
     }
 }
 

@@ -57,6 +57,7 @@ pub struct P2p {
     /// Randomness seed for [shell_automaton::ShellAutomaton].
     pub randomness_seed: Option<u64>,
 
+    pub record_shell_automaton_state_snapshots: bool,
     pub record_shell_automaton_actions: bool,
 }
 
@@ -173,6 +174,12 @@ impl ShellAutomatonManager {
             peers_graylist_disable: p2p_config.disable_peer_graylist,
             peers_graylist_timeout: Duration::from_secs(15 * 60),
 
+            record_state_snapshots_with_interval: match p2p_config
+                .record_shell_automaton_state_snapshots
+            {
+                true => Some(10_000),
+                false => None,
+            },
             record_actions: p2p_config.record_shell_automaton_actions,
 
             quota: shell_automaton::Quota {

@@ -621,6 +621,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
+        .arg(Arg::with_name("record-shell-automaton-state-snapshots")
+            .long("record-shell-automaton-state-snapshots")
+            .global(true)
+            .takes_value(false)
+            .help("Enable recording/persisting shell automaton state snapshots.")
+        )
         .arg(Arg::with_name("record-shell-automaton-actions")
             .long("record-shell-automaton-actions")
             .global(true)
@@ -1053,6 +1059,8 @@ impl Environment {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")
                 }),
+                record_shell_automaton_state_snapshots: args
+                    .is_present("record-shell-automaton-state-snapshots"),
                 record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
             },
             rpc: crate::configuration::Rpc {
