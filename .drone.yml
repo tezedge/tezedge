@@ -6598,8 +6598,8 @@ steps:
       - >
         drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file light_node/etc/tezedge/tezedge_drone.config
-        --identity-file light_node/etc/drone/identities/identity_2.json --rpc-port 8732
+        --config-file ./light_node/etc/tezedge/tezedge_drone.config
+        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
