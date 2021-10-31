@@ -12,7 +12,7 @@ use crate::{
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
     OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
-    OCamlValidateOperationRequest,
+    OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
 };
 
 use super::{
@@ -36,7 +36,7 @@ use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
     ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
     PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosRuntimeConfiguration,
-    ValidateOperationRequest,
+    TezosRuntimeLogLevel, ValidateOperationRequest,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
@@ -379,11 +379,20 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_variant! {
+    TezosRuntimeLogLevel => OCamlTezosRuntimeLogLevel {
+        TezosRuntimeLogLevel::App,
+        TezosRuntimeLogLevel::Error,
+        TezosRuntimeLogLevel::Warning,
+        TezosRuntimeLogLevel::Info,
+        TezosRuntimeLogLevel::Debug,
+    }
+}
+
 impl_to_ocaml_record! {
     TezosRuntimeConfiguration => OCamlTezosRuntimeConfiguration {
         log_enabled: bool,
-        debug_mode: bool,
-        compute_context_action_tree_hashes: bool,
+        log_level: Option<OCamlTezosRuntimeLogLevel>,
     }
 }
 

@@ -34,7 +34,7 @@ use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
 use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::{TezosRuntimeConfiguration, TezosRuntimeLogLevel};
 use tezos_context_api::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration,
@@ -122,8 +122,7 @@ impl NodeInfrastructure {
             ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: common::is_ocaml_log_enabled(),
-                    debug_mode: false,
-                    compute_context_action_tree_hashes: false,
+                    log_level: Some(TezosRuntimeLogLevel::Info),
                 },
                 tezos_env.clone(),
                 false,

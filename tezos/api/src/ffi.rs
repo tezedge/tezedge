@@ -42,12 +42,20 @@ pub struct TestChain {
     pub expiration_date: String,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum TezosRuntimeLogLevel {
+    App,
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
+
 /// Holds configuration for OCaml runtime - e.g. arguments which are passed to OCaml and can be change in runtime
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
-    pub debug_mode: bool,
-    pub compute_context_action_tree_hashes: bool,
+    pub log_level: Option<TezosRuntimeLogLevel>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Builder)]

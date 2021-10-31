@@ -78,6 +78,7 @@ pub struct OCamlGenesisChain {}
 pub struct OCamlProtocolOverrides {}
 pub struct OCamlPatchContext {}
 pub struct OCamlTezosRuntimeConfiguration {}
+pub struct OCamlTezosRuntimeLogLevel {}
 pub struct OCamlJsonEncodeApplyBlockResultMetadataParams {}
 pub struct OCamlJsonEncodeApplyBlockOperationsMetadataParams {}
 

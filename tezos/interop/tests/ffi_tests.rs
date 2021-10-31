@@ -8,6 +8,7 @@ use serial_test::serial;
 use tezos_api::environment::{self, TezosEnvironment};
 use tezos_api::ffi::{
     InitProtocolContextResult, ProtocolDataError, RustBytes, TezosRuntimeConfiguration,
+    TezosRuntimeLogLevel,
 };
 use tezos_context_api::{
     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
@@ -38,8 +39,7 @@ fn test_init_protocol_context() {
     // change cfg
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
         TezosRuntimeConfiguration {
-            debug_mode: false,
-            compute_context_action_tree_hashes: false,
+            log_level: Some(TezosRuntimeLogLevel::Info),
             log_enabled: common::is_ocaml_log_enabled(),
         },
     ))

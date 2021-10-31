@@ -196,7 +196,7 @@ pub mod tests {
         use shell_integration::OneshotResultCallback;
         use storage::{PersistentStorage, StorageInitInfo};
         use tezos_api::environment::*;
-        use tezos_api::ffi::TezosRuntimeConfiguration;
+        use tezos_api::ffi::{TezosRuntimeConfiguration, TezosRuntimeLogLevel};
         use tezos_context_api::{
             GenesisChain, ProtocolOverrides, TezosContextIrminStorageConfiguration,
             TezosContextStorageConfiguration,
@@ -405,8 +405,7 @@ pub mod tests {
             let protocol_runner_configuration = ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: false,
-                    debug_mode: false,
-                    compute_context_action_tree_hashes: false,
+                    log_level: Some(TezosRuntimeLogLevel::Info),
                 },
                 env.clone(),
                 env.enable_testchain,

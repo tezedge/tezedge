@@ -41,8 +41,7 @@ macro_rules! expect_response {
 fn bench_apply_first_three_block(_: &mut Bencher) {
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
         TezosRuntimeConfiguration {
-            debug_mode: false,
-            compute_context_action_tree_hashes: false,
+            log_level: None,
             log_enabled: common::is_ocaml_log_enabled(),
         },
     ))

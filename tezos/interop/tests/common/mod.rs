@@ -11,6 +11,7 @@ use tezos_api::environment::GenesisAdditionalData;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::InitProtocolContextResult;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::TezosRuntimeLogLevel;
 use tezos_context_api::TezosContextIrminStorageConfiguration;
 use tezos_context_api::TezosContextStorageConfiguration;
 use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
@@ -47,8 +48,7 @@ pub fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
         TezosRuntimeConfiguration {
-            debug_mode: false,
-            compute_context_action_tree_hashes: false,
+            log_level: Some(TezosRuntimeLogLevel::Info),
             log_enabled: is_ocaml_log_enabled(),
         },
     ))

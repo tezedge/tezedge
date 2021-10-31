@@ -36,6 +36,7 @@ use storage::{
 };
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::TezosRuntimeLogLevel;
 use tezos_identity::Identity;
 use tezos_messages::Head;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
@@ -75,8 +76,7 @@ fn create_protocol_runner_configuration(
     ProtocolRunnerConfiguration::new(
         TezosRuntimeConfiguration {
             log_enabled: env.logging.ocaml_log_enabled,
-            debug_mode: false,
-            compute_context_action_tree_hashes: false,
+            log_level: Some(TezosRuntimeLogLevel::Info),
         },
         env.tezos_network_config.clone(),
         env.enable_testchain,

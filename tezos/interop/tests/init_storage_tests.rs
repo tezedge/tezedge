@@ -7,7 +7,10 @@ use strum::IntoEnumIterator;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{default_networks, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration, TezosStorageInitError};
+use tezos_api::ffi::{
+    InitProtocolContextResult, TezosRuntimeConfiguration, TezosRuntimeLogLevel,
+    TezosStorageInitError,
+};
 use tezos_context_api::{
     PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
@@ -50,8 +53,7 @@ fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
     // init runtime and turn on/off ocaml logging
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
         TezosRuntimeConfiguration {
-            debug_mode: false,
-            compute_context_action_tree_hashes: false,
+            log_level: Some(TezosRuntimeLogLevel::Info),
             log_enabled: common::is_ocaml_log_enabled(),
         },
     ))
