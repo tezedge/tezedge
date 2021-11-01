@@ -185,6 +185,7 @@ steps:
     - cp ./target/release/sandbox drone-cache-old/
     - cp ./target/release/protocol-runner drone-cache-old/
     - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so drone-cache-old/
+    - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache-old/
     # - chown -R 1000:1000 drone-cache
 
 - name: rebuild-artifacts-cache
@@ -5921,7 +5922,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -6144,7 +6145,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -6644,7 +6645,7 @@ steps:
       - >
         drone-cache-old/light-node --protocol-runner drone-cache-old/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file ./light_node/etc/tezedge/tezedge_drone.config
+        --config-file drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
