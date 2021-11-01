@@ -1,9 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-mod storage_state;
-pub use storage_state::*;
+pub mod create;
 
-pub mod request;
-
-pub mod state_snapshot;
+mod storage_state_snapshot_state;
+pub use storage_state_snapshot_state::*;

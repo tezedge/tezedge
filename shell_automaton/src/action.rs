@@ -56,6 +56,11 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
     StorageRequestInitAction, StorageRequestPendingAction, StorageRequestSuccessAction,
+    StorageResponseReceivedAction,
+};
+use crate::storage::state_snapshot::create::{
+    StorageStateSnapshotCreateErrorAction, StorageStateSnapshotCreateInitAction,
+    StorageStateSnapshotCreatePendingAction, StorageStateSnapshotCreateSuccessAction,
 };
 
 pub use redux_rs::{ActionId, ActionWithId};
@@ -202,9 +207,15 @@ pub enum Action {
     StorageRequestCreate(StorageRequestCreateAction),
     StorageRequestInit(StorageRequestInitAction),
     StorageRequestPending(StorageRequestPendingAction),
+    StorageResponseReceived(StorageResponseReceivedAction),
     StorageRequestError(StorageRequestErrorAction),
     StorageRequestSuccess(StorageRequestSuccessAction),
     StorageRequestFinish(StorageRequestFinishAction),
+
+    StorageStateSnapshotCreateInit(StorageStateSnapshotCreateInitAction),
+    StorageStateSnapshotCreatePending(StorageStateSnapshotCreatePendingAction),
+    StorageStateSnapshotCreateError(StorageStateSnapshotCreateErrorAction),
+    StorageStateSnapshotCreateSuccess(StorageStateSnapshotCreateSuccessAction),
 }
 
 impl Action {

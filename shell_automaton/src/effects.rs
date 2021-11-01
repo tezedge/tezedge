@@ -6,7 +6,7 @@ use redux_rs::{ActionWithId, Store};
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
-use crate::{save_state_snapshot, Action, ActionId, State};
+use crate::{Action, ActionId, State};
 
 use crate::paused_loops::paused_loops_effects;
 
@@ -30,6 +30,9 @@ use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 
 use crate::storage::request::storage_request_effects;
+use crate::storage::state_snapshot::create::{
+    storage_state_snapshot_create_effects, StorageStateSnapshotCreateInitAction,
+};
 
 use crate::rpc::rpc_effects;
 
@@ -48,10 +51,10 @@ fn last_action_effects<S: Service>(
         return;
     }
 
-    let _ = store.service.storage().request_send(StorageRequest {
-        id: None,
-        payload: StorageRequestPayload::ActionPut(Box::new(action.clone())),
-    });
+    let _ = store.service.storage().request_send(StorageRequest::new(
+        None,
+        StorageRequestPayload::ActionPut(Box::new(action.clone())),
+    ));
 
     let prev_action = &store.state.get().prev_action;
 
@@ -59,26 +62,24 @@ fn last_action_effects<S: Service>(
         return;
     }
 
-    let _ = store.service.storage().request_send(StorageRequest {
-        id: None,
-        payload: StorageRequestPayload::ActionMetaUpdate {
+    let _ = store.service.storage().request_send(StorageRequest::new(
+        None,
+        StorageRequestPayload::ActionMetaUpdate {
             action_id: prev_action.id(),
             action_kind: prev_action.kind(),
 
             duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
         },
-    });
+    ));
 }
 
 fn applied_actions_count_effects<S: Service>(
     store: &mut Store<State, S, Action>,
-    _action: &ActionWithId<Action>,
+    action: &ActionWithId<Action>,
 ) {
-    let state = store.state();
-
-    if let Some(interval) = state.config.record_state_snapshots_with_interval {
-        if state.applied_actions_count % interval == 0 {
-            save_state_snapshot(store);
+    if !matches!(&action.action, Action::StorageStateSnapshotCreateInit(_)) {
+        if StorageStateSnapshotCreateInitAction::enabling_condition(store.state()) {
+            store.dispatch(StorageStateSnapshotCreateInitAction {}.into());
         }
     }
 }
@@ -114,6 +115,7 @@ pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionW
     peers_graylist_effects(store, action);
 
     storage_request_effects(store, action);
+    storage_state_snapshot_create_effects(store, action);
 
     actors_effects(store, action);
     rpc_effects(store, action);

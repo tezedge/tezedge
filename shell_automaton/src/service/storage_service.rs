@@ -16,7 +16,7 @@ use storage::shell_automaton_action_meta_storage::{
 };
 use storage::{
     PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
-    ShellAutomatonStateStorage, StorageError,
+    ShellAutomatonStateStorage,
 };
 
 use crate::request::RequestId;
@@ -40,11 +40,11 @@ type StorageWorkerRequester = ServiceWorkerRequester<StorageRequest, StorageResp
 type StorageWorkerResponder = ServiceWorkerResponder<StorageRequest, StorageResponse>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct StorageErrorTmp;
+pub struct StorageError(String);
 
-impl From<StorageError> for StorageErrorTmp {
-    fn from(_: StorageError) -> Self {
-        Self {}
+impl From<storage::StorageError> for StorageError {
+    fn from(err: storage::StorageError) -> Self {
+        Self(err.to_string())
     }
 }
 
@@ -70,35 +70,47 @@ pub enum StorageResponseSuccess {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseError {
-    StateSnapshotPutError(StorageErrorTmp),
-    ActionPutError(StorageErrorTmp),
-    ActionMetaUpdateError(StorageErrorTmp),
+    StateSnapshotPutError(ActionId, StorageError),
+    ActionPutError(StorageError),
+    ActionMetaUpdateError(StorageError),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequest {
     /// Identifier for the Request.
-    ///
-    /// If `None`, response won't be received about that request.
     pub id: Option<RequestId>,
     pub payload: StorageRequestPayload,
+    /// Subscribe for the result (StorageResponse).
+    ///
+    /// True by default if request **id** is `Some`.
+    pub subscribe: bool,
 }
 
 impl StorageRequest {
     pub fn new(id: Option<RequestId>, payload: StorageRequestPayload) -> Self {
-        Self { id, payload }
+        let subscribe = id.is_some();
+        Self {
+            id,
+            payload,
+            subscribe,
+        }
+    }
+
+    pub fn subscribe(mut self) -> Self {
+        self.subscribe = true;
+        self
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageResponse {
-    pub req_id: RequestId,
+    pub req_id: Option<RequestId>,
     pub result: Result<StorageResponseSuccess, StorageResponseError>,
 }
 
 impl StorageResponse {
     pub fn new(
-        req_id: RequestId,
+        req_id: Option<RequestId>,
         result: Result<StorageResponseSuccess, StorageResponseError>,
     ) -> Self {
         Self { req_id, result }
@@ -179,7 +191,7 @@ impl StorageServiceDefault {
                     snapshot_storage
                         .put(&last_action_id.into(), &*state)
                         .map(|_| StateSnapshotPutSuccess(last_action_id))
-                        .map_err(|err| StateSnapshotPutError(err.into()))
+                        .map_err(|err| StateSnapshotPutError(last_action_id, err.into()))
                 }
                 ActionPut(action) => action_storage
                     .put::<Action>(&action.id.into(), &action.action)
@@ -212,8 +224,8 @@ impl StorageServiceDefault {
                 }
             };
 
-            if let Some(req_id) = req.id {
-                let _ = channel.send(StorageResponse::new(req_id, result));
+            if req.subscribe {
+                let _ = channel.send(StorageResponse::new(req.id, result));
             }
 
             // Persist metas every 1 sec.
