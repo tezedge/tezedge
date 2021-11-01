@@ -152,7 +152,7 @@ impl ShellAutomatonManager {
 
         let events = MioInternalEventsContainer::with_capacity(1024);
 
-        let initial_state = shell_automaton::State::new(shell_automaton::Config {
+        let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 
             port: p2p_config.listener_port,
@@ -189,6 +189,8 @@ impl ShellAutomatonManager {
                 write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
             },
         });
+
+        initial_state.set_logger(log.clone());
 
         let shell_automaton = ShellAutomaton::new(initial_state, service, events);
 

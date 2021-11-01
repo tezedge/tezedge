@@ -39,7 +39,10 @@ impl ActionIdWithKind {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct State {
+    #[serde(skip)]
+    pub log: crate::Logger,
     pub config: Config,
+
     pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
@@ -55,6 +58,7 @@ pub struct State {
 impl State {
     pub fn new(config: Config) -> Self {
         Self {
+            log: Default::default(),
             config,
             peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
@@ -74,8 +78,15 @@ impl State {
         }
     }
 
+    pub fn set_logger<T>(&mut self, logger: T)
+    where
+        T: Into<crate::Logger>,
+    {
+        self.log = logger.into();
+    }
+
     #[inline(always)]
-    pub fn set_last_action(&mut self, action: &ActionWithId<Action>) {
+    pub(crate) fn set_last_action(&mut self, action: &ActionWithId<Action>) {
         let prev_action = std::mem::replace(
             &mut self.last_action,
             ActionIdWithKind {

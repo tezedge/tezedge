@@ -8,6 +8,7 @@ use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::{Action, ActionId, State};
 
+use crate::logger::logger_effects;
 use crate::paused_loops::paused_loops_effects;
 
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
@@ -35,13 +36,6 @@ use crate::storage::state_snapshot::create::{
 };
 
 use crate::rpc::rpc_effects;
-
-#[allow(unused)]
-fn log_effects<S: Service>(_store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
-    eprintln!("[+] Action: {}", action.action.as_ref());
-    // eprintln!("[+] Action: {:#?}", &action);
-    // eprintln!("[+] State: {:#?}\n", store.state());
-}
 
 fn last_action_effects<S: Service>(
     store: &mut Store<State, S, Action>,
@@ -86,7 +80,7 @@ fn applied_actions_count_effects<S: Service>(
 
 pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
     // these four effects must be first and in this order!
-    // log_effects(store, action);
+    logger_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
 

@@ -17,6 +17,9 @@ pub use action::{Action, ActionId, ActionKind, ActionWithId};
 pub mod config;
 pub use config::{Config, Quota};
 
+pub mod logger;
+pub use logger::Logger;
+
 mod state;
 pub use state::State;
 
