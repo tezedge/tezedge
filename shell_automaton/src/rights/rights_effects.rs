@@ -1,11 +1,18 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::TryInto, num::TryFromIntError, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    num::TryFromIntError,
+    time::Instant,
+};
 
-use crypto::blake2b::{self, Blake2bError};
-use redux_rs::{ActionWithMeta, Store};
-use slog::debug;
+use crypto::{
+    blake2b::{self, Blake2bError},
+    hash::HashBase58,
+};
+use slog::{error, trace, warn, FnValue};
 use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::base::{
     signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
@@ -14,75 +21,143 @@ use tezos_messages::base::{
 
 use crate::{
     rights::Delegate,
+    service::RpcService,
     storage::{
-        kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_eras, kv_cycle_meta,
+        kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_eras,
+        kv_cycle_meta::{self, CycleKey},
     },
-    Action, Service, State,
+    Action, ActionWithMeta, Service, Store,
 };
 
 use super::{
-    utils::get_cycle, EndorsingRights, EndorsingRightsRequest, ProtocolConstants,
-    RightsEndorsingRightsBlockHeaderReadyAction, RightsEndorsingRightsCalculateAction,
-    RightsEndorsingRightsCycleDataReadyAction, RightsEndorsingRightsCycleErasReadyAction,
-    RightsEndorsingRightsCycleReadyAction, RightsEndorsingRightsErrorAction,
-    RightsEndorsingRightsGetBlockHeaderAction, RightsEndorsingRightsGetCycleAction,
-    RightsEndorsingRightsGetCycleDataAction, RightsEndorsingRightsGetCycleErasAction,
-    RightsEndorsingRightsGetProtocolConstantsAction, RightsEndorsingRightsGetProtocolHashAction,
-    RightsEndorsingRightsProtocolConstantsReadyAction,
-    RightsEndorsingRightsProtocolHashReadyAction, RightsEndorsingRightsReadyAction,
-    RightsGetEndorsingRightsAction,
+    rights_actions::*,
+    utils::{get_cycle, Position},
+    EndorsingRights, EndorsingRightsRequest, EndorsingRightsRpcError, ProtocolConstants, Slot,
 };
 
-pub fn rights_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta<Action>)
+pub fn rights_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    let endorsing_rights_state = &store.state.get().rights.endorsing_rights;
+    let requests = &store.state.get().rights.requests;
+    let cache = &store.state.get().rights.cache;
+    let log = &store.state.get().log;
     match &action.action {
-        /*
-        Action::BlockApplied(BlockAppliedAction {
-            chain_id: _,
-            block,
-            is_bootstrapped,
-        }) => {
-            if *is_bootstrapped {
-                store.dispatch(
-                    RightsGetEndorsingRightsAction {
-                        key: EndorsingRightsKey {
-                            current_block_hash: block.hs block_header_with_hash.hash.clone(),
-                            level: None,
-                        },
-                    },
-                );
-            }
-        }
-        */
+        // Main entry action
         Action::RightsGetEndorsingRights(RightsGetEndorsingRightsAction { key }) => {
-            if let Some(EndorsingRightsRequest::Init { .. }) = endorsing_rights_state.get(key) {
-                store.dispatch(RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() });
+            if let Some((_, endorsing_rights)) = key
+                .level
+                .as_ref()
+                .and_then(|level| cache.endorsing_rights.get(level))
+                .cloned()
+            {
+                trace!(log, "Endorsing rights using cached"; "key" => FnValue(|_| format!("{:?}", key)));
+                store.dispatch(RightsEndorsingRightsReadyAction {
+                    key: key.clone(),
+                    endorsing_rights,
+                });
+                return;
+            }
+            match requests.get(key) {
+                Some(EndorsingRightsRequest::Init { .. }) => {
+                    trace!(log, "Endorsing rights request"; "key" => FnValue(|_| format!("{:?}", key)));
+                    for (key, state) in requests {
+                        match state {
+                            EndorsingRightsRequest::Init { .. }
+                            | EndorsingRightsRequest::Ready(_) => (),
+                            _ => {
+                                warn!(log, "Endorsing rights in pending state"; "key" => FnValue(|_| format!("{:?}", key)), "state" => FnValue(|_| state.as_ref()))
+                            }
+                        }
+                    }
+                    store.dispatch(RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() });
+                }
+                Some(EndorsingRightsRequest::Ready(endorsing_rights)) => {
+                    trace!(log, "Endorsing rights reusing ready request"; "key" => FnValue(|_| format!("{:?}", key)));
+                    let endorsing_rights = endorsing_rights.clone();
+                    store.dispatch(RightsEndorsingRightsReadyAction {
+                        key: key.clone(),
+                        endorsing_rights,
+                    });
+                }
+                _ => (),
             }
         }
+
+        // RPC actions
+        Action::RightsRpcEndorsingRightsGet(RightsRpcEndorsingRightsGetAction { key, .. }) => {
+            store.dispatch(RightsGetEndorsingRightsAction { key: key.clone() });
+        }
+        Action::RightsEndorsingRightsReady(RightsEndorsingRightsReadyAction {
+            endorsing_rights,
+            ..
+        }) => {
+            for rpc_id in store
+                .state
+                .get()
+                .rights
+                .rpc_requests
+                .iter()
+                .filter_map(
+                    |(rpc_id, req_key @ key)| if key == req_key { Some(rpc_id) } else { None },
+                )
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                match endorsing_rights
+                    .delegate_to_slots
+                    .iter()
+                    .map(|(delegate, slots)| {
+                        Ok((
+                            SignaturePublicKeyHash::try_from(delegate.clone())?,
+                            slots.clone(),
+                        ))
+                    })
+                    .collect::<Result<_, EndorsingRightsRpcError>>()
+                {
+                    Ok(endorsing_rights) => store.dispatch(RightsRpcEndorsingRightsReadyAction {
+                        rpc_id,
+                        endorsing_rights,
+                    }),
+
+                    Err(err) => store.dispatch(RightsRpcEndorsingRightsErrorAction {
+                        rpc_id,
+                        error: err.into(),
+                    }),
+                };
+                store.dispatch(RightsRpcEndorsingRightsPruneAction { rpc_id });
+            }
+        }
+        Action::RightsRpcEndorsingRightsReady(RightsRpcEndorsingRightsReadyAction {
+            rpc_id,
+            endorsing_rights,
+        }) => store
+            .service
+            .rpc()
+            .respond(*rpc_id, endorsing_rights.clone()),
+        Action::RightsRpcEndorsingRightsError(RightsRpcEndorsingRightsErrorAction {
+            rpc_id,
+            error,
+        }) => store.service.rpc().respond(*rpc_id, error.clone()),
 
         // get block header from kv store
         Action::RightsEndorsingRightsGetBlockHeader(
             RightsEndorsingRightsGetBlockHeaderAction { key },
         ) => {
-            if let Some(EndorsingRightsRequest::PendingBlockHeader { .. }) =
-                endorsing_rights_state.get(key)
-            {
-                store.dispatch(kv_block_header::StorageBlockHeaderGetAction {
-                    key: key.current_block_hash.clone().into(),
-                });
+            if let Some(EndorsingRightsRequest::PendingBlockHeader { .. }) = requests.get(key) {
+                store.dispatch(kv_block_header::StorageBlockHeaderGetAction::new(
+                    key.current_block_hash.clone(),
+                ));
             }
         }
         Action::StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction {
-            key,
+            key: HashBase58(key),
             value,
         }) => {
-            for key in endorsing_rights_state
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == &key.0 {
+                    if &rights_key.current_block_hash == key {
                         Some(rights_key)
                     } else {
                         None
@@ -98,13 +173,13 @@ where
             }
         }
         Action::StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction {
-            key,
+            key: HashBase58(key),
             error,
         }) => {
-            for key in endorsing_rights_state
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == &key.0 {
+                    if &rights_key.current_block_hash == key {
                         Some(rights_key)
                     } else {
                         None
@@ -122,9 +197,7 @@ where
         Action::RightsEndorsingRightsBlockHeaderReady(
             RightsEndorsingRightsBlockHeaderReadyAction { key, .. },
         ) => {
-            if let Some(EndorsingRightsRequest::BlockHeaderReady { .. }) =
-                endorsing_rights_state.get(key)
-            {
+            if let Some(EndorsingRightsRequest::BlockHeaderReady { .. }) = requests.get(key) {
                 store.dispatch(RightsEndorsingRightsGetProtocolHashAction { key: key.clone() });
             }
         }
@@ -133,9 +206,7 @@ where
         Action::RightsEndorsingRightsGetProtocolHash(
             RightsEndorsingRightsGetProtocolHashAction { key, .. },
         ) => {
-            if let Some(EndorsingRightsRequest::PendingProtocolHash { .. }) =
-                endorsing_rights_state.get(key)
-            {
+            if let Some(EndorsingRightsRequest::PendingProtocolHash { .. }) = requests.get(key) {
                 store.dispatch(
                     kv_block_additional_data::StorageBlockAdditionalDataGetAction::new(
                         key.current_block_hash.clone(),
@@ -144,12 +215,15 @@ where
             }
         }
         Action::StorageBlockAdditionalDataOk(
-            kv_block_additional_data::StorageBlockAdditionalDataOkAction { key, value },
+            kv_block_additional_data::StorageBlockAdditionalDataOkAction {
+                key: HashBase58(key),
+                value,
+            },
         ) => {
-            let rights_keys: Vec<_> = endorsing_rights_state
+            let rights_keys: Vec<_> = requests
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == &key.0 {
+                    if &rights_key.current_block_hash == key {
                         Some(rights_key)
                     } else {
                         None
@@ -165,12 +239,15 @@ where
             }
         }
         Action::StorageBlockAdditionalDataError(
-            kv_block_additional_data::StorageBlockAdditionalDataErrorAction { key, error },
+            kv_block_additional_data::StorageBlockAdditionalDataErrorAction {
+                key: HashBase58(key),
+                error,
+            },
         ) => {
-            for key in endorsing_rights_state
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == &key.0 {
+                    if &rights_key.current_block_hash == key {
                         Some(rights_key)
                     } else {
                         None
@@ -188,9 +265,7 @@ where
         Action::RightsEndorsingRightsProtocolHashReady(
             RightsEndorsingRightsProtocolHashReadyAction { key, .. },
         ) => {
-            if let Some(EndorsingRightsRequest::ProtocolHashReady { .. }) =
-                endorsing_rights_state.get(key)
-            {
+            if let Some(EndorsingRightsRequest::ProtocolHashReady { .. }) = requests.get(key) {
                 store
                     .dispatch(RightsEndorsingRightsGetProtocolConstantsAction { key: key.clone() });
             }
@@ -200,17 +275,18 @@ where
         Action::RightsEndorsingRightsGetProtocolConstants(
             RightsEndorsingRightsGetProtocolConstantsAction { key },
         ) => {
-            if let Some(EndorsingRightsRequest::PendingProtocolConstants {
-                proto_hash: data_proto_hash,
-                ..
-            }) = endorsing_rights_state.get(key)
+            if let Some(EndorsingRightsRequest::PendingProtocolConstants { proto_hash, .. }) =
+                requests.get(key)
             {
-                let key = data_proto_hash.clone();
+                let key = proto_hash.clone();
                 store.dispatch(kv_constants::StorageConstantsGetAction::new(key));
             }
         }
-        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction { key, value }) => {
-            for key in endorsing_rights_state
+        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction {
+            key: HashBase58(key),
+            value,
+        }) => {
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
                     if let EndorsingRightsRequest::PendingProtocolConstants {
@@ -218,7 +294,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == &key.0 {
+                        if data_proto_hash == key {
                             Some(rights_key)
                         } else {
                             None
@@ -246,8 +322,11 @@ where
                 }
             }
         }
-        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction { key, error }) => {
-            let rights_keys: Vec<_> = endorsing_rights_state
+        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction {
+            key: HashBase58(key),
+            error,
+        }) => {
+            let rights_keys: Vec<_> = requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
                     if let EndorsingRightsRequest::PendingProtocolConstants {
@@ -255,7 +334,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == &key.0 {
+                        if data_proto_hash == key {
                             Some(rights_key)
                         } else {
                             None
@@ -276,9 +355,7 @@ where
         Action::RightsEndorsingRightsProtocolConstantsReady(
             RightsEndorsingRightsProtocolConstantsReadyAction { key, .. },
         ) => {
-            if let Some(EndorsingRightsRequest::ProtocolConstantsReady { .. }) =
-                endorsing_rights_state.get(key)
-            {
+            if let Some(EndorsingRightsRequest::ProtocolConstantsReady { .. }) = requests.get(key) {
                 store.dispatch(RightsEndorsingRightsGetCycleErasAction { key: key.clone() });
             }
         }
@@ -287,25 +364,22 @@ where
         Action::RightsEndorsingRightsGetCycleEras(RightsEndorsingRightsGetCycleErasAction {
             key,
         }) => {
-            if let Some(EndorsingRightsRequest::PendingCycleEras {
-                proto_hash: data_proto_hash,
-                ..
-            }) = endorsing_rights_state.get(key)
+            if let Some(EndorsingRightsRequest::PendingCycleEras { proto_hash, .. }) =
+                requests.get(key)
             {
-                let key = data_proto_hash.clone();
+                let key = proto_hash.clone();
                 store.dispatch(kv_cycle_eras::StorageCycleErasGetAction::new(key));
             }
         }
-        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key, value }) => {
-            for key in endorsing_rights_state
+        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction {
+            key: HashBase58(key),
+            value,
+        }) => {
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let EndorsingRightsRequest::PendingCycleEras {
-                        proto_hash: data_proto_hash,
-                        ..
-                    } = request
-                    {
-                        if data_proto_hash == &key.0 {
+                    if let EndorsingRightsRequest::PendingCycleEras { proto_hash, .. } = request {
+                        if proto_hash == key {
                             Some(rights_key)
                         } else {
                             None
@@ -324,18 +398,14 @@ where
             }
         }
         Action::StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction {
-            key,
+            key: HashBase58(key),
             error,
         }) => {
-            for key in endorsing_rights_state
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let EndorsingRightsRequest::PendingCycleEras {
-                        proto_hash: data_proto_hash,
-                        ..
-                    } = request
-                    {
-                        if data_proto_hash == &key.0 {
+                    if let EndorsingRightsRequest::PendingCycleEras { proto_hash, .. } = request {
+                        if proto_hash == key {
                             Some(rights_key)
                         } else {
                             None
@@ -362,18 +432,18 @@ where
         // get cycle for the requested block
         Action::RightsEndorsingRightsGetCycle(RightsEndorsingRightsGetCycleAction { key }) => {
             if let Some(EndorsingRightsRequest::PendingCycle {
-                block_header: data_block_header,
-                cycle_eras: data_cycle_eras,
-                protocol_constants: data_protocol_constants,
+                block_header,
+                cycle_eras,
+                protocol_constants,
                 ..
-            }) = endorsing_rights_state.get(key)
+            }) = requests.get(key)
             {
-                let block_level = data_block_header.level();
+                let block_level = block_header.level();
                 let get_cycle = get_cycle(
                     block_level,
                     key.level,
-                    data_cycle_eras,
-                    data_protocol_constants.preserved_cycles,
+                    cycle_eras,
+                    protocol_constants.preserved_cycles,
                 );
                 match get_cycle {
                     Ok((cycle, position)) => {
@@ -394,8 +464,7 @@ where
             key,
             ..
         }) => {
-            if let Some(EndorsingRightsRequest::CycleReady { .. }) = endorsing_rights_state.get(key)
-            {
+            if let Some(EndorsingRightsRequest::CycleReady { .. }) = requests.get(key) {
                 store.dispatch(RightsEndorsingRightsGetCycleDataAction { key: key.clone() });
             }
         }
@@ -404,23 +473,21 @@ where
         Action::RightsEndorsingRightsGetCycleData(RightsEndorsingRightsGetCycleDataAction {
             key,
         }) => {
-            if let Some(EndorsingRightsRequest::PendingCycleData {
-                cycle: data_cycle, ..
-            }) = endorsing_rights_state.get(key)
+            if let Some(EndorsingRightsRequest::PendingCycleData { cycle, .. }) = requests.get(key)
             {
-                let key = *data_cycle;
+                let key = *cycle;
                 store.dispatch(kv_cycle_meta::StorageCycleMetaGetAction::new(key));
             }
         }
-        Action::StorageCycleMetaOk(kv_cycle_meta::StorageCycleMetaOkAction { key, value }) => {
-            for key in endorsing_rights_state
+        Action::StorageCycleMetaOk(kv_cycle_meta::StorageCycleMetaOkAction {
+            key: CycleKey(key),
+            value,
+        }) => {
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let EndorsingRightsRequest::PendingCycleData {
-                        cycle: data_cycle, ..
-                    } = request
-                    {
-                        if data_cycle == &key.0 {
+                    if let EndorsingRightsRequest::PendingCycleData { cycle, .. } = request {
+                        if cycle == key {
                             Some(rights_key)
                         } else {
                             None
@@ -439,17 +506,14 @@ where
             }
         }
         Action::StorageCycleMetaError(kv_cycle_meta::StorageCycleMetaErrorAction {
-            key,
+            key: CycleKey(key),
             error,
         }) => {
-            for key in endorsing_rights_state
+            for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let EndorsingRightsRequest::PendingCycleData {
-                        cycle: data_cycle, ..
-                    } = request
-                    {
-                        if data_cycle == &key.0 {
+                    if let EndorsingRightsRequest::PendingCycleData { cycle, .. } = request {
+                        if cycle == key {
                             Some(rights_key)
                         } else {
                             None
@@ -475,38 +539,35 @@ where
 
         Action::RightsEndorsingRightsCalculate(RightsEndorsingRightsCalculateAction { key }) => {
             if let Some(EndorsingRightsRequest::PendingRights {
-                cycle_data: in_cycle_data,
-                position: in_position,
-                protocol_constants: in_protocol_constants,
+                level,
+                cycle_data,
+                position,
+                protocol_constants,
                 start,
-            }) = endorsing_rights_state.get(key)
+            }) = requests.get(key)
             {
                 let prereq_dur = action.id.duration_since(*start);
 
                 let time = Instant::now();
                 let endorsing_rights =
-                    calculate_endorsing_rights(in_cycle_data, in_protocol_constants, *in_position);
+                    calculate_endorsing_rights(cycle_data, protocol_constants, *position);
                 let dur = Instant::now() - time;
 
                 match endorsing_rights {
-                    Ok(endorsing_rights) => {
+                    Ok((delegate_to_slots, slot_to_delegate)) => {
                         let log = &store.state.get().log;
-                        debug!(log, "Endorsing rights successfully calculated";
-                               "prerequisites duration" => prereq_dur.as_millis(),
-                               "duration" => dur.as_millis()
+                        trace!(log, "Endorsing rights successfully calculated";
+                               "prerequisites duration" => FnValue(|_| prereq_dur.as_millis()),
+                               "duration" => FnValue(|_| dur.as_millis())
                         );
-                        for (delegate, slots) in &endorsing_rights.delegate_to_slots {
-                            let pkh: SignaturePublicKeyHash = delegate.clone().try_into().unwrap();
-                            debug!(log, "Endorsing rights";
-                                   "pk" => delegate.to_string_representation(),
-                                   "pkh" => pkh.to_string_representation(),
-                                   "slots" => format!("{:?}", slots)
-                            );
-                        }
-
+                        let level = *level;
                         store.dispatch(RightsEndorsingRightsReadyAction {
                             key: key.clone(),
-                            endorsing_rights: endorsing_rights.clone(),
+                            endorsing_rights: EndorsingRights {
+                                level,
+                                slot_to_delegate,
+                                delegate_to_slots,
+                            },
                         });
                     }
                     Err(err) => {
@@ -518,6 +579,10 @@ where
                 }
             }
         }
+        Action::RightsEndorsingRightsError(RightsEndorsingRightsErrorAction { key, error }) => {
+            warn!(log, "Error getting endorsing rights"; "key" => format!("{:?}", key), "error" => error.to_string());
+        }
+
         _ => (),
     }
 }
@@ -543,8 +608,8 @@ impl From<TryFromIntError> for EndorsingRightsCalculationError {
 fn calculate_endorsing_rights(
     cycle_meta_data: &CycleData,
     constants: &ProtocolConstants,
-    cycle_position: i32,
-) -> Result<EndorsingRights, EndorsingRightsCalculationError> {
+    cycle_position: Position,
+) -> Result<(HashMap<Delegate, Vec<Slot>>, Vec<Delegate>), EndorsingRightsCalculationError> {
     // build a reverse map of rols so we have access in O(1)
     let mut rolls_map = HashMap::new();
 
@@ -567,10 +632,7 @@ fn calculate_endorsing_rights(
             .or_insert_with(|| Vec::new())
             .push(slot.try_into()?);
     }
-    Ok(EndorsingRights {
-        delegate_to_slots: endorser_to_slots,
-        slot_to_delegate: endorsers_slots,
-    })
+    Ok((endorser_to_slots, endorsers_slots))
 }
 
 /// Use tezos PRNG to collect all slots for each endorser by public key hash (for later ordering of endorsers)

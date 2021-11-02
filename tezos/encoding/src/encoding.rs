@@ -3,7 +3,7 @@
 
 //! Schema used for serialization and deserialization.
 
-use crypto::hash::{HashTrait, HashType};
+use crypto::hash::{HashBase58, HashTrait, HashType};
 use std::collections::HashMap;
 
 pub use tezos_encoding_derive::HasEncoding;
@@ -340,9 +340,13 @@ hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 hash_has_encoding!(Signature, SIGNATURE);
 
-/// Indicates that type has it's own ser/de schema, to be used with new derived schema.
-pub trait HasEncodingTest {
-    fn encoding_test() -> &'static Encoding;
+impl<H> HasEncoding for HashBase58<H>
+where
+    H: HasEncoding,
+{
+    fn encoding() -> &'static Encoding {
+        H::encoding()
+    }
 }
 
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    convert::TryInto,
     net::SocketAddr,
 };
 
@@ -10,9 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashBase58, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
+use tezos_messages::p2p::encoding::{
+    block_header::{BlockHeader, Level},
+    operation::Operation,
+};
 
-use crate::service::rpc_service::RpcId;
+use crate::{rights::Slot, service::rpc_service::RpcId, ActionWithMeta};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
@@ -45,6 +49,12 @@ pub struct MempoolState {
     pub last_predecessor_blocks: HashMap<HashBase58<BlockHash>, i32>,
 
     pub operation_stats: OperationsStats,
+
+    pub old_operations_state:
+        VecDeque<(Level, BTreeMap<HashBase58<OperationHash>, MempoolOperation>)>,
+    pub operations_state: BTreeMap<HashBase58<OperationHash>, MempoolOperation>,
+
+    pub latest_current_head: Option<BlockHash>,
 }
 
 impl MempoolState {
@@ -60,7 +70,7 @@ impl MempoolState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HeadState {
     pub(super) header: BlockHeader,
-    pub(super) hash: BlockHash,
+    pub hash: BlockHash,
     // operations included in the head already removed
     pub(super) ops_removed: bool,
     // prevalidator for the head is created
@@ -416,5 +426,119 @@ impl OperationKind {
 
     pub fn is_endorsement(&self) -> bool {
         matches!(self, Self::Endorsement | Self::EndorsementWithSlot)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolOperation {
+    pub block_timestamp: u64,
+    pub state: OperationState,
+    pub broadcast: bool,
+    pub protocol_data: Option<serde_json::Value>,
+    #[serde(flatten)]
+    pub times: HashMap<String, u64>,
+}
+
+impl MempoolOperation {
+    pub(super) fn received(mut block_timestamp: u64, action: &ActionWithMeta) -> Self {
+        let state = OperationState::ReceivedHash;
+        block_timestamp *= 1_000_000_000;
+        Self {
+            block_timestamp,
+            protocol_data: None,
+            state,
+            broadcast: false,
+            times: HashMap::from([(state.time_name(), action.time_as_nanos() - block_timestamp)]),
+        }
+    }
+
+    pub(super) fn decoded(
+        &self,
+        protocol_data: &serde_json::Value,
+        action: &ActionWithMeta,
+    ) -> Self {
+        let state = OperationState::Decoded;
+        let mut times = self.times.clone();
+        times.insert(
+            state.time_name(),
+            action.time_as_nanos() - self.block_timestamp,
+        );
+        Self {
+            times,
+            state,
+            protocol_data: Some(protocol_data.clone()),
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn next_state(&self, state: OperationState, action: &ActionWithMeta) -> Self {
+        let mut times = self.times.clone();
+        times.insert(
+            state.time_name(),
+            action.time_as_nanos() - self.block_timestamp,
+        );
+        Self {
+            times,
+            state,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn broadcast(&self, action: &ActionWithMeta) -> Self {
+        let mut times = self.times.clone();
+        if !self.broadcast {
+            times.insert(
+                "broadcast_time".to_string(),
+                action.time_as_nanos() - self.block_timestamp,
+            );
+        }
+        Self {
+            times,
+            broadcast: true,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn endorsement_slot(&self) -> Option<Slot> {
+        let contents = self
+            .protocol_data
+            .as_ref()?
+            .as_object()?
+            .get("contents")?
+            .as_array()?;
+        let contents_0 = if contents.len() == 1 {
+            contents.get(0)?.as_object()?
+        } else {
+            return None;
+        };
+        let slot_json = match contents_0.get("kind")?.as_str()? {
+            "endorsement_with_slot" => contents_0.get("slot")?,
+            _ => return None,
+        };
+        slot_json
+            .as_u64()
+            .and_then(|u| u.try_into().map_or(None, Some))
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum OperationState {
+    ReceivedHash,
+    ReceivedContents,
+    Decoded,
+    Prechecked,
+    Applied,
+
+    PrecheckRefused,
+    Refused,
+    BranchRefused,
+    BranchDelayed,
+}
+
+impl OperationState {
+    fn time_name(&self) -> String {
+        self.to_string() + "_time"
     }
 }

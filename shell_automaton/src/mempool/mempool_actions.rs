@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, OperationHash, OperationMetadataListListHash,
 };
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::{
     block_header::BlockHeader, mempool::Mempool, operation::Operation,
 };
@@ -21,7 +22,8 @@ use crate::{action::EnablingCondition, state::State};
 pub struct MempoolRecvDoneAction {
     pub address: SocketAddr,
     pub message: Mempool,
-    pub level: i32,
+    pub level: Level,
+    pub timestamp: i64,
 }
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {
@@ -253,6 +255,18 @@ impl EnablingCondition<State> for MempoolGetPendingOperationsAction {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolOperationDecodedAction {
+    pub operation: OperationHash,
+    pub protocol_data: serde_json::Value,
+}
+
+impl EnablingCondition<State> for MempoolOperationDecodedAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolFlushAction {}
 
@@ -281,6 +295,20 @@ impl EnablingCondition<State> for BlockAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;
+        true
+    }
+}
+
+// RPC
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolRpcEndorsementsStatusGetAction {
+    pub rpc_id: RpcId,
+    pub block_hash: Option<BlockHash>,
+}
+
+impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
