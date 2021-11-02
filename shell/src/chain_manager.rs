@@ -430,6 +430,9 @@ impl ChainManager {
                             .log()
                             .new(slog::o!("peer" => peer.peer_id.address.to_string()));
 
+                        if matches!(received.message.message(), PeerMessage::CurrentHead(_) | PeerMessage::Operation(_)) {
+                            return Ok(());
+                        }
                         match received.message.message() {
                             PeerMessage::CurrentBranch(message) => {
                                 peer.update_current_head_level(

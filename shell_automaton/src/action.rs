@@ -52,6 +52,11 @@ use crate::peers::graylist::{
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
 use crate::peers::remove::PeersRemoveAction;
+use crate::mempool::{
+    MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
+    MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
+    MempoolOperationInjectDoneAction,
+};
 
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
@@ -203,6 +208,14 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
+
+    MempoolRecvDone(MempoolRecvDoneAction),
+    MempoolGetOperations(MempoolGetOperationsAction),
+    MempoolGetOperationsPending(MempoolGetOperationsPendingAction),
+    MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
+    MempoolOperationInjectDone(MempoolOperationInjectDoneAction),
+    MempoolBroadcast(MempoolBroadcastAction),
+    MempoolBroadcastDone(MempoolBroadcastDoneAction),
 
     StorageRequestCreate(StorageRequestCreateAction),
     StorageRequestInit(StorageRequestInitAction),

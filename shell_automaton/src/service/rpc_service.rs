@@ -3,6 +3,11 @@
 
 use std::sync::Arc;
 
+use crypto::hash::OperationHash;
+use tezos_messages::p2p::encoding::operation::Operation;
+
+use tokio::sync::oneshot;
+
 use crate::State;
 
 use super::service_async_channel::{
@@ -18,7 +23,11 @@ pub trait RpcService {
 #[derive(Debug)]
 pub enum RpcResponse {
     GetCurrentGlobalState {
-        channel: tokio::sync::oneshot::Sender<State>,
+        channel: oneshot::Sender<State>,
+    },
+    InjectOperation {
+        operation_hash: OperationHash,
+        operation: Operation,
     },
 }
 
