@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
+bincode = "1.3"
 thiserror = "1.0"
 futures = { version = "0.3", features = ["thread-pool"] }
 hex = "0.4"
@@ -15,14 +16,26 @@ serde_json = "1.0"
 # local dependencies
 tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
+tezos_conv = { path = "../conv" }
 tezos_messages = { path = "../messages" }
 tezos_context = { path = "../context" }
+tezos_context_api = { path = "../context-api" }
+tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 crypto = { path = "../../crypto" }
 
 [dev-dependencies]
 crypto = { path = "../../crypto" }
+tezos_interop = { path = "../interop" }
 serial_test = "0.5"
 criterion = "0.3"
+anyhow = "1.0"
+assert-json-diff = "2"
+strum = "0.20"
+thiserror = "1.0"
+hex = "0.4"
+serde_json = "1.0"
+slog-async = "2.6"
+slog-term = "2.8"
 
 [[bench]]
 name = "interop_benchmark"

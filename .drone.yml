@@ -874,7 +874,7 @@ steps:
         echo "===> Block level $block"
       done
       '
-    - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
     # terminate the node gracefully and wait to allow `valgrind` dump data
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
@@ -973,6 +973,8 @@ name: corr/octez-python-tests-applied-to-tezedge-008-edo2
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _008
+  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
+  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
 
 steps:
 
@@ -1038,7 +1040,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
@@ -1051,7 +1053,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
@@ -1064,7 +1066,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
@@ -1077,7 +1079,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
@@ -1091,7 +1093,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
@@ -1105,7 +1107,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
@@ -1118,7 +1120,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
@@ -1131,7 +1133,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
@@ -1144,7 +1146,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
@@ -1157,7 +1159,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: basic-test
@@ -1173,7 +1175,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 - name: save-python-test-logs
@@ -1220,6 +1222,9 @@ name: corr/octez-python-tests-applied-to-tezedge-009-florence
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _009
+  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
+  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
+
 
 steps:
 
@@ -1284,7 +1289,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
@@ -1297,7 +1302,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
@@ -1310,7 +1315,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
@@ -1323,7 +1328,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
@@ -1337,7 +1342,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
@@ -1351,7 +1356,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
@@ -1364,7 +1369,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
@@ -1377,7 +1382,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
@@ -1390,7 +1395,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
@@ -1403,7 +1408,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: basic-test
@@ -1419,7 +1424,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 - name: save-python-test-logs
@@ -1466,6 +1471,8 @@ name: corr/octez-python-tests-applied-to-tezedge-alpha
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _alpha
+  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
+  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
 
 steps:
 
@@ -1532,7 +1539,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
@@ -1547,7 +1554,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
@@ -1562,7 +1569,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
@@ -1577,7 +1584,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
@@ -1593,7 +1600,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
@@ -1609,7 +1616,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
@@ -1624,7 +1631,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
@@ -1639,7 +1646,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
@@ -1654,7 +1661,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
@@ -1669,7 +1676,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: basic-test
@@ -1685,7 +1692,7 @@ steps:
   commands:
     - cd tezos-src/tezos/tests_python
     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 - name: save-python-test-logs
@@ -3391,6 +3398,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp drone-cache/build_files/protocol-runner /data/cache
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
@@ -3622,6 +3630,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -4075,6 +4084,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -4305,6 +4315,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat /data/cache/octez_ip1.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip2.txt | awk '{print $1 ","}')$(cat /data/cache/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -5597,6 +5608,10 @@ steps:
       - git reset --hard origin/$current_branch && git checkout $current_branch
       - branch=$(git status | grep "On branch")
       - echo "...running bench for git - $branch"
+      # Make sure the libtezos for this branch is downloaded
+      - touch /data/cache/tezedge/tezos/sys/build.rs
+      - cd /data/cache/tezedge/tezos/sys
+      - cargo build --release
       # message_benchmark - current
       - cd /data/cache/tezedge/tezos/messages
       - cargo bench --bench message_benchmark --no-run
@@ -6339,7 +6354,7 @@ steps:
           echo "===> Block level $block"
         done
         '
-      - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+      - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
       # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
       # convert `massif` output to human-readable form
@@ -6389,7 +6404,7 @@ steps:
           echo "===> Block level $block"
         done
         '
-      - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+      - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
       # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
       # convert `massif` output to human-readable form
@@ -6583,8 +6598,8 @@ steps:
       - >
         drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file light_node/etc/tezedge/tezedge_drone.config
-        --identity-file light_node/etc/drone/identities/identity_2.json --rpc-port 8732
+        --config-file ./light_node/etc/tezedge/tezedge_drone.config
+        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &

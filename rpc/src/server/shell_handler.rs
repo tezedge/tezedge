@@ -265,7 +265,7 @@ pub async fn context_raw_bytes(
     let depth = query.get_usize("depth");
 
     result_to_json_response(
-        base_services::get_context_raw_bytes(&chain_id, &block_hash, prefix, depth, &env),
+        base_services::get_context_raw_bytes(&chain_id, &block_hash, prefix, depth, &env).await,
         env.log(),
     )
 }
@@ -656,7 +656,8 @@ pub async fn preapply_operations(
             block_hash,
             rpc_request,
             &env,
-        ),
+        )
+        .await,
         env.log(),
     )
 }
@@ -676,7 +677,8 @@ pub async fn preapply_block(
 
     // launcher - we need the error from preapply
     result_to_json_response(
-        services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env),
+        services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env)
+            .await,
         env.log(),
     )
 }

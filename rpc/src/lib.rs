@@ -174,6 +174,7 @@ pub(crate) fn handle_rpc_service_error(error: RpcServiceError) -> ServiceResult 
         RpcServiceError::StorageError { error } => error_with_message(format!("{:?}", error)),
         RpcServiceError::InvalidParameters { reason } => error_with_message(reason),
         RpcServiceError::UnexpectedError { reason } => error_with_message(reason),
+        RpcServiceError::IpcError { reason } => error_with_message(format!("{:?}", reason)),
         RpcServiceError::NoDataFoundError { .. } => not_found(),
     }
 }

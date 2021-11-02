@@ -23,13 +23,11 @@ use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::Replay;
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
-use tezos_api::ffi::{
-    PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+use tezos_context_api::{
+    ContextKvStoreConfiguration, PatchContext, SupportedContextKeyValueStore,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
-use tezos_context::initializer::ContextKvStoreConfiguration;
-use tezos_context::kv_store::SupportedContextKeyValueStore;
-use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -101,7 +99,7 @@ impl Storage {
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context::kv_store::INMEM;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context_api::INMEM;
 
     const DEFAULT_MAINDB: &'static str = "rocksdb";
 
@@ -117,19 +115,10 @@ pub struct Identity {
 #[derive(Debug, Clone)]
 pub struct Ffi {
     pub protocol_runner: PathBuf,
-    pub tezos_readonly_api_pool: TezosApiConnectionPoolConfiguration,
-    pub tezos_readonly_prevalidation_api_pool: TezosApiConnectionPoolConfiguration,
-    pub tezos_without_context_api_pool: TezosApiConnectionPoolConfiguration,
     pub zcash_param: ZcashParams,
 }
 
 impl Ffi {
-    // These are used for parsing the command-line arguments, hence the
-    // "-" suffix for the non-empty versions.
-    const TEZOS_READONLY_API_POOL_DISCRIMINATOR: &'static str = "";
-    const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap-";
-    const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap-";
-
     pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
         "tezos/sys/lib_tezos/artifacts/sapling-spend.params";
     pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
@@ -694,51 +683,6 @@ pub fn tezos_app() -> App<'static, 'static> {
     app
 }
 
-fn pool_cfg(
-    args: &clap::ArgMatches,
-    pool_name_discriminator: &str,
-) -> TezosApiConnectionPoolConfiguration {
-    TezosApiConnectionPoolConfiguration {
-        min_connections: 0,
-        /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
-        max_connections: args
-            .value_of(&format!(
-                "ffi-{}pool-max-connections",
-                pool_name_discriminator
-            ))
-            .unwrap_or("10")
-            .parse::<u8>()
-            .expect("Provided value cannot be converted to number"),
-        connection_timeout: args
-            .value_of(&format!(
-                "ffi-{}pool-connection-timeout-in-secs",
-                pool_name_discriminator
-            ))
-            .unwrap_or("60")
-            .parse::<u16>()
-            .map(|seconds| Duration::from_secs(seconds as u64))
-            .expect("Provided value cannot be converted to number"),
-        max_lifetime: args
-            .value_of(&format!(
-                "ffi-{}pool-max-lifetime-in-secs",
-                pool_name_discriminator
-            ))
-            .unwrap_or("21600")
-            .parse::<u16>()
-            .map(|seconds| Duration::from_secs(seconds as u64))
-            .expect("Provided value cannot be converted to number"),
-        idle_timeout: args
-            .value_of(&format!(
-                "ffi-{}pool-idle-timeout-in-secs",
-                pool_name_discriminator
-            ))
-            .unwrap_or("1800")
-            .parse::<u16>()
-            .map(|seconds| Duration::from_secs(seconds as u64))
-            .expect("Provided value cannot be converted to number"),
-    }
-}
-
 fn resolve_tezos_network_config(
     args: &clap::ArgMatches,
 ) -> (TezosEnvironment, TezosEnvironmentConfiguration) {
@@ -940,9 +884,11 @@ impl Environment {
                     .expect("Provided value cannot be converted to number"),
             );
 
-            let mut options = fs_extra::dir::CopyOptions::default();
-            options.content_only = true;
-            options.overwrite = true;
+            let options = fs_extra::dir::CopyOptions {
+                content_only: true,
+                overwrite: true,
+                ..fs_extra::dir::CopyOptions::default()
+            };
 
             fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
 
@@ -1098,7 +1044,7 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
-                websocket_cfg: args.value_of("websocket-address").map_or(None, |address| {
+                websocket_cfg: args.value_of("websocket-address").and_then(|address| {
                     address.parse::<SocketAddr>().map_or(None, |socket_addrs| {
                         let max_connections = args
                             .value_of("websocket-max-connections")
@@ -1198,7 +1144,7 @@ impl Environment {
                 // TODO - TE-261: can this conversion be made prettier without `to_string_lossy`?
                 // Path for the socket that will be used for IPC access to the context
                 let context_ipc_socket_path =
-                    ipc::temp_sock().to_string_lossy().as_ref().to_owned();
+                    async_ipc::temp_sock().to_string_lossy().as_ref().to_owned();
 
                 let context_storage_configuration = match context_storage {
                     TezosContextStorageChoice::TezEdge => {
@@ -1305,18 +1251,6 @@ impl Environment {
             },
             ffi: Ffi {
                 protocol_runner,
-                tezos_readonly_api_pool: pool_cfg(
-                    &args,
-                    Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR,
-                ),
-                tezos_readonly_prevalidation_api_pool: pool_cfg(
-                    &args,
-                    Ffi::TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR,
-                ),
-                tezos_without_context_api_pool: pool_cfg(
-                    &args,
-                    Ffi::TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR,
-                ),
                 zcash_param: ZcashParams {
                     init_sapling_spend_params_file: args
                         .value_of("init-sapling-spend-params-file")

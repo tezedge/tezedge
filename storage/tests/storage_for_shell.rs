@@ -15,9 +15,10 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{
-    ApplyBlockResponse, CommitGenesisResult, ContextKvStoreConfiguration, GenesisChain,
-    ProtocolOverrides, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
+use tezos_context_api::{
+    ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_messages::p2p::binary_message::BinaryRead;

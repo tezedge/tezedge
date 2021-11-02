@@ -25,6 +25,7 @@ rusqlite = "0.25.1"
 cached = "0.23"
 bincode = "1.3"
 # local dependencies
+async_ipc = { path = "../async-ipc" }
 crypto = { path = "../crypto" }
 # TODO: once full integration is done, remove shell dependency from here
 shell = { path = "../shell" }
@@ -33,8 +34,9 @@ storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_timing = { path = "../tezos/timing" }
-tezos_wrapper = { path = "../tezos/wrapper" }
-tezos_context = { path = "../tezos/context" }
+tezos_context_api = { path = "../tezos/context-api" }
+tezos_context_ipc_client = { path = "../tezos/context-ipc-client" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 
 [dev-dependencies]
 assert-json-diff = { git = "https://github.com/tezedge/assert-json-diff.git", tag = "v2.0.1-public-diff-module" }

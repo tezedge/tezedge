@@ -1,0 +1,14 @@
+[package]
+name = "tezos_conv"
+version = "1.10.0"
+authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
+edition = "2018"
+
+[dependencies]
+ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
+# local dependencies
+tezos_api = { path = "../api" }
+tezos_context_api = { path = "../context-api" }
+tezos_messages = { path = "../messages" }
+tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
+crypto = { path = "../../crypto" }

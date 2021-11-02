@@ -5,8 +5,8 @@ use std::sync::{Arc, RwLock};
 
 use ipc::IpcError;
 use ocaml_interop::BoxRoot;
-pub use tezos_api::ffi::ContextKvStoreConfiguration;
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
+pub use tezos_context_api::ContextKvStoreConfiguration;
+use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
 use thiserror::Error;
 
 use crate::{kv_store::in_memory::InMemory, kv_store::readonly_ipc::ReadonlyIpcBackend};

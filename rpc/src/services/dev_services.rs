@@ -9,7 +9,6 @@
 use std::convert::TryFrom;
 use std::vec;
 
-use anyhow::bail;
 use crypto::hash::ContractKt1Hash;
 use serde::Serialize;
 use slog::Logger;
@@ -251,7 +250,7 @@ pub(crate) fn ensure_context_action_storage(
 }
 
 /// Retrieve blocks from database.
-pub(crate) fn get_blocks(
+pub(crate) async fn get_blocks(
     _chain_id: ChainId,
     block_hash: BlockHash,
     every_nth_level: Option<i32>,
@@ -265,22 +264,30 @@ pub(crate) fn get_blocks(
             .get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
         None => BlockStorage::new(env.persistent_storage())
             .get_multiple_with_json_data(&block_hash, limit),
-    }?
-    .into_iter()
-    .map(|(block_header, block_json_data)| {
+    }?;
+
+    // NOTE: using a single connection here, but could connect to multiple runners, worth it?
+    let mut connection = env.tezos_protocol_api().readable_connection().await?;
+
+    let mut result = Vec::with_capacity(blocks.len());
+
+    for (block_header, block_json_data) in blocks {
         if let Some(block_additional_data) = block_meta_storage.get_additional_data(&block_hash)? {
-            let response = env
-                .tezos_without_context_api()
-                .pool
-                .get()?
-                .api
+            let response = connection
                 .apply_block_result_metadata(
                     block_header.header.context().clone(),
                     block_json_data.block_header_proto_metadata_bytes,
                     block_additional_data.max_operations_ttl().into(),
                     block_additional_data.protocol_hash,
                     block_additional_data.next_protocol_hash,
-                )?;
+                )
+                .await;
+
+            let response = if let Ok(response) = response {
+                response
+            } else {
+                continue;
+            };
 
             let metadata: BlockMetadata = serde_json::from_str(&response).unwrap_or_default();
             let cycle_position = if let Some(level) = metadata.get("level") {
@@ -291,22 +298,15 @@ pub(crate) fn get_blocks(
                 None
             };
 
-            Ok(SlimBlockData {
+            result.push(SlimBlockData {
                 level: block_header.header.level(),
                 block_hash: block_header.hash.to_base58_check(),
                 timestamp: block_header.header.timestamp().to_string(),
                 cycle_position,
-            })
-        } else {
-            bail!(
-                "No additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            )
+            });
         }
-    })
-    .filter_map(Result::ok)
-    .collect::<Vec<SlimBlockData>>();
-    Ok(blocks)
+    }
+    Ok(result)
 }
 
 /// Struct to show in tezedge explorer to lower data flow

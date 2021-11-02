@@ -9,7 +9,7 @@ use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
 };
-use tezos_context::{context_key_owned, StringTreeObject};
+use tezos_context_api::{context_key_owned, StringTreeObject};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
@@ -72,6 +72,8 @@ pub(crate) async fn get_block_metadata(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockMetadata>, RpcServiceError> {
+    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
+
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
@@ -98,10 +100,11 @@ pub(crate) async fn get_block_metadata(
         &block_additional_data,
         env,
     )
+    .await
     .map(Arc::new)
 }
 
-fn convert_block_metadata(
+async fn convert_block_metadata(
     context_hash: ContextHash,
     block_header_proto_metadata_bytes: Vec<u8>,
     block_additional_data: &BlockAdditionalData,
@@ -109,10 +112,9 @@ fn convert_block_metadata(
 ) -> Result<BlockMetadata, RpcServiceError> {
     // TODO: TE-521 - rewrite encoding part to rust
     let response = env
-        .tezos_without_context_api()
-        .pool
-        .get()?
-        .api
+        .tezos_protocol_api()
+        .readable_connection()
+        .await?
         .apply_block_result_metadata(
             context_hash,
             block_header_proto_metadata_bytes,
@@ -120,6 +122,7 @@ fn convert_block_metadata(
             block_additional_data.protocol_hash.clone(),
             block_additional_data.next_protocol_hash.clone(),
         )
+        .await
         .map_err(|e| RpcServiceError::UnexpectedError {
             reason: format!("Failed to call ffi, reason: {}", e),
         })?;
@@ -140,6 +143,8 @@ pub(crate) async fn get_block_header(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockHeaderInfo>, RpcServiceError> {
+    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
+
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(&chain_id, &block_hash, persistent_storage) };
@@ -161,8 +166,8 @@ pub(crate) async fn get_block_header(
     let block_json_data = &block_header_with_json_data.1;
 
     Ok(Arc::new(BlockHeaderInfo::try_new(
-        &block_header,
-        &block_json_data,
+        block_header,
+        block_json_data,
         &block_additional_data,
         &chain_id,
     )?))
@@ -185,7 +190,7 @@ pub(crate) fn get_block_shell_header_or_fail(
         .and_then(|block_header| {
             BlockHeaderShellInfo::try_new(&block_header).map_err(RpcServiceError::from)
         })
-        .map(|block_header| Arc::new(block_header))
+        .map(Arc::new)
 }
 
 #[cached(
@@ -204,7 +209,7 @@ pub(crate) fn live_blocks(
 
     // get max_ttl for requested block
     let max_ttl: usize = crate::services::base_services::get_additional_data_or_fail(
-        &chain_id,
+        chain_id,
         &block_hash,
         env.persistent_storage(),
     )?
@@ -230,7 +235,7 @@ pub(crate) fn live_blocks(
     convert = "{(chain_id.clone(), block_hash.clone(), prefix.clone(), depth.clone())}",
     result = true
 )]
-pub(crate) fn get_context_raw_bytes(
+pub(crate) async fn get_context_raw_bytes(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     prefix: Option<String>,
@@ -250,6 +255,7 @@ pub(crate) fn get_context_raw_bytes(
     Ok(Arc::new(
         env.tezedge_context()
             .get_context_tree_by_prefix(&ctx_hash, key_prefix, depth)
+            .await
             .map_err(|e| RpcServiceError::UnexpectedError {
                 reason: format!("{}", e),
             })?,
@@ -319,6 +325,8 @@ pub(crate) async fn get_block_operations_metadata(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockOperations>, RpcServiceError> {
+    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
+
     // header + jsons
     let block_json_data = async {
         match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash) {
@@ -360,10 +368,11 @@ pub(crate) async fn get_block_operations_metadata(
         operations,
         env,
     )
+    .await
     .map(Arc::new)
 }
 
-fn convert_block_operations_metadata(
+async fn convert_block_operations_metadata(
     chain_id: ChainId,
     operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
     block_additional_data: &BlockAdditionalData,
@@ -372,10 +381,9 @@ fn convert_block_operations_metadata(
 ) -> Result<BlockOperations, RpcServiceError> {
     // TODO: TE-521 - rewrite encoding part to rust
     let response = env
-        .tezos_without_context_api()
-        .pool
-        .get()?
-        .api
+        .tezos_protocol_api()
+        .readable_connection()
+        .await?
         .apply_block_operations_metadata(
             chain_id,
             ApplyBlockRequest::convert_operations(operations),
@@ -383,6 +391,7 @@ fn convert_block_operations_metadata(
             block_additional_data.protocol_hash.clone(),
             block_additional_data.next_protocol_hash.clone(),
         )
+        .await
         .map_err(|e| RpcServiceError::UnexpectedError {
             reason: format!("Failed to call ffi, reason: {}", e),
         })?;
@@ -404,7 +413,7 @@ pub(crate) async fn get_block_operations_validation_pass(
     env: &RpcServiceEnvironment,
     validation_pass: usize,
 ) -> Result<Arc<BlockValidationPass>, RpcServiceError> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
+    let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         Ok(Arc::new(block_validation_pass.clone()))
     } else {
@@ -433,7 +442,7 @@ pub(crate) async fn get_block_operation(
     validation_pass: usize,
     operation_index: usize,
 ) -> Result<Arc<BlockOperation>, RpcServiceError> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
+    let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         if let Some(operation) = block_validation_pass.get(operation_index) {
             Ok(Arc::new(operation.clone()))
@@ -482,6 +491,8 @@ pub(crate) async fn get_block(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockInfo>, RpcServiceError> {
+    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
+
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
@@ -534,7 +545,7 @@ pub(crate) async fn get_block(
             .map(|x| hex::encode(&x))
             .collect(),
         context: block_header.header.context().to_base58_check(),
-        protocol_data: serde_json::from_str(&block_header_proto_json).unwrap_or_default(),
+        protocol_data: serde_json::from_str(block_header_proto_json).unwrap_or_default(),
     };
 
     // TODO: TE-521 - rewrite encoding part to rust - this two calls could be parallelized (once we have our encodings in rust)
@@ -543,14 +554,16 @@ pub(crate) async fn get_block(
         block_header_proto_metadata_bytes.clone(),
         &block_additional_data,
         env,
-    )?;
+    )
+    .await?;
     let block_operations = convert_block_operations_metadata(
         chain_id.clone(),
         operations_proto_metadata_bytes.clone(),
         &block_additional_data,
         operations,
         env,
-    )?;
+    )
+    .await?;
 
     Ok(Arc::new(BlockInfo::new(
         chain_id,
@@ -586,7 +599,7 @@ pub(crate) fn get_additional_data_or_fail(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockAdditionalData>, RpcServiceError> {
-    match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash) {
+    match BlockMetaStorage::new(persistent_storage).get_additional_data(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
@@ -610,7 +623,7 @@ pub(crate) fn get_raw_block_header_with_hash(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockHeaderWithHash>, RpcServiceError> {
-    match BlockStorage::new(persistent_storage).get(&block_hash) {
+    match BlockStorage::new(persistent_storage).get(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
@@ -635,7 +648,7 @@ pub(crate) fn get_block_with_json_data(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<(BlockHeaderWithHash, BlockJsonData)>, RpcServiceError> {
-    match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash) {
+    match BlockStorage::new(persistent_storage).get_with_json_data(block_hash) {
         Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(

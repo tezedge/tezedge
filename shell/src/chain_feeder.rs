@@ -14,6 +14,9 @@ use std::time::{Duration, Instant};
 use anyhow::{format_err, Error};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
+use tezos_protocol_ipc_client::{
+    ProtocolRunnerApi, ProtocolRunnerConnection, ProtocolServiceError,
+};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId};
@@ -34,8 +37,6 @@ use storage::{
 };
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
-use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
-use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
@@ -159,22 +160,27 @@ impl ChainFeeder {
     pub fn actor(
         sys: &impl ActorRefFactory,
         persistent_storage: PersistentStorage,
-        tezos_writeable_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
         initialize_context_result_callback: InitializeContextOneshotResultCallback,
     ) -> Result<(ChainFeederRef, ThreadWatcher), CreateError> {
+        let tokio_runtime = tezos_protocol_api.tokio_runtime.clone();
         // spawn inner thread
         let (block_applier_event_sender, block_applier_thread_watcher) =
             BlockApplierThreadSpawner::new(
                 persistent_storage,
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
-                tezos_writeable_api,
+                tezos_protocol_api,
                 log.clone(),
             )
-            .spawn_feeder_thread("chain-feedr-ctx".into(), initialize_context_result_callback)
+            .spawn_feeder_thread(
+                "chain-feedr-ctx".into(),
+                initialize_context_result_callback,
+                &tokio_runtime,
+            )
             .map_err(|e| {
                 warn!(log, "Failed to spawn chain feeder thread"; "reason" => format!("{}", e));
                 CreateError::Panicked
@@ -409,7 +415,7 @@ pub(crate) struct BlockApplierThreadSpawner {
     persistent_storage: PersistentStorage,
     init_storage_data: Arc<StorageInitInfo>,
     tezos_env: Arc<TezosEnvironmentConfiguration>,
-    tezos_writeable_api: Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
     log: Logger,
 }
 
@@ -418,12 +424,12 @@ impl BlockApplierThreadSpawner {
         persistent_storage: PersistentStorage,
         init_storage_data: Arc<StorageInitInfo>,
         tezos_env: Arc<TezosEnvironmentConfiguration>,
-        tezos_writeable_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         log: Logger,
     ) -> Self {
         Self {
             persistent_storage,
-            tezos_writeable_api,
+            tezos_protocol_api,
             init_storage_data,
             tezos_env,
             log,
@@ -435,6 +441,7 @@ impl BlockApplierThreadSpawner {
         &self,
         thread_name: String,
         initialize_context_result_callback: InitializeContextOneshotResultCallback,
+        tokio_runtime: &tokio::runtime::Handle,
     ) -> Result<(QueueSender<Event>, ThreadWatcher), anyhow::Error> {
         // spawn thread which processes event
         let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
@@ -452,7 +459,8 @@ impl BlockApplierThreadSpawner {
 
         let block_applier_thread = {
             let persistent_storage = self.persistent_storage.clone();
-            let tezos_writeable_api = self.tezos_writeable_api.clone();
+            let tezos_protocol_api = Arc::clone(&self.tezos_protocol_api);
+            let tokio_runtime = tokio_runtime.clone();
             let init_storage_data = self.init_storage_data.clone();
             let tezos_env = self.tezos_env.clone();
             let log = self.log.clone();
@@ -475,8 +483,9 @@ impl BlockApplierThreadSpawner {
 
                 while apply_block_run.load(Ordering::Acquire) {
                     info!(log, "Chain feeding starting");
-                    match tezos_writeable_api.pool.get() {
-                        Ok(protocol_controller) => match feed_chain_to_protocol(
+                    let result = tokio_runtime.block_on(tezos_protocol_api.writable_connection());
+                    match result {
+                        Ok(mut protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
                             &init_storage_data,
                             &apply_block_run,
@@ -488,19 +497,17 @@ impl BlockApplierThreadSpawner {
                             &cycle_meta_storage,
                             &cycle_eras_storage,
                             &constants_storage,
-                            &protocol_controller.api,
+                            &mut protocol_controller,
+                            &tokio_runtime,
                             &mut block_applier_event_receiver,
                             &mut initialize_context_result_callback,
                             &mut apply_block_request_to_retry,
                             &log,
                         ) {
                             Ok(()) => {
-                                protocol_controller.set_release_on_return_to_pool();
                                 debug!(log, "Feed chain to protocol finished")
                             }
                             Err(err) => {
-                                // this will restart protocol-runner on error
-                                protocol_controller.set_release_on_return_to_pool();
                                 if apply_block_run.load(Ordering::Acquire) {
                                     match &err {
                                         FeedChainError::InitializeContextError {reason} => {
@@ -519,7 +526,8 @@ impl BlockApplierThreadSpawner {
                             }
                         },
                         Err(err) => {
-                            warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err))
+                            warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err));
+                            panic!();
                         }
                     }
                 }
@@ -545,7 +553,8 @@ fn feed_chain_to_protocol(
     cycle_meta_storage: &CycleMetaStorage,
     cycle_eras_storage: &CycleErasStorage,
     constants_storage: &ConstantsStorage,
-    protocol_controller: &ProtocolController,
+    protocol_controller: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     initialize_context_result_callback: &mut Option<InitializeContextOneshotResultCallback>,
     apply_block_request_to_retry: &mut Option<(ApplyBlock, ChainFeederRef)>,
@@ -558,6 +567,7 @@ fn feed_chain_to_protocol(
         chain_meta_storage,
         operations_meta_storage,
         protocol_controller,
+        tokio_runtime,
         log,
         tezos_env,
         init_storage_data,
@@ -602,6 +612,7 @@ fn feed_chain_to_protocol(
             protocol_controller,
             replay_mode,
             apply_block_run,
+            tokio_runtime,
             log,
         )?;
     }
@@ -624,6 +635,7 @@ fn feed_chain_to_protocol(
                         protocol_controller,
                         replay_mode,
                         apply_block_run,
+                        tokio_runtime,
                         log,
                     )?;
                 }
@@ -652,9 +664,10 @@ fn _handle_apply_block_request(
     cycle_meta_storage: &CycleMetaStorage,
     cycle_eras_storage: &CycleErasStorage,
     constants_storage: &ConstantsStorage,
-    protocol_controller: &ProtocolController,
+    protocol_controller: &mut ProtocolRunnerConnection,
     replay_mode: bool,
     apply_block_run: &ThreadRunningStatus,
+    tokio_runtime: &tokio::runtime::Handle,
     log: &Logger,
 ) -> Result<(), RequiredContextRestartError> {
     // lets apply block batch
@@ -771,6 +784,7 @@ fn _handle_apply_block_request(
             constants_storage,
             protocol_controller,
             replay_mode,
+            tokio_runtime,
             log,
         ) {
             Ok(result) => {
@@ -809,12 +823,8 @@ fn _handle_apply_block_request(
                 // now we need to analyse error:
                 // 1. or if protocol_runner just failed (OOM killer, some unexpected ipc error, ...) and restart could be enougth
                 // 2. or if we need to stop the batch processing and report wrong batch without restarting
-                let need_to_restart_context = match &e {
-                    ApplyBlockBatchError::ProtocolServiceError { reason } => {
-                        reason.is_restart_required()
-                    }
-                    _ => false,
-                };
+                let need_to_restart_context =
+                    matches!(&e, ApplyBlockBatchError::ProtocolServiceError { .. });
 
                 // callback for handling failed batch
                 let handle_as_failed =
@@ -940,8 +950,9 @@ fn _apply_block(
     cycle_meta_storage: &CycleMetaStorage,
     cycle_eras_storage: &CycleErasStorage,
     constants_storage: &ConstantsStorage,
-    protocol_controller: &ProtocolController,
+    protocol_controller: &mut ProtocolRunnerConnection,
     replay_mode: bool,
+    tokio_runtime: &tokio::runtime::Handle,
     log: &Logger,
 ) -> Result<
     Option<(
@@ -964,7 +975,8 @@ fn _apply_block(
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result = protocol_controller.apply_block(block_request)?;
+    let apply_block_result =
+        tokio_runtime.block_on(protocol_controller.apply_block(block_request))?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
 
     if !apply_block_result.cycle_rolls_owner_snapshots.is_empty() {
@@ -1148,7 +1160,8 @@ pub(crate) fn initialize_protocol_context(
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
-    protocol_controller: &ProtocolController,
+    protocol_controller: &mut ProtocolRunnerConnection,
+    tokio_runtime: &tokio::runtime::Handle,
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
@@ -1168,15 +1181,11 @@ pub(crate) fn initialize_protocol_context(
 
     // initialize protocol context runtime
     let protocol_call_timer = Instant::now();
-    let context_init_info = protocol_controller.init_protocol_for_write(
+    let context_init_info = tokio_runtime.block_on(protocol_controller.init_protocol_for_write(
         need_commit_genesis,
         &init_storage_data.patch_context,
         init_storage_data.context_stats_db_path.clone(),
-    )?;
-
-    // TODO - TE-261: what happens if this fails?
-    // Initialize the contexct IPC server to serve reads from readonly protocol runners
-    protocol_controller.init_context_ipc_server()?;
+    ))?;
 
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info), "need_commit_genesis" => need_commit_genesis);
@@ -1198,7 +1207,8 @@ pub(crate) fn initialize_protocol_context(
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
             // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
-            let commit_data = protocol_controller.genesis_result_data(&genesis_context_hash)?;
+            let commit_data = tokio_runtime
+                .block_on(protocol_controller.genesis_result_data(&genesis_context_hash))?;
 
             // this, marks genesis block as applied
             let _ = store_commit_genesis_result(

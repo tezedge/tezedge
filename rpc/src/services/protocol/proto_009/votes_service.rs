@@ -6,21 +6,22 @@ use crypto::hash::ContextHash;
 use itertools::Itertools;
 
 use storage::num_from_slice;
-use tezos_context::context_key_owned;
+use tezos_context_api::context_key_owned;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_009::votes::VoteListings;
 
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::VotesError;
 
-pub fn get_votes_listings(
+pub async fn get_votes_listings(
     env: &RpcServiceEnvironment,
     context_hash: &ContextHash,
 ) -> Result<Option<serde_json::Value>, VotesError> {
     // filter out the listings data
     let mut listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))?
+        .get_key_values_by_prefix(context_hash, context_key_owned!("data/votes/listings"))
+        .await?
     {
         val
     } else {

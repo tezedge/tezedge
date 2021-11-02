@@ -1,8 +1,106 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
-pub mod ffi;
+// Cannot enable because of the call to `initialize_tezedge_ipc_callbacks`.
+// Once dynamic linking has been got rid of this can be re-enabled.
+//#![forbid(unsafe_code)]
+
+use std::sync::Once;
+
+use crypto::hash::ProtocolHash;
+use ocaml_interop::{OCamlRuntime, ToOCaml};
+use runtime::OCamlBlockPanic;
+use tezos_api::ffi::{ContextDataError, RustBytes, TezosErrorTrace};
+use tezos_conv::OCamlTezosErrorTrace;
+
+pub mod ipc_message_encoding;
+
+type TzResult<T> = Result<T, OCamlTezosErrorTrace>;
+
+mod tezos_ffi {
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
+
+    use crate::TzResult;
+
+    ocaml! {
+        pub fn ffi_server_loop(sock_cmd_path: String) -> TzResult<OCamlInt>;
+        pub fn ffi_apply_encoded_message(msg: OCamlBytes) -> Result<OCamlBytes, String>;
+        pub fn decode_context_data(
+            protocol_hash: OCamlBytes,
+            key: OCamlList<OCamlBytes>,
+            data: OCamlBytes
+        ) -> TzResult<Option<OCamlBytes>>;
+    }
+}
+
+pub fn decode_context_data(
+    protocol_hash: ProtocolHash,
+    key: Vec<String>,
+    data: RustBytes,
+) -> Result<Option<String>, ContextDataError> {
+    let protocol_hash: RustBytes = protocol_hash.into();
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let protocol_hash = protocol_hash.to_boxroot(rt);
+        let key_list = key.to_boxroot(rt);
+        let data = data.to_boxroot(rt);
+
+        let result = tezos_ffi::decode_context_data(rt, &protocol_hash, &key_list, &data);
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(decoded_data) => Ok(decoded_data.to_rust()),
+            Err(e) => Err(ContextDataError::from(e.to_rust::<TezosErrorTrace>())),
+        }
+    })
+    .unwrap_or_else(|p| {
+        Err(ContextDataError::DecodeError {
+            message: p.to_string(),
+        })
+    })
+}
+
+pub fn start_ipc_loop(
+    sock_cmd_path: String,
+) -> Result<Result<i64, TezosErrorTrace>, OCamlBlockPanic> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let sock_cmd_path = sock_cmd_path.to_boxroot(rt);
+        tezos_ffi::ffi_server_loop(rt, &sock_cmd_path).to_rust(rt)
+    })
+}
+
+pub fn apply_encoded_message(
+    msg: tezos_protocol_ipc_messages::ProtocolMessage,
+) -> Result<tezos_protocol_ipc_messages::NodeMessage, String> {
+    let encoded_msg = bincode::serialize(&msg).unwrap();
+
+    let result: Result<Vec<u8>, String> = runtime::execute(move |rt: &mut OCamlRuntime| {
+        let encoded_msg = encoded_msg.to_boxroot(rt);
+        let result = tezos_ffi::ffi_apply_encoded_message(rt, &encoded_msg);
+        result.to_rust(rt)
+    })
+    .unwrap();
+
+    result.map(|bytes| bincode::deserialize(&bytes).unwrap())
+}
+
+/// Initializes the ocaml runtime and the tezos-ffi callback mechanism.
+fn setup() -> OCamlRuntime {
+    static INIT: Once = Once::new();
+    let ocaml_runtime = OCamlRuntime::init();
+
+    INIT.call_once(|| {
+        force_libtezos_linking();
+        tezos_context::ffi::initialize_callbacks();
+        ipc_message_encoding::initialize_callbacks();
+    });
+
+    ocaml_runtime
+}
+
+pub fn shutdown() {
+    runtime::shutdown()
+}
+
 /// This modules will allow you to call OCaml code:
 ///
 /// ```ocaml

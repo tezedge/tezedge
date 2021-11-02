@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #![forbid(unsafe_code)]
-#![feature(allocator_api)]
 
 use std::path::Path;
 use std::sync::Arc;
@@ -14,19 +13,17 @@ use std::{
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
+use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
 use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
 };
-use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_api::{
-    environment::{
-        get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
-    },
-    ffi::TezosContextStorageConfiguration,
+use tezos_api::environment::{
+    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;

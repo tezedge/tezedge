@@ -3,18 +3,22 @@ cargo-features = ["named-profiles"]
 [workspace]
 members = [
     "ipc",
+    "async-ipc",
     "logging",
     "crypto",
     "tezos/sys",
     "tezos/api",
+    "tezos/conv",
     "tezos/messages",
     "tezos/identity",
     "tezos/interop",
     "tezos/encoding",
     "tezos/encoding-derive",
-    "tezos/client",
-    "tezos/wrapper",
     "tezos/context",
+    "tezos/context-api",
+    "tezos/context-ipc-client",
+    "tezos/protocol-ipc-client",
+    "tezos/protocol-ipc-messages",
     "tezos/spsc",
     "tezos/timing",
     "tezos/lib_storage_ffi",
@@ -43,7 +47,6 @@ members = [
 [patch.crates-io]
 ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }
 librocksdb-sys = { git = "https://github.com/tezedge/rust-rocksdb.git", tag = "tezedge-v0.17.0-1" }
-
 
 [profile.fuzz]
 inherits = "release"

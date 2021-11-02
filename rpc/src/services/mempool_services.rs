@@ -220,15 +220,17 @@ pub async fn inject_operation(
         Box::new(BlockMetaStorage::new(persistent_storage));
 
     // do prevalidation before add the operation to mempool
+    let mut connection = env.tezos_protocol_api().readable_connection().await?;
     let result = validation::prevalidate_operation(
         &chain_id,
         &operation_hash,
         &operation,
         env.current_mempool_state_storage(),
-        &env.tezos_readonly_prevalidation_api().pool.get()?.api,
+        &mut connection,
         &block_storage,
         &block_meta_storage,
     )
+    .await
     .map_err(|e| RpcServiceError::UnexpectedError {
         reason: format!("{}", e),
     })?;
@@ -373,12 +375,11 @@ pub async fn inject_block(
 
     // compute the paths for each validation passes
     let paths = if let Some(vps) = validation_passes.as_ref() {
-        let response = env
-            .tezos_without_context_api()
-            .pool
-            .get()?
-            .api
+        let mut connection = env.tezos_protocol_api().readable_connection().await?;
+
+        let response = connection
             .compute_path(vps.try_into()?)
+            .await
             .map_err(|e| RpcServiceError::UnexpectedError {
                 reason: format!("{}", e),
             })?;

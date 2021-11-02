@@ -36,11 +36,10 @@ use storage::{
 };
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::TezosRuntimeLogLevel;
 use tezos_identity::Identity;
 use tezos_messages::Head;
-use tezos_wrapper::ProtocolEndpointConfiguration;
-use tezos_wrapper::TezosApiConnectionPoolError;
-use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::configuration::Environment;
 use crate::notification_integration::RpcNotificationCallbackActor;
@@ -71,96 +70,19 @@ fn create_tokio_runtime(
     builder.build()
 }
 
-/// Create pool for ffi protocol runner connections (used just for readonly context)
-/// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
-fn create_tezos_readonly_api_pool(
-    pool_name: &str,
-    pool_cfg: TezosApiConnectionPoolConfiguration,
+fn create_protocol_runner_configuration(
     env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_with_readonly_context(
-        String::from(pool_name),
-        pool_cfg,
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                debug_mode: false,
-                compute_context_action_tree_hashes: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.readonly(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
-    )
-}
-
-/// Create pool for ffi protocol runner connections (used just for ffi calls which does not need context)
-/// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
-fn create_tezos_without_context_api_pool(
-    pool_name: &str,
-    pool_cfg: TezosApiConnectionPoolConfiguration,
-    env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_without_context(
-        String::from(pool_name),
-        pool_cfg,
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                debug_mode: false,
-                compute_context_action_tree_hashes: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.clone(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
-    )
-}
-
-/// Create pool for ffi protocol runner connection (used for write to context)
-/// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
-fn create_tezos_writeable_api_pool(
-    env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_without_context(
-        String::from("tezos_writeable_api_pool"),
-        TezosApiConnectionPoolConfiguration {
-            // TODO: hard-coded, not used, make as Optional
-            idle_timeout: Duration::from_secs(1800),
-            // TODO: hard-coded, not used, make as Optional
-            max_lifetime: Duration::from_secs(21600),
-            connection_timeout: Duration::from_secs(30),
-            min_connections: 0,
-            max_connections: 1,
+) -> ProtocolRunnerConfiguration {
+    ProtocolRunnerConfiguration::new(
+        TezosRuntimeConfiguration {
+            log_enabled: env.logging.ocaml_log_enabled,
+            log_level: Some(TezosRuntimeLogLevel::Info),
         },
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
-                debug_mode: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.clone(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
+        env.tezos_network_config.clone(),
+        env.enable_testchain,
+        env.storage.context_storage_configuration.clone(),
+        env.ffi.protocol_runner.clone(),
+        env.logging.slog.level,
     )
 }
 
@@ -186,45 +108,19 @@ fn block_on_actors(
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
-    // pool and event server dedicated for applying blocks to chain
-    let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(&env, tokio_runtime.handle().clone(), log.clone())
-            .expect("Failed to initialize writable API pool"),
+    let protocol_runner_configuration = create_protocol_runner_configuration(&env);
+    let mut tezos_protocol_api = ProtocolRunnerApi::new(
+        protocol_runner_configuration,
+        tokio_runtime.handle(),
+        log.clone(),
     );
-
-    // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api_pool = Arc::new(
-        create_tezos_readonly_api_pool(
-            "tezos_readonly_api_pool",
-            env.ffi.tezos_readonly_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize read-only API pool"),
-    );
-    let tezos_readonly_prevalidation_api_pool = Arc::new(
-        create_tezos_readonly_api_pool(
-            "tezos_readonly_prevalidation_api",
-            env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize read-only prevalidation API pool"),
-    );
-    let tezos_without_context_api_pool = Arc::new(
-        create_tezos_without_context_api_pool(
-            "tezos_without_context_api_pool",
-            env.ffi.tezos_without_context_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize API pool without context"),
-    );
+    tokio_runtime
+        .block_on(tezos_protocol_api.start(None))
+        .expect("Failed to launch protocol runner");
 
     info!(log, "Protocol runners initialized");
+
+    let tezos_protocol_api = Arc::new(tezos_protocol_api);
 
     info!(log, "Initializing actors... (5/8)";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
@@ -265,7 +161,7 @@ fn block_on_actors(
         log.clone(),
         persistent_storage.clone(),
         current_mempool_state_storage.clone(),
-        tezos_readonly_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         env.p2p.disable_mempool,
     ));
 
@@ -277,7 +173,7 @@ fn block_on_actors(
     let (block_applier, mut block_applier_thread_watcher) = ChainFeeder::actor(
         actor_system.as_ref(),
         persistent_storage.clone(),
-        tezos_writeable_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         init_storage_data.clone(),
         env.tezos_network_config.clone(),
         log.clone(),
@@ -333,7 +229,7 @@ fn block_on_actors(
         network_channel.clone(),
         shell_channel.clone(),
         persistent_storage.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         init_storage_data.clone(),
         is_sandbox,
         hydrated_current_head,
@@ -365,9 +261,7 @@ fn block_on_actors(
         tokio_runtime.handle().clone(),
         &persistent_storage,
         current_mempool_state_storage,
-        tezos_readonly_api_pool.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
-        tezos_without_context_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         env.tezos_network_config,
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
@@ -406,7 +300,7 @@ fn block_on_actors(
     }
 
     if let Some(blocks) = blocks_replay.take() {
-        return schedule_replay_blocks(
+        schedule_replay_blocks(
             blocks,
             &init_storage_data,
             chain_manager,
@@ -415,6 +309,8 @@ fn block_on_actors(
             shell_channel,
             log.clone(),
         );
+        tokio_runtime.block_on(tezos_protocol_api.shutdown());
+        return;
     } else {
         // TODO: TE-386 - controlled startup
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -542,11 +438,8 @@ fn block_on_actors(
         }
         info!(log, "Thread workers stopped");
 
-        info!(log, "Shutting down protocol runner pools (6/8)");
-        drop(tezos_readonly_api_pool);
-        drop(tezos_readonly_prevalidation_api_pool);
-        drop(tezos_without_context_api_pool);
-        drop(tezos_writeable_api_pool);
+        info!(log, "Shutting down protocol runners (6/8)");
+        tezos_protocol_api.shutdown().await;
         debug!(log, "Protocol runners completed");
 
         info!(log, "Flushing databases (7/8)");

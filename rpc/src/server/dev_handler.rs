@@ -53,7 +53,7 @@ pub async fn dev_blocks(
     let limit = query.get_usize("limit").unwrap_or(50);
 
     result_to_json_response(
-        dev_services::get_blocks(chain_id, from_block_id, every_nth_level, limit, &env),
+        dev_services::get_blocks(chain_id, from_block_id, every_nth_level, limit, &env).await,
         env.log(),
     )
 }

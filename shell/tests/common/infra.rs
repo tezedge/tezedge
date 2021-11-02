@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use slog::{info, warn, Level, Logger};
 use tezedge_actor_system::actors::*;
 use tezedge_actor_system::system::SystemBuilder;
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
@@ -34,14 +34,13 @@ use storage::tests_common::TmpStorage;
 use storage::{hydrate_current_head, BlockHeaderWithHash};
 use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{
+use tezos_api::ffi::{TezosRuntimeConfiguration, TezosRuntimeLogLevel};
+use tezos_context_api::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosRuntimeConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_identity::Identity;
 use tezos_messages::Head;
-use tezos_wrapper::ProtocolEndpointConfiguration;
-use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::common;
 
@@ -61,6 +60,7 @@ pub struct NodeInfrastructure {
     pub tokio_runtime: Runtime,
     pub tmp_storage: TmpStorage,
     pub log: Logger,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
 }
 
 impl NodeInfrastructure {
@@ -74,7 +74,6 @@ impl NodeInfrastructure {
         identity: Identity,
         pow_target: f64,
         (log, log_level): (Logger, Level),
-        (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
     ) -> Result<Self, anyhow::Error> {
         warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -94,14 +93,14 @@ impl NodeInfrastructure {
             context_db_path.to_string()
         };
 
-        let ipc_socket_path = Some(ipc::temp_sock().to_string_lossy().as_ref().to_owned());
+        let ipc_socket_path = Some(async_ipc::temp_sock().to_string_lossy().as_ref().to_owned());
 
         let context_storage_configuration = TezosContextStorageConfiguration::Both(
             TezosContextIrminStorageConfiguration {
                 data_dir: context_db_path,
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+                backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path,
             },
         );
@@ -119,57 +118,27 @@ impl NodeInfrastructure {
 
         let tokio_runtime = create_tokio_runtime();
 
-        // create pool for ffi protocol runner connections (used just for readonly context)
-        let tezos_readonly_api_pool = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
-            String::from(&format!("{}_readonly_runner_pool", name)),
-            TezosApiConnectionPoolConfiguration {
-                min_connections: 0,
-                max_connections: 2,
-                connection_timeout: Duration::from_secs(3),
-                max_lifetime: Duration::from_secs(60),
-                idle_timeout: Duration::from_secs(60),
-            },
-            ProtocolEndpointConfiguration::new(
+        let mut tezos_protocol_api = ProtocolRunnerApi::new(
+            ProtocolRunnerConfiguration::new(
                 TezosRuntimeConfiguration {
                     log_enabled: common::is_ocaml_log_enabled(),
-                    debug_mode: false,
-                    compute_context_action_tree_hashes: false,
-                },
-                tezos_env.clone(),
-                false,
-                context_storage_configuration.readonly(),
-                &common::protocol_runner_executable_path(),
-                log_level,
-            ),
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )?);
-
-        // create pool for ffi protocol runner connections (used just for readonly context)
-        let tezos_writeable_api = Arc::new(TezosApiConnectionPool::new_without_context(
-            String::from(&format!("{}_writeable_runner_pool", name)),
-            TezosApiConnectionPoolConfiguration {
-                min_connections: 0,
-                max_connections: 1,
-                connection_timeout: Duration::from_secs(3),
-                max_lifetime: Duration::from_secs(60),
-                idle_timeout: Duration::from_secs(60),
-            },
-            ProtocolEndpointConfiguration::new(
-                TezosRuntimeConfiguration {
-                    log_enabled: common::is_ocaml_log_enabled(),
-                    debug_mode: record_also_readonly_context_action,
-                    compute_context_action_tree_hashes,
+                    log_level: Some(TezosRuntimeLogLevel::Info),
                 },
                 tezos_env.clone(),
                 false,
                 context_storage_configuration,
-                &common::protocol_runner_executable_path(),
+                common::protocol_runner_executable_path(),
                 log_level,
             ),
-            tokio_runtime.handle().clone(),
+            tokio_runtime.handle(),
             log.clone(),
-        )?);
+        );
+
+        tokio_runtime
+            .block_on(tezos_protocol_api.start(None))
+            .expect("Failed to launch protocol runner");
+
+        let tezos_protocol_api = Arc::new(tezos_protocol_api);
 
         let current_mempool_state_storage = init_mempool_state_storage();
 
@@ -191,7 +160,7 @@ impl NodeInfrastructure {
             log.clone(),
             persistent_storage.clone(),
             current_mempool_state_storage.clone(),
-            tezos_readonly_api_pool.clone(),
+            tezos_protocol_api.clone(),
             p2p_disable_mempool,
         ));
 
@@ -200,7 +169,7 @@ impl NodeInfrastructure {
         let (block_applier, block_applier_thread_watcher) = ChainFeeder::actor(
             actor_system.as_ref(),
             persistent_storage.clone(),
-            tezos_writeable_api,
+            tezos_protocol_api.clone(),
             init_storage_data.clone(),
             tezos_env.clone(),
             log.clone(),
@@ -239,7 +208,7 @@ impl NodeInfrastructure {
             network_channel.clone(),
             shell_channel.clone(),
             persistent_storage,
-            tezos_readonly_api_pool,
+            tezos_protocol_api.clone(),
             init_storage_data,
             is_sandbox,
             hydrated_current_head,
@@ -292,6 +261,7 @@ impl NodeInfrastructure {
             block_applier_thread_watcher,
             chain_manager_p2p_reader_thread_watcher,
             mempool_prevalidator_factory,
+            tezos_protocol_api,
         })
     }
 
@@ -348,6 +318,10 @@ impl NodeInfrastructure {
                 vec![]
             }
         };
+
+        info!(log, "Shutting down protocol runners");
+        let _ = tokio_runtime.block_on(self.tezos_protocol_api.shutdown());
+
         info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
         // clean up + shutdown events listening

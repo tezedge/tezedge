@@ -21,7 +21,7 @@ use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::current_branch::CurrentBranchMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
 use tezos_messages::Head;
-use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
+use tezos_protocol_ipc_client::{ProtocolRunnerConnection, ProtocolServiceError};
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::chain_manager::ChainManagerRef;
@@ -92,6 +92,9 @@ pub struct BlockchainState {
 
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
+
+    // Tokio runtime handle
+    tokio_runtime: tokio::runtime::Handle,
 }
 
 impl BlockchainState {
@@ -100,6 +103,7 @@ impl BlockchainState {
         persistent_storage: &PersistentStorage,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
+        tokio_runtime: tokio::runtime::Handle,
     ) -> Self {
         BlockchainState {
             requester: DataRequesterRef::new(DataRequester::new(
@@ -115,6 +119,7 @@ impl BlockchainState {
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
             chain_id,
             chain_genesis_block_hash,
+            tokio_runtime,
         }
     }
 
@@ -161,7 +166,7 @@ impl BlockchainState {
         &self,
         head: &CurrentHeadMessage,
         current_head: impl AsRef<Head>,
-        api: &ProtocolController,
+        api: &mut ProtocolRunnerConnection,
     ) -> Result<BlockAcceptanceResult, StateError> {
         // validate chain which we operate on
         if self.chain_id.as_ref() != head.chain_id() {
@@ -202,14 +207,18 @@ impl BlockchainState {
 
         // if we have protocol lets validate
         if let Some(protocol_hash) = protocol_hash {
+            let result = tokio::task::block_in_place(|| {
+                self.tokio_runtime
+                    .block_on(validation::check_multipass_validation(
+                        head.chain_id(),
+                        protocol_hash,
+                        validated_header,
+                        predecessor_header,
+                        api,
+                    ))
+            });
             // lets check strict multipass validation
-            match validation::check_multipass_validation(
-                head.chain_id(),
-                protocol_hash,
-                validated_header,
-                predecessor_header,
-                api,
-            ) {
+            match result {
                 Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
                 None => Ok(BlockAcceptanceResult::AcceptBlock),
             }

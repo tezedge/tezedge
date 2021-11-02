@@ -526,7 +526,7 @@ mod tests {
     use crate::state::data_requester::DataRequester;
     use crate::state::tests::prerequisites::{
         chain_feeder_mock, chain_manager_mock, create_logger, create_test_actor_system,
-        create_test_tokio_runtime, test_peer,
+        create_test_tokio_runtime, create_tezos_protocol_runner, test_peer,
     };
     use crate::state::tests::{block, block_ref};
     use crate::state::ApplyBlockBatch;
@@ -805,6 +805,8 @@ mod tests {
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_one")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
         let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system, "mocked_chain_feeder")?;
+        let tezos_protocol_api = create_tezos_protocol_runner(&tokio_runtime, log.clone());
+        let _tezos_protocol_api_shutdown = tezos_protocol_api.shutdown_on_drop();
         let chain_manager_mock = Arc::new(chain_manager_mock(
             actor_system,
             log,
@@ -812,7 +814,7 @@ mod tests {
             network_channel,
             chain_feeder_mock.clone(),
             storage.storage().clone(),
-            &tokio_runtime,
+            tezos_protocol_api,
         )?);
 
         // requester instance

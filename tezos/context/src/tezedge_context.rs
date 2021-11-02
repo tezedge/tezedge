@@ -12,6 +12,7 @@ use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
+use tezos_context_api::StringDirectoryMap;
 use tezos_timing::{BlockMemoryUsage, ContextMemoryUsage};
 
 use crate::{
@@ -25,7 +26,7 @@ use crate::{
         working_tree::{MerkleError, PostCommitData},
         Commit, Object,
     },
-    ContextKeyValueStore, StringDirectoryMap,
+    ContextKeyValueStore,
 };
 use crate::{working_tree::working_tree::WorkingTree, IndexApi};
 use crate::{
@@ -985,7 +986,7 @@ impl TezedgeContext {
 
 #[cfg(test)]
 mod tests {
-    use tezos_api::ffi::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
+    use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
 
     use super::*;
     use crate::initializer::initialize_tezedge_context;
