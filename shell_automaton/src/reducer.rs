@@ -28,6 +28,8 @@ use crate::peers::dns_lookup::peers_dns_lookup_reducer;
 use crate::peers::graylist::peers_graylist_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
+use crate::mempool::mempool_reducer;
+
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
 
@@ -72,6 +74,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_remove_reducer,
         peers_check_timeouts_reducer,
         peers_graylist_reducer,
+        mempool_reducer,
         storage_request_reducer,
         storage_state_snapshot_create_reducer,
         // needs to be last!
