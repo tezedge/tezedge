@@ -8,7 +8,6 @@ use thiserror::Error;
 
 pub mod chain_feeder;
 pub mod chain_manager;
-pub mod mempool;
 pub mod peer_branch_bootstrapper;
 pub mod shell_automaton_manager;
 pub mod shell_channel;
@@ -191,57 +190,25 @@ pub mod subscription {
 /// In case of new architecture (state machine, ..., whatever),
 /// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ShellAutomatonSender or whatever
 pub mod connector {
-    use std::sync::Arc;
-
-    use crypto::hash::ChainId;
     use shell_integration::*;
 
-    use crate::chain_manager::{AskPeersAboutCurrentHead, ChainManagerRef, InjectBlockRequest};
-    use crate::mempool::MempoolPrevalidatorFactory;
+    use crate::chain_manager::{ChainManagerRef, InjectBlockRequest};
 
     pub struct ShellConnectorSupport {
         chain_manager: ChainManagerRef,
-        mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
     }
 
     impl ShellConnectorSupport {
         pub fn new(
             chain_manager: ChainManagerRef,
-            mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         ) -> Self {
             ShellConnectorSupport {
                 chain_manager,
-                mempool_prevalidator_factory,
             }
         }
     }
 
     impl ShellConnector for ShellConnectorSupport {
-        fn request_current_head_from_connected_peers(&self) {
-            // actual implementation use tezedge_actor_system and sends command to shell_channel
-            use tezedge_actor_system::actors::*;
-
-            self.chain_manager.tell(
-                AskPeersAboutCurrentHead {
-                    last_received_timeout: None,
-                },
-                None,
-            );
-        }
-
-        fn find_mempool_prevalidators(&self) -> Result<Vec<Prevalidator>, UnexpectedError> {
-            self.mempool_prevalidator_factory
-                .find_mempool_prevalidators()
-        }
-
-        fn find_mempool_prevalidator_caller(
-            &self,
-            chain_id: &ChainId,
-        ) -> Option<Box<dyn MempoolPrevalidatorCaller>> {
-            self.mempool_prevalidator_factory
-                .find_mempool_prevalidator_caller(chain_id)
-                .map(|c| Box::new(c) as Box<dyn MempoolPrevalidatorCaller>)
-        }
     }
 
     impl InjectBlockConnector for ShellConnectorSupport {

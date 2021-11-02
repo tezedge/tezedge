@@ -19,7 +19,7 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use shell_automaton::ActionId;
 use storage::cycle_eras_storage::CycleEra;
 use storage::database::backend::BoxedSliceKV;
