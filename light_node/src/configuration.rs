@@ -16,7 +16,7 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
-use shell::peer_manager::P2p;
+use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
@@ -368,8 +368,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("disable-mempool")
             .global(true)
             .help("Enable or disable mempool"))
-        .arg(Arg::with_name("disable-peer-blacklist")
-            .long("disable-peer-blacklist")
+        .arg(Arg::with_name("disable-peer-graylist")
+            .long("disable-peer-graylist")
             .global(true)
             .help("Disable peer blacklisting"))
         .arg(Arg::with_name("private-node")
@@ -380,6 +380,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .requires("peers")
             .conflicts_with("bootstrap-lookup-address")
             .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
+        .arg(Arg::with_name("effects-seed")
+            .long("effects-seed")
+            .takes_value(true)
+            .value_name("SEED")
+            .help("The seed")
+        )
         .arg(Arg::with_name("network")
             .long("network")
             .global(true)
@@ -615,6 +621,18 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
+        .arg(Arg::with_name("record-shell-automaton-state-snapshots")
+            .long("record-shell-automaton-state-snapshots")
+            .global(true)
+            .takes_value(false)
+            .help("Enable recording/persisting shell automaton state snapshots.")
+        )
+        .arg(Arg::with_name("record-shell-automaton-actions")
+            .long("record-shell-automaton-actions")
+            .global(true)
+            .takes_value(false)
+            .help("Enable recording/persisting shell automaton actions.")
+        )
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
             .global(true)
@@ -977,7 +995,7 @@ impl Environment {
                     .parse::<SocketAddr>()
                     .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
-                disable_blacklist: args.is_present("disable-peer-blacklist"),
+                disable_peer_graylist: args.is_present("disable-peer-graylist"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")
                     .map(|addresses_str| {
@@ -1037,6 +1055,13 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
+                randomness_seed: args.value_of("randomness-seed").map(|s| {
+                    s.parse::<u64>()
+                        .expect("Provided value cannot be converted to u64")
+                }),
+                record_shell_automaton_state_snapshots: args
+                    .is_present("record-shell-automaton-state-snapshots"),
+                record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

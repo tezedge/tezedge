@@ -3,10 +3,11 @@
 
 use std::cmp;
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tezedge_actor_system::actors::*;
+use slog::Logger;
 
 use crypto::hash::{BlockHash, OperationHash};
 use networking::PeerId;
@@ -16,6 +17,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, MetadataMessage};
 
+use crate::shell_automaton_manager::ShellAutomatonSender;
 use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
@@ -154,7 +156,11 @@ impl PeerState {
             .push((operation_hash, mempool_type));
     }
 
-    pub fn schedule_missing_operations_for_mempool(peers: &mut HashMap<ActorUri, PeerState>) {
+    pub fn schedule_missing_operations_for_mempool(
+        shell_automaton: &ShellAutomatonSender,
+        peers: &mut HashMap<SocketAddr, PeerState>,
+        log: &Logger,
+    ) {
         peers
             .values_mut()
             .filter(|peer| !peer.missing_mempool_operations.is_empty())
@@ -188,12 +194,19 @@ impl PeerState {
                         .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
                         .for_each(|ops_to_get| {
                             tell_peer(
-                                GetOperationsMessage::new(ops_to_get.into()).into(),
+                                &shell_automaton,
                                 &peer.peer_id,
+                                GetOperationsMessage::new(ops_to_get.into()).into(),
+                                log,
                             );
                         });
                 } else {
-                    tell_peer(GetOperationsMessage::new(ops_to_get).into(), &peer.peer_id);
+                    tell_peer(
+                        &shell_automaton,
+                        &peer.peer_id,
+                        GetOperationsMessage::new(ops_to_get).into(),
+                        log,
+                    );
                 }
             });
     }

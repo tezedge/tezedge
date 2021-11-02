@@ -1,10 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::generichash::State;
 use thiserror::Error;
 
-#[derive(Debug, Copy, Clone, Error, PartialEq)]
+#[derive(Serialize, Deserialize, Error, Debug, PartialEq, Clone, Copy)]
 pub enum Blake2bError {
     #[error("Output digest length must be between 16 and 64 bytes.")]
     InvalidLenght,

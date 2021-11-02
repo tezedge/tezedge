@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use shell::mempool::CurrentMempoolStateStorageRef;
+use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
 use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
@@ -42,6 +43,7 @@ impl RpcServer {
     pub fn new(
         log: Logger,
         shell_connector: ShellConnectorRef,
+        shell_automaton_channel: RpcShellAutomatonChannel,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
@@ -61,6 +63,7 @@ impl RpcServer {
         let env = Arc::new(RpcServiceEnvironment::new(
             Arc::new(tokio_executor),
             shell_connector,
+            shell_automaton_channel.sender(),
             tezos_env,
             network_version,
             persistent_storage,

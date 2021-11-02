@@ -30,6 +30,7 @@ crypto = { path = "../crypto" }
 # TODO: once full integration is done, remove shell dependency from here
 shell = { path = "../shell" }
 shell_integration = { path = "../shell-integration" }
+shell_automaton = { path = "../shell_automaton" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_messages = { path = "../tezos/messages" }

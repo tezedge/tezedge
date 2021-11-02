@@ -259,3 +259,61 @@ pub async fn dev_version(
 ) -> ServiceResult {
     make_json_response(&dev_services::get_dev_version())
 }
+
+pub async fn dev_shell_automaton_state_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    match query.get_u64("action_id") {
+        Some(target_action_id) => make_json_response(
+            &dev_services::get_shell_automaton_state_after(&env, target_action_id).await?,
+        ),
+        None => make_json_response(&dev_services::get_shell_automaton_state_current(&env).await?),
+    }
+}
+
+pub async fn dev_shell_automaton_actions_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&match query.get_usize("rev").eq(&Some(1)) {
+        false => {
+            dev_services::get_shell_automaton_actions(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+        true => {
+            dev_services::get_shell_automaton_actions_reverse(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+    })
+}
+
+pub async fn dev_shell_automaton_actions_stats_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_actions_stats(&env).await?)
+}
+
+pub async fn dev_shell_automaton_actions_graph_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)
+}
