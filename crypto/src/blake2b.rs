@@ -36,7 +36,7 @@ pub fn digest_128(data: &[u8]) -> Result<Vec<u8>, Blake2bError> {
 
 /// Arbitrary Blake2b digest generation from generic data.
 // Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
-fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
+pub fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
     let mut hasher = State::new(out_len, None).map_err(|_| Blake2bError::InvalidLenght)?;
     hasher.update(data)?;
 

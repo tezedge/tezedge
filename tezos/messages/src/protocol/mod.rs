@@ -43,7 +43,7 @@ fn init() -> HashMap<String, SupportedProtocol> {
     protos
 }
 
-#[derive(EnumIter, Clone, Debug, PartialEq)]
+#[derive(EnumIter, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SupportedProtocol {
     Proto001,
     Proto002,
@@ -80,7 +80,7 @@ impl SupportedProtocol {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, serde::Serialize, serde::Deserialize)]
 #[error("Protocol {protocol} is not yet supported!")]
 pub struct UnsupportedProtocolError {
     pub protocol: String,

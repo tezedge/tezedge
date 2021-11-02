@@ -4,6 +4,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use crypto::hash::HashBase58;
 pub use tezos_encoding_derive::BinWriter;
 
 use thiserror::Error;
@@ -260,6 +261,15 @@ encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
 encode_hash!(crypto::hash::PublicKeyP256);
 encode_hash!(crypto::hash::Signature);
+
+impl<H> BinWriter for HashBase58<H>
+where
+    H: BinWriter,
+{
+    fn bin_write(&self, bytes: &mut Vec<u8>) -> BinResult {
+        self.0.bin_write(bytes)
+    }
+}
 
 pub fn sized<T>(
     size: usize,

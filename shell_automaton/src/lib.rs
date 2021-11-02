@@ -54,6 +54,8 @@ pub mod protocol;
 
 pub mod rights;
 
+pub mod prechecker;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};

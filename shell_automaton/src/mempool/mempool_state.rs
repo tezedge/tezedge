@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    convert::TryInto,
     net::SocketAddr,
 };
 
@@ -10,9 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashBase58, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
+use tezos_messages::p2p::encoding::{
+    block_header::{BlockHeader, Level},
+    operation::Operation,
+};
 
-use crate::service::rpc_service::RpcId;
+use crate::{rights::Slot, service::rpc_service::RpcId, ActionWithMeta};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
@@ -45,6 +49,19 @@ pub struct MempoolState {
     pub last_predecessor_blocks: HashMap<HashBase58<BlockHash>, i32>,
 
     pub operation_stats: OperationsStats,
+
+    pub old_operations_state:
+        VecDeque<(Level, BTreeMap<HashBase58<OperationHash>, MempoolOperation>)>,
+    pub operations_state: BTreeMap<HashBase58<OperationHash>, MempoolOperation>,
+
+    /// Hash of the latest applied block
+    pub latest_current_head: Option<BlockHash>,
+
+    /// First current_head for the current level.
+    pub first_current_head: bool,
+
+    /// Timestamp of the first latest CurrentHead message
+    pub first_current_head_time: u64,
 }
 
 impl MempoolState {
@@ -60,7 +77,7 @@ impl MempoolState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HeadState {
     pub(super) header: BlockHeader,
-    pub(super) hash: BlockHash,
+    pub hash: BlockHash,
     // operations included in the head already removed
     pub(super) ops_removed: bool,
     // prevalidator for the head is created
@@ -110,7 +127,7 @@ pub struct OperationStats {
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
     /// (time_validation_finished, validation_result, prevalidation_duration)
-    pub validation_result: Option<(u64, OperationValidationResult, u64, u64)>,
+    pub validation_result: Option<(u64, OperationValidationResult, Option<u64>, Option<u64>)>,
     pub validations: Vec<OperationValidationStats>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
@@ -157,14 +174,16 @@ impl OperationStats {
     pub fn validation_finished(
         &mut self,
         time: u64,
-        preapply_started: f64,
-        preapply_ended: f64,
+        preapply_started: Option<f64>,
+        preapply_ended: Option<f64>,
         current_head_level: Option<i32>,
         result: OperationValidationResult,
     ) {
         // Convert seconds float to nanoseconds integer.
-        let preapply_started = (preapply_started * 1_000_000_000.0) as u64;
-        let preapply_ended = (preapply_ended * 1_000_000_000.0) as u64;
+        let preapply_started =
+            preapply_started.map(|preapply_started| (preapply_started * 1_000_000_000.0) as u64);
+        let preapply_ended =
+            preapply_ended.map(|preapply_ended| (preapply_ended * 1_000_000_000.0) as u64);
 
         if self
             .validation_result
@@ -182,20 +201,53 @@ impl OperationStats {
         {
             Some(v) => {
                 v.finished = Some(time);
-                v.preapply_started = Some(preapply_started);
-                v.preapply_ended = Some(preapply_ended);
+                v.preapply_started = preapply_started;
+                v.preapply_ended = preapply_ended;
                 v.result = Some(result);
             }
             None => {
                 self.validations.push(OperationValidationStats {
                     started: None,
                     finished: Some(time),
-                    preapply_started: Some(preapply_started),
-                    preapply_ended: Some(preapply_ended),
+                    preapply_started,
+                    preapply_ended,
                     current_head_level,
                     result: Some(result),
                 });
             }
+        }
+    }
+
+    pub fn received_via_rpc(
+        &mut self,
+        self_pkh: &CryptoboxPublicKeyHash,
+        stats: OperationNodeCurrentHeadStats,
+        op_content: &[u8],
+    ) {
+        self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
+        self.min_time = Some(
+            self.min_time
+                .map_or(stats.time, |time| time.min(stats.time)),
+        );
+        if self.first_block_timestamp.is_none() {
+            if stats.block_timestamp >= 0 {
+                self.first_block_timestamp = Some(stats.block_timestamp as u64);
+            }
+        }
+
+        let time = stats.time;
+        if let Some(node_stats) = self.nodes.get_mut(self_pkh) {
+            node_stats.received.push(stats);
+            node_stats.content_received.push(time);
+        } else {
+            self.nodes.insert(
+                self_pkh.clone().into(),
+                OperationNodeStats {
+                    received: vec![stats],
+                    content_received: vec![time],
+                    ..Default::default()
+                },
+            );
         }
     }
 
@@ -337,6 +389,10 @@ pub enum OperationValidationResult {
     Refused,
     BranchRefused,
     BranchDelayed,
+
+    Prechecked,
+    PrecheckRefused,
+    Prevalidate,
 }
 
 impl OperationValidationResult {
@@ -416,5 +472,149 @@ impl OperationKind {
 
     pub fn is_endorsement(&self) -> bool {
         matches!(self, Self::Endorsement | Self::EndorsementWithSlot)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolOperation {
+    pub block_timestamp: i64,
+    pub first_current_head: i64,
+    pub state: OperationState,
+    pub broadcast: bool,
+    pub protocol_data: Option<serde_json::Value>,
+    #[serde(flatten)]
+    pub times: HashMap<String, i64>,
+}
+
+impl MempoolOperation {
+    fn time_offset_from(action: &ActionWithMeta, base: i64) -> i64 {
+        action.time_as_nanos() as i64 - base
+    }
+
+    fn time_offset(&self, action: &ActionWithMeta) -> i64 {
+        Self::time_offset_from(action, self.first_current_head)
+    }
+
+    pub(super) fn received(
+        mut block_timestamp: i64,
+        first_current_head: u64,
+        action: &ActionWithMeta,
+    ) -> Self {
+        let state = OperationState::ReceivedHash;
+        block_timestamp *= 1_000_000_000;
+        let first_current_head = first_current_head as i64;
+        Self {
+            block_timestamp,
+            first_current_head,
+            protocol_data: None,
+            state,
+            broadcast: false,
+            times: HashMap::from([(
+                state.time_name(),
+                Self::time_offset_from(action, first_current_head),
+            )]),
+        }
+    }
+
+    pub(super) fn injected(
+        mut block_timestamp: i64,
+        first_current_head: u64,
+        action: &ActionWithMeta,
+    ) -> Self {
+        let state = OperationState::ReceivedContents; // TODO use separate id
+        block_timestamp *= 1_000_000_000;
+        let first_current_head = first_current_head as i64;
+        Self {
+            block_timestamp,
+            first_current_head,
+            protocol_data: None,
+            state,
+            broadcast: false,
+            times: HashMap::from([(
+                state.time_name(),
+                Self::time_offset_from(action, first_current_head),
+            )]),
+        }
+    }
+
+    pub(super) fn decoded(
+        &self,
+        protocol_data: &serde_json::Value,
+        action: &ActionWithMeta,
+    ) -> Self {
+        let state = OperationState::Decoded;
+        let mut times = self.times.clone();
+        times.insert(state.time_name(), self.time_offset(action));
+        Self {
+            times,
+            state,
+            protocol_data: Some(protocol_data.clone()),
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn next_state(&self, state: OperationState, action: &ActionWithMeta) -> Self {
+        let mut times = self.times.clone();
+        times.insert(state.time_name(), self.time_offset(action));
+        Self {
+            times,
+            state,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn broadcast(&self, action: &ActionWithMeta) -> Self {
+        let mut times = self.times.clone();
+        if !self.broadcast {
+            times.insert("broadcast_time".to_string(), self.time_offset(action));
+        }
+        Self {
+            times,
+            broadcast: true,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn endorsement_slot(&self) -> Option<Slot> {
+        let contents = self
+            .protocol_data
+            .as_ref()?
+            .as_object()?
+            .get("contents")?
+            .as_array()?;
+        let contents_0 = if contents.len() == 1 {
+            contents.get(0)?.as_object()?
+        } else {
+            return None;
+        };
+        let slot_json = match contents_0.get("kind")?.as_str()? {
+            "endorsement_with_slot" => contents_0.get("slot")?,
+            _ => return None,
+        };
+        slot_json
+            .as_u64()
+            .and_then(|u| u.try_into().map_or(None, Some))
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum OperationState {
+    ReceivedHash,
+    ReceivedContents,
+    Decoded,
+    Prechecked,
+    Applied,
+
+    PrecheckRefused,
+    Refused,
+    BranchRefused,
+    BranchDelayed,
+}
+
+impl OperationState {
+    fn time_name(&self) -> String {
+        self.to_string() + "_time"
     }
 }

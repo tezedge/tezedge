@@ -82,6 +82,7 @@ fn get_contents(
             HashType::PublicKeyEd25519 => "PublicKeyEd25519",
             HashType::PublicKeySecp256k1 => "PublicKeySecp256k1",
             HashType::PublicKeyP256 => "PublicKeyP256",
+            HashType::Ed25519Signature => "Ed25519Signature",
             HashType::Signature => "Signature",
         }
         .into(),
