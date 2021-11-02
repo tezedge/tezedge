@@ -11,6 +11,7 @@ use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
 use crate::storage::StorageState;
+use crate::mempool::MempoolState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -45,6 +46,7 @@ pub struct State {
     pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
+    pub mempool: MempoolState,
 
     pub paused_loops: PausedLoopsState,
 
@@ -62,6 +64,7 @@ impl State {
             peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
+            mempool: MempoolState::default(),
 
             paused_loops: PausedLoopsState::new(),
 

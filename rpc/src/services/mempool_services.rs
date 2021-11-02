@@ -8,17 +8,17 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::{info, warn};
+use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use slog::info;
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::validation;
 use shell_integration::*;
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage};
+use storage::BlockHeaderWithHash;
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
@@ -185,20 +185,6 @@ pub async fn inject_operation(
 
     let start_request = Instant::now();
 
-    // find prevalidator for chain_id, if not found, then stop
-
-    let mempool_prevalidator_caller = if let Some(mempool_prevalidator_caller) = env
-        .shell_connector()
-        .find_mempool_prevalidator_caller(&chain_id)
-    {
-        mempool_prevalidator_caller
-    } else {
-        warn!(env.log(), "No mempool prevalidator was found"; "chain_id" => chain_id.to_base58_check(), "caller" => "mempool_services");
-        return Err(RpcServiceError::UnexpectedError {
-            reason: "Prevalidator is not running, cannot inject the operation.".to_string(),
-        });
-    };
-
     // parse operation data
     let operation: Operation =
         Operation::from_bytes(hex::decode(operation_data)?).map_err(|e| {
@@ -206,104 +192,25 @@ pub async fn inject_operation(
                 reason: format!("{}", e),
             }
         })?;
-    let operation_hash = operation.message_typed_hash()?;
+    let operation_hash: OperationHash = operation.message_typed_hash()?;
 
-    // prepare database accessors
-    let persistent_storage = env.persistent_storage();
-    let block_storage = BlockStorage::new(persistent_storage);
-    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
-
-    // do prevalidation before add the operation to mempool
-    let mut connection = env.tezos_protocol_api().readable_connection().await?;
-    let result = validation::prevalidate_operation(
-        &chain_id,
-        &operation_hash,
-        &operation,
-        env.current_mempool_state_storage(),
-        &mut connection,
-        &block_storage,
-        &block_meta_storage,
-    )
-    .await
-    .map_err(|e| RpcServiceError::UnexpectedError {
-        reason: format!("{}", e),
-    })?;
-
-    // can accpect operation ?
-    if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
-        return Err(RpcServiceError::UnexpectedError {
-            reason: format!(
-                "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
-                operation_hash.to_base58_check(),
-                result
-            ),
-        });
-    }
-
-    // store operation in mempool storage
+    let msg = RpcShellAutomatonMsg::InjectOperation {
+        operation: operation.clone(),
+        operation_hash: operation_hash.clone(),
+    };
+    env.shell_automaton_sender().send(msg)
+        .await
+        .map_err(|_| RpcServiceError::UnexpectedError {
+            reason: "the channel between rpc and shell is overflown".to_string(),
+        })?;
     let operation_hash_b58check_string = operation_hash.to_base58_check();
 
-    // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let (result_callback_sender, result_callback_receiver) = if is_async {
-        // if async no wait
-        (None, None)
-    } else {
-        // if not async, means sync and we wait till operations is added to pendings
-        let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
-        (Some(result_callback_sender), Some(result_callback_receiver))
-    };
-
-    let start_async = Instant::now();
-
-    // ping mempool with new operation for mempool validation
-    if mempool_prevalidator_caller
-        .try_tell(MempoolRequestMessage::MempoolOperationReceived(
-            MempoolOperationReceived {
-                operation_hash,
-                operation: Arc::new(OperationMessage::from(operation)),
-                result_callback: result_callback_sender,
-            },
-        ))
-        .is_err()
-    {
-        return Err(RpcServiceError::UnexpectedError {
-            reason: format!(
-                    "Operation injection error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
-                    &operation_hash_b58check_string,
-                )});
-    }
-
-    if let Some(receiver) = result_callback_receiver {
-        // we spawn as blocking because we are under async/await
-        let result = tokio::task::spawn_blocking(move || {
-            receiver.recv_timeout(INJECT_OPERATION_WAIT_TIMEOUT)
-        })
-        .await;
-        match result {
-            Ok(Ok(_)) => {
-                info!(env.log(), "Operation injected";
-                                     "operation_hash" => &operation_hash_b58check_string,
-                                     "elapsed" => format!("{:?}", start_request.elapsed()),
-                                     "elapsed_async" => format!("{:?}", start_async.elapsed()));
-            }
-            Ok(Err(e)) => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "Operation injection error received, operation_hash: {}, reason: {}!",
-                        &operation_hash_b58check_string, e
-                    ),
-                });
-            }
-            Err(e) => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "Operation injection error async wait, operation_hash: {}, reason: {}!",
-                        &operation_hash_b58check_string, e
-                    ),
-                });
-            }
-        }
-    }
+    // TODO: get response
+    // info!(env.log(), "Operation injected";
+    //     "operation_hash" => &operation_hash_b58check_string,
+    //     "elapsed" => format!("{:?}", start_request.elapsed()),
+    //     "elapsed_async" => format!("{:?}", start_async.elapsed()));
+    let _ = (INJECT_OPERATION_WAIT_TIMEOUT, start_request);
 
     Ok(operation_hash_b58check_string)
 }
