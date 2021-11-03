@@ -859,7 +859,7 @@ impl ChainManager {
     ) -> Result<bool, Error> {
         // store header
         let (is_new_block, is_applied) =
-            chain_state.process_block_header_from_peer(&received_block, log, peer_id)?;
+            chain_state.process_block_header_from_peer(received_block, log, peer_id)?;
         if is_new_block {
             // update stats for new header
             stats.unseen_block_last = Instant::now();
