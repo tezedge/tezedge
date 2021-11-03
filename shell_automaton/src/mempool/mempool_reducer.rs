@@ -56,11 +56,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             // TODO: prevalidate the operation
-            mempool_state.pending_operations.insert(operation_hash, operation.clone());
+            mempool_state.applied_operations.insert(operation_hash, operation.clone());
         },
         Action::MempoolOperationInjectDone(MempoolOperationInjectDoneAction { operation, operation_hash }) => {
             // TODO: prevalidate the operation
-            mempool_state.pending_operations.insert(operation_hash.clone(), operation.clone());
+            mempool_state.applied_operations.insert(operation_hash.clone(), operation.clone());
         },
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction { address, known_valid, pending }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
