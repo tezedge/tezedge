@@ -16,6 +16,7 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
+use shell::mempool::mempool_download_state::MempoolOperationStateConfiguration;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
@@ -137,6 +138,16 @@ impl Ffi {
 }
 
 #[derive(Debug, Clone)]
+pub struct Mempool {
+    pub mempool_download_state: MempoolOperationStateConfiguration,
+}
+
+impl Mempool {
+    const DEFAULT_DOWNLOADED_OPERATION_MAX_TTL_IN_SECONDS: u64 = 90;
+    const DEFAULT_DOWNLOAD_OPERATION_TIMEOUT_IN_MILLIS: u64 = 50;
+}
+
+#[derive(Debug, Clone)]
 pub struct Environment {
     pub p2p: P2p,
     pub rpc: Rpc,
@@ -145,6 +156,7 @@ pub struct Environment {
     pub identity: Identity,
     pub ffi: Ffi,
     pub replay: Option<Replay>,
+    pub mempool: Mempool,
 
     pub tezos_network: TezosEnvironment,
     pub tezos_network_config: TezosEnvironmentConfiguration,
@@ -178,6 +190,11 @@ impl slog::Value for Environment {
         serializer.emit_arguments("identity", &format_args!("{:?}", self.identity))?;
         serializer.emit_arguments("ffi", &format_args!("{:?}", self.ffi))?;
         serializer.emit_arguments("replay", &format_args!("{:?}", self.replay))?;
+        serializer.emit_arguments(
+            "initialize_chain_manager_timeout",
+            &format_args!("{:?}", self.initialize_chain_manager_timeout),
+        )?;
+        serializer.emit_arguments("mempool", &format_args!("{:?}", self.mempool))?;
         serializer.emit_arguments(
             "enable_testchain",
             &format_args!("{:?}", self.enable_testchain),
@@ -291,16 +308,16 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to context-stats database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("initialize-context-timeout")
-            .long("initialize-context-timeout")
+        .arg(Arg::with_name("initialize-context-timeout-in-secs")
+            .long("initialize-context-timeout-in-secs")
             .takes_value(true)
             .value_name("NUM")
             .required(false)
             .help("Panic if the context initialization of application took longer than this number of seconds")
             .validator(parse_validator_fn!(u64, "Value must be a valid number"))
         )
-        .arg(Arg::with_name("initialize-chain-manager-timeout")
-            .long("initialize-chain-manager-timeout")
+        .arg(Arg::with_name("initialize-chain-manager-timeout-in-secs")
+            .long("initialize-chain-manager-timeout-in-secs")
             .takes_value(true)
             .value_name("NUM")
             .required(false)
@@ -379,6 +396,22 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("disable-mempool")
             .global(true)
             .help("Enable or disable mempool"))
+        .arg(Arg::with_name("mempool-downloaded-operation-max-ttl-in-secs")
+            .long("mempool-downloaded-operation-max-ttl-in-secs")
+            .takes_value(true)
+            .value_name("NUM")
+            .required(false)
+            .help("Mempool download operation state will hold operation 'in-memory' as long as this timeout")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+        )
+        .arg(Arg::with_name("mempool-download-operation-timeout-in-millis")
+            .long("mempool-download-operation-timeout-in-millis")
+            .takes_value(true)
+            .value_name("NUM")
+            .required(false)
+            .help("Timeout for downloading mempool operation from a peer, if exceeded, we try another peers")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+        )
         .arg(Arg::with_name("disable-peer-blacklist")
             .long("disable-peer-blacklist")
             .global(true)
@@ -940,9 +973,11 @@ impl Environment {
                     .expect("Provided value cannot be converted to number"),
             );
 
-            let mut options = fs_extra::dir::CopyOptions::default();
-            options.content_only = true;
-            options.overwrite = true;
+            let options = fs_extra::dir::CopyOptions {
+                content_only: true,
+                overwrite: true,
+                ..Default::default()
+            };
 
             fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
 
@@ -1278,7 +1313,7 @@ impl Environment {
                         }
                     },
                     initialize_context_timeout: std::time::Duration::from_secs(
-                        args.value_of("initialize-context-timeout")
+                        args.value_of("initialize-context-timeout-in-secs")
                             .unwrap_or(&format!(
                                 "{}",
                                 Storage::DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS
@@ -1350,7 +1385,7 @@ impl Environment {
                 .expect("Provided value cannot be converted to bool"),
             validate_cfg_identity_and_stop: args.is_present("validate-cfg-identity-and-stop"),
             initialize_chain_manager_timeout: std::time::Duration::from_secs(
-                args.value_of("initialize-chain-manager-timeout")
+                args.value_of("initialize-chain-manager-timeout-in-secs")
                     .unwrap_or(&format!(
                         "{}",
                         Environment::DEFAULT_INITIALIZE_CHAIN_MANAGER_TIMEOUT_IN_SECONDS
@@ -1358,6 +1393,28 @@ impl Environment {
                     .parse::<u64>()
                     .expect("Provided value cannot be converted to number"),
             ),
+            mempool: Mempool {
+                mempool_download_state: MempoolOperationStateConfiguration::new(
+                    std::time::Duration::from_secs(
+                        args.value_of("mempool-downloaded-operation-max-ttl-in-secs")
+                            .unwrap_or(&format!(
+                                "{}",
+                                Mempool::DEFAULT_DOWNLOADED_OPERATION_MAX_TTL_IN_SECONDS
+                            ))
+                            .parse::<u64>()
+                            .expect("Provided value cannot be converted to number"),
+                    ),
+                    std::time::Duration::from_millis(
+                        args.value_of("mempool-download-operation-timeout-in-millis")
+                            .unwrap_or(&format!(
+                                "{}",
+                                Mempool::DEFAULT_DOWNLOAD_OPERATION_TIMEOUT_IN_MILLIS
+                            ))
+                            .parse::<u64>()
+                            .expect("Provided value cannot be converted to number"),
+                    ),
+                ),
+            },
         }
     }
 

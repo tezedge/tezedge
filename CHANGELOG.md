@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.9.1] - 2021-11-04
+
+### Fixed
+
+- Optimized mempool operations downloading from p2p
+
 ## [1.9.0] - 2021-10-26
 
 ### Added
@@ -562,7 +568,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/tezedge/tezedge/releases/v1.9.1
 [1.9.0]: https://github.com/tezedge/tezedge/releases/v1.9.0
 [1.8.0]: https://github.com/tezedge/tezedge/releases/v1.8.0
 [1.7.1]: https://github.com/tezedge/tezedge/releases/v1.7.1

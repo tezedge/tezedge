@@ -1,6 +1,6 @@
 [package]
 name = "node-monitoring"
-version = "1.9.0"
+version = "1.9.1"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "node-monitoring"

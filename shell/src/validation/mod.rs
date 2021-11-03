@@ -215,8 +215,8 @@ pub fn prevalidate_operation(
     operation: &Operation,
     current_mempool_state: &CurrentMempoolStateStorageRef,
     api: &ProtocolController,
-    block_storage: &Box<dyn BlockStorageReader>,
-    block_meta_storage: &Box<dyn BlockMetaStorageReader>,
+    block_storage: &impl BlockStorageReader,
+    block_meta_storage: &impl BlockMetaStorageReader,
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
     // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
@@ -236,6 +236,8 @@ pub fn prevalidate_operation(
         });
     }
 
+    // TODO: check max_ttl for too old branch
+
     // get actual known state of mempool, we need the same head as used actualy be mempool
     let mempool_state =
         current_mempool_state
@@ -254,7 +256,11 @@ pub fn prevalidate_operation(
 
     let mempool_head = match mempool_state.head().as_ref() {
         Some(head) => match block_storage.get(head)? {
-            Some(head) => head,
+            Some(head) => {
+                // release lock asap
+                drop(mempool_state);
+                head
+            }
             None => {
                 return Err(PrevalidateOperationError::UnknownBranch {
                     branch: head.to_base58_check(),

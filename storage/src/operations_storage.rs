@@ -110,8 +110,8 @@ impl KVStoreKeyValueSchema for OperationsStorage {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OperationKey {
-    block_hash: BlockHash,
-    validation_pass: u8,
+    pub block_hash: BlockHash,
+    pub validation_pass: u8,
 }
 
 impl OperationKey {

@@ -208,6 +208,7 @@ pub mod tests {
 
         use crate::chain_feeder;
         use crate::chain_manager::{ChainManager, ChainManagerRef};
+        use crate::mempool::mempool_download_state::MempoolOperationStateConfiguration;
         use crate::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
         use crate::shell_channel::ShellChannelRef;
         use crate::state::peer_state::{DataQueuesLimits, PeerState};
@@ -361,6 +362,7 @@ pub mod tests {
                         shell_channel,
                         persistent_storage,
                         Arc::new(Mutex::new(p2p_reader_sender)),
+                        None,
                         tezos_readonly_api_pool,
                         init_data,
                         false,
@@ -372,6 +374,10 @@ pub mod tests {
                         current_mempool_state_storage,
                         0,
                         mempool_prevalidator_factory,
+                        MempoolOperationStateConfiguration::new(
+                            Duration::from_secs(5),
+                            Duration::from_secs(5),
+                        ),
                         Arc::new(Mutex::new(initialize_result)),
                     )),
                 )

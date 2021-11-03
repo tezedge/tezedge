@@ -27,10 +27,10 @@ use super::limits::{MEMPOOL_MAX_OPERATIONS, MEMPOOL_MAX_SIZE};
 pub struct Mempool {
     #[get = "pub"]
     #[encoding(dynamic, list = "MEMPOOL_MAX_OPERATIONS")]
-    known_valid: Vec<OperationHash>,
+    pub known_valid: Vec<OperationHash>,
     #[get = "pub"]
     #[encoding(dynamic, dynamic, list = "MEMPOOL_MAX_OPERATIONS")]
-    pending: Vec<OperationHash>,
+    pub pending: Vec<OperationHash>,
 }
 
 impl Mempool {

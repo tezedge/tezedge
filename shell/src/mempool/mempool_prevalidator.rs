@@ -8,7 +8,6 @@
 //!     - is used by rpc_actor to show current mempool state - pending_operations
 //!     - is used by chain_manager to send new current head with current mempool to inform other peers throught P2P
 
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -19,25 +18,20 @@ use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 use thiserror::Error;
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
+use crypto::hash::{BlockHash, ChainId};
 use shell_integration::{
-    dispatch_oneshot_result, MempoolError, MempoolOperationReceived, OneshotResultCallback,
-    ResetMempool,
+    dispatch_oneshot_result, MempoolError, MempoolOperationReceived, ResetMempool,
 };
 use shell_integration::{StreamCounter, ThreadRunningStatus, ThreadWatcher};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
-use storage::mempool_storage::MempoolOperationType;
 use storage::{BlockHeaderWithHash, PersistentStorage};
-use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError};
-use tezos_api::ffi::{
-    Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
-};
+use storage::{BlockStorage, BlockStorageReader, StorageError};
+use tezos_api::ffi::{BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{AdvertiseToP2pNewMempool, ChainManagerRef};
-use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
@@ -49,11 +43,7 @@ pub struct MempoolPrevalidator {
 
 enum Event {
     NewHead(Arc<BlockHeaderWithHash>),
-    ValidateOperation(
-        OperationHash,
-        MempoolOperationType,
-        Option<OneshotResultCallback<Result<(), MempoolError>>>,
-    ),
+    ValidateOperation(MempoolOperationReceived),
     ShuttingDown,
 }
 
@@ -93,15 +83,13 @@ impl MempoolPrevalidator {
             thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
-                let mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_readonly_api.pool.get() {
                         Ok(protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
-                            &mempool_storage,
-                            current_mempool_state_storage.clone(),
+                            &current_mempool_state_storage,
                             &chain_id,
                             &validator_run,
                             &chain_manager,
@@ -162,20 +150,11 @@ impl MempoolPrevalidator {
         _: &Context<MempoolPrevalidatorMsg>,
         msg: MempoolOperationReceived,
     ) -> Result<(), Error> {
-        let MempoolOperationReceived {
-            operation_hash,
-            operation_type,
-            result_callback,
-        } = msg;
         // add operation to queue for validation
         self.validator_event_sender
             .lock()
             .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-            .send(Event::ValidateOperation(
-                operation_hash,
-                operation_type,
-                result_callback,
-            ))?;
+            .send(Event::ValidateOperation(msg))?;
         Ok(())
     }
 
@@ -295,8 +274,7 @@ impl<T> From<PoisonError<T>> for PrevalidationError {
 fn process_prevalidation(
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
-    mempool_storage: &MempoolStorage,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
     chain_id: &ChainId,
     validator_run: &AtomicBool,
     chain_manager: &ChainManagerRef,
@@ -311,8 +289,7 @@ fn process_prevalidation(
         chain_manager,
         block_storage,
         chain_meta_storage,
-        mempool_storage,
-        current_mempool_state_storage.clone(),
+        current_mempool_state_storage,
         api,
         chain_id,
         log,
@@ -343,53 +320,33 @@ fn process_prevalidation(
                         )?;
 
                         // reinitialize state for new prevalidator and head
-                        let operations_to_delete = current_mempool_state_storage
+                        let _ = current_mempool_state_storage
                             .write()?
                             .reinit(prevalidator, head);
-
-                        // clear unneeded operations from mempool storage
-                        operations_to_delete
-                            .iter()
-                            .for_each(|oph| {
-                                if let Err(err) = mempool_storage.delete(oph) {
-                                    warn!(log, "Mempool - delete operation failed"; "hash" => oph.to_base58_check(), "error" => format!("{:?}", err))
-                                }
-                            });
                     } else {
                         debug!(log, "Mempool - new head received, but was ignored"; "received_block_hash" => header.hash.to_base58_check());
                     }
                 }
-                Event::ValidateOperation(oph, mempool_operation_type, result_callback) => {
-                    // TODO: handling when operation not exists - can happen?
-                    if let Some(operation) =
-                        mempool_storage.get(mempool_operation_type, oph.clone())?
-                    {
-                        // TODO: handle and validate pre_filter with operation?
-
-                        // try to add to pendings
-                        // let mut state = current_mempool_state_storage.write()?;
-                        let was_added_to_pending = current_mempool_state_storage
-                            .write()?
-                            .add_to_pending(&oph, operation.into());
-                        if !was_added_to_pending {
-                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
-                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                                Err(MempoolError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
-                            }) {
-                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
-                            }
-                        } else if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
-                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
-                        } else {
-                            current_mempool_state_storage.read()?.wake_up_all_streams();
-                        }
-                    } else {
-                        debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
+                Event::ValidateOperation(MempoolOperationReceived {
+                    operation_hash: oph,
+                    operation,
+                    result_callback,
+                }) => {
+                    // try to add to pendings
+                    let was_added_to_pending = current_mempool_state_storage
+                        .write()?
+                        .add_to_pending(&oph, operation);
+                    if !was_added_to_pending {
+                        debug!(log, "Mempool - received validate operation event - operation already validated"; "operation_hash" => oph.to_base58_check());
                         if let Err(e) = dispatch_oneshot_result(result_callback, || {
-                            Err(MempoolError {reason: format!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check())})
+                            Err(MempoolError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
                         }) {
                             warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
+                    } else if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
+                        warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
+                    } else {
+                        current_mempool_state_storage.read()?.wake_up_all_streams();
                     }
                 }
                 Event::ShuttingDown => {
@@ -404,12 +361,7 @@ fn process_prevalidation(
         }
 
         // 2. lets handle pending operations (if any)
-        handle_pending_operations(
-            chain_manager,
-            api,
-            current_mempool_state_storage.clone(),
-            log,
-        )?;
+        handle_pending_operations(chain_manager, api, current_mempool_state_storage, log)?;
     }
 
     Ok(())
@@ -419,8 +371,7 @@ fn hydrate_state(
     chain_manager: &ChainManagerRef,
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
-    mempool_storage: &MempoolStorage,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
     api: &ProtocolController,
     chain_id: &ChainId,
     log: &Logger,
@@ -439,24 +390,19 @@ fn hydrate_state(
         None => (None, None),
     };
 
-    // read from Mempool_storage (just pending) -> add to queue for validation -> pending
-    let pending = mempool_storage.iter()?;
-
     // initialize internal mempool state (write lock)
-    let mut state = current_mempool_state_storage.write()?;
+    let mut mempool_state = current_mempool_state_storage.write()?;
 
     // reinit + add old unprocessed pendings
-    let _ = state.reinit(prevalidator, head);
-    for (oph, op) in pending {
-        let _ = state.add_to_pending(&oph, op.into());
-    }
+    let _ = mempool_state.reinit(prevalidator, head);
+
     // ste started date
-    if state.prevalidator_started().is_none() {
-        state.set_prevalidator_started();
+    if mempool_state.prevalidator_started().is_none() {
+        mempool_state.set_prevalidator_started();
     }
 
-    // drop write lock
-    drop(state);
+    // release lock asap
+    drop(mempool_state);
 
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
     handle_pending_operations(chain_manager, api, current_mempool_state_storage, log)?;
@@ -492,18 +438,18 @@ fn begin_construction(
 fn handle_pending_operations(
     chain_manager: &ChainManagerRef,
     api: &ProtocolController,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
     // check if we can handle something
-    let mut state = current_mempool_state_storage.write()?;
-
-    // this destruct mempool_state to be modified under write lock
-    let (prevalidator, head, pendings, operations, validation_result) =
-        match state.can_handle_pending() {
-            Some((prevalidator, head, pendings, operations, validation_result)) => {
-                debug!(log, "Mempool - handle_pending_operations"; "pendings" => pendings.len());
-                (prevalidator, head, pendings, operations, validation_result)
+    let (prevalidator, head, mut pendings, operations) = {
+        let mut mempool_state = current_mempool_state_storage.write()?;
+        match mempool_state.drain_pending() {
+            Some((prevalidator, head, pendings, operations)) => {
+                // release lock asap
+                drop(mempool_state);
+                debug!(log, "Mempool - handle_pending_operations"; "pendings" => pendings.len(), "mempool_head" => head.to_base58_check());
+                (prevalidator, head, pendings, operations)
             }
             None => {
                 trace!(
@@ -512,33 +458,42 @@ fn handle_pending_operations(
                 );
                 return Ok(());
             }
-        };
+        }
+    };
 
     // lets iterate pendings and validate them
-    for pending_op in pendings.drain().into_iter() {
+    for pending_op in pendings.drain() {
         // handle validation
         match operations.get(&pending_op) {
-            Some(operation) => {
-                trace!(log, "Mempool - lets validate "; "hash" => pending_op.to_base58_check());
+            Some(mempool_operation) => {
+                trace!(log, "Mempool - lets validate "; "operation_hash" => pending_op.to_base58_check());
 
                 // lets validate throught protocol
                 match api.validate_operation(ValidateOperationRequest {
                     prevalidator: prevalidator.clone(),
-                    operation: operation.clone(),
+                    operation: mempool_operation.operation().clone(),
                 }) {
                     Ok(response) => {
-                        debug!(log, "Mempool - validate operation response finished with success"; "hash" => pending_op.to_base58_check(), "result" => format!("{:?}", response.result));
+                        debug!(log, "Mempool - validate operation response finished with success"; "operation_hash" => pending_op.to_base58_check(), "result" => format!("{:?}", response.result));
 
                         // merge new result with existing one
-                        let _ = validation_result.merge(response.result);
+                        // we need to aquire state after every operation, because we dont want to lock shared mutex, while waiting for ffi
+                        match current_mempool_state_storage.write() {
+                            Ok(mut mempool_state) => {
+                                mempool_state.merge_validation_result(response.result);
 
-                        // TODO: handle Duplicate/ Outdated - if result is empty
-                        // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
+                                // TODO: handle Duplicate/ Outdated - if result is empty
+                                // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
+                            }
+                            Err(e) => {
+                                warn!(log, "Failed to merge operation result to mempool"; "reason" => format!("{:?}", e), "operation_hash" => pending_op.to_base58_check(), "validation_result" => format!("{:?}", response), "mempool_head" => head.to_base58_check());
+                            }
+                        }
                     }
                     Err(pse) => {
                         ProtocolServiceError::handle_protocol_service_error(
                             pse,
-                            |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => pending_op.to_base58_check(), "error" => format!("{:?}", e)),
+                            |e| warn!(log, "Mempool - failed to validate operation message"; "operation_hash" => pending_op.to_base58_check(), "error" => format!("{:?}", e), "mempool_head" => head.to_base58_check()),
                         )?
 
                         // TODO: create custom error and add to refused or just revalidate (retry algorithm?)
@@ -546,39 +501,36 @@ fn handle_pending_operations(
                 }
             }
             None => {
-                warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => pending_op.to_base58_check())
+                warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "operation_hash" => pending_op.to_base58_check(), "mempool_head" => head.to_base58_check())
             }
         }
     }
 
-    advertise_new_mempool(
-        chain_manager,
-        prevalidator,
-        head,
-        (&validation_result.applied, pendings),
-    );
+    // collect actual mempool
+    match current_mempool_state_storage.read() {
+        Ok(mempool_state) => {
+            if let Some((mempool, mempool_operations)) =
+                mempool_state.collect_mempool_operations_to_advertise(pendings)
+            {
+                // release lock asap
+                drop(mempool_state);
 
-    Ok(())
-}
-
-/// Notify other actors that mempool state changed
-fn advertise_new_mempool(
-    chain_manager: &ChainManagerRef,
-    prevalidator: &PrevalidatorWrapper,
-    head: &BlockHash,
-    (applied, pending): (&Vec<Applied>, &HashSet<OperationHash>),
-) {
-    // we advertise new mempool, only if we have new applied operations
-    if applied.is_empty() {
-        return;
+                // advertise actual mempool
+                chain_manager.tell(
+                    AdvertiseToP2pNewMempool {
+                        chain_id: prevalidator.chain_id,
+                        mempool_head: head,
+                        mempool,
+                        mempool_operations,
+                    },
+                    None,
+                );
+            }
+        }
+        Err(e) => {
+            warn!(log, "Failed to prepare mempool data for advertising"; "reason" => format!("{:?}", e), "mempool_head" => head.to_base58_check());
+        }
     }
 
-    chain_manager.tell(
-        AdvertiseToP2pNewMempool {
-            chain_id: prevalidator.chain_id.clone(),
-            mempool_head: head.clone(),
-            mempool: collect_mempool(applied, pending),
-        },
-        None,
-    );
+    Ok(())
 }

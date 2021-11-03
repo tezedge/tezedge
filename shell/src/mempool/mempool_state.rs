@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 
 use crypto::hash::{BlockHash, OperationHash};
-use tezos_api::ffi::{Applied, PrevalidatorWrapper, ValidateOperationResult};
-use tezos_messages::p2p::encoding::prelude::{Mempool, Operation};
+use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResult};
+use tezos_messages::p2p::encoding::prelude::Mempool;
 
-use shell_integration::{StreamCounter, StreamWakers};
+use shell_integration::{MempoolOperationRef, StreamCounter, StreamWakers};
 /// Mempool state is defined with mempool and validation_result attributes, which are in sync:
 /// - `validation_result`
 ///     - contains results of all validated operations
@@ -31,7 +31,7 @@ pub struct MempoolState {
     validation_result: ValidateOperationResult,
 
     /// In-memory store of actual operations
-    operations: HashMap<OperationHash, Operation>,
+    operations: HashMap<OperationHash, MempoolOperationRef>,
     // TODO: pendings limit
     // TODO: pendings as vec and order
     pending: HashSet<OperationHash>,
@@ -83,7 +83,7 @@ impl MempoolState {
     pub(crate) fn add_to_pending(
         &mut self,
         operation_hash: &OperationHash,
-        operation: Operation,
+        operation: MempoolOperationRef,
     ) -> bool {
         if self.is_already_validated(operation_hash) {
             return false;
@@ -146,34 +146,133 @@ impl MempoolState {
         }
     }
 
-    /// Indicates, that pending operations can be handled
+    /// Drain pending operations, that need to be handled
     /// Returns - None, if nothing can be done, or Some(prevalidator, head, pendings, operations) to handle
-    pub(crate) fn can_handle_pending(
+    pub(crate) fn drain_pending(
         &mut self,
     ) -> Option<(
-        &PrevalidatorWrapper,
-        &BlockHash,
-        &mut HashSet<OperationHash>,
-        &HashMap<OperationHash, Operation>,
-        &mut ValidateOperationResult,
+        PrevalidatorWrapper,
+        BlockHash,
+        HashSet<OperationHash>,
+        HashMap<OperationHash, MempoolOperationRef>,
     )> {
         if self.pending.is_empty() {
             return None;
         }
 
-        match self.prevalidator.as_ref() {
+        let (prevalidator, head) = match self.prevalidator.as_ref() {
             Some(prevalidator) => match self.predecessor.as_ref() {
-                Some(head) => Some((
-                    prevalidator,
-                    head,
-                    &mut self.pending,
-                    &self.operations,
-                    &mut self.validation_result,
-                )),
-                None => None,
+                Some(head) => (prevalidator.clone(), head.clone()),
+                None => return None,
             },
-            None => None,
+            None => return None,
+        };
+
+        // drain pendings to handle
+        let pending_to_handle: HashSet<OperationHash> = self.pending.drain().collect();
+        let pending_operations: HashMap<OperationHash, MempoolOperationRef> = self
+            .operations
+            .iter()
+            .filter(|(op, _)| pending_to_handle.contains(op))
+            .map(|(op, mempool_operation)| (op.clone(), mempool_operation.clone()))
+            .collect();
+
+        Some((prevalidator, head, pending_to_handle, pending_operations))
+    }
+
+    pub(crate) fn merge_validation_result(&mut self, result: ValidateOperationResult) {
+        let _ = self.validation_result.merge(result);
+    }
+
+    pub fn collect_mempool_operations_to_advertise(
+        &self,
+        mut pending: HashSet<OperationHash>,
+    ) -> Option<(Mempool, HashMap<OperationHash, MempoolOperationRef>)> {
+        // advertise only if we have applied operations
+        if self.validation_result.applied.is_empty() {
+            return None;
         }
+
+        let mut mempool_operations: HashMap<OperationHash, MempoolOperationRef> =
+            HashMap::with_capacity(self.validation_result.applied.len());
+
+        // collect applied as known_valid
+        let known_valid: Vec<OperationHash> = self
+            .validation_result
+            .applied
+            .iter()
+            .filter_map(|op| {
+                // advertise just operation_hash, for which we have data
+                if let Some((operation_hash, mempool_operation)) =
+                    self.operations.get_key_value(&op.hash)
+                {
+                    mempool_operations.insert(operation_hash.clone(), mempool_operation.clone());
+                    Some(operation_hash.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // collect all pendings
+        self.pending.iter().for_each(|p| {
+            let _ = pending.insert(p.clone());
+        });
+
+        let pending: Vec<OperationHash> = pending
+            .into_iter()
+            .filter_map(|op| {
+                // advertise just operation_hash, for which we have data
+                if let Some((operation_hash, mempool_operation)) =
+                    self.operations.get_key_value(&op)
+                {
+                    mempool_operations.insert(operation_hash.clone(), mempool_operation.clone());
+                    Some(op)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Some((Mempool::new(known_valid, pending), mempool_operations))
+    }
+
+    pub fn collect_mempool_to_advertise(&self) -> Option<Mempool> {
+        // advertise only if we have applied operations
+        if self.validation_result.applied.is_empty() {
+            return None;
+        }
+
+        // collect applied as known_valid
+        let known_valid: Vec<OperationHash> = self
+            .validation_result
+            .applied
+            .iter()
+            .filter_map(|op| {
+                // advertise just operation_hash, for which we have data
+                if self.operations.contains_key(&op.hash) {
+                    Some(op.hash.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // collect all pendings
+        let pending: Vec<OperationHash> = self
+            .pending
+            .iter()
+            .filter_map(|op| {
+                // advertise just operation_hash, for which we have data
+                if self.operations.contains_key(op) {
+                    Some(op.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Some(Mempool::new(known_valid, pending))
     }
 
     /// Indicates, that the operation was already validated and is in the mempool
@@ -237,39 +336,19 @@ impl MempoolState {
         &self.validation_result
     }
 
-    pub fn operations(&self) -> &HashMap<OperationHash, Operation> {
+    pub fn operations(&self) -> &HashMap<OperationHash, MempoolOperationRef> {
         &self.operations
-    }
-}
-
-pub(crate) fn collect_mempool(applied: &[Applied], pending: &HashSet<OperationHash>) -> Mempool {
-    let known_valid = applied
-        .iter()
-        .cloned()
-        .map(|a| a.hash)
-        .collect::<Vec<OperationHash>>();
-
-    let pending = pending.iter().cloned().collect::<Vec<OperationHash>>();
-
-    Mempool::new(known_valid, pending)
-}
-
-impl From<&MempoolState> for Mempool {
-    fn from(mempool_state: &MempoolState) -> Mempool {
-        collect_mempool(
-            &mempool_state.validation_result.applied,
-            &mempool_state.pending,
-        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;
+    use std::sync::Arc;
 
     use tezos_api::ffi::PrevalidatorWrapper;
     use tezos_messages::p2p::binary_message::BinaryRead;
-    use tezos_messages::p2p::encoding::prelude::Operation;
+    use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
 
     use crate::mempool::MempoolState;
 
@@ -282,17 +361,17 @@ mod tests {
         let mut state = MempoolState::default();
         state.add_to_pending(
             &op_hash1,
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
         );
         state.add_to_pending(
             &op_hash2,
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
         );
         assert_eq!(2, state.pending.len());
         assert_eq!(2, state.operations.len());
 
         // no prevalidator/ no head, means nothing to handle
-        assert!(state.can_handle_pending().is_none());
+        assert!(state.drain_pending().is_none());
 
         // add header/prevalidator
         let _ = state.reinit(
@@ -305,22 +384,37 @@ mod tests {
         );
 
         // remove from pending
-        let handle_pendings = state.can_handle_pending();
+        assert_eq!(2, state.pending.len());
+        assert_eq!(2, state.operations.len());
+        let handle_pendings = state.drain_pending();
         assert!(handle_pendings.is_some());
-        let (_, _head, pendings, ..) = handle_pendings.unwrap();
-        assert!(pendings.remove(&op_hash1));
+        let (prevalidator, head, pendings, pendings_operations) = handle_pendings.unwrap();
+        assert_eq!(2, pendings.len());
+        assert_eq!(0, state.pending.len());
+        assert_eq!(2, pendings_operations.len());
+        assert_eq!(2, state.operations.len());
 
-        // reinit state
-        let unneeded = state.reinit(None, None);
+        // test remove operation
+        state.add_to_pending(
+            &op_hash1,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
+        );
         assert_eq!(1, state.pending.len());
-        assert_eq!(1, state.operations.len());
-        assert!(state.pending.contains(&op_hash2));
-        assert!(unneeded.contains(&op_hash1));
+        assert_eq!(2, state.operations.len());
 
-        // remove operation
-        state.remove_operation(op_hash2);
+        state.remove_operation(op_hash1);
+        assert!(state.pending.is_empty());
+        assert_eq!(1, state.operations.len());
+
+        // reinit
+        let unneded = state.reinit(Some(prevalidator), Some(head));
+        assert_eq!(1, unneded.len());
         assert!(state.pending.is_empty());
         assert!(state.operations.is_empty());
+
+        // drain should not be touch
+        assert_eq!(2, pendings.len());
+        assert_eq!(2, pendings_operations.len());
 
         Ok(())
     }
