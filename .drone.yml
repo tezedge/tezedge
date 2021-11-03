@@ -257,8 +257,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 #############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
@@ -342,8 +342,8 @@ node:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 #############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration against octez node with different network cfg
@@ -477,8 +477,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -551,8 +551,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 ---
 ##############################################################################################################
@@ -787,8 +787,8 @@ image_pull_secrets:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 ---
 ##############################################################################################################
@@ -958,8 +958,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 #############################################################################################################
  # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
@@ -1204,8 +1204,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -1453,8 +1453,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -1721,8 +1721,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -1965,8 +1965,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -2136,8 +2136,8 @@ image_pull_secrets:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -2306,8 +2306,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -2619,8 +2619,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -2935,8 +2935,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -3497,8 +3497,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -3724,8 +3724,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -3951,8 +3951,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4181,8 +4181,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4411,8 +4411,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4443,8 +4443,8 @@ volumes:
 
 trigger:
   branch:
-    - develop
-    - master
+    - x_develop
+    - x_master
 
 steps:
 
@@ -4513,8 +4513,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 steps:
 
@@ -4639,8 +4639,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4742,8 +4742,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 steps:
 
@@ -4896,8 +4896,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4985,8 +4985,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 steps:
 
@@ -5177,8 +5177,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-monitoring-artifacts
@@ -5259,8 +5259,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-monitoring-artifacts
@@ -5340,8 +5340,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-monitoring-artifacts
@@ -5425,8 +5425,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-monitoring-artifacts
@@ -5695,8 +5695,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 ---
 ##############################################################################################################
@@ -5737,8 +5737,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 ##############################################################################################################
 # This pipeline runs tezedge node and octez node,
@@ -5995,8 +5995,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -6242,8 +6242,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 depends_on:
   - build-tezedge-binaries
@@ -6262,8 +6262,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 volumes:
   - name: snapshots
@@ -6468,8 +6468,8 @@ node:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
 
 volumes:
   - name: snapshots

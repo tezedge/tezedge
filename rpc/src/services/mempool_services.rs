@@ -12,14 +12,14 @@ use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
 use slog::info;
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
-use shell::mempool::CurrentMempoolStateStorageRef;
 use shell_integration::*;
 use storage::BlockHeaderWithHash;
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
+use crate::services::dev_services;
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
 
@@ -42,15 +42,43 @@ pub struct InjectedBlockWithOperations {
     pub operations: Vec<Vec<DecodedOperation>>,
 }
 
-pub fn get_pending_operations(
+pub async fn get_pending_operations(
     _chain_id: &ChainId,
-    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
+    env: Arc<RpcServiceEnvironment>,
 ) -> Result<(MempoolOperations, Option<ProtocolHash>), RpcServiceError> {
     // get actual known state of mempool
-    let current_mempool_state = current_mempool_state_storage.read()?;
+    let state = dev_services::get_shell_automaton_state_current(&env)
+        .await
+        .map_err(|_| RpcServiceError::UnexpectedError {
+            reason: "too many requests, the channel between shell and rpc is full".to_string(),
+        })?
+        .mempool;
+
+    Ok((
+        MempoolOperations {
+            applied: {
+                state.applied_operations
+                    .iter()
+                    .map(|(operation_hash, operation)| {
+                        let mut m = HashMap::new();
+                        let hash = operation_hash.to_base58_check();
+                        let branch = operation.branch().to_base58_check();
+                        m.insert(String::from("hash"), Value::String(hash));
+                        m.insert(String::from("branch"), Value::String(branch));
+                        m
+                    })
+                    .collect()
+            },
+            refused: vec![],
+            branch_refused: vec![],
+            branch_delayed: vec![],
+            unprocessed: vec![],
+        },
+        None,
+    ))
 
     // convert to rpc data - we need protocol_hash
-    let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state
+    /*let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state
         .prevalidator()
     {
         Some(prevalidator) => {
@@ -78,9 +106,10 @@ pub fn get_pending_operations(
         None => (MempoolOperations::default(), None),
     };
 
-    Ok((mempool_operations, mempool_prevalidator_protocol))
+    Ok((mempool_operations, mempool_prevalidator_protocol))*/
 }
 
+#[allow(dead_code)]
 pub(crate) fn convert_applied(
     applied: &[Applied],
     operations: &HashMap<OperationHash, MempoolOperationRef>,
@@ -114,6 +143,7 @@ pub(crate) fn convert_applied(
     Ok(result)
 }
 
+#[allow(dead_code)]
 pub(crate) fn convert_errored(
     errored: &[Errored],
     operations: &HashMap<OperationHash, MempoolOperationRef>,
