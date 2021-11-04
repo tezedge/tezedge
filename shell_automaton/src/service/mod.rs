@@ -3,7 +3,6 @@
 
 pub use redux_rs::TimeService;
 
-pub mod service_async_channel;
 pub mod service_channel;
 
 pub mod dns_service;

@@ -8,6 +8,8 @@ use serde::{Serialize, Deserialize};
 use crypto::hash::OperationHash;
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
+use crate::service::rpc_service::RpcId;
+
 use super::mempool_state::HeadState;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -34,9 +36,10 @@ pub struct MempoolOperationRecvDoneAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolOperationInjectDoneAction {
+pub struct MempoolOperationInjectAction {
     pub operation: Operation,
     pub operation_hash: OperationHash,
+    pub rpc_id: RpcId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

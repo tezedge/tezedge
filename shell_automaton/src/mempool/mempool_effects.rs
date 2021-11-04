@@ -11,7 +11,7 @@ use tezos_messages::p2p::encoding::{
     operation::GetOperationsMessage,
 };
 
-use crate::{State, Action, ActionWithId, Service};
+use crate::{State, Action, ActionWithId, Service, service::RpcService};
 use crate::peer::message::{
     write::PeerMessageWriteInitAction,
     read::PeerMessageReadSuccessAction,
@@ -21,7 +21,7 @@ use super::{
     mempool_actions::{
         MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-        MempoolOperationInjectDoneAction,
+        MempoolOperationInjectAction,
     },
     mempool_state::HeadState,
 };
@@ -121,7 +121,7 @@ pub fn mempool_effects<S>(
                 }
             }
         },
-        Action::MempoolOperationInjectDone(MempoolOperationInjectDoneAction { .. }) => {
+        Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
             let mempool_state = &store.state().mempool;
             // TODO: duplicated code
             if let Some(head_state) = mempool_state.head_state.clone() {
@@ -140,7 +140,10 @@ pub fn mempool_effects<S>(
                     }
                     .into(),
                 );
+                store.service().rpc().respond(*rpc_id, serde_json::Value::Null);
             } else {
+                let resp = serde_json::Value::String("head is not ready".to_string());
+                store.service().rpc().respond(*rpc_id, resp);
                 // should always have current head while waiting MempoolOperationRecvDone
                 // TODO: should be forbidden by type system
             }

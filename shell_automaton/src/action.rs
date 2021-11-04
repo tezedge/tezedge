@@ -55,7 +55,7 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::mempool::{
     MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
     MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-    MempoolOperationInjectDoneAction,
+    MempoolOperationInjectAction,
 };
 
 use crate::storage::request::{
@@ -213,7 +213,7 @@ pub enum Action {
     MempoolGetOperations(MempoolGetOperationsAction),
     MempoolGetOperationsPending(MempoolGetOperationsPendingAction),
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
-    MempoolOperationInjectDone(MempoolOperationInjectDoneAction),
+    MempoolOperationInject(MempoolOperationInjectAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
 

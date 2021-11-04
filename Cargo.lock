@@ -3109,6 +3109,7 @@ dependencies = [
  "networking",
  "redux-rs",
  "serde 1.0.130",
+ "serde_json",
  "shell_automaton",
  "storage",
  "tezos_encoding",
