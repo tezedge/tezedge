@@ -282,7 +282,7 @@ impl ChainManager {
             if !mempool_prevalidator_factory.p2p_disable_mempool {
                 spawn_mempool_prevalidation_thread(
                 current_mempool_state.clone(),
-                tezos_readonly_prevalidation_api.clone(),
+                tezos_protocol_api.clone(),
                 &persistent_storage,
                 sys.log(),
             )
@@ -343,7 +343,9 @@ impl ChainManager {
             ..
         } = self;
 
-        if let Some(next_download_check) = mempool_operation_state.process_downloading(peers) {
+        if let Some(next_download_check) =
+            mempool_operation_state.process_downloading(peers, shell_automaton, &ctx.system.log())
+        {
             self.schedule_check_mempool_completeness(ctx, Some(next_download_check));
         }
     }
@@ -418,19 +420,7 @@ impl ChainManager {
                 );
             }
             NetworkChannelMsg::PeerDisconnected(peer) => {
-                // remove peer from inner state
-                if let Some(mut peer_state) = self.peers.remove(&peer) {
-                    let peer_id = peer_state.peer_id.clone();
-                    // clear innner state (not needed, it will be drop)
-                    peer_state.clear();
-                    if let Some(peer_branch_bootstrapper) =
-                        self.chain_state.peer_branch_bootstrapper()
-                    {
-                        peer_branch_bootstrapper.tell(CleanPeerData(peer_id), None);
-                    }
-                }
-                // tell bootstrapper to clean potential data
-                self.clear_peer_data(ctx, actor_uri);
+                self.clear_peer_data(ctx, peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 match peers.get_mut(&received.peer_address) {
@@ -787,8 +777,8 @@ impl ChainManager {
                                     {
                                         tell_peer(
                                             &shell_automaton,
-                                            found_operation.as_ref().clone().into(),
                                             &peer.peer_id,
+                                            found_operation.as_ref().clone().into(),
                                             &log,
                                         );
                                     }
@@ -1495,20 +1485,20 @@ impl ChainManager {
         }
     }
 
-    fn clear_peer_data(&mut self, ctx: &Context<ChainManagerMsg>, actor_uri: Arc<ActorUri>) {
+    fn clear_peer_data(&mut self, ctx: &Context<ChainManagerMsg>, peer: SocketAddr) {
         // remove peer from inner state
-        if let Some(mut peer_state) = self.peers.remove(&actor_uri) {
+        if let Some(mut peer_state) = self.peers.remove(&peer) {
+            let peer_id = peer_state.peer_id.clone();
             // clear innner state (not needed, it will be drop)
             peer_state.clear();
+            // tell bootstrapper to clean potential data
+            if let Some(peer_branch_bootstrapper) = self.chain_state.peer_branch_bootstrapper() {
+                peer_branch_bootstrapper.tell(CleanPeerData(peer_id), None);
+            }
         }
 
         // clear from mempool operation state
-        self.mempool_operation_state.clear_peer_data(&actor_uri);
-
-        // tell bootstrapper to clean potential data
-        if let Some(peer_branch_bootstrapper) = self.chain_state.peer_branch_bootstrapper() {
-            peer_branch_bootstrapper.tell(CleanPeerData(actor_uri), None);
-        }
+        self.mempool_operation_state.clear_peer_data(&peer);
 
         // when everybody is notified, ping mempool to reschedule missing
         self.schedule_check_mempool_completeness(ctx, None);
@@ -2109,7 +2099,7 @@ fn spawn_p2p_reader_thread(
                                                 Ok(Some(block)) => {
                                                     let msg: BlockHeaderMessage =
                                                         (*block.header).clone().into();
-                                                    tell_peer(msg.into(), &peer);
+                                                    tell_peer(&shell_automaton, &peer, msg.into(), &log);
                                                 }
                                                 Ok(None) => (),
                                                 Err(e) => warn!(log, "Failed to read block header"; "reason" => e, "block_hash" => block_hash.to_base58_check()),
@@ -2124,7 +2114,7 @@ fn spawn_p2p_reader_thread(
 
                                             let key = get_op.into();
                                             match operations_storage.get(&key) {
-                                                Ok(Some(op)) => tell_peer(op.into(), &peer),
+                                                Ok(Some(op)) => tell_peer(&shell_automaton, &peer, op.into(), &log),
                                                 Ok(None) => (),
                                                 Err(e) => warn!(log, "Failed to read block header operations"; "reason" => e, "key" => {
                                                     let OperationKey {
@@ -2180,7 +2170,7 @@ impl From<SendOperationToMempoolRequest> for MempoolPrevalidationEvent {
 /// Spawn inner thread for heavy readonly operations, like calculation of history...
 fn spawn_mempool_prevalidation_thread(
     current_mempool_state: CurrentMempoolStateStorageRef,
-    tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: Arc<ProtocolRunnerApi>,
     persistent_storage: &PersistentStorage,
     log: Logger,
 ) -> Result<(MempoolPrevalidationSender, ThreadWatcher), anyhow::Error> {
@@ -2212,7 +2202,7 @@ fn spawn_mempool_prevalidation_thread(
                     if let Ok(event) = event_receiver.recv() {
                         match event {
                             MempoolPrevalidationEvent::SendOperationToMempool(msg) => {
-                                if let Err(e) = handle_mempool_operation_prevalidation(msg, &current_mempool_state, &tezos_readonly_prevalidation_api, &block_storage, &block_meta_storage) {
+                                if let Err(e) = handle_mempool_operation_prevalidation(msg, &current_mempool_state, &tezos_protocol_api, &block_storage, &block_meta_storage) {
                                     warn!(log, "Failed to handle mempool operation prevalidation"; "reason" => format!("{}", e));
                                 }
                             }
@@ -2235,7 +2225,7 @@ fn spawn_mempool_prevalidation_thread(
 fn handle_mempool_operation_prevalidation(
     msg: SendOperationToMempoolRequest,
     current_mempool_state: &CurrentMempoolStateStorageRef,
-    tezos_readonly_prevalidation_api: &Arc<TezosApiConnectionPool>,
+    tezos_protocol_api: &Arc<ProtocolRunnerApi>,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
 ) -> Result<(), Error> {
@@ -2246,52 +2236,24 @@ fn handle_mempool_operation_prevalidation(
         mempool_prevalidator,
     } = msg;
 
-    let mut connection =
-        tezos_protocol_api.readable_connection_sync()?;
+    let mut connection = tezos_protocol_api.readable_connection_sync()?;
 
     // do prevalidation before add the operation to mempool
-    let current_mempool_state =
-        Arc::clone(&self.current_mempool_state);
     let result = tokio::task::block_in_place(|| {
-        tezos_protocol_api.tokio_runtime.block_on(
-            validation::prevalidate_operation(
-                chain_state.get_chain_id(),
+        tezos_protocol_api
+            .tokio_runtime
+            .block_on(validation::prevalidate_operation(
+                &chain_id,
                 &operation_hash,
-                operation,
+                operation.operation(),
                 &current_mempool_state,
                 &mut connection,
                 block_storage,
                 block_meta_storage,
-            ),
-        )
+            ))
     });
 
     let result = match result {
-        Ok(result) => result,
-        Err(e) => match e {
-            validation::PrevalidateOperationError::UnknownBranch { .. }
-            | validation::PrevalidateOperationError::AlreadyInMempool { .. }
-            | validation::PrevalidateOperationError::BranchNotAppliedYet { .. }  => {
-                // here we just ignore scenarios
-                return Ok(());
-            }
-            poe => {
-                // other error just propagate
-                return Err(format_err!("Operation from p2p ({}) was not added to mempool (prevalidation). Reason: {:?}", operation_hash.to_base58_check(), poe));
-            }
-        }
-    };
-
-    // do prevalidation before add the operation to mempool
-    let result = match validation::prevalidate_operation(
-        &chain_id,
-        &operation_hash,
-        operation.operation(),
-        current_mempool_state,
-        &tezos_readonly_prevalidation_api.pool.get()?.api,
-        block_storage,
-        block_meta_storage,
-    ) {
         Ok(result) => result,
         Err(e) => match e {
             validation::PrevalidateOperationError::UnknownBranch { .. }
@@ -2306,6 +2268,31 @@ fn handle_mempool_operation_prevalidation(
             }
         },
     };
+
+    // do prevalidation before add the operation to mempool
+    // let result = match validation::prevalidate_operation(
+    //     &chain_id,
+    //     &operation_hash,
+    //     operation.operation(),
+    //     current_mempool_state,
+    //     &tezos_readonly_prevalidation_api.pool.get()?.api,
+    //     block_storage,
+    //     block_meta_storage,
+    // ) {
+    //     Ok(result) => result,
+    //     Err(e) => match e {
+    //         validation::PrevalidateOperationError::UnknownBranch { .. }
+    //         | validation::PrevalidateOperationError::AlreadyInMempool { .. }
+    //         | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
+    //             // here we just ignore scenarios
+    //             return Ok(());
+    //         }
+    //         poe => {
+    //             // other error just propagate
+    //             return Err(format_err!("Operation from p2p ({}) was not added to mempool (prevalidation). Reason: {:?}", operation_hash.to_base58_check(), poe));
+    //         }
+    //     },
+    // };
 
     // can accpect operation ?
     if !validation::can_accept_operation_from_p2p(&operation_hash, &result) {

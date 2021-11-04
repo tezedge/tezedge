@@ -531,6 +531,7 @@ pub fn tell_peer(
     }
 }
 
+// TODO: remove or rework
 // #[cfg(test)]
 // mod tests {
 //     use std::collections::HashSet;

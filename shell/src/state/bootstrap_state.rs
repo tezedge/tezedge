@@ -689,10 +689,9 @@ impl BootstrapState {
                     continue;
                 }
             }
-            branches
-                .retain(|branch| {
-                    if branch.is_done() {
-                        debug!(log, "Finished branch bootstrapping process";
+            branches.retain(|branch| {
+                if branch.is_done() {
+                    debug!(log, "Finished branch bootstrapping process";
                             "to_level" => &branch.to_level,
                             "peer_ip" => peer_id.address.to_string());
 

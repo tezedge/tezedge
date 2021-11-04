@@ -215,7 +215,6 @@ pub async fn prevalidate_operation(
     operation: &Operation,
     current_mempool_state: &CurrentMempoolStateStorageRef,
     api: &mut ProtocolRunnerConnection,
-    api: &ProtocolController,
     block_storage: &impl BlockStorageReader,
     block_meta_storage: &impl BlockMetaStorageReader,
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
@@ -255,13 +254,15 @@ pub async fn prevalidate_operation(
             });
         }
 
-    let mempool_head = match mempool_state.head().as_ref() {
-        Some(head) => match block_storage.get(head)? {
-            Some(head) => {
-                // release lock asap
-                drop(mempool_state);
-                head
-            }
+        match mempool_state.head().as_ref() {
+            Some(head) => match block_storage.get(head)? {
+                Some(head) => head,
+                None => {
+                    return Err(PrevalidateOperationError::UnknownBranch {
+                        branch: head.to_base58_check(),
+                    });
+                }
+            },
             None => {
                 return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
                     reason: "no head in mempool".to_string(),
