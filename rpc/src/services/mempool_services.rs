@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
-use slog::info;
+use slog::{info, warn};
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
 use shell_integration::*;
@@ -228,19 +228,28 @@ pub async fn inject_operation(
         operation: operation.clone(),
         operation_hash: operation_hash.clone(),
     };
-    env.shell_automaton_sender().send(msg)
+    let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> = env.shell_automaton_sender()
+        .send(msg)
         .await
         .map_err(|_| RpcServiceError::UnexpectedError {
             reason: "the channel between rpc and shell is overflown".to_string(),
         })?;
     let operation_hash_b58check_string = operation_hash.to_base58_check();
 
-    // TODO: get response
-    // info!(env.log(), "Operation injected";
-    //     "operation_hash" => &operation_hash_b58check_string,
-    //     "elapsed" => format!("{:?}", start_request.elapsed()),
-    //     "elapsed_async" => format!("{:?}", start_async.elapsed()));
-    let _ = (INJECT_OPERATION_WAIT_TIMEOUT, start_request);
+    let result = tokio::time::timeout(INJECT_OPERATION_WAIT_TIMEOUT, receiver).await;
+    match result {
+        // do we need the response
+        Ok(Ok(_)) => (),
+        Ok(Err(_)) => warn!(env.log(), "Operation injection, state machine failed to respond"),
+        Err(elapsed) => {
+            warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
+            return Err(RpcServiceError::UnexpectedError { reason: "timeout".to_string() });
+        },
+    }
+
+    info!(env.log(), "Operation injected";
+        "operation_hash" => &operation_hash_b58check_string,
+        "elapsed" => format!("{:?}", start_request.elapsed()));
 
     Ok(operation_hash_b58check_string)
 }

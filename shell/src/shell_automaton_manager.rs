@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
+use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use slog::{info, o, warn, Logger};
 use storage::PersistentStorage;
 
@@ -92,7 +92,7 @@ impl ShellAutomatonManager {
         p2p_config: P2p,
         pow_target: f64,
         _chain_id: ChainId,
-    ) -> (Self, RpcShellAutomatonChannel) {
+    ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
             p2p_config
