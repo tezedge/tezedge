@@ -1,8 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-pub use shell_automaton::service::rpc_service::{RpcResponse, RpcService};
-use shell_automaton::service::service_async_channel::ResponseTryRecvError;
+pub use shell_automaton::service::rpc_service::{RpcResponse, RpcService, RpcRecvError, RpcId};
 
 #[derive(Debug, Clone)]
 pub struct RpcServiceDummy {}
@@ -14,8 +13,11 @@ impl RpcServiceDummy {
 }
 
 impl RpcService for RpcServiceDummy {
-    #[inline(always)]
-    fn try_recv(&mut self) -> Result<RpcResponse, ResponseTryRecvError> {
-        Err(ResponseTryRecvError::Empty)
+    fn try_recv(&mut self) -> Result<(RpcResponse, RpcId), RpcRecvError> {
+        Err(RpcRecvError::Empty)
+    }
+
+    fn respond(&mut self, call_id: RpcId, json: serde_json::Value) {
+        let _ = (call_id, json);
     }
 }

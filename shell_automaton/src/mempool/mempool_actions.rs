@@ -8,6 +8,8 @@ use serde::{Serialize, Deserialize};
 use crypto::hash::OperationHash;
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
+use crate::service::rpc_service::RpcId;
+
 use super::mempool_state::HeadState;
 
 use crate::{action::EnablingCondition, state::State};
@@ -68,12 +70,13 @@ impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolOperationInjectDoneAction {
+pub struct MempoolOperationInjectAction {
     pub operation: Operation,
     pub operation_hash: OperationHash,
+    pub rpc_id: RpcId,
 }
 
-impl EnablingCondition<State> for MempoolOperationInjectDoneAction {
+impl EnablingCondition<State> for MempoolOperationInjectAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;

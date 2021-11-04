@@ -7,7 +7,7 @@ use crate::{State, Action, ActionWithMeta};
 
 use super::{
     MempoolGetOperationsPendingAction, MempoolRecvDoneAction, MempoolOperationRecvDoneAction,
-    MempoolBroadcastDoneAction, MempoolOperationInjectDoneAction,
+    MempoolBroadcastDoneAction, MempoolOperationInjectAction,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -58,7 +58,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO: prevalidate the operation
             mempool_state.applied_operations.insert(operation_hash, operation.clone());
         },
-        Action::MempoolOperationInjectDone(MempoolOperationInjectDoneAction { operation, operation_hash }) => {
+        Action::MempoolOperationInject(MempoolOperationInjectAction { operation, operation_hash, .. }) => {
             // TODO: prevalidate the operation
             mempool_state.applied_operations.insert(operation_hash.clone(), operation.clone());
         },
