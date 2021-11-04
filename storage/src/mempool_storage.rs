@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: TE-238/ this storage is not used, please remove it
+
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Formatter;

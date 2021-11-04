@@ -13,7 +13,7 @@
 // use networking::ShellCompatibilityVersion;
 // use shell::peer_manager::P2p;
 // use shell::PeerConnectionThreshold;
-// use tezos_messages::p2p::encoding::prelude::Operation;
+// use shell_integration::MempoolOperationRef;
 
 // pub mod infra;
 // pub mod samples;
@@ -70,7 +70,7 @@
 // }
 
 // fn contains_all_keys(
-//     map: &HashMap<OperationHash, Operation>,
+//     map: &HashMap<OperationHash, MempoolOperationRef>,
 //     keys: &HashSet<OperationHash>,
 // ) -> bool {
 //     let mut contains_counter = 0;

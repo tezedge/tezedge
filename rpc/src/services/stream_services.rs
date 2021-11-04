@@ -10,11 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{error, Logger};
 use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::encoding::operation::Operation;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_integration::{generate_stream_id, StreamCounter, StreamId};
+use shell_integration::{generate_stream_id, MempoolOperationRef, StreamCounter, StreamId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
@@ -86,7 +85,7 @@ pub struct MonitoredOperation {
 impl MonitoredOperation {
     pub fn collect_applied(
         applied: &[Applied],
-        operations: &HashMap<OperationHash, Operation>,
+        operations: &HashMap<OperationHash, MempoolOperationRef>,
         protocol_hash: &str,
         streamed_operations: &mut HashSet<String>,
     ) -> Result<Vec<Self>, RpcServiceError> {
@@ -110,7 +109,7 @@ impl MonitoredOperation {
                 }
             };
             let monitored_op = MonitoredOperation {
-                branch: operation.branch().to_base58_check(),
+                branch: operation.operation().branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
                 hash: op_hash,
                 protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
@@ -123,7 +122,7 @@ impl MonitoredOperation {
 
     pub fn collect_errored(
         errored: &[Errored],
-        operations: &HashMap<OperationHash, Operation>,
+        operations: &HashMap<OperationHash, MempoolOperationRef>,
         protocol_hash: &str,
         streamed_operations: &mut HashSet<String>,
     ) -> Result<Vec<Self>, RpcServiceError> {
@@ -147,7 +146,7 @@ impl MonitoredOperation {
                 }
             };
             let monitored_op = MonitoredOperation {
-                branch: operation.branch().to_base58_check(),
+                branch: operation.operation().branch().to_base58_check(),
                 protocol: Some(protocol_hash.to_string()),
                 hash: op_hash,
                 protocol_data: serde_json::from_str(
@@ -225,12 +224,12 @@ impl OperationMonitorStream {
 
         // 1. get the operations currently in mempool
         match current_mempool_state_storage.read() {
-            Ok(current_mempool_state) => {
+            Ok(mempool_state) => {
                 let (validate_operation_result, operations, protocol_hash) =
-                    match current_mempool_state.prevalidator() {
+                    match mempool_state.prevalidator() {
                         Some(prevalidator) => (
-                            current_mempool_state.result(),
-                            current_mempool_state.operations(),
+                            mempool_state.result(),
+                            mempool_state.operations(),
                             prevalidator.protocol.to_base58_check(),
                         ),
                         None => {
@@ -279,6 +278,8 @@ impl OperationMonitorStream {
                     )?;
                     requested_ops.extend(monitored_branch_refused);
                 }
+                // release lock asap
+                drop(mempool_state);
 
                 // handle special case, when the first poll has no operations, return an empty vector
                 if requested_ops.is_empty() && self.poll_counter == 1 {
@@ -439,8 +440,10 @@ impl Stream for OperationMonitorStream {
         self.poll_counter += 1;
 
         if !self.contains_waker {
-            let mut mempool_state = match self.current_mempool_state_storage.write() {
-                Ok(state) => state,
+            match self.current_mempool_state_storage.write() {
+                Ok(mut mempool_state) => {
+                    mempool_state.add_stream(self.stream_id, cx.waker().clone())
+                }
                 Err(e) => {
                     error!(
                         self.log,
@@ -449,13 +452,11 @@ impl Stream for OperationMonitorStream {
                     return Poll::Ready(None);
                 }
             };
-            mempool_state.add_stream(self.stream_id, cx.waker().clone());
-            drop(mempool_state);
             self.contains_waker = true;
         }
 
-        let state = match self.state.read() {
-            Ok(state) => state,
+        let is_last_checked_head_the_same_as_current_head = match self.state.read() {
+            Ok(state) => self.last_checked_head.eq(&state.current_head().hash),
             Err(e) => {
                 error!(
                     self.log,
@@ -464,12 +465,8 @@ impl Stream for OperationMonitorStream {
                 return Poll::Ready(None);
             }
         };
-        let current_head = state.current_head().clone();
 
-        // drop the immutable borrow so we can borrow self again as mutable
-        drop(state);
-
-        if self.last_checked_head == current_head.hash {
+        if is_last_checked_head_the_same_as_current_head {
             // current head not changed, check for new operations
             let yielded = self.yield_operations();
             match yielded {
@@ -478,18 +475,19 @@ impl Stream for OperationMonitorStream {
             }
         } else {
             // Head change, end stream
-            let mut mempool_state = match self.current_mempool_state_storage.write() {
-                Ok(state) => state,
+            match self.current_mempool_state_storage.write() {
+                Ok(mut mempool_state) => {
+                    mempool_state.remove_stream(self.stream_id);
+                    Poll::Ready(None)
+                }
                 Err(e) => {
                     error!(
                         self.log,
                         "OperationMonitorStream cannot access shared mempool state, reason: {}", e
                     );
-                    return Poll::Ready(None);
+                    Poll::Ready(None)
                 }
-            };
-            mempool_state.remove_stream(self.stream_id);
-            Poll::Ready(None)
+            }
         }
     }
 }

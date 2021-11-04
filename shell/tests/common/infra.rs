@@ -22,6 +22,7 @@ use networking::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
+use shell::mempool::mempool_download_state::MempoolOperationStateConfiguration;
 use shell::mempool::{
     init_mempool_state_storage, CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory,
 };
@@ -56,6 +57,7 @@ pub struct NodeInfrastructure {
     pub actor_system: Arc<ActorSystem>,
     block_applier_thread_watcher: ThreadWatcher,
     chain_manager_p2p_reader_thread_watcher: ThreadWatcher,
+    chain_manager_mempool_prevalidation_thread_watcher: Option<ThreadWatcher>,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
     pub tmp_storage: TmpStorage,
@@ -202,7 +204,11 @@ impl NodeInfrastructure {
             initialize_chain_manager_result_callback_receiver,
         ) = create_oneshot_callback();
 
-        let (chain_manager, chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
+        let (
+            chain_manager,
+            chain_manager_p2p_reader_thread_watcher,
+            chain_manager_mempool_prevalidation_thread_watcher,
+        ) = ChainManager::actor(
             &actor_system,
             block_applier.clone(),
             network_channel.clone(),
@@ -215,6 +221,10 @@ impl NodeInfrastructure {
             current_mempool_state_storage.clone(),
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
             mempool_prevalidator_factory.clone(),
+            MempoolOperationStateConfiguration::new(
+                Duration::from_secs(60),
+                Duration::from_millis(50),
+            ),
             identity.clone(),
             initialize_chain_manager_result_callback,
         )
@@ -260,6 +270,7 @@ impl NodeInfrastructure {
             tezos_env: tezos_env.clone(),
             block_applier_thread_watcher,
             chain_manager_p2p_reader_thread_watcher,
+            chain_manager_mempool_prevalidation_thread_watcher,
             mempool_prevalidator_factory,
             tezos_protocol_api,
         })
@@ -273,6 +284,7 @@ impl NodeInfrastructure {
             tokio_runtime,
             block_applier_thread_watcher,
             chain_manager_p2p_reader_thread_watcher,
+            chain_manager_mempool_prevalidation_thread_watcher,
             mempool_prevalidator_factory,
             ..
         } = self;
@@ -288,6 +300,15 @@ impl NodeInfrastructure {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
                        "reason" => format!("{}", e));
+        }
+        if let Some(chain_manager_mempool_prevalidation_thread_watcher) =
+            chain_manager_mempool_prevalidation_thread_watcher.as_mut()
+        {
+            if let Err(e) = chain_manager_mempool_prevalidation_thread_watcher.stop() {
+                warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => chain_manager_mempool_prevalidation_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+            }
         }
         let mempool_thread_watchers = match mempool_prevalidator_factory
             .mempool_thread_watchers()
@@ -351,6 +372,16 @@ impl NodeInfrastructure {
             thread.thread().unpark();
             if let Err(e) = thread.join() {
                 warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        if let Some(mut chain_manager_mempool_prevalidation_thread_watcher) =
+            chain_manager_mempool_prevalidation_thread_watcher.take()
+        {
+            if let Some(thread) = chain_manager_mempool_prevalidation_thread_watcher.thread() {
+                thread.thread().unpark();
+                if let Err(e) = thread.join() {
+                    warn!(log, "Failed to wait for mempool prevalidation thread"; "reason" => format!("{:?}", e));
+                }
             }
         }
         for mut mempool_thread_watcher in mempool_thread_watchers {

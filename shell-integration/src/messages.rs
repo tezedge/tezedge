@@ -6,9 +6,8 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crypto::hash::{ChainId, OperationHash};
-use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
-use tezos_messages::p2p::encoding::prelude::{Operation, Path};
+use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, Path};
 
 use super::oneshot::OneshotResultCallback;
 
@@ -58,10 +57,12 @@ pub enum MempoolRequestMessage {
     ResetMempool(ResetMempool),
 }
 
+pub type MempoolOperationRef = Arc<OperationMessage>;
+
 #[derive(Clone, Debug)]
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
-    pub operation_type: MempoolOperationType,
+    pub operation: MempoolOperationRef,
     pub result_callback: Option<OneshotResultCallback<Result<(), MempoolError>>>,
 }
 

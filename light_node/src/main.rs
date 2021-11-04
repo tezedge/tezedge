@@ -136,13 +136,13 @@ fn block_on_actors(
             .log(log.clone())
             .cfg({
                 let mut cfg = tezedge_actor_system::load_config();
-                // websocket uses [`ctx.schedule`] with cca 1.5s delay,
-                // and without websocket, the lowest scheduled delay is about 15s
-                // so default 50ms for actor system schedule thread is too low
-                cfg.scheduler.frequency_millis = if env.rpc.websocket_cfg.is_some() {
+                cfg.scheduler.frequency_millis = if env.p2p.disable_mempool {
+                    // without mempool, the lowest scheduled delay is about 1-1.5s
+                    // so default 50ms for actor system schedule thread is too low
                     500
                 } else {
-                    5000
+                    // leave default 50ms
+                    cfg.scheduler.frequency_millis
                 };
                 cfg
             })
@@ -207,7 +207,7 @@ fn block_on_actors(
             }
         }
         Err(e) => {
-            panic!("Context was not initialized within {:?} timeout, e.g. try increase [--initialize-context-timeout], reason: {}", env.storage.initialize_context_timeout, e)
+            panic!("Context was not initialized within {:?} timeout, e.g. try increase [--initialize-context-timeout-in-secs], reason: {}", env.storage.initialize_context_timeout, e)
         }
     };
     info!(log, "Context initialized (6/8)");
@@ -237,7 +237,11 @@ fn block_on_actors(
         initialize_chain_manager_result_callback_receiver,
     ) = create_oneshot_callback();
 
-    let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
+    let (
+        chain_manager,
+        mut chain_manager_p2p_reader_thread_watcher,
+        mut chain_manager_mempool_prevalidation_thread_watcher,
+    ) = ChainManager::actor(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
@@ -253,6 +257,7 @@ fn block_on_actors(
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
         mempool_prevalidator_factory.clone(),
+        env.mempool.mempool_download_state,
         identity.clone(),
         initialize_chain_manager_result_callback,
     )
@@ -261,7 +266,7 @@ fn block_on_actors(
     if let Err(e) = initialize_chain_manager_result_callback_receiver
         .recv_timeout(env.initialize_chain_manager_timeout)
     {
-        panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
+        panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout-in-secs] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
     };
     info!(log, "Chain manager initialized (8/8)");
 
@@ -372,6 +377,13 @@ fn block_on_actors(
                        "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
                        "reason" => format!("{}", e));
         }
+        if let Some(chain_manager_mempool_prevalidation_thread_watcher) = chain_manager_mempool_prevalidation_thread_watcher.as_mut() {
+            if let Err(e) = chain_manager_mempool_prevalidation_thread_watcher.stop() {
+                warn!(log, "Failed to stop thread watcher";
+                       "thread_name" => chain_manager_mempool_prevalidation_thread_watcher.thread_name(),
+                       "reason" => format!("{}", e));
+            }
+        }
         let mempool_thread_watchers = match mempool_prevalidator_factory
             .mempool_thread_watchers()
             .lock()
@@ -429,6 +441,14 @@ fn block_on_actors(
             thread.thread().unpark();
             if let Err(e) = thread.join() {
                 warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
+            }
+        }
+        if let Some(mut chain_manager_mempool_prevalidation_thread_watcher) = chain_manager_mempool_prevalidation_thread_watcher.take() {
+            if let Some(thread) = chain_manager_mempool_prevalidation_thread_watcher.thread() {
+                thread.thread().unpark();
+                if let Err(e) = thread.join() {
+                    warn!(log, "Failed to wait for mempool prevalidation thread"; "reason" => format!("{:?}", e));
+                }
             }
         }
         for mut mempool_thread_watcher in mempool_thread_watchers {

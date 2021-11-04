@@ -71,26 +71,30 @@ impl HeadState {
         current_mempool_state: &CurrentMempoolStateStorageRef,
     ) -> Result<Option<(Head, HeadResult)>, StateError> {
         // check if we can update head
-        // get fitness from mempool, if not, than use current_head.fitness
-        let mempool_state = current_mempool_state.read()?;
-        let current_context_fitness = {
-            if let Some(Some(fitness)) = mempool_state
-                .prevalidator()
-                .map(|p| p.context_fitness.as_ref())
-            {
-                fitness
-            } else {
-                self.current_head.fitness()
+        {
+            let mempool_state = current_mempool_state.read()?;
+            let current_context_fitness = {
+                // get fitness from mempool, if not, than use current_head.fitness
+                if let Some(Some(fitness)) = mempool_state
+                    .prevalidator()
+                    .map(|p| p.context_fitness.as_ref())
+                {
+                    fitness
+                } else {
+                    self.current_head.fitness()
+                }
+            };
+            // need to check against current_head, if not accepted, just ignore potential head
+            if !validation::can_update_current_head(
+                potential_new_head,
+                &self.current_head,
+                current_context_fitness,
+            ) {
+                // just ignore
+                return Ok(None);
             }
-        };
-        // need to check against current_head, if not accepted, just ignore potential head
-        if !validation::can_update_current_head(
-            potential_new_head,
-            &self.current_head,
-            current_context_fitness,
-        ) {
-            // just ignore
-            return Ok(None);
+            // release lock asap
+            drop(mempool_state);
         }
 
         // we need to check, if previous head is predecessor of new_head (for later use)

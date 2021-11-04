@@ -132,14 +132,15 @@ impl BootstrapState {
     ) {
         let stalled_peers = self.peers
             .values()
-            .filter_map(|PeerBootstrapState { empty_bootstrap_state, peer_id, peer_queues, .. }| {
+            .filter_map(|PeerBootstrapState { empty_bootstrap_state, peer_id, peer_queues, is_bootstrapped,.. }| {
                 let mut is_stalled = None;
                 if let Some(empty_bootstrap_state) = empty_bootstrap_state.as_ref() {
-                    // 1. check empty bootstrap branches
-                    if empty_bootstrap_state.elapsed() > self.cfg.missing_new_branch_bootstrap_timeout {
-                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (timeout: {:?})", self.cfg.missing_new_branch_bootstrap_timeout)));
+                    // 1. check empty bootstrap branches (we dont want to disconnect bootstrapped peer)
+                    if !is_bootstrapped && empty_bootstrap_state.elapsed() > self.cfg.missing_new_branch_bootstrap_timeout {
+                        is_stalled = Some((peer_id.clone(), format!("Peer did not sent new curent_head/current_branch for a long time (elapsed: {:?}, timeout: {:?})", empty_bootstrap_state.elapsed(), self.cfg.missing_new_branch_bootstrap_timeout)));
                     }
                 }
+
                 // 2. check penalty peer for not responding to our block header requests on time
                 if is_stalled.is_none() {
                     match peer_queues.find_any_block_header_response_pending(self.cfg.block_header_timeout)
@@ -688,9 +689,10 @@ impl BootstrapState {
                     continue;
                 }
             }
-            branches.retain(|branch| {
-                if branch.is_done() {
-                    info!(log, "Finished branch bootstrapping process";
+            branches
+                .retain(|branch| {
+                    if branch.is_done() {
+                        debug!(log, "Finished branch bootstrapping process";
                             "to_level" => &branch.to_level,
                             "peer_ip" => peer_id.address.to_string());
 
@@ -1570,7 +1572,8 @@ pub struct PeerBootstrapState {
     /// if peer was bootstrapped
     is_bootstrapped: bool,
 
-    /// Indicates stalled peer, after all branches were resolved and cleared, how long we did not receive new branch
+    /// Indicates stalled peer, after all branches were resolved and cleared, how long we did not receive new branch/head
+    /// Otherwords, if this is None, peer is active and sends us CurrentBranch/CurrentHead
     empty_bootstrap_state: Option<Instant>,
 
     /// See [PeerBranchBootstrapper.is_already_scheduled_ping_for_process_all_bootstrap_pipelines]

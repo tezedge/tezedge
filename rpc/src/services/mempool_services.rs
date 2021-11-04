@@ -14,15 +14,11 @@ use crypto::hash::{ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::validation;
 use shell_integration::*;
-use storage::mempool_storage::MempoolOperationType;
-use storage::{
-    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, MempoolStorage,
-};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationMessage};
 
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
@@ -48,7 +44,7 @@ pub struct InjectedBlockWithOperations {
 
 pub fn get_pending_operations(
     _chain_id: &ChainId,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
 ) -> Result<(MempoolOperations, Option<ProtocolHash>), RpcServiceError> {
     // get actual known state of mempool
     let current_mempool_state = current_mempool_state_storage.read()?;
@@ -87,7 +83,7 @@ pub fn get_pending_operations(
 
 pub(crate) fn convert_applied(
     applied: &[Applied],
-    operations: &HashMap<OperationHash, Operation>,
+    operations: &HashMap<OperationHash, MempoolOperationRef>,
 ) -> Result<Vec<HashMap<String, Value>>, RpcServiceError> {
     let mut result: Vec<HashMap<String, Value>> = Vec::with_capacity(applied.len());
     for a in applied {
@@ -109,7 +105,7 @@ pub(crate) fn convert_applied(
         m.insert(String::from("hash"), Value::String(operation_hash));
         m.insert(
             String::from("branch"),
-            Value::String(operation.branch().to_base58_check()),
+            Value::String(operation.operation().branch().to_base58_check()),
         );
         m.extend(protocol_data);
         result.push(m);
@@ -120,7 +116,7 @@ pub(crate) fn convert_applied(
 
 pub(crate) fn convert_errored(
     errored: &[Errored],
-    operations: &HashMap<OperationHash, Operation>,
+    operations: &HashMap<OperationHash, MempoolOperationRef>,
     protocol: &ProtocolHash,
 ) -> Result<Vec<Value>, RpcServiceError> {
     let mut result: Vec<Value> = Vec::with_capacity(errored.len());
@@ -160,7 +156,7 @@ pub(crate) fn convert_errored(
         m.insert(String::from("protocol"), Value::String(protocol.clone()));
         m.insert(
             String::from("branch"),
-            Value::String(operation.branch().to_base58_check()),
+            Value::String(operation.operation().branch().to_base58_check()),
         );
         m.extend(protocol_data);
         m.insert(String::from("error"), error);
@@ -214,10 +210,8 @@ pub async fn inject_operation(
 
     // prepare database accessors
     let persistent_storage = env.persistent_storage();
-    let block_storage: Box<dyn BlockStorageReader> =
-        Box::new(BlockStorage::new(persistent_storage));
-    let block_meta_storage: Box<dyn BlockMetaStorageReader> =
-        Box::new(BlockMetaStorage::new(persistent_storage));
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
 
     // do prevalidation before add the operation to mempool
     let mut connection = env.tezos_protocol_api().readable_connection().await?;
@@ -247,9 +241,7 @@ pub async fn inject_operation(
     }
 
     // store operation in mempool storage
-    let mut mempool_storage = MempoolStorage::new(persistent_storage);
     let operation_hash_b58check_string = operation_hash.to_base58_check();
-    mempool_storage.put(MempoolOperationType::Pending, operation.into())?;
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
     let (result_callback_sender, result_callback_receiver) = if is_async {
@@ -268,7 +260,7 @@ pub async fn inject_operation(
         .try_tell(MempoolRequestMessage::MempoolOperationReceived(
             MempoolOperationReceived {
                 operation_hash,
-                operation_type: MempoolOperationType::Pending,
+                operation: Arc::new(OperationMessage::from(operation)),
                 result_callback: result_callback_sender,
             },
         ))
@@ -459,6 +451,7 @@ pub fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceE
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::{collections::HashMap, convert::TryInto};
 
     use assert_json_diff::assert_json_eq;
@@ -466,7 +459,7 @@ mod tests {
 
     use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
     use tezos_messages::p2p::binary_message::BinaryRead;
-    use tezos_messages::p2p::encoding::prelude::Operation;
+    use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
 
     use crate::services::mempool_services::{convert_applied, convert_errored};
 
@@ -483,7 +476,7 @@ mod tests {
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
         );
 
         let expected_json = json!(
@@ -524,7 +517,7 @@ mod tests {
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
         );
         let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
 
@@ -570,7 +563,7 @@ mod tests {
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
+            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
         );
         let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
 

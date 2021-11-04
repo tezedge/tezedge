@@ -20,6 +20,7 @@ use crate::mempool::mempool_prevalidator::{
 };
 use crate::mempool::mempool_state::MempoolState;
 
+pub mod mempool_download_state;
 pub mod mempool_prevalidator;
 pub mod mempool_state;
 

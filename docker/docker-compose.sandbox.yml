@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-sandbox-launcher:
-    image: tezedge/tezedge:sandbox-v1.9.0
+    image: tezedge/tezedge:sandbox-v1.9.1
     command: ["--sandbox-rpc-port=3030"]
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
