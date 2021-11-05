@@ -5,11 +5,12 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] Create a PR with the name "Release vX.Y.Z" from develop to master.
 - [ ] Copy this checklist to the description of the PR so it's easier to track.
 
-## Docker composes
-
+## Prepare develop for release
+- [ ] Create a PR to develop with the following changes
+### Docker composes
 - [ ] Update the version of the tezedge node and the node monitoring in all the docker composes included in the repository to the released version
 
-### Composes to update:
+#### Composes to update:
 
 - [ ] [docker-compose.debug.yml](docker-compose.debug.yml)
 - [ ] [docker-compose.storage.irmin.yml](docker-compose.storage.irmin.yml)
@@ -20,23 +21,27 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] [apps/node_monitoring/docker-compose.deploy.mainnet.snapshot.latest.yml](apps/node_monitoring/docker-compose.deploy.mainnet.snapshot.latest.yml)
 - [ ] [apps/node_monitoring/docker-compose.tezedge_and_explorer.yml](apps/node_monitoring/docker-compose.tezedge_and_explorer.yml)
 
-## CHANGELOG
+### CHANGELOG
 
 - [ ] Verify that we have all the changes noted in [CHANGELOG](CHANGELOG.md).
 - [ ] Change the Unrelease section of the changelog to the released version (e.g.: 1.9.1 - 2021-11-04).
 - [ ] Create a new Unreleased section with all the sub-section containing "Nothing".
 - [ ] Modify the links in the end of the [CHANGELOG](CHANGELOG.md) accordingly.
 
-## Package versions
+### Package versions
 
 - [ ] Verify that the versions of the cargo packages are all corresponding to the new release.
 - [ ] If you need to change the versions, use the [versions.sh](versions.sh) script in the root of the repository (e.g: ./versions.sh 1.9.0). Skip this step if the version is already set.
 
-## Merging to master
+### Mergin to develop
+
+- [ ] Merge the above changes included in the PR to develop
+
+### Merging to master
 
 - [ ] Once all the CI tests pass, merge the created PR
 
-## Creating a new release on github
+### Creating a new release on github
 
 - [ ] Go to https://github.com/tezedge/tezedge/releases and select `Draft a new release`.
 - [ ] Put the version to be released into the `Release title` field (e.g.: v1.9.0). (This will create a new tag on publish if the tag does not exists).
