@@ -39,11 +39,11 @@ Follow this checklist when creating a new release for the tezedge node.
 ## Creating a new release on github
 
 - [ ] Go to https://github.com/tezedge/tezedge/releases and select `Draft a new release`.
-- [ ] Put the version to be released into the `Release title` field (e.g.: v1.9.0). (This will create a new tag on publish if the tag does not exists)
-- [ ] Copy the corresponding section from the CHANGELOG (the section you created from Unreleased)
-- [ ] Click on `Publish release`
+- [ ] Put the version to be released into the `Release title` field (e.g.: v1.9.0). (This will create a new tag on publish if the tag does not exists).
+- [ ] Copy the corresponding section from the CHANGELOG (the section you created from Unreleased) to the release's description.
+- [ ] Click on `Publish release`.
 
 ## Prepare develop for the next version
 
 - [ ] Use the version.sh script to increment (usually) the minor version of the packages (e.g.: the version 1.9.0 becomes 1.10.0 -> ./versions.sh 1.10.0).
-- [ ] Name this commit "Version for develop" and push it to develop
+- [ ] Name this commit "Version for develop" and push it to develop.
