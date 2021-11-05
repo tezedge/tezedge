@@ -24,7 +24,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debu
 strum = "0.20"
 strum_macros = "0.20"
 
-redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.10.0", features = ["serde"] }
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.10.0-1", features = ["serde"] }
 
 crypto = { path = "../crypto" }
 storage = { path = "../storage" }

@@ -8,7 +8,7 @@ use networking::PeerId;
 use redux_rs::{ActionWithId, Store};
 use std::sync::Arc;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
-use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
+use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
@@ -20,6 +20,7 @@ use crate::peer::binary_message::write::PeerBinaryMessageWriteSetContentAction;
 use crate::peer::chunk::read::PeerChunkReadInitAction;
 use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteSetContentAction;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageEncodeAction, PeerHandshakingConnectionMessageInitAction,
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
@@ -214,19 +215,6 @@ pub fn peer_handshaking_effects<S>(
                                 )
                             }
                         };
-
-                        // check if we are connecting to ourself.
-                        if state.config.identity.public_key.as_ref().as_ref()
-                            == connection_message.public_key()
-                        {
-                            return store.dispatch(
-                                PeerHandshakingErrorAction {
-                                    address: action.address,
-                                    error: PeerHandshakingError::ConnectingToSelf,
-                                }
-                                .into(),
-                            );
-                        }
 
                         match BinaryChunk::from_content(&remote_chunk) {
                             Ok(remote_chunk) => store.dispatch(
@@ -655,7 +643,23 @@ pub fn peer_handshaking_effects<S>(
             let peer_handshaked = match state.peers.get(&action.address) {
                 Some(peer) => match &peer.status {
                     PeerStatus::Handshaked(v) => v,
-                    _ => {
+                    status => {
+                        match status {
+                            PeerStatus::Handshaking(handshaking) => {
+                                match &handshaking.nack_motive {
+                                    Some(NackMotive::AlreadyConnected) => {
+                                        return store.dispatch(
+                                            PeerDisconnectAction {
+                                                address: action.address,
+                                            }
+                                            .into(),
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
                         return store.dispatch(
                             PeersGraylistAddressAction {
                                 address: action.address,

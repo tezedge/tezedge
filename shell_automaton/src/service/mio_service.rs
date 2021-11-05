@@ -87,6 +87,15 @@ impl<Stream> MioPeer<Stream> {
     }
 }
 
+impl<Stream: Clone> Clone for MioPeer<Stream> {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address,
+            stream: self.stream.clone(),
+        }
+    }
+}
+
 pub struct MioPeerRefMut<'a, Stream> {
     /// Pre-allocated buffer that will be used as a temporary container
     /// for doing read syscall.

@@ -53,11 +53,11 @@ pub enum DnsLookupError {
     IO,
 }
 
-impl From<dns_lookup::LookupError> for DnsLookupError {
-    fn from(err: dns_lookup::LookupError) -> Self {
+impl From<dns_lookup::LookupErrorKind> for DnsLookupError {
+    fn from(err: dns_lookup::LookupErrorKind) -> Self {
         use dns_lookup::LookupErrorKind::*;
 
-        match err.kind() {
+        match err {
             Again => Self::Again,
             Badflags => Self::Badflags,
             NoName => Self::NoName,
