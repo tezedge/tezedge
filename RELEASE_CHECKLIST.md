@@ -37,11 +37,11 @@ Follow this checklist when creating a new release for the tezedge node.
 
 - [ ] Merge the above changes included in the PR to develop
 
-### Merging to master
+## Merging to master
 
 - [ ] Once all the CI tests pass, merge the created PR
 
-### Creating a new release on github
+## Creating a new release on github
 
 - [ ] Go to https://github.com/tezedge/tezedge/releases and select `Draft a new release`.
 - [ ] Put the version to be released into the `Release title` field (e.g.: v1.9.0). (This will create a new tag on publish if the tag does not exists).
