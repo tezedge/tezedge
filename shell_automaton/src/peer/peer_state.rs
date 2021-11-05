@@ -129,6 +129,16 @@ impl Peer {
         self.token().is_some()
     }
 
+    /// Whether or not peer is in `PeerStatus::Disconnected` state.
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self.status, PeerStatus::Disconnected)
+    }
+
+    /// Whether or not peer is handshaked (handshaking is finished successfuly).
+    pub fn is_handshaked(&self) -> bool {
+        matches!(self.status, PeerStatus::Handshaked(_))
+    }
+
     pub fn token(&self) -> Option<PeerToken> {
         match &self.status {
             PeerStatus::Potential => None,

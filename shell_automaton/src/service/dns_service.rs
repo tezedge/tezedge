@@ -3,13 +3,15 @@
 
 use std::net::{IpAddr, SocketAddr};
 
+pub use dns_lookup::LookupErrorKind as DnsLookupError;
+
 pub trait DnsService {
     /// Try to resolve common peer name into Socket Address representation.
     fn resolve_dns_name_to_peer_address(
         &mut self,
         address: &str,
         port: u16,
-    ) -> Result<Vec<SocketAddr>, dns_lookup::LookupError>;
+    ) -> Result<Vec<SocketAddr>, DnsLookupError>;
 }
 
 #[derive(Debug, Default, Clone)]
@@ -26,7 +28,7 @@ impl DnsService for DnsServiceDefault {
         &mut self,
         address: &str,
         port: u16,
-    ) -> Result<Vec<SocketAddr>, dns_lookup::LookupError> {
+    ) -> Result<Vec<SocketAddr>, DnsLookupError> {
         // filter just for [`AI_SOCKTYPE SOCK_STREAM`]
         let hints = dns_lookup::AddrInfoHints {
             socktype: i32::from(dns_lookup::SockType::Stream),
@@ -34,9 +36,9 @@ impl DnsService for DnsServiceDefault {
         };
 
         let addrs =
-            dns_lookup::getaddrinfo(Some(address), Some(port.to_string().as_str()), Some(hints))?
-                .filter(Result::is_ok)
-                .map(Result::unwrap)
+            dns_lookup::getaddrinfo(Some(address), Some(port.to_string().as_str()), Some(hints))
+                .map_err(|err| err.kind())?
+                .filter_map(Result::ok)
                 .filter(|info: &dns_lookup::AddrInfo| {
                     // filter just IP_NET and IP_NET6 addresses
                     dns_lookup::AddrFamily::Inet.eq(&info.address)

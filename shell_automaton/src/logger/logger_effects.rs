@@ -57,7 +57,7 @@ pub fn logger_effects<S: Service>(
                 "error" => format!("{:?}", content.error));
         }
         Action::PeerHandshakingFinish(content) => {
-            slog::warn!(log, "Peer Handshaking successful"; "address" => content.address.to_string());
+            slog::info!(log, "Peer Handshaking successful"; "address" => content.address.to_string());
         }
         Action::PeerDisconnect(content) => {
             slog::warn!(log, "Disconnecting peer"; "address" => content.address.to_string());

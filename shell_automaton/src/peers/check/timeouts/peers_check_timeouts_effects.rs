@@ -29,13 +29,13 @@ fn check_timeout(
     Some(match &peer.status {
         PeerStatus::Potential => return None,
         PeerStatus::Connecting(connecting) => {
-            if current_time >= connecting.time() + peer_connecting_timeout {
+            if current_time < connecting.time() + peer_connecting_timeout {
                 return None;
             }
             PeerTimeout::Connecting(connecting.into())
         }
         PeerStatus::Handshaking(handshaking) => {
-            if current_time >= handshaking.since + peer_handshaking_timeout {
+            if current_time < handshaking.since + peer_handshaking_timeout {
                 return None;
             }
             PeerTimeout::Handshaking((&handshaking.status).into())

@@ -150,19 +150,19 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
         }
 
         Action::PeerHandshakingEncryptionInit(action) => {
-            let already_connected = match state.peers.get(&action.address) {
-                Some(peer) => {
-                    let token = peer.token();
-                    let pub_key = peer.public_key();
-
-                    state
-                        .peers
-                        .iter()
-                        .filter(|(_, peer)| peer.token().ne(&token))
-                        .any(|(_, peer)| peer.public_key().eq(&pub_key))
-                }
+            let (token, pub_key) = match state.peers.get(&action.address) {
+                Some(peer) => (peer.token(), peer.public_key()),
                 None => return,
             };
+
+            let already_connected = state
+                .peers
+                .iter()
+                .filter(|(_, peer)| peer.token().ne(&token))
+                .any(|(_, peer)| peer.public_key().eq(&pub_key));
+
+            let connecting_to_self =
+                pub_key == Some(state.config.identity.public_key.as_ref().as_ref());
 
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
@@ -174,7 +174,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
                         PeerHandshakingStatus::ConnectionMessageReady {
                             remote_message, ..
                         } => {
-                            if already_connected {
+                            if connecting_to_self || already_connected {
                                 *nack_motive = Some(NackMotive::AlreadyConnected);
                             }
 
@@ -497,7 +497,16 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>
         Action::PeerHandshakingFinish(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking { status, token, .. }) => {
+                    PeerStatus::Handshaking(PeerHandshaking {
+                        status,
+                        token,
+                        nack_motive,
+                        ..
+                    }) => {
+                        if nack_motive.is_some() {
+                            return;
+                        }
+
                         match status {
                             PeerHandshakingStatus::AckMessageReady {
                                 remote_message,

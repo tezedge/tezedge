@@ -13,6 +13,7 @@ mod common;
 
 #[test]
 #[serial]
+#[ignore] // Disabled for now, this crate is deprecated
 fn ipc_fork_and_client_exchange() -> Result<(), anyhow::Error> {
     let sock_path = temp_sock();
     assert!(!sock_path.exists());
@@ -74,6 +75,7 @@ fn ipc_fork_and_client_exchange() -> Result<(), anyhow::Error> {
 
 #[test]
 #[serial]
+#[ignore] // Disabled for now, this crate is deprecated
 fn ipc_accept_timeout() -> Result<(), anyhow::Error> {
     let tokio_runtime = common::create_tokio_runtime();
 

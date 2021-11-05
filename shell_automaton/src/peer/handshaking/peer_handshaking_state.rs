@@ -44,10 +44,6 @@ pub enum PeerHandshakingError {
     #[error("BadPow error: {0}")]
     BadPow(#[from] PowError),
 
-    /// We are trying to connect to ourself.
-    #[error("ConnectingToSelf error")]
-    ConnectingToSelf,
-
     #[error("Timeout error. Phase: {0}")]
     Timeout(PeerHandshakingPhase),
 }

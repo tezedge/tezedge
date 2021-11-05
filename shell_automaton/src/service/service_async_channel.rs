@@ -40,8 +40,9 @@ async fn responder_send<T>(
     mio_waker: &Arc<mio::Waker>,
     msg: T,
 ) -> Result<(), ResponseSendError<T>> {
+    sender.send(msg).await?;
     let _ = mio_waker.wake();
-    Ok(sender.send(msg).await?)
+    Ok(())
 }
 
 pub struct ServiceWorkerAsyncResponderSender<Resp> {
