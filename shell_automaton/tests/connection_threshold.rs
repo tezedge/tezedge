@@ -25,8 +25,7 @@ use shell_automaton::{
         PeerToken,
     },
     peers::{add::PeersAddIncomingPeerAction, remove::PeersRemoveAction},
-    reducer,
-    Action, ActionId, ActionWithId, Config, State,
+    reducer, Action, ActionId, ActionWithId, Config, State,
 };
 
 macro_rules! peer_actions {

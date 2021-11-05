@@ -29,21 +29,7 @@ pub fn peer_connection_incoming_reducer(state: &mut State, action: &ActionWithId
             }
         }
         Action::PeerConnectionIncomingSuccess(action) => {
-            let peers_connected = state.peers.iter().fold(0, |num, (_, peer)| match &peer.status {
-                PeerStatus::Connecting(state) => match state {
-                    PeerConnectionState::Outgoing(state) => match state {
-                        crate::peer::connection::outgoing::PeerConnectionOutgoingState::Success { .. } => num + 1,
-                        _ => num,
-                    }
-                    PeerConnectionState::Incoming(state) => match state {
-                        PeerConnectionIncomingState::Success { .. } => num + 1,
-                        _ => num,
-                    }
-                },
-                PeerStatus::Handshaking(_) |
-                PeerStatus::Handshaked(_) => num + 1,
-                _ => num,
-            });
+            let peers_connected = state.peers.connected_len();
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 if let PeerStatus::Connecting(PeerConnectionState::Incoming(
                     PeerConnectionIncomingState::Pending { token, .. },
