@@ -52,6 +52,8 @@ pub mod rpc;
 
 pub mod actors;
 
+pub mod protocol;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};

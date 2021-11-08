@@ -292,7 +292,7 @@ impl ValidateOperationResult {
 }
 
 /// Init protocol context result
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct InitProtocolContextResult {
     pub supported_protocol_hashes: Vec<ProtocolHash>,
     /// Presents only if was genesis commited to context
