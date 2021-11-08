@@ -213,38 +213,6 @@ Flag for enable/disable test chain switching for block applying. Default: false
 --enable-testchain <BOOL>
 ```
 
-### Ffi connection pool max connections
-Max number of FFI pool connections. default: 10
-```
---ffi-pool-max-connections <NUM>
---ffi-trpap-pool-max-connections <NUM>
---ffi-twcap-pool-max-connections <NUM>
-```
-
-### Ffi connection timeout
-Number of seconds to wait for connection. default: 60
-```
---ffi-pool-connection-timeout-in-secs <NUM>
---ffi-trpap-pool-connection-timeout-in-secs <NUM>
---ffi-twcap-pool-connection-timeout-in-secs <NUM>
-```
-
-### Ffi pool lifetime
-Number of seconds to remove protocol_runner from pool, default: 21600 (6 hours).
-```
---ffi-pool-max-lifetime-in-secs <NUM>
---ffi-trpap-pool-max-lifetime-in-secs <NUM>
---ffi-twcap-pool-max-lifetime-in-secs <NUM>
-```
-
-### Ffi pool unused timeout
-Number of seconds to remove unused protocol_runner from pool, default: 1800 (30 minutes).
-```
---ffi-pool-idle-timeout-in-secs <NUM>
---ffi-trpap-pool-idle-timeout-in-secs <NUM>
---ffi-twcap-pool-idle-timeout-in-secs <NUM>
-```
-
 ### Context stats DB
 Path to the database where the context stats will be stored. If not specified, stats will not be produced.
 ```
