@@ -50,18 +50,6 @@ curl --location --request POST 'http://localhost:3030/start' \
     "p2p_port": 9732,
     "rpc_port": 18732,
     "websocket_address": "0.0.0.0:4927",
-    "ffi_pool_max_connections": 10,
-    "ffi_pool_connection_timeout_in_secs": 60,
-    "ffi_pool_max_lifetime_in_secs": 21600,
-    "ffi_pool_idle_timeout_in_secs": 1800,
-    "ffi_trpap_pool_max_connections": 10,
-    "ffi_trpap_pool_connection_timeout_in_secs": 60,
-    "ffi_trpap_pool_max_lifetime_in_secs": 21600,
-    "ffi_trpap_pool_idle_timeout_in_secs": 1800,
-    "ffi_twcap_pool_max_connections": 10,
-    "ffi_twcap_pool_connection_timeout_in_secs": 60,
-    "ffi_twcap_pool_max_lifetime_in_secs": 21600,
-    "ffi_twcap_pool_idle_timeout_in_secs": 1800,
     "tokio_threads": 0,
     "enable_testchain": false
   }'

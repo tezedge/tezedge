@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Nothing.
+- FFI connection pool flags: `--ffi-pool-max-connections`, `--ffi-trpap-pool-max-connections`, `--ffi-twcap-pool-max-connections`, `--ffi-pool-connection-timeout-in-secs`, `--ffi-trpap-pool-connection-timeout-in-secs`, `--ffi-twcap-pool-connection-timeout-in-secs`, `--ffi-pool-max-lifetime-in-secs`, `--ffi-trpap-pool-max-lifetime-in-secs`, `--ffi-twcap-pool-max-lifetime-in-secs`, `--ffi-pool-idle-timeout-in-secs`, `--ffi-trpap-pool-idle-timeout-in-secs`, `--ffi-twcap-pool-idle-timeout-in-secs`.
 
 ### Fixed
 

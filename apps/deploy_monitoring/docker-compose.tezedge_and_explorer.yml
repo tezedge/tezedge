@@ -13,9 +13,6 @@ services:
         "--tezos-context-storage", "irmin",
         "--peer-thresh-low", "60",
         "--peer-thresh-high", "80",
-        "--ffi-pool-max-connections", "2",
-        "--ffi-trpap-pool-max-connections", "1",
-        "--ffi-twcap-pool-max-connections", "1"
     ]
     logging:
       # Produce syslogs instead of terminal logs
