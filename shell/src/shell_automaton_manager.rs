@@ -20,6 +20,8 @@ use crypto::hash::ChainId;
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
 
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
+
 use crate::PeerConnectionThreshold;
 
 pub use shell_automaton::service::actors_service::{
@@ -28,7 +30,7 @@ pub use shell_automaton::service::actors_service::{
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::{
     ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, RpcServiceDefault, ServiceDefault,
-    StorageServiceDefault,
+    StorageServiceDefault, ProtocolServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Port, ShellAutomaton};
@@ -86,6 +88,7 @@ impl ShellAutomatonManager {
     pub fn new(
         persistent_storage: PersistentStorage,
         network_channel: NetworkChannelRef,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         log: Logger,
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
@@ -144,6 +147,8 @@ impl ShellAutomatonManager {
             log.new(o!("service" => "quota")),
         );
 
+        let protocol = ProtocolServiceDefault::new(mio_service.waker(), tezos_protocol_api);
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -152,6 +157,7 @@ impl ShellAutomatonManager {
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
+            protocol,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);

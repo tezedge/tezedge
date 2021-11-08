@@ -29,6 +29,7 @@ use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 
 use crate::mempool::mempool_effects;
+use crate::protocol::protocol_effects;
 
 use crate::storage::request::storage_request_effects;
 use crate::storage::state_snapshot::create::{
@@ -79,6 +80,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     paused_loops_effects(store, action);
 
     peer_effects(store, action);
+
+    protocol_effects(store, action);
 
     peer_connection_outgoing_effects(store, action);
     peer_connection_incoming_accept_effects(store, action);

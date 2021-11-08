@@ -161,6 +161,7 @@ fn block_on_actors(
     let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
         persistent_storage.clone(),
         network_channel.clone(),
+        tezos_protocol_api.clone(),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),

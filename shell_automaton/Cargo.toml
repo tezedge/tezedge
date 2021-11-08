@@ -34,3 +34,5 @@ networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
+tezos_api = { path = "../tezos/api" }
