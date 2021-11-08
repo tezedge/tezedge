@@ -10,7 +10,6 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::ops::Bound;
-use crate::ivec::IVec;
 
 pub struct EdgeKV {
     dir: PathBuf,
