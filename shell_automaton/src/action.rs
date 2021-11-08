@@ -52,6 +52,7 @@ use crate::peers::graylist::{
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
 use crate::peers::remove::PeersRemoveAction;
+use crate::protocol::ProtocolAction;
 use crate::mempool::{
     MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
     MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
@@ -208,6 +209,8 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
+
+    Protocol(ProtocolAction),
 
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),
