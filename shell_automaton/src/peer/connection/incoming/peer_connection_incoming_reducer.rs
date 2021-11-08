@@ -35,7 +35,7 @@ pub fn peer_connection_incoming_reducer(state: &mut State, action: &ActionWithId
                     PeerConnectionIncomingState::Pending { token, .. },
                 )) = peer.status
                 {
-                    if peers_connected < state.config.peers_connected_max {
+                    if peers_connected <= state.config.peers_connected_max {
                         peer.status = PeerStatus::Connecting(
                             PeerConnectionIncomingState::Success {
                                 time: action_time,
