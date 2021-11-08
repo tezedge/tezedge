@@ -102,7 +102,7 @@ impl Storage {
 
     const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context_api::INMEM;
 
-    const DEFAULT_MAINDB: &'static str = "edgekv";
+    const DEFAULT_MAINDB: &'static str = "rocksdb";
 
     const DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS: u64 = 15;
 }
