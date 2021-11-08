@@ -186,7 +186,9 @@ impl ProtocolRunnerInstance {
 
         let must_initialize: bool;
         if !self.is_alive() {
-            self.spawn().unwrap(); // TODO: remove unwrap
+            self.spawn().map_err(|err| IpcError::OtherError {
+                reason: format!("Failure to launch protocol runner subprocess: {}", err),
+            })?;
             self.wait_for_socket(None).await.ok();
             must_initialize = true;
         } else {
