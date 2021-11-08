@@ -25,8 +25,6 @@ use std::rc::Rc;
 use std::collections::hash_map::RandomState;
 use std::collections::btree_map::Iter;
 use std::time::Instant;
-use crate::fifo::FifoCache;
-use crate::ivec::IVec;
 
 pub trait MergeOperator: Fn(&[u8], Option<Vec<u8>>, &[u8]) -> Option<Vec<u8>> {}
 
