@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.10.0] - 2021-11-08
+
+### Changed
+
+- Rewrote P2P networking and peer management to new architecture.
+- Made IPC communication with the protocol runner processes asynchronous.
+
+### Deprecated
+
+- Synchronous ocaml IPC.
+
+### Removed
+
+- Actor based p2p networking and peer management.
+
+### Breaking
+
+- Renamed cli argument `--disable-peer-blacklist` to `--disable-peer-graylist`.
+
 ## [1.9.1] - 2021-11-04
 
 ### Fixed
