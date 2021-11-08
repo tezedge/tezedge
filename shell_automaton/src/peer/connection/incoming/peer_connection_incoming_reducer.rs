@@ -29,18 +29,21 @@ pub fn peer_connection_incoming_reducer(state: &mut State, action: &ActionWithId
             }
         }
         Action::PeerConnectionIncomingSuccess(action) => {
+            let peers_connected = state.peers.connected_len();
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 if let PeerStatus::Connecting(PeerConnectionState::Incoming(
                     PeerConnectionIncomingState::Pending { token, .. },
                 )) = peer.status
                 {
-                    peer.status = PeerStatus::Connecting(
-                        PeerConnectionIncomingState::Success {
-                            time: action_time,
-                            token,
-                        }
-                        .into(),
-                    );
+                    if peers_connected <= state.config.peers_connected_max {
+                        peer.status = PeerStatus::Connecting(
+                            PeerConnectionIncomingState::Success {
+                                time: action_time,
+                                token,
+                            }
+                            .into(),
+                        );
+                    }
                 }
             }
         }
