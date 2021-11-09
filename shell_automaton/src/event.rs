@@ -27,6 +27,9 @@ pub enum Event {
     /// Event for P2p peer, which wasn't found in `MioService`. Should
     /// be impossible!
     P2pPeerUnknown(P2pPeerUnknownEvent),
+
+    /// Event for protocol communication
+    Protocol(ProtocolEvent),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -82,6 +85,18 @@ impl P2pPeerEvent {
 pub struct P2pPeerUnknownEvent {
     pub token: PeerToken,
 
+    /// Peer's stream is ready for reading.
+    pub is_readable: bool,
+
+    /// Peer's stream is ready for writing.
+    pub is_writable: bool,
+
+    /// Connection to peer has been closed.
+    pub is_closed: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolEvent {
     /// Peer's stream is ready for reading.
     pub is_readable: bool,
 

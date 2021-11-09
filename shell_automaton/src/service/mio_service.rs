@@ -1,15 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use mio::net::{TcpListener, TcpSocket, TcpStream};
+use mio::net::{TcpListener, TcpSocket, TcpStream, UnixStream};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::Path;
 
-use crate::event::{Event, P2pPeerEvent, P2pPeerUnknownEvent, P2pServerEvent, WakeupEvent};
+use crate::event::{Event, ProtocolEvent, P2pPeerEvent, P2pPeerUnknownEvent, P2pServerEvent, WakeupEvent};
 use crate::io_error_kind::IOErrorKind;
 use crate::peer::PeerToken;
 
@@ -22,6 +23,9 @@ pub const MIO_SERVER_TOKEN: mio::Token = mio::Token(usize::MAX);
 
 /// Event with this token will be issued, when `mio::Waker::wake` is called.
 pub const MIO_WAKE_TOKEN: mio::Token = mio::Token(usize::MAX - 1);
+
+/// Connection with ocaml part
+pub const MIO_PROTOCOL_TOKEN: mio::Token = mio::Token(usize::MAX - 2);
 
 pub type MioPeerDefault = MioPeer<TcpStream>;
 
@@ -38,6 +42,8 @@ pub trait MioService {
     fn peer_connection_incoming_accept(
         &mut self,
     ) -> Result<(PeerToken, MioPeerRefMut<Self::PeerStream>), PeerConnectionIncomingAcceptError>;
+
+    fn protocol_connection_init<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()>;
 
     fn peer_connection_init(&mut self, address: SocketAddr) -> io::Result<PeerToken>;
     fn peer_disconnect(&mut self, token: PeerToken);
@@ -150,6 +156,7 @@ pub struct MioServiceDefault {
     server: Option<TcpListener>,
 
     peers: Slab<MioPeer<TcpStream>>,
+    protocol_stream: Option<UnixStream>,
 }
 
 impl MioServiceDefault {
@@ -169,6 +176,7 @@ impl MioServiceDefault {
             waker,
             server: None,
             peers: Slab::new(),
+            protocol_stream: None,
         }
     }
 
@@ -197,6 +205,13 @@ impl MioService for MioServiceDefault {
             WakeupEvent {}.into()
         } else if event.token() == MIO_SERVER_TOKEN {
             P2pServerEvent {}.into()
+        } else if event.token() == MIO_SERVER_TOKEN {
+            ProtocolEvent {
+                is_readable: event.is_readable(),
+                is_writable: event.is_writable(),
+                is_closed: event.is_read_closed() || event.is_write_closed() || event.is_error(),
+            }
+            .into()
         } else {
             let is_closed = event.is_error() || event.is_read_closed() || event.is_write_closed();
             let peer_token = PeerToken::new_unchecked(event.token().0);
@@ -286,6 +301,13 @@ impl MioService for MioServiceDefault {
         } else {
             Err(PeerConnectionIncomingAcceptError::ServerNotListening)
         }
+    }
+
+    fn protocol_connection_init<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let mut stream = UnixStream::connect(path)?;
+        self.poll.registry().register(&mut stream, MIO_PROTOCOL_TOKEN, mio::Interest::WRITABLE)?;
+
+        Ok(())
     }
 
     fn peer_connection_init(&mut self, address: SocketAddr) -> io::Result<PeerToken> {

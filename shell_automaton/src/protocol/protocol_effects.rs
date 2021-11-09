@@ -15,6 +15,9 @@ where
                 store.dispatch(action.into());
             }
         },
+        Action::ProtocolEvent(event) => {
+            let _ = event;
+        },
         _ => (),
     }
 }

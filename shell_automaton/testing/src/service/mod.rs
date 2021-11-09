@@ -25,3 +25,6 @@ pub use mio_service::*;
 
 mod protocol_service;
 pub use protocol_service::*;
+
+mod protocol_new_service;
+pub use protocol_new_service::*;

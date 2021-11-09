@@ -6,7 +6,9 @@ use std::{sync::Arc, future::Future};
 use tokio::sync::mpsc;
 use slab::Slab;
 
-use tezos_protocol_ipc_client::{ProtocolServiceError, ProtocolRunnerApi, ProtocolRunnerConnection};
+use tezos_protocol_ipc_client::{
+    ProtocolServiceError, ProtocolRunnerApi, ProtocolRunnerConnection,
+};
 use tezos_api::ffi::BeginConstructionRequest;
 
 use crate::protocol::ProtocolAction;
@@ -19,6 +21,8 @@ pub trait ProtocolService {
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest);
 }
 
+// TODO(vlad): remove it
+/// The service relying on tokio runtime
 pub struct ProtocolServiceDefault {
     api: Arc<ProtocolRunnerApi>,
     responses: mpsc::Receiver<(ProtocolAction, usize)>,

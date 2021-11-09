@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
+use std::path::Path;
 
 use shell_automaton::event::Event;
 use shell_automaton::peer::PeerToken;
@@ -114,6 +115,11 @@ impl MioService for MioServiceMocked {
         }
 
         Err(PeerConnectionIncomingAcceptError::WouldBlock)
+    }
+
+    fn protocol_connection_init<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let _ = path;
+        Ok(())
     }
 
     fn peer_connection_init(&mut self, address: SocketAddr) -> io::Result<PeerToken> {

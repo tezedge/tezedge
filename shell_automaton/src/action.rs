@@ -6,7 +6,7 @@ use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
-use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
+use crate::event::{ProtocolEvent, P2pPeerEvent, P2pServerEvent, WakeupEvent};
 
 use crate::paused_loops::{
     PausedLoopsAddAction, PausedLoopsResumeAllAction, PausedLoopsResumeNextInitAction,
@@ -142,6 +142,7 @@ pub enum Action {
     MioTimeoutEvent,
     P2pServerEvent(P2pServerEvent),
     P2pPeerEvent(P2pPeerEvent),
+    ProtocolEvent(ProtocolEvent),
     WakeupEvent(WakeupEvent),
 
     PeerTryWriteLoopStart(PeerTryWriteLoopStartAction),

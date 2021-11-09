@@ -29,6 +29,9 @@ pub use quota_service::{QuotaService, QuotaServiceDefault};
 mod protocol_service;
 pub use protocol_service::{ProtocolService, ProtocolServiceDefault};
 
+mod protocol_new_service;
+pub use protocol_new_service::{ProtocolNewService, ProtocolNewServiceDefault};
+
 pub trait Service: TimeService {
     type Randomness: RandomnessService;
     type Dns: DnsService;
@@ -38,6 +41,7 @@ pub trait Service: TimeService {
     type Actors: ActorsService;
     type Quota: QuotaService;
     type Protocol: ProtocolService;
+    type ProtocolNew: ProtocolNewService;
 
     fn randomness(&mut self) -> &mut Self::Randomness;
 
@@ -54,6 +58,8 @@ pub trait Service: TimeService {
     fn quota(&mut self) -> &mut Self::Quota;
 
     fn protocol(&mut self) -> &mut Self::Protocol;
+
+    fn protocol_new(&mut self) -> &mut Self::ProtocolNew;
 }
 
 pub struct ServiceDefault {
@@ -65,6 +71,7 @@ pub struct ServiceDefault {
     pub actors: ActorsServiceDefault,
     pub quota: QuotaServiceDefault,
     pub protocol: ProtocolServiceDefault,
+    pub protocol_new: ProtocolNewServiceDefault,
 }
 
 impl TimeService for ServiceDefault {}
@@ -78,6 +85,7 @@ impl Service for ServiceDefault {
     type Actors = ActorsServiceDefault;
     type Quota = QuotaServiceDefault;
     type Protocol = ProtocolServiceDefault;
+    type ProtocolNew = ProtocolNewServiceDefault;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -109,5 +117,9 @@ impl Service for ServiceDefault {
 
     fn protocol(&mut self) -> &mut Self::Protocol {
         &mut self.protocol
+    }
+
+    fn protocol_new(&mut self) -> &mut Self::ProtocolNew {
+        &mut self.protocol_new
     }
 }

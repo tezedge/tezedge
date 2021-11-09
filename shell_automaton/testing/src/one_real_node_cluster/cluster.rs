@@ -20,7 +20,7 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
     MioPeerStreamMocked, MioServiceMocked, QuotaServiceDummy, RandomnessServiceMocked,
-    RpcServiceDummy, StorageServiceDummy, ProtocolServiceDummy,
+    RpcServiceDummy, StorageServiceDummy, ProtocolServiceDummy, ProtocolNewServiceDummy,
 };
 use crate::service::{Service, TimeService};
 
@@ -42,6 +42,7 @@ pub struct ServiceMocked {
     pub actors: ActorsServiceDummy,
     pub quota: QuotaServiceDummy,
     pub protocol: ProtocolServiceDummy,
+    pub protocol_new: ProtocolNewServiceDummy,
 }
 
 impl ServiceMocked {
@@ -56,6 +57,7 @@ impl ServiceMocked {
             actors: ActorsServiceDummy::new(),
             quota: QuotaServiceDummy::new(),
             protocol: ProtocolServiceDummy::new(),
+            protocol_new: ProtocolNewServiceDummy::new(),
         }
     }
 
@@ -79,6 +81,7 @@ impl Service for ServiceMocked {
     type Actors = ActorsServiceDummy;
     type Quota = QuotaServiceDummy;
     type Protocol = ProtocolServiceDummy;
+    type ProtocolNew = ProtocolNewServiceDummy;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -110,6 +113,10 @@ impl Service for ServiceMocked {
 
     fn protocol(&mut self) -> &mut Self::Protocol {
         &mut self.protocol
+    }
+
+    fn protocol_new(&mut self) -> &mut Self::ProtocolNew {
+        &mut self.protocol_new
     }
 }
 

@@ -20,7 +20,7 @@ use crypto::hash::ChainId;
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
 
-use tezos_protocol_ipc_client::ProtocolRunnerApi;
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::PeerConnectionThreshold;
 
@@ -30,7 +30,7 @@ pub use shell_automaton::service::actors_service::{
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::{
     ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, RpcServiceDefault, ServiceDefault,
-    StorageServiceDefault, ProtocolServiceDefault,
+    StorageServiceDefault, ProtocolServiceDefault, ProtocolNewServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Port, ShellAutomaton};
@@ -95,6 +95,7 @@ impl ShellAutomatonManager {
         p2p_config: P2p,
         pow_target: f64,
         _chain_id: ChainId,
+        protocol_runner_configuration: ProtocolRunnerConfiguration,
     ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
@@ -143,7 +144,8 @@ impl ShellAutomatonManager {
             log.new(o!("service" => "quota")),
         );
 
-        let protocol = ProtocolServiceDefault::new(mio_service.waker(), tezos_protocol_api);
+        let protocol_service = ProtocolServiceDefault::new(mio_service.waker(), tezos_protocol_api);
+        let protocol_new_service = ProtocolNewServiceDefault::new(protocol_runner_configuration);
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
@@ -153,7 +155,8 @@ impl ShellAutomatonManager {
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
-            protocol,
+            protocol: protocol_service,
+            protocol_new: protocol_new_service,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);

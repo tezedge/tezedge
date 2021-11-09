@@ -110,7 +110,7 @@ fn block_on_actors(
 
     let protocol_runner_configuration = create_protocol_runner_configuration(&env);
     let mut tezos_protocol_api = ProtocolRunnerApi::new(
-        protocol_runner_configuration,
+        protocol_runner_configuration.clone(),
         tokio_runtime.handle(),
         log.clone(),
     );
@@ -161,13 +161,14 @@ fn block_on_actors(
     let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
         persistent_storage.clone(),
         network_channel.clone(),
-        tezos_protocol_api.clone(),
+        Arc::clone(&tezos_protocol_api),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),
         env.p2p.clone(),
         env.identity.expected_pow,
         init_storage_data.chain_id.clone(),
+        protocol_runner_configuration,
     );
 
     // initialize actors

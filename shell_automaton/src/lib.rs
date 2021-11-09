@@ -85,6 +85,18 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         self.store
             .dispatch(StorageStateSnapshotCreateInitAction {}.into());
 
+        // Protocol runner
+        // let path = std::env::temp_dir().join(protocol_runner_socket);
+        // let _ = std::fs::remove_file(&path);
+        // if let Err(err) = self
+        //     .store
+        //     .service
+        //     .mio()
+        //     .protocol_connection_init(path)
+        // {
+        //     eprintln!("Protocol: failed to connect. Error: {:?}", err);
+        // }
+
         // TODO: create action for it.
         if let Err(err) = self
             .store
@@ -128,6 +140,7 @@ where
                 Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event.into()),
                 Event::P2pPeer(p2p_peer_event) => self.store.dispatch(p2p_peer_event.into()),
                 Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event.into()),
+                Event::Protocol(protocol_event) => self.store.dispatch(protocol_event.into()),
                 _ => {}
             }
         }
