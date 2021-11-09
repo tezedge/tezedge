@@ -829,24 +829,6 @@ mod tests {
         clean_up();
     }
 
-    #[test]
-    #[serial]
-    fn test_reopen_without_closing_error() {
-        let mut ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
-        ds.put(vec![1, 2, 3], vec![4, 5, 6])
-            .unwrap();
-        ds.put(vec![3, 1, 2], vec![12, 32, 1])
-            .unwrap();
-        ds.put(vec![3, 1, 4], vec![121, 200, 187])
-            .unwrap();
-        ds.put(vec![1, 2, 3], vec![3, 3, 3])
-            .unwrap();
-        println!("{:#?}", ds.keys());
-
-        let mut open_result = DataStore::open("./testdir/_test_data_merge_store");
-        assert!(open_result.is_err());
-    }
-
     fn clean_up() {
         fs_extra::dir::remove("./testdir");
     }

@@ -527,6 +527,18 @@ steps:
     - cd storage
     - cargo test --release --features maindb-backend-sled
 
+
+- name: run-unit-tests-multibackend-edgekv
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd storage
+    - cargo test --release --features maindb-backend-edgekv
+
 - name: run-unit-tests-commit-log
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
   pull: if-not-exists

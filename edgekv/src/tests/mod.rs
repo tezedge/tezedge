@@ -6,8 +6,8 @@ use std::alloc::Global;
 use std::sync::{Arc, RwLock};
 use bloomfilter::Bloom;
 use std::sync::atomic::AtomicUsize;
-
-const N_THREADS: usize = 5;
+use serial_test::serial;
+const N_THREADS: usize = 2;
 const N_PER_THREAD: usize = 5;
 const N: usize = N_THREADS * N_PER_THREAD;
 // NB N should be multiple of N_THREADS
@@ -26,6 +26,7 @@ fn clean_up(dir: &str) {
 }
 
 #[test]
+#[serial]
 fn monotonic_inserts() {
     clean_up("_test_monotonic_inserts");
     let db = EdgeKV::open("./testdir/_test_monotonic_inserts").unwrap();
@@ -69,10 +70,11 @@ fn monotonic_inserts() {
 }
 
 #[test]
+#[serial]
 fn get_set() {
-    clean_up("_test_monotonic_inserts");
+    clean_up("_test_monotonic_get_set");
     {
-        let db = EdgeKV::open("./testdir/_test_monotonic_inserts").unwrap();
+        let db = EdgeKV::open("./testdir/_test_monotonic_get_set").unwrap();
         //let column = "hello";
         db.put(vec![2, 3, 4], vec![12, 23, 45]);
         db.put(vec![22, 3, 4], vec![12, 23, 45]);
@@ -82,16 +84,17 @@ fn get_set() {
         db.put(vec![2, 9, 4], vec![2, 9, 4]);
     }
     {
-        let db = EdgeKV::open("./testdir/_test_monotonic_inserts").unwrap();
+        let db = EdgeKV::open("./testdir/_test_monotonic_get_set").unwrap();
         println!("{:?}", db.get(&vec![12, 3, 42]));
         println!("{:?}", db.get(&vec![12, 3, 42]));
     }
 }
 #[test]
+#[serial]
 fn prefix_test() {
-    clean_up("_test_monotonic_inserts");
+    clean_up("_test_monotonic_prefix");
     {
-        let db = EdgeKV::open("./testdir/_test_monotonic_inserts").unwrap();
+        let db = EdgeKV::open("./testdir/_test_monotonic_prefix").unwrap();
         //let column = "hello";
         db.put(vec![2, 3, 4], vec![12, 23, 45]);
         db.sync_all();
@@ -108,7 +111,7 @@ fn prefix_test() {
         db.sync_all();
     }
     {
-        let db = EdgeKV::open("./testdir/_test_monotonic_inserts").unwrap();
+        let db = EdgeKV::open("./testdir/_test_monotonic_prefix").unwrap();
        for res in db.prefix(&vec![2]) {
             println!("{:?}", res);
         }
@@ -128,6 +131,7 @@ fn prefix_test() {
 }
 
 #[test]
+#[serial]
 fn tree_big_keys_iterator() {
     clean_up("_test_tree_big_keys_iterator");
     fn kv(i: usize) -> Vec<u8> {
@@ -175,127 +179,9 @@ fn tree_big_keys_iterator() {
     assert!(tree_scan.next().is_none());
 }
 
-#[test]
-//#[should_panic]
-fn concurrent_tree_ops() {
-    clean_up("_test_concurrent_tree_ops");
-    use loom::thread;
-
-    common::setup_logger();
-
-    loom::model(|| {
-        for i in 0..INTENSITY {
-            debug!("beginning test {}", i);
-
-            macro_rules! par {
-            ($t:ident, $f:expr) => {
-                let mut threads = vec![];
-                for tn in 0..N_THREADS {
-                    let tree = $t.clone();
-                    let thread = thread::Builder::new()
-                        .name(format!("t(thread: {} test: {})", tn, i))
-                        .spawn(move || {
-                            println!("thread: {}", tn);
-                            for i in (tn * N_PER_THREAD)..((tn + 1) * N_PER_THREAD) {
-                                let k = kv(i);
-                                $f(&*tree, k);
-                            }
-                        })
-                        .expect("should be able to spawn thread");
-                    threads.push(thread);
-                }
-                while let Some(thread) = threads.pop() {
-                    if let Err(e) = thread.join() {
-                        panic!("thread failure: {:?}", e);
-                    }
-                }
-            };
-        }
-
-            debug!("========== initial sets test {} ==========", i);
-            let t = Arc::new(EdgeKV::open("./testdir/_test_concurrent_tree_ops").unwrap());
-            par! {t, |tree: &EdgeKV, k: Vec<u8>| {
-            let res = tree.get(&k);
-            if let Ok(None) = res {
-                assert!(true)
-            }
-            else {
-                println!("{:?} {:#?}", &k, res);
-                assert!(false)
-            }
-            //assert_eq!(tree.get(&k), Ok(None));
-            tree.put(k.clone(), k.clone()).expect("we should write successfully");
-            assert_eq!(tree.get(&k).unwrap(), Some(k.clone().into()),
-                "failed to read key {:?} that we just wrote from tree {}",
-                k, tree);
-        }}
-            ;
-
-            let n_scanned = t.iter().count();
-            if n_scanned != N {
-                warn!(
-                "WARNING: test {} only had {} keys present \
-                 in the DB BEFORE restarting. expected {}",
-                i, n_scanned, N,
-            );
-            }
-
-            drop(t);
-            let t = Arc::new(EdgeKV::open("./testdir/_test_concurrent_tree_ops").unwrap());
-
-            let n_scanned = t.iter().count();
-            if n_scanned != N {
-                warn!(
-                "WARNING: test {} only had {} keys present \
-                 in the DB AFTER restarting. expected {}",
-                i, n_scanned, N,
-            );
-            }
-            println!("{}", t);
-            debug!("========== reading sets in test {} ==========", i);
-            par! {t, |tree: &EdgeKV, k: Vec<u8>| {
-            if let Some(v) =  tree.get(&k).unwrap() {
-                if v != k {
-                    panic!("expected key {:?} not found", k);
-                }
-                println!("{:?}",v);
-            } else {
-                panic!("could not read key {:?}, which we \
-                       just wrote to tree {}", k, tree);
-            }
-        }}
-            ;
-
-            drop(t);
-        }
-    });
-
-
-    /*let t = Arc::new(EdgeKV::temp("./testdir/_test_concurrent_tree_ops").unwrap());
-
-    debug!("========== deleting in test {} ==========", i);
-    par! {t, |tree: &EdgeKV, k: Vec<u8>| {
-        tree.delete(&k).unwrap();
-    }};
-
-    drop(t);
-    let t = Arc::new(EdgeKV::temp("./testdir/_test_concurrent_tree_ops").unwrap());
-
-    par! {t, |tree: &EdgeKV, k: Vec<u8>| {
-        if let Ok(None) = tree.get(&k) {
-            assert!(true)
-        }
-        else {
-            assert!(false)
-        }
-        //assert_eq!(tree.get(&k), Ok(None));
-    }};*/
-
-    clean_up("_test_monotonic_inserts");
-}
-
 
 #[test]
+#[serial]
 fn concurrent_tree_ops_no() {
     clean_up("_test_concurrent_tree_ops");
     use std::thread;
@@ -423,6 +309,7 @@ fn concatenate_merge(
 }
 
 #[test]
+#[serial]
 fn test_merge_operator() {
     clean_up("_test_merge_operator");
     let db = EdgeKV::open("./testdir/_test_merge_operator").unwrap();
@@ -449,6 +336,7 @@ fn test_merge_operator() {
 }
 
 #[test]
+#[serial]
 fn test_bloom_filter() {
     let mut bloomfilter = Bloom::new(4096, 10);
     bloomfilter.set(&vec![1_u8, 2_u8, 3_u8]);
