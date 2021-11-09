@@ -33,6 +33,16 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] Verify that the versions of the cargo packages are all corresponding to the new release.
 - [ ] If you need to change the versions, use the [versions.sh](versions.sh) script in the root of the repository (e.g: ./versions.sh 1.9.0). Skip this step if the version is already set.
 
+### Tutorials and demos
+
+- [ ] Verify that the tutorials and demos are up to date with the changes included in this release.
+
+#### Tutorials to check:
+
+- [ ] [README.md](README.md)
+- [ ] [baking/010-granadanet/README.md](baking/010-granadanet/README.md)
+- [ ] [baking/mainnet/README.md](baking/mainnet/README.md)
+
 ### Mergin to develop
 
 - [ ] Merge the above changes included in the PR to develop
