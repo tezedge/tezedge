@@ -1,9 +1,12 @@
 // Copyright {c} SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use ocaml_interop::{impl_from_ocaml_polymorphic_variant, OCamlInt};
+use ocaml_interop::{impl_from_ocaml_polymorphic_variant, impl_from_ocaml_variant, OCamlInt};
+use tezos_timing::QueryKind;
 
 use crate::working_tree::working_tree::FoldDepth;
+
+pub struct OCamlQueryKind;
 
 impl_from_ocaml_polymorphic_variant! {
     FoldDepth {
@@ -12,5 +15,17 @@ impl_from_ocaml_polymorphic_variant! {
         Lt(n: OCamlInt) => FoldDepth::Lt(n),
         Ge(n: OCamlInt) => FoldDepth::Ge(n),
         Gt(n: OCamlInt) => FoldDepth::Gt(n),
+    }
+}
+
+impl_from_ocaml_variant! {
+    OCamlQueryKind => QueryKind {
+        QueryKind::Mem,
+        QueryKind::MemTree,
+        QueryKind::Find,
+        QueryKind::FindTree,
+        QueryKind::Add,
+        QueryKind::AddTree,
+        QueryKind::Remove,
     }
 }

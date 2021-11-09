@@ -1,23 +1,29 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cell::RefCell;
 use std::{
-    cell::Cell,
     collections::HashMap,
     convert::TryInto,
     path::PathBuf,
     sync::{
-        mpsc::{sync_channel, Receiver, SendError, SyncSender},
-        Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
     },
     time::{Duration, Instant},
 };
 
-use crypto::hash::{BlockHash, ContextHash, OperationHash};
-use once_cell::sync::Lazy;
+use container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString};
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
-use thiserror::Error;
+use static_assertions::assert_eq_size;
+use tezos_spsc::{
+    bounded, Consumer,
+    PopError::{Closed, Empty},
+    Producer, PushError,
+};
+
+pub mod container;
 
 pub const FILENAME_DB: &str = "context_stats.db";
 
@@ -151,7 +157,7 @@ impl QueryKind {
 #[derive(Debug)]
 pub enum TimingMessage {
     SetBlock {
-        block_hash: Option<BlockHash>,
+        block_hash: Option<InlinedBlockHash>,
         /// Duration since std::time::UNIX_EPOCH.
         /// It is `None` when `block_hash` is `None`.
         timestamp: Option<Duration>,
@@ -160,9 +166,9 @@ pub enum TimingMessage {
         /// is used to get `timestamp`) is not.
         instant: Instant,
     },
-    SetOperation(Option<OperationHash>),
+    SetOperation(Option<InlinedOperationHash>),
     Checkout {
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     },
@@ -178,6 +184,9 @@ pub enum TimingMessage {
         stats: BlockMemoryUsage,
     },
 }
+
+assert_eq_size!([u8; 576], TimingMessage);
+assert_eq_size!([u8; 16], Option<f64>);
 
 // Id of the hash in the database
 type HashId = String;
@@ -349,9 +358,9 @@ impl QueryStats {
 }
 
 struct Timing {
-    current_block: Option<(HashId, BlockHash)>,
-    current_operation: Option<(HashId, OperationHash)>,
-    current_context: Option<(HashId, ContextHash)>,
+    current_block: Option<(HashId, InlinedBlockHash)>,
+    current_operation: Option<(HashId, InlinedOperationHash)>,
+    current_context: Option<(HashId, InlinedContextHash)>,
     block_started_at: Option<(Duration, Instant)>,
     /// Number of queries in current block
     nqueries: usize,
@@ -380,114 +389,98 @@ impl std::fmt::Debug for Timing {
 
 #[derive(Debug)]
 pub struct Query {
-    pub query_name: QueryKind,
-    pub key: Vec<String>,
+    pub query_kind: QueryKind,
+    pub key: InlinedString,
     pub irmin_time: Option<f64>,
     pub tezedge_time: Option<f64>,
 }
 
-#[derive(Error, Debug)]
-pub enum BufferedTimingChannelSendError {
-    #[error("Failure when locking the timings channel buffer: {reason}")]
-    LockError { reason: String },
-    #[error("Failure when sending timming messages to channel: {reason}")]
-    SendError {
-        reason: SendError<Vec<TimingMessage>>,
-    },
+#[derive(Default)]
+pub struct TimingChannelShared {
+    mutex: Mutex<()>,
+    condvar: Condvar,
+    is_waiting: AtomicBool,
 }
 
-impl From<SendError<Vec<TimingMessage>>> for BufferedTimingChannelSendError {
-    fn from(reason: SendError<Vec<TimingMessage>>) -> Self {
-        Self::SendError { reason }
-    }
+pub struct TimingChannel {
+    shared: Arc<TimingChannelShared>,
+    producer: Producer<TimingMessage>,
 }
 
-impl<T> From<PoisonError<T>> for BufferedTimingChannelSendError {
-    fn from(reason: PoisonError<T>) -> Self {
-        Self::LockError {
-            reason: format!("{}", reason),
-        }
-    }
+#[derive(Debug)]
+pub enum ChannelError {
+    PtrNull,
+    PushError(PushError<TimingMessage>),
 }
 
-/// Buffered channel for sending timings that delays the sending until
-/// enough messages have been obtained or a commit message is received.
-/// The purpose is to send less messages through the channel to decrease
-/// the overhead.
-pub struct BufferedTimingChannel {
-    buffer: Mutex<Cell<Vec<TimingMessage>>>,
-    sender: SyncSender<Vec<TimingMessage>>,
-}
-
-impl BufferedTimingChannel {
-    const DELAYED_MESSAGES_LIMIT: usize = 100;
-
-    fn new(sender: SyncSender<Vec<TimingMessage>>) -> Self {
+impl TimingChannel {
+    fn new(producer: Producer<TimingMessage>) -> Self {
         Self {
-            buffer: Mutex::new(Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT))),
-            sender,
+            shared: Arc::new(TimingChannelShared {
+                mutex: Default::default(),
+                condvar: Default::default(),
+                is_waiting: AtomicBool::new(false),
+            }),
+            producer,
         }
     }
 
-    /// True if the message must be sent immediately, false if it can be buffered.
-    fn is_immediate_message(&self, msg: &TimingMessage) -> bool {
-        match msg {
-            TimingMessage::Commit { .. } => true,
-            TimingMessage::InitTiming { .. } => false,
-            _ => false,
+    pub fn send(&mut self, msg: TimingMessage) -> Result<(), ChannelError> {
+        let result = self.producer.push(msg);
+
+        if self.shared.is_waiting.load(Ordering::Acquire) {
+            // Wake up the timing thread
+            self.shared.condvar.notify_one();
         }
-    }
 
-    /// Sends messages, delayed and combined into a single bigger message.
-    ///
-    /// Reaching the delayed messages limit or receiving a commit message will trigger the send
-    /// to the underlying channel, otherwise the messages will be kept in the buffer.
-    pub fn send(&self, msg: TimingMessage) -> Result<(), BufferedTimingChannelSendError> {
-        let must_not_delay = self.is_immediate_message(&msg);
-        let limit = Self::DELAYED_MESSAGES_LIMIT - 1;
-        let mut buffer = self.buffer.lock()?;
-
-        buffer.get_mut().push(msg);
-
-        if must_not_delay || buffer.get_mut().len() == limit {
-            let swap_buffer = Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT));
-
-            buffer.swap(&swap_buffer);
-
-            let pack = swap_buffer.into_inner();
-
-            Ok(self.sender.send(pack)?)
-        } else {
-            Ok(())
-        }
+        result.map_err(|e| ChannelError::PushError(e))
     }
 }
 
-pub static TIMING_CHANNEL: Lazy<BufferedTimingChannel> = Lazy::new(|| {
-    let (sender, receiver) = sync_channel(10_000);
+thread_local! {
+    /// We put TIMING_CHANNEL in a thread local variable so that
+    /// we can access `TimingChannel` mutably.
+    /// `Producer::push` requires mutability.
+    pub static TIMING_CHANNEL: RefCell<TimingChannel> = init_timing();
+}
+
+static TIMING_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+fn init_timing() -> RefCell<TimingChannel> {
+    let (producer, consumer) = bounded(20_000);
+
+    let channel = TimingChannel::new(producer);
+
+    // `init_timing` is called once per thread.
+    // We want the timing thread to be started only once (per 1 thread).
+    // If `init_timing` is called a second time by another thread, this is an error.
+    if TIMING_INITIALIZED.swap(true, Ordering::SeqCst) {
+        eprintln!("Error: Timing thread initialized more than once");
+        return RefCell::new(channel);
+    }
+
+    let common = channel.shared.clone();
 
     if let Err(e) = std::thread::Builder::new()
         .name("ctx-timings-thread".to_string())
         .spawn(|| {
-            start_timing(receiver);
+            start_timing(consumer, common);
         })
     {
         eprintln!("Fail to create timing channel: {:?}", e);
     }
 
-    BufferedTimingChannel::new(sender)
-});
+    RefCell::new(channel)
+}
 
-fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
+fn start_timing(mut consumer: Consumer<TimingMessage>, shared: Arc<TimingChannelShared>) {
     let mut db_path: Option<PathBuf> = None;
 
-    'outer: for msgpack in &recv {
-        for msg in msgpack {
-            if let TimingMessage::InitTiming { db_path: path } = msg {
-                db_path = path;
-                break 'outer;
-            };
-        }
+    while let Ok(msg) = consumer.pop() {
+        if let TimingMessage::InitTiming { db_path: path } = msg {
+            db_path = path;
+            break;
+        };
     }
 
     let sql = match Timing::init_sqlite(db_path) {
@@ -501,10 +494,45 @@ fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
     let mut timing = Timing::new();
     let mut transaction = None;
 
-    for msgpack in recv {
-        for msg in msgpack {
-            if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-                eprintln!("Timing error={:?}", err);
+    let mut ntimes_empty = 0;
+
+    loop {
+        match consumer.pop() {
+            Ok(msg) => {
+                ntimes_empty = 0;
+                if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+                    eprintln!("Timing error={:?}", err);
+                }
+            }
+            Err(Empty) => {
+                if ntimes_empty < 5 {
+                    // Sleep between 10 and 50 ms
+                    std::thread::sleep(Duration::from_millis(10 * (ntimes_empty + 1)));
+                    ntimes_empty += 1;
+                    continue;
+                }
+                ntimes_empty = 0;
+
+                // Let the main thread knows that we are waiting
+                // Only this thread (timing) writes on `TimingChannelShared::is_waiting`
+                // so no data race is possible: see below.
+                shared.is_waiting.store(true, Ordering::Release);
+
+                // If the main thread reads `TimingChannelShared::is_waiting` as `true`
+                // at this point (before we called `CondVar::wait`), it won't
+                // cause any harm because the main thread would call `notify_one` without
+                // notifying anyone, but `is_waiting` will remains `true`.
+                // So when the main thread reads a second time `is_waiting` (in another call),
+                // it will notify again, and this time we will already have reached
+                // the `CondVar::wait`.
+
+                let guard = shared.mutex.lock().unwrap();
+                let _guard = shared.condvar.wait(guard).unwrap();
+
+                shared.is_waiting.store(false, Ordering::Release);
+            }
+            Err(Closed) => {
+                return;
             }
         }
     }
@@ -674,7 +702,7 @@ impl Timing {
     fn set_current_block<'a>(
         &mut self,
         sql: &'a Connection,
-        block_hash: Option<BlockHash>,
+        block_hash: Option<InlinedBlockHash>,
         mut timestamp: Option<Duration>,
         instant: Instant,
         transaction: &mut Option<Transaction<'a>>,
@@ -736,7 +764,7 @@ impl Timing {
     fn set_current_operation(
         &mut self,
         sql: &Connection,
-        operation_hash: Option<OperationHash>,
+        operation_hash: Option<InlinedOperationHash>,
     ) -> Result<(), SQLError> {
         Self::set_current(
             sql,
@@ -749,7 +777,7 @@ impl Timing {
     fn set_current_context(
         &mut self,
         sql: &Connection,
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
     ) -> Result<(), SQLError> {
         Self::set_current(
             sql,
@@ -767,7 +795,7 @@ impl Timing {
     ) -> Result<(), SQLError>
     where
         T: Eq,
-        T: AsRef<Vec<u8>>,
+        T: AsRef<[u8]>,
     {
         match (hash.as_ref(), current.as_ref()) {
             (None, _) => {
@@ -831,7 +859,7 @@ impl Timing {
     fn insert_checkout(
         &mut self,
         sql: &Connection,
-        context_hash: ContextHash,
+        context_hash: InlinedContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     ) -> Result<(), SQLError> {
@@ -878,21 +906,25 @@ impl Timing {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
-        let query_name = query.query_name.to_str();
+        let query_name = query.query_kind.to_str();
 
         let (root, key_id) = if query.key.is_empty() {
             (None, None)
         } else {
-            let root = query.key[0].as_str();
-            let key = query.key.join("/");
+            let key = query.key.as_str();
+
+            let root = match key.split_once('/') {
+                Some(slice) => slice.0,
+                None => key,
+            };
 
             let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
 
-            stmt.execute([key.as_str()])?;
+            stmt.execute([key])?;
 
             let mut stmt = sql.prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
 
-            let key_id: usize = stmt.query_row([key.as_str()], |row| row.get(0))?;
+            let key_id: usize = stmt.query_row([key], |row| row.get(0))?;
 
             (Some(root), Some(key_id))
         };
@@ -971,7 +1003,7 @@ impl Timing {
             };
 
             let time = *time;
-            let query_stats = match query.query_name {
+            let query_stats = match query.query_kind {
                 QueryKind::Mem => &mut entry.mem,
                 QueryKind::MemTree => &mut entry.mem_tree,
                 QueryKind::Find => &mut entry.find,
@@ -1004,7 +1036,7 @@ impl Timing {
             }
         };
 
-        let (value_tezedge, value_irmin) = match query.query_name {
+        let (value_tezedge, value_irmin) = match query.query_kind {
             QueryKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
             QueryKind::MemTree => (&mut entry.tezedge_mem_tree, &mut entry.irmin_mem_tree),
             QueryKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
@@ -1312,9 +1344,16 @@ impl Timing {
 
 #[cfg(test)]
 mod tests {
-    use crypto::hash::HashTrait;
+    use crate::container::{InlinedBlockHash, InlinedContextHash};
 
     use super::*;
+
+    fn send_msg(msg: TimingMessage) -> Result<(), ChannelError> {
+        TIMING_CHANNEL.with(|channel| {
+            let mut channel = channel.borrow_mut();
+            channel.send(msg)
+        })
+    }
 
     #[test]
     fn test_timing_db() {
@@ -1324,7 +1363,7 @@ mod tests {
 
         assert!(timing.current_block.is_none());
 
-        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
+        let block_hash = InlinedBlockHash::from(&[1; 32][..]);
         timing
             .set_current_block(
                 &sql,
@@ -1352,7 +1391,7 @@ mod tests {
         timing
             .set_current_block(
                 &sql,
-                Some(BlockHash::try_from_bytes(&[2; 32]).unwrap()),
+                Some(InlinedBlockHash::from(&[2; 32][..])),
                 None,
                 Instant::now(),
                 &mut transaction,
@@ -1367,11 +1406,8 @@ mod tests {
                 &sql,
                 &mut transaction,
                 &Query {
-                    query_name: QueryKind::Mem,
-                    key: vec!["a", "b", "c"]
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect(),
+                    query_kind: QueryKind::Mem,
+                    key: InlinedString::from(&["a", "b", "c"][..]),
                     irmin_time: Some(1.0),
                     tezedge_time: Some(2.0),
                 },
@@ -1385,99 +1421,70 @@ mod tests {
     }
 
     #[test]
-    fn test_queries_db() {
-        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
-        let context_hash = ContextHash::try_from_bytes(&[2; 32]).unwrap();
+    fn test_actions_db() {
+        let block_hash = InlinedBlockHash::from(&[1; 32][..]);
+        let context_hash = InlinedContextHash::from(&[2; 32][..]);
 
-        TIMING_CHANNEL
-            .send(TimingMessage::InitTiming { db_path: None })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::SetBlock {
-                block_hash: Some(block_hash),
-                timestamp: None,
-                instant: Instant::now(),
-            })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Checkout {
-                context_hash,
-                irmin_time: Some(1.0),
-                tezedge_time: Some(2.0),
-            })
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(1.0),
-                tezedge_time: Some(2.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Find,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(5.0),
-                tezedge_time: Some(6.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Find,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(50.0),
-                tezedge_time: Some(60.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Mem,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(10.0),
-                tezedge_time: Some(20.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(15.0),
-                tezedge_time: Some(26.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Query(Query {
-                query_name: QueryKind::Add,
-                key: vec!["m", "n", "o"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(150.0),
-                tezedge_time: Some(260.0),
-            }))
-            .unwrap();
-        TIMING_CHANNEL
-            .send(TimingMessage::Commit {
-                irmin_time: Some(15.0),
-                tezedge_time: Some(20.0),
-            })
-            .unwrap();
+        send_msg(TimingMessage::InitTiming { db_path: None }).unwrap();
+        send_msg(TimingMessage::SetBlock {
+            block_hash: Some(block_hash),
+            timestamp: None,
+            instant: Instant::now(),
+        })
+        .unwrap();
+        send_msg(TimingMessage::Checkout {
+            context_hash,
+            irmin_time: Some(1.0),
+            tezedge_time: Some(2.0),
+        })
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Add,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(1.0),
+            tezedge_time: Some(2.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Find,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(5.0),
+            tezedge_time: Some(6.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Find,
+            key: InlinedString::from(&["a", "b", "c"][..]),
+            irmin_time: Some(50.0),
+            tezedge_time: Some(60.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Mem,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(10.0),
+            tezedge_time: Some(20.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Add,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(15.0),
+            tezedge_time: Some(26.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Query(Query {
+            query_kind: QueryKind::Add,
+            key: InlinedString::from(&["m", "n", "o"][..]),
+            irmin_time: Some(150.0),
+            tezedge_time: Some(260.0),
+        }))
+        .unwrap();
+        send_msg(TimingMessage::Commit {
+            irmin_time: Some(15.0),
+            tezedge_time: Some(20.0),
+        })
+        .unwrap();
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

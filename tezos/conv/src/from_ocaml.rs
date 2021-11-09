@@ -78,6 +78,11 @@ from_ocaml_typed_hash!(
     OperationMetadataListListHash
 );
 
+pub fn hash_as_bytes<T>(hash: OCaml<T>) -> &[u8] {
+    let field = unsafe { hash.field::<OCamlBytes>(0) };
+    field.as_bytes()
+}
+
 // TODO: TE-367: review once ocaml-interop has been upgraded
 unsafe impl FromOCaml<OCamlChainId> for ChainId {
     fn from_ocaml(v: OCaml<OCamlChainId>) -> Self {
