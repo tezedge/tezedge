@@ -8,6 +8,7 @@ use crate::{ActionId, EnablingCondition, State};
 
 use super::StorageStateSnapshotCreateState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateInitAction {}
 

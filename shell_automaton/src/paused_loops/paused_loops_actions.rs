@@ -7,6 +7,7 @@ use crate::{EnablingCondition, State};
 
 use super::{PausedLoop, PausedLoopCurrent};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PausedLoopsAddAction {
     pub data: PausedLoop,
@@ -18,6 +19,7 @@ impl EnablingCondition<State> for PausedLoopsAddAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PausedLoopsResumeAllAction {}
 
@@ -27,6 +29,7 @@ impl EnablingCondition<State> for PausedLoopsResumeAllAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PausedLoopsResumeNextInitAction {}
 
@@ -36,6 +39,7 @@ impl EnablingCondition<State> for PausedLoopsResumeNextInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PausedLoopsResumeNextSuccessAction {}
 

@@ -13,6 +13,7 @@ use super::block_header::BlockHeader;
 use super::limits::BLOCK_HEADER_MAX_SIZE;
 use super::mempool::Mempool;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -61,6 +62,8 @@ impl CurrentHeadMessage {
     BinWriter,
     tezos_encoding::generator::Generated,
 )]
+
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,

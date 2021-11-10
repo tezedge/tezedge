@@ -25,6 +25,7 @@ macro_rules! merge_slices {
 }
 
 /// Arbitrary number that can be used once in communication.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Nonce {
     value: BigUint,
@@ -89,6 +90,7 @@ impl Nonce {
 }
 
 /// Pair of local/remote nonces
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct NoncePair {
     pub local: Nonce,

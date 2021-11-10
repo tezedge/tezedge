@@ -11,6 +11,7 @@ use crate::peer::{Peer, PeerStatus};
 use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBlacklistState {
     /// Peer is temporarily graylisted.

@@ -8,8 +8,9 @@ use crate::peer::PeerToken;
 
 use super::PeerConnectionOutgoingError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
-#[enum_kind(PeerConnectionOutgoingStatePhase, derive(Serialize, Deserialize))]
+#[enum_kind(PeerConnectionOutgoingStatePhase, derive(Serialize, Deserialize), cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator)))]
 pub enum PeerConnectionOutgoingState {
     Idle {
         time: u64,

@@ -19,6 +19,7 @@ use tezos_encoding::{
 use crate::p2p::binary_message::{BinaryChunk, BinaryRead};
 use crate::p2p::encoding::version::NetworkVersion;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated,
 )]

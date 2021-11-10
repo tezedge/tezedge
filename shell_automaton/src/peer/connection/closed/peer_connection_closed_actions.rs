@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use crate::{EnablingCondition, State};
 
 /// Peer closed connection with us.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionClosedAction {
     pub address: SocketAddr,

@@ -34,6 +34,7 @@ pub const MESSAGE_TYPE_TEXTS: [&str; MESSAGE_TYPE_COUNT] = [
     "OperationsForBlocks",
 ];
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
 #[encoding(tags = "u16")]
 pub enum PeerMessage {
@@ -112,6 +113,7 @@ impl PeerMessage {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, BinWriter)]
 #[encoding(dynamic = "MESSAGE_MAX_SIZE")]
 pub struct PeerMessageResponse {

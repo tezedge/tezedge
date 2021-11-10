@@ -9,6 +9,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeersTimeouts;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsInitAction {}
 
@@ -18,6 +19,7 @@ impl EnablingCondition<State> for PeersCheckTimeoutsInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsSuccessAction {
     pub peer_timeouts: PeersTimeouts,
@@ -30,6 +32,7 @@ impl EnablingCondition<State> for PeersCheckTimeoutsSuccessAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsCleanupAction {}
 

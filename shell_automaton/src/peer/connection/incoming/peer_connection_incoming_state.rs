@@ -8,8 +8,9 @@ use crate::peer::PeerToken;
 
 use super::PeerConnectionIncomingError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
-#[enum_kind(PeerConnectionIncomingStatePhase, derive(Serialize, Deserialize))]
+#[enum_kind(PeerConnectionIncomingStatePhase, derive(Serialize, Deserialize), cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator)))]
 pub enum PeerConnectionIncomingState {
     Pending {
         time: u64,

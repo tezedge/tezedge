@@ -38,7 +38,7 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 /// thus any path should be 3 steps at most.
 ///
 pub const MAX_PASS_MERKLE_DEPTH: usize = 3;
-
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -75,6 +75,7 @@ impl OperationsForBlock {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -118,6 +119,7 @@ impl From<OperationsForBlocksMessage> for Vec<Operation> {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathRight {
     #[get = "pub"]
@@ -146,6 +148,7 @@ impl Generated for PathRight {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathLeft {
     #[get = "pub"]
@@ -174,6 +177,7 @@ impl Generated for PathLeft {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, tezos_encoding::generator::Generated)]
 pub enum PathItem {
     Right(PathRight),
@@ -190,6 +194,7 @@ impl PathItem {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Path(pub Vec<PathItem>);
 
@@ -333,6 +338,7 @@ impl tezos_encoding::generator::Generated for Path {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

@@ -8,6 +8,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerConnectionIncomingStatePhase;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingError {
     Timeout(PeerConnectionIncomingStatePhase),
@@ -19,6 +20,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingError {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingErrorAction {
     pub address: SocketAddr,
@@ -31,6 +33,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingSuccessAction {
     pub address: SocketAddr,

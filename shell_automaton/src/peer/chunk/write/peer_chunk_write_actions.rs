@@ -10,6 +10,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerChunkWriteError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteSetContentAction {
     pub address: SocketAddr,
@@ -22,6 +23,7 @@ impl EnablingCondition<State> for PeerChunkWriteSetContentAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteEncryptContentAction {
     pub address: SocketAddr,
@@ -34,6 +36,7 @@ impl EnablingCondition<State> for PeerChunkWriteEncryptContentAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteCreateChunkAction {
     pub address: SocketAddr,
@@ -46,6 +49,7 @@ impl EnablingCondition<State> for PeerChunkWriteCreateChunkAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWritePartAction {
     pub address: SocketAddr,
@@ -58,6 +62,7 @@ impl EnablingCondition<State> for PeerChunkWritePartAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteErrorAction {
     pub address: SocketAddr,
@@ -70,6 +75,7 @@ impl EnablingCondition<State> for PeerChunkWriteErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteReadyAction {
     pub address: SocketAddr,

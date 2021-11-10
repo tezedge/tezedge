@@ -198,6 +198,7 @@ impl EnablingCondition<State> for MioTimeoutEvent {
         Hash
     )
 )]
+
 #[serde(tag = "kind", content = "content")]
 pub enum Action {
     Init(InitAction),

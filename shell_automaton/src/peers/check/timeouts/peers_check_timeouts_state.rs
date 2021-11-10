@@ -10,6 +10,7 @@ use crate::peer::handshaking::PeerHandshakingPhase;
 pub type PeersTimeouts = Vec<(SocketAddr, PeerTimeout)>;
 pub type GraylistTimeouts = Vec<IpAddr>;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerTimeout {
     Connecting(PeerConnectionStatePhase),

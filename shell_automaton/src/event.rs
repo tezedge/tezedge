@@ -41,6 +41,7 @@ impl EnablingCondition<State> for Event {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WakeupEvent;
 
@@ -50,6 +51,7 @@ impl EnablingCondition<State> for WakeupEvent {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pServerEvent;
 
@@ -59,6 +61,7 @@ impl EnablingCondition<State> for P2pServerEvent {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pPeerEvent {
     pub token: PeerToken,

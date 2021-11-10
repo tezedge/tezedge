@@ -18,6 +18,7 @@ use tezos_encoding::nom::NomReader;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -48,6 +49,7 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -122,6 +124,7 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

@@ -12,6 +12,7 @@ use tezos_encoding::nom::NomReader;
 
 use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

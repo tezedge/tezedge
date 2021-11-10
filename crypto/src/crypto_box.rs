@@ -131,6 +131,7 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
     Ok((sk, pk, pkh))
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);

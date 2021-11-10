@@ -11,6 +11,7 @@ use super::limits::CHAIN_NAME_MAX_LENGTH;
 use std::hash::{Hash, Hasher};
 
 /// Holds informations about chain compatibility, features compatibility...
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
 pub struct NetworkVersion {
     #[get = "pub"]

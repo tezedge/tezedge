@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use crate::{EnablingCondition, State};
 
 /// Disconnect connected peer.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerDisconnectAction {
     pub address: SocketAddr,
@@ -19,6 +20,7 @@ impl EnablingCondition<State> for PeerDisconnectAction {
 }
 
 /// Connected peer disconnected.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerDisconnectedAction {
     pub address: SocketAddr,

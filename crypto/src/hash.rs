@@ -63,7 +63,17 @@ pub enum FromBytesError {
 
 macro_rules! define_hash {
     ($name:ident) => {
-        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+        #[derive(
+            Clone,
+            PartialEq,
+            Eq,
+            Serialize,
+            Deserialize,
+            std::cmp::PartialOrd,
+            std::cmp::Ord,
+            std::hash::Hash,
+        )]
         pub struct $name(pub Hash);
 
         impl $name {

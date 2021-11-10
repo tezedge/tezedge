@@ -8,6 +8,7 @@ use crate::peer::PeerToken;
 use crate::{EnablingCondition, State};
 
 /// Add incoming peer to peers.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersAddIncomingPeerAction {
     pub token: PeerToken,

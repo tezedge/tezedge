@@ -45,3 +45,6 @@ async_ipc = { path = "../async-ipc" }
 tezos_context_api = { path = "../tezos/context-api" }
 tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 tezos_protocol_ipc_messages = { path = "../tezos/protocol-ipc-messages" }
+
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
+
