@@ -13,6 +13,7 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -42,6 +43,7 @@ impl CurrentBranchMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -74,6 +76,7 @@ impl CurrentBranch {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

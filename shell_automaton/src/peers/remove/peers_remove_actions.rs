@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{EnablingCondition, State};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersRemoveAction {
     pub address: SocketAddr,

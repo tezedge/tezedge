@@ -20,6 +20,7 @@ impl EnablingCondition<State> for StorageRequestCreateAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestInitAction {
     pub req_id: RequestId,
@@ -31,6 +32,7 @@ impl EnablingCondition<State> for StorageRequestInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestPendingAction {
     pub req_id: RequestId,
@@ -77,6 +79,7 @@ impl EnablingCondition<State> for StorageRequestSuccessAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestFinishAction {
     pub req_id: RequestId,

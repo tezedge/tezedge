@@ -12,6 +12,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerMessageWriteError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageWriteNextAction {
     pub address: SocketAddr,
@@ -23,6 +24,7 @@ impl EnablingCondition<State> for PeerMessageWriteNextAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageWriteInitAction {
     pub address: SocketAddr,
@@ -35,6 +37,7 @@ impl EnablingCondition<State> for PeerMessageWriteInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageWriteErrorAction {
     pub address: SocketAddr,
@@ -48,6 +51,7 @@ impl EnablingCondition<State> for PeerMessageWriteErrorAction {
 }
 
 /// PeerMessage has been read/received successfuly.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageWriteSuccessAction {
     pub address: SocketAddr,

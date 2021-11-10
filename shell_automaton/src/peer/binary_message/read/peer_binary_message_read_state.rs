@@ -7,6 +7,7 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 
 use crate::peer::chunk::read::{PeerChunkRead, PeerChunkReadError, ReadCrypto};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBinaryMessageReadError {
     Chunk(PeerChunkReadError),
@@ -19,6 +20,7 @@ impl From<BinaryReaderError> for PeerBinaryMessageReadError {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
 pub enum PeerBinaryMessageReadState {
     Init {

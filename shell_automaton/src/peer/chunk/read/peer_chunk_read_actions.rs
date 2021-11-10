@@ -8,6 +8,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerChunkReadError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadInitAction {
     pub address: SocketAddr,
@@ -19,6 +20,7 @@ impl EnablingCondition<State> for PeerChunkReadInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadPartAction {
     pub address: SocketAddr,
@@ -31,6 +33,7 @@ impl EnablingCondition<State> for PeerChunkReadPartAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadDecryptAction {
     pub address: SocketAddr,
@@ -43,6 +46,7 @@ impl EnablingCondition<State> for PeerChunkReadDecryptAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadReadyAction {
     pub address: SocketAddr,
@@ -54,6 +58,7 @@ impl EnablingCondition<State> for PeerChunkReadReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkReadErrorAction {
     pub address: SocketAddr,

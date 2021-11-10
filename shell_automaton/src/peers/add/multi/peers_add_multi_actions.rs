@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use crate::{EnablingCondition, State};
 
 /// Add multiple peers as potential peers.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersAddMultiAction {
     pub addresses: Vec<SocketAddr>,

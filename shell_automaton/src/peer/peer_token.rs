@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
-
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 pub struct PeerToken(usize);
 

@@ -14,6 +14,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerHandshakingError;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingInitAction {
     pub address: SocketAddr,
@@ -25,6 +26,7 @@ impl EnablingCondition<State> for PeerHandshakingInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingConnectionMessageInitAction {
     pub address: SocketAddr,
@@ -37,6 +39,7 @@ impl EnablingCondition<State> for PeerHandshakingConnectionMessageInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingConnectionMessageEncodeAction {
     pub address: SocketAddr,
@@ -49,6 +52,7 @@ impl EnablingCondition<State> for PeerHandshakingConnectionMessageEncodeAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingConnectionMessageWriteAction {
     pub address: SocketAddr,
@@ -61,6 +65,7 @@ impl EnablingCondition<State> for PeerHandshakingConnectionMessageWriteAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingConnectionMessageReadAction {
     pub address: SocketAddr,
@@ -72,6 +77,7 @@ impl EnablingCondition<State> for PeerHandshakingConnectionMessageReadAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingConnectionMessageDecodeAction {
     pub address: SocketAddr,
@@ -85,6 +91,7 @@ impl EnablingCondition<State> for PeerHandshakingConnectionMessageDecodeAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingEncryptionInitAction {
     pub address: SocketAddr,
@@ -97,6 +104,7 @@ impl EnablingCondition<State> for PeerHandshakingEncryptionInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingErrorAction {
     pub address: SocketAddr,
@@ -112,6 +120,7 @@ impl EnablingCondition<State> for PeerHandshakingErrorAction {
 ///////////////////////////////////////
 ///////////////////////////////////////
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingMetadataMessageInitAction {
     pub address: SocketAddr,
@@ -124,6 +133,7 @@ impl EnablingCondition<State> for PeerHandshakingMetadataMessageInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingMetadataMessageEncodeAction {
     pub address: SocketAddr,
@@ -136,6 +146,7 @@ impl EnablingCondition<State> for PeerHandshakingMetadataMessageEncodeAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingMetadataMessageWriteAction {
     pub address: SocketAddr,
@@ -147,6 +158,7 @@ impl EnablingCondition<State> for PeerHandshakingMetadataMessageWriteAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingMetadataMessageReadAction {
     pub address: SocketAddr,
@@ -158,6 +170,7 @@ impl EnablingCondition<State> for PeerHandshakingMetadataMessageReadAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingMetadataMessageDecodeAction {
     pub address: SocketAddr,
@@ -172,6 +185,7 @@ impl EnablingCondition<State> for PeerHandshakingMetadataMessageDecodeAction {
 
 ///////////////////////////////////////
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingAckMessageInitAction {
     pub address: SocketAddr,
@@ -184,6 +198,7 @@ impl EnablingCondition<State> for PeerHandshakingAckMessageInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingAckMessageEncodeAction {
     pub address: SocketAddr,
@@ -196,6 +211,7 @@ impl EnablingCondition<State> for PeerHandshakingAckMessageEncodeAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingAckMessageWriteAction {
     pub address: SocketAddr,
@@ -207,6 +223,7 @@ impl EnablingCondition<State> for PeerHandshakingAckMessageWriteAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingAckMessageReadAction {
     pub address: SocketAddr,
@@ -218,6 +235,7 @@ impl EnablingCondition<State> for PeerHandshakingAckMessageReadAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingAckMessageDecodeAction {
     pub address: SocketAddr,
@@ -230,6 +248,7 @@ impl EnablingCondition<State> for PeerHandshakingAckMessageDecodeAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshakingFinishAction {
     pub address: SocketAddr,

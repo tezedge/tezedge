@@ -9,6 +9,7 @@ use crate::peers::PeerBlacklistState;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use crate::{EnablingCondition, State};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingRejectedReason {
     PeersConnectedMaxBoundReached,
@@ -22,6 +23,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedReason {
 }
 
 /// Accept incoming peer connection.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptAction {}
 
@@ -31,6 +33,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptErrorAction {
     pub error: PeerConnectionIncomingAcceptError,
@@ -42,6 +45,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingRejectedAction {
     pub token: PeerToken,
@@ -55,6 +59,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptSuccessAction {
     pub token: PeerToken,

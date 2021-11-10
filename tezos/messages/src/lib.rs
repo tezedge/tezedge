@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
+#![feature(no_coverage)]
 
 //! This crate provides definitions of tezos messages.
 

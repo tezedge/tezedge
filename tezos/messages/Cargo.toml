@@ -27,6 +27,8 @@ quickcheck = "1.0.3"
 quickcheck_derive = { git = "https://github.com/tezedge/quickcheck_derive" }
 rand = "0.7.3"
 
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
+
 [[bench]]
 name = "message_benchmark"
 harness = false

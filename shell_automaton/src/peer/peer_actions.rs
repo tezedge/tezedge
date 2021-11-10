@@ -8,6 +8,7 @@ use crate::{EnablingCondition, State};
 
 use super::PeerIOLoopResult;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerTryWriteLoopStartAction {
     pub address: SocketAddr,
@@ -19,6 +20,7 @@ impl EnablingCondition<State> for PeerTryWriteLoopStartAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerTryWriteLoopFinishAction {
     pub address: SocketAddr,
@@ -31,6 +33,7 @@ impl EnablingCondition<State> for PeerTryWriteLoopFinishAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerTryReadLoopStartAction {
     pub address: SocketAddr,
@@ -42,6 +45,7 @@ impl EnablingCondition<State> for PeerTryReadLoopStartAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerTryReadLoopFinishAction {
     pub address: SocketAddr,
