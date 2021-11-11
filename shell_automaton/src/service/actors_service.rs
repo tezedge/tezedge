@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::ChainId;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use tezedge_actor_system::actors::*;
@@ -8,9 +9,8 @@ use tezedge_actor_system::actors::*;
 use networking::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
-use crypto::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::{
-    MetadataMessage, NetworkVersion, PeerMessageResponse, BlockHeader,
+    BlockHeader, MetadataMessage, NetworkVersion, PeerMessageResponse,
 };
 
 use crate::peer::PeerId;
@@ -49,7 +49,7 @@ pub enum ActorsMessageFrom {
     PeerStalled(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
-    BlockApplied(ChainId, BlockHeader),
+    BlockApplied(ChainId, BlockHeader, bool),
     Shutdown,
 }
 

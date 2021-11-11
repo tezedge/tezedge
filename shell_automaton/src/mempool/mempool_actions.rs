@@ -3,10 +3,12 @@
 
 use std::net::SocketAddr;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crypto::hash::{OperationHash, ChainId};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, mempool::Mempool, operation::Operation};
+use crypto::hash::{ChainId, OperationHash};
+use tezos_messages::p2p::encoding::{
+    block_header::BlockHeader, mempool::Mempool, operation::Operation,
+};
 
 use crate::service::rpc_service::RpcId;
 
@@ -138,6 +140,7 @@ impl EnablingCondition<State> for MempoolBroadcastDoneAction {
 pub struct BlockAppliedAction {
     pub chain_id: ChainId,
     pub block: BlockHeader,
+    pub is_bootstrapped: bool,
 }
 
 impl EnablingCondition<State> for BlockAppliedAction {

@@ -29,8 +29,8 @@ pub use shell_automaton::service::actors_service::{
 };
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, RpcServiceDefault, ServiceDefault,
-    StorageServiceDefault, ProtocolServiceDefault,
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolServiceDefault,
+    RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Port, ShellAutomaton};

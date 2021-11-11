@@ -434,7 +434,12 @@ impl ChainManager {
                             .log()
                             .new(slog::o!("peer" => peer.peer_id.address.to_string()));
 
-                        if matches!(received.message.message(), PeerMessage::GetCurrentHead(_) | PeerMessage::Operation(_) | PeerMessage::GetOperations(_)) {
+                        if matches!(
+                            received.message.message(),
+                            PeerMessage::GetCurrentHead(_)
+                                | PeerMessage::Operation(_)
+                                | PeerMessage::GetOperations(_)
+                        ) {
                             return Ok(());
                         }
                         match received.message.message() {
@@ -700,7 +705,8 @@ impl ChainManager {
                                             let mempool_handled_by_state_machine = true;
 
                                             if !mempool_prevalidator_factory.p2p_disable_mempool
-                                                && mempool_prevalidator.is_some() && !mempool_handled_by_state_machine
+                                                && mempool_prevalidator.is_some()
+                                                && !mempool_handled_by_state_machine
                                             {
                                                 if mempool_operation_state
                                                     .add_missing_mempool_operations_for_download(
@@ -1956,6 +1962,7 @@ impl Receive<ProcessValidatedBlock> for ChainManager {
         let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
             ChainId::clone(&msg.chain_id),
             BlockHeader::clone(&msg.block.header),
+            self.current_bootstrap_state.is_bootstrapped(),
         );
         if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
             warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));

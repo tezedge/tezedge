@@ -7,11 +7,12 @@ use std::time::{Duration, SystemTime};
 use ::storage::persistent::SchemaError;
 
 use crate::config::Config;
+use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
+use crate::rights::RightsState;
 use crate::storage::StorageState;
-use crate::mempool::MempoolState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -46,7 +47,10 @@ pub struct State {
     pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
+
     pub mempool: MempoolState,
+
+    pub rights: RightsState,
 
     pub paused_loops: PausedLoopsState,
 
@@ -65,6 +69,7 @@ impl State {
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
             mempool: MempoolState::default(),
+            rights: RightsState::default(),
 
             paused_loops: PausedLoopsState::new(),
 

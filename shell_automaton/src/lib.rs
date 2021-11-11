@@ -54,6 +54,8 @@ pub mod actors;
 
 pub mod protocol;
 
+pub mod rights;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};

@@ -39,6 +39,12 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
+use crate::mempool::{
+    BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
+    MempoolGetOperationsAction, MempoolGetOperationsPendingAction, MempoolOperationInjectAction,
+    MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRpcRespondAction,
+    MempoolValidateStartAction,
+};
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -54,13 +60,18 @@ use crate::peers::graylist::{
 };
 use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
-use crate::mempool::{
-    MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
-    MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-    MempoolOperationInjectAction, BlockAppliedAction, MempoolValidateStartAction,
-    MempoolRpcRespondAction,
-};
 
+use crate::rights::{
+    RightsEndorsingRightsBlockHeaderReadyAction, RightsEndorsingRightsCalculateAction,
+    RightsEndorsingRightsCycleDataReadyAction, RightsEndorsingRightsCycleErasReadyAction,
+    RightsEndorsingRightsCycleReadyAction, RightsEndorsingRightsErrorAction,
+    RightsEndorsingRightsGetBlockHeaderAction, RightsEndorsingRightsGetCycleAction,
+    RightsEndorsingRightsGetCycleDataAction, RightsEndorsingRightsGetCycleErasAction,
+    RightsEndorsingRightsGetProtocolConstantsAction, RightsEndorsingRightsGetProtocolHashAction,
+    RightsEndorsingRightsProtocolConstantsReadyAction,
+    RightsEndorsingRightsProtocolHashReadyAction, RightsEndorsingRightsReadyAction,
+    RightsGetEndorsingRightsAction,
+};
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
     StorageRequestInitAction, StorageRequestPendingAction, StorageRequestSuccessAction,
@@ -69,6 +80,10 @@ use crate::storage::request::{
 use crate::storage::state_snapshot::create::{
     StorageStateSnapshotCreateErrorAction, StorageStateSnapshotCreateInitAction,
     StorageStateSnapshotCreatePendingAction, StorageStateSnapshotCreateSuccessAction,
+};
+use crate::storage::{
+    kv_block_additional_data, kv_block_header, kv_block_meta, kv_constants, kv_cycle_eras,
+    kv_cycle_meta,
 };
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -253,6 +268,49 @@ pub enum Action {
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     BlockApplied(BlockAppliedAction),
+
+    RightsGetEndorsingRights(RightsGetEndorsingRightsAction),
+    RightsEndorsingRightsGetBlockHeader(RightsEndorsingRightsGetBlockHeaderAction),
+    RightsEndorsingRightsBlockHeaderReady(RightsEndorsingRightsBlockHeaderReadyAction),
+    RightsEndorsingRightsGetProtocolHash(RightsEndorsingRightsGetProtocolHashAction),
+    RightsEndorsingRightsProtocolHashReady(RightsEndorsingRightsProtocolHashReadyAction),
+    RightsEndorsingRightsGetProtocolConstants(RightsEndorsingRightsGetProtocolConstantsAction),
+    RightsEndorsingRightsProtocolConstantsReady(RightsEndorsingRightsProtocolConstantsReadyAction),
+    RightsEndorsingRightsGetCycleEras(RightsEndorsingRightsGetCycleErasAction),
+    RightsEndorsingRightsCycleErasReady(RightsEndorsingRightsCycleErasReadyAction),
+    RightsEndorsingRightsGetCycle(RightsEndorsingRightsGetCycleAction),
+    RightsEndorsingRightsCycleReady(RightsEndorsingRightsCycleReadyAction),
+    RightsEndorsingRightsGetCycleData(RightsEndorsingRightsGetCycleDataAction),
+    RightsEndorsingRightsCycleDataReady(RightsEndorsingRightsCycleDataReadyAction),
+    RightsEndorsingRightsCalculate(RightsEndorsingRightsCalculateAction),
+    RightsEndorsingRightsReady(RightsEndorsingRightsReadyAction),
+    RightsEndorsingRightsError(RightsEndorsingRightsErrorAction),
+
+    StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),
+    StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction),
+    StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction),
+
+    StorageBlockMetaGet(kv_block_meta::StorageBlockMetaGetAction),
+    StorageBlockMetaOk(kv_block_meta::StorageBlockMetaOkAction),
+    StorageBlockMetaError(kv_block_meta::StorageBlockMetaErrorAction),
+
+    StorageBlockAdditionalDataGet(kv_block_additional_data::StorageBlockAdditionalDataGetAction),
+    StorageBlockAdditionalDataOk(kv_block_additional_data::StorageBlockAdditionalDataOkAction),
+    StorageBlockAdditionalDataError(
+        kv_block_additional_data::StorageBlockAdditionalDataErrorAction,
+    ),
+
+    StorageConstantsGet(kv_constants::StorageConstantsGetAction),
+    StorageConstantsOk(kv_constants::StorageConstantsOkAction),
+    StorageConstantsError(kv_constants::StorageConstantsErrorAction),
+
+    StorageCycleMetaGet(kv_cycle_meta::StorageCycleMetaGetAction),
+    StorageCycleMetaOk(kv_cycle_meta::StorageCycleMetaOkAction),
+    StorageCycleMetaError(kv_cycle_meta::StorageCycleMetaErrorAction),
+
+    StorageCycleErasGet(kv_cycle_eras::StorageCycleErasGetAction),
+    StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction),
+    StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction),
 
     StorageRequestCreate(StorageRequestCreateAction),
     StorageRequestInit(StorageRequestInitAction),

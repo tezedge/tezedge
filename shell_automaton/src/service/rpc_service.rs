@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{sync::Arc, collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use crypto::hash::OperationHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 
-use tokio::sync::{oneshot, mpsc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::State;
 
@@ -54,7 +54,10 @@ impl RpcShellAutomatonSender {
         msg: RpcResponse,
     ) -> Result<oneshot::Receiver<serde_json::Value>, RpcShellAutomatonChannelSendError> {
         let (rx, tx) = oneshot::channel();
-        self.channel.send((msg, rx)).await.map_err(|_| RpcShellAutomatonChannelSendError)?;
+        self.channel
+            .send((msg, rx))
+            .await
+            .map_err(|_| RpcShellAutomatonChannelSendError)?;
         let _ = self.mio_waker.wake();
         Ok(tx)
     }

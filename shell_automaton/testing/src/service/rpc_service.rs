@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-pub use shell_automaton::service::rpc_service::{RpcResponse, RpcService, RpcRecvError, RpcId};
+pub use shell_automaton::service::rpc_service::{RpcId, RpcRecvError, RpcResponse, RpcService};
 
 #[derive(Debug, Clone)]
 pub struct RpcServiceDummy {}

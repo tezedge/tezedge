@@ -7,7 +7,11 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
+use crypto::hash::{BlockHash, ProtocolHash};
 use serde::{Deserialize, Serialize};
+use storage::block_meta_storage::Meta;
+use storage::cycle_eras_storage::CycleErasData;
+use storage::cycle_storage::CycleData;
 use strum::IntoEnumIterator;
 
 use storage::persistent::BincodeEncoded;
@@ -15,9 +19,11 @@ use storage::shell_automaton_action_meta_storage::{
     ShellAutomatonActionStats, ShellAutomatonActionsStats,
 };
 use storage::{
-    PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
-    ShellAutomatonStateStorage,
+    BlockAdditionalData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, ConstantsStorage, CycleErasStorage, CycleMetaStorage, PersistentStorage,
+    ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage, ShellAutomatonStateStorage,
 };
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use crate::request::RequestId;
 use crate::{Action, ActionId, ActionKind, ActionWithMeta, State};
@@ -59,6 +65,13 @@ pub enum StorageRequestPayload {
         /// Duration until next action.
         duration_nanos: u64,
     },
+
+    BlockMetaGet(BlockHash),
+    BlockHeaderGet(BlockHash),
+    BlockAdditionalDataGet(BlockHash),
+    ConstantsGet(ProtocolHash),
+    CycleErasGet(ProtocolHash),
+    CycleMetaGet(i32),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -66,6 +79,13 @@ pub enum StorageResponseSuccess {
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
     ActionMetaUpdateSuccess(ActionId),
+
+    BlockMetaGetSuccess(BlockHash, Option<Meta>),
+    BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
+    BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
+    ConstantsGetSuccess(ProtocolHash, Option<String>),
+    CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
+    CycleMetaGetSuccess(i32, Option<CycleData>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -73,6 +93,13 @@ pub enum StorageResponseError {
     StateSnapshotPutError(ActionId, StorageError),
     ActionPutError(StorageError),
     ActionMetaUpdateError(StorageError),
+
+    BlockMetaGetError(BlockHash, StorageError),
+    BlockHeaderGetError(BlockHash, StorageError),
+    BlockAdditionalDataGetError(BlockHash, StorageError),
+    ConstantsGetError(ProtocolHash, StorageError),
+    CycleErasGetError(ProtocolHash, StorageError),
+    CycleMetaGetError(i32, StorageError),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -170,6 +197,11 @@ impl StorageServiceDefault {
         let snapshot_storage = ShellAutomatonStateStorage::new(&storage);
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
+        let block_meta_storage = BlockMetaStorage::new(&storage);
+        let block_storage = BlockStorage::new(&storage);
+        let constants_storage = ConstantsStorage::new(&storage);
+        let cycle_meta_storage = CycleMetaStorage::new(&storage);
+        let cycle_eras_storage = CycleErasStorage::new(&storage);
 
         let mut last_time_meta_saved = Instant::now();
         let mut action_meta_update_prev_action_kind = None;
@@ -226,6 +258,35 @@ impl StorageServiceDefault {
 
                     Ok(ActionMetaUpdateSuccess(action_id))
                 }
+                BlockMetaGet(block_hash) => block_meta_storage
+                    .get(&block_hash)
+                    .map(|block_meta| BlockMetaGetSuccess(block_hash.clone(), block_meta))
+                    .map_err(|err| BlockMetaGetError(block_hash, err.into())),
+                BlockHeaderGet(block_hash) => block_storage
+                    .get(&block_hash)
+                    .map(|block_header_with_hash| {
+                        BlockHeaderGetSuccess(
+                            block_hash.clone(),
+                            block_header_with_hash.map(|bhwh| bhwh.header.as_ref().clone()),
+                        )
+                    })
+                    .map_err(|err| BlockHeaderGetError(block_hash, err.into())),
+                BlockAdditionalDataGet(block_hash) => block_meta_storage
+                    .get_additional_data(&block_hash)
+                    .map(|data| BlockAdditionalDataGetSuccess(block_hash.clone(), data))
+                    .map_err(|err| BlockAdditionalDataGetError(block_hash, err.into())),
+                ConstantsGet(protocol_hash) => constants_storage
+                    .get(&protocol_hash)
+                    .map(|constants| ConstantsGetSuccess(protocol_hash.clone(), constants))
+                    .map_err(|err| ConstantsGetError(protocol_hash, err.into())),
+                CycleMetaGet(cycle) => cycle_meta_storage
+                    .get(&cycle)
+                    .map(|cycle_data| CycleMetaGetSuccess(cycle, cycle_data))
+                    .map_err(|err| CycleMetaGetError(cycle, err.into())),
+                CycleErasGet(proto_hash) => cycle_eras_storage
+                    .get(&proto_hash)
+                    .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
+                    .map_err(|err| CycleErasGetError(proto_hash, err.into())),
             };
 
             if req.subscribe {

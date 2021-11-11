@@ -13,6 +13,13 @@ pub struct StorageState {
     pub requests: PendingRequests<StorageRequestState>,
 
     pub state_snapshot: StorageStateSnapshotState,
+
+    pub block_meta: super::kv_block_meta::State,
+    pub block_additional_data: super::kv_block_additional_data::State,
+    pub block_header: super::kv_block_header::State,
+    pub constants: super::kv_constants::State,
+    pub cycle_data: super::kv_cycle_meta::State,
+    pub cycle_eras: super::kv_cycle_eras::State,
 }
 
 impl StorageState {
@@ -21,6 +28,13 @@ impl StorageState {
             requests: PendingRequests::new(),
 
             state_snapshot: StorageStateSnapshotState::new(),
+
+            block_meta: Default::default(),
+            block_additional_data: Default::default(),
+            block_header: Default::default(),
+            constants: Default::default(),
+            cycle_data: Default::default(),
+            cycle_eras: Default::default(),
         }
     }
 }

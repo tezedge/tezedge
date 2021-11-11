@@ -18,8 +18,8 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
-    MioPeerStreamMocked, MioServiceMocked, QuotaServiceDummy, RandomnessServiceMocked,
-    RpcServiceDummy, StorageServiceDummy, ProtocolServiceDummy,
+    MioPeerStreamMocked, MioServiceMocked, ProtocolServiceDummy, QuotaServiceDummy,
+    RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
 };
 use crate::service::{Service, TimeService};
 

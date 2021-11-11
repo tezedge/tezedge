@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::mempool::BlockAppliedAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
-use crate::mempool::BlockAppliedAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
 use crate::{Action, ActionWithMeta, Store};
@@ -32,13 +32,15 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                             message,
                         });
                     }
-                    ActorsMessageFrom::BlockApplied(chain_id, block) => {
-                        store.dispatch(
-                            BlockAppliedAction {
-                                chain_id,
-                                block,
-                            },
-                        );
+                    ActorsMessageFrom::BlockApplied(chain_id, block, is_bootstrapped) => {
+                        store
+                            .dispatch(
+                                BlockAppliedAction {
+                                    chain_id,
+                                    block,
+                                    is_bootstrapped,
+                                },
+                            );
                     }
                 }
             }
