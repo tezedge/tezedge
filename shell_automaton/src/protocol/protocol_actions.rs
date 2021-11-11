@@ -12,6 +12,7 @@ pub enum ProtocolAction {
     Error(String),
     InitProtocolDone(InitProtocolContextResult),
     PrevalidatorReady(PrevalidatorWrapper),
+    PrevalidatorForMempoolReady(PrevalidatorWrapper),
 }
 
 impl EnablingCondition<State> for ProtocolAction {

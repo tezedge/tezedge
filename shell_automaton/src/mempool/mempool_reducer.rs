@@ -18,7 +18,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();
 
-            // TODO: check whether we can accept this head
+            // TODO(vlad): check whether we can accept this head
             mempool_state.head_state = Some(head_state.clone());
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
@@ -43,7 +43,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let operation_hash = match operation.message_typed_hash() {
                 Ok(v) => v,
                 Err(err) => {
-                    // TODO: peer send bad operation, should log the error,
+                    // TODO(vlad): peer send bad operation, should log the error,
                     // maybe should disconnect the peer
                     let _ = err;
                     return;
@@ -52,14 +52,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
             if !peer.pending_full_content.remove(&operation_hash) {
-                // TODO: received operation, but we did not requested it
+                // TODO(vlad): received operation, but we did not requested it
             }
 
-            // TODO: prevalidate the operation
+            // TODO(vlad): prevalidate the operation
             mempool_state.applied_operations.insert(operation_hash, operation.clone());
         },
         Action::MempoolOperationInject(MempoolOperationInjectAction { operation, operation_hash, .. }) => {
-            // TODO: prevalidate the operation
+            // TODO(vlad): prevalidate the operation
             mempool_state.applied_operations.insert(operation_hash.clone(), operation.clone());
         },
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction { address, known_valid, pending }) => {
