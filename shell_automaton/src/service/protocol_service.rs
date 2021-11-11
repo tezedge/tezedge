@@ -1,13 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{sync::Arc, future::Future};
+use std::{future::Future, sync::Arc};
 
-use tokio::sync::mpsc;
 use slab::Slab;
+use tokio::sync::mpsc;
 
-use tezos_protocol_ipc_client::{ProtocolServiceError, ProtocolRunnerApi, ProtocolRunnerConnection};
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
+use tezos_protocol_ipc_client::{
+    ProtocolRunnerApi, ProtocolRunnerConnection, ProtocolServiceError,
+};
 
 use crate::protocol::ProtocolAction;
 
@@ -67,7 +69,8 @@ impl ProtocolServiceDefault {
 
 impl ProtocolService for ProtocolServiceDefault {
     fn try_recv(&mut self) -> Result<ProtocolAction, ()> {
-        self.responses.try_recv()
+        self.responses
+            .try_recv()
             .map(|(response, id)| {
                 let handle = self.tasks.remove(id);
                 let _ = handle; // it is already done
@@ -78,13 +81,17 @@ impl ProtocolService for ProtocolServiceDefault {
 
     fn init_protocol_for_read(&mut self) {
         self.spawn(|mut connection| async move {
-            connection.init_protocol_for_read().await.map(ProtocolAction::InitProtocolDone)
+            connection
+                .init_protocol_for_read()
+                .await
+                .map(ProtocolAction::InitProtocolDone)
         })
     }
 
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {
         self.spawn(|mut connection| async move {
-            connection.begin_construction_for_prevalidation(request)
+            connection
+                .begin_construction_for_prevalidation(request)
                 .await
                 .map(ProtocolAction::PrevalidatorReady)
         })
@@ -92,7 +99,8 @@ impl ProtocolService for ProtocolServiceDefault {
 
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
         self.spawn(|mut connection| async move {
-            connection.begin_construction_for_mempool(request)
+            connection
+                .begin_construction_for_mempool(request)
                 .await
                 .map(ProtocolAction::PrevalidatorForMempoolReady)
         })
@@ -100,7 +108,8 @@ impl ProtocolService for ProtocolServiceDefault {
 
     fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest) {
         self.spawn(|mut connection| async move {
-            connection.validate_operation_for_mempool(request)
+            connection
+                .validate_operation_for_mempool(request)
                 .await
                 .map(ProtocolAction::OperationValidated)
         })

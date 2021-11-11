@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use tezos_api::ffi::{InitProtocolContextResult, PrevalidatorWrapper, ValidateOperationResponse};
 

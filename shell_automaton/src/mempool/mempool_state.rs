@@ -1,15 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::{HashMap, HashSet}, net::SocketAddr};
-
-use serde::{Serialize, Deserialize};
-
-use crypto::hash::{OperationHash, ChainId, BlockHash};
-use tezos_messages::p2p::{
-    encoding::{block_header::BlockHeader, operation::Operation},
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
 };
-use tezos_api::ffi::{PrevalidatorWrapper, Applied, Errored};
+
+use serde::{Deserialize, Serialize};
+
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
+use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
 use crate::service::rpc_service::RpcId;
 

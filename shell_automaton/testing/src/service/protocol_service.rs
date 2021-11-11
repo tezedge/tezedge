@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-pub use shell_automaton::{service::ProtocolService, protocol::ProtocolAction};
+pub use shell_automaton::{protocol::ProtocolAction, service::ProtocolService};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 

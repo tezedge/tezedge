@@ -19,9 +19,9 @@ use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
-use crate::services::dev_services;
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
+use crate::services::dev_services;
 
 const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const INJECT_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -58,12 +58,14 @@ pub async fn get_pending_operations(
         MempoolOperations {
             applied: {
                 let ops = &state.validated_operations.ops;
-                state.validated_operations
+                state
+                    .validated_operations
                     .applied
                     .iter()
                     .map(|applied| {
                         // TODO(vlad): unwrap
-                        let protocol_data: HashMap<String, Value> = serde_json::from_str(&applied.protocol_data_json).unwrap();
+                        let protocol_data: HashMap<String, Value> =
+                            serde_json::from_str(&applied.protocol_data_json).unwrap();
                         let mut m = HashMap::new();
                         let hash = applied.hash.to_base58_check();
                         let branch = ops.get(&applied.hash).unwrap().branch().to_base58_check();
@@ -233,11 +235,11 @@ pub async fn inject_operation(
         operation: operation.clone(),
         operation_hash: operation_hash.clone(),
     };
-    let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> = env.shell_automaton_sender()
-        .send(msg)
-        .await
-        .map_err(|_| RpcServiceError::UnexpectedError {
-            reason: "the channel between rpc and shell is overflown".to_string(),
+    let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> =
+        env.shell_automaton_sender().send(msg).await.map_err(|_| {
+            RpcServiceError::UnexpectedError {
+                reason: "the channel between rpc and shell is overflown".to_string(),
+            }
         })?;
     let operation_hash_b58check_string = operation_hash.to_base58_check();
 
@@ -245,11 +247,16 @@ pub async fn inject_operation(
     match result {
         // do we need the response
         Ok(Ok(_)) => (),
-        Ok(Err(_)) => warn!(env.log(), "Operation injection, state machine failed to respond"),
+        Ok(Err(_)) => warn!(
+            env.log(),
+            "Operation injection, state machine failed to respond"
+        ),
         Err(elapsed) => {
             warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
-            return Err(RpcServiceError::UnexpectedError { reason: "timeout".to_string() });
-        },
+            return Err(RpcServiceError::UnexpectedError {
+                reason: "timeout".to_string(),
+            });
+        }
     }
 
     info!(env.log(), "Operation injected";

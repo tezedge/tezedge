@@ -14,7 +14,7 @@ where
             if let Ok(action) = store.service.protocol().try_recv() {
                 store.dispatch(action);
             }
-        },
+        }
         _ => (),
     }
 }
