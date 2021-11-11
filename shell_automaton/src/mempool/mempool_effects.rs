@@ -11,11 +11,14 @@ use tezos_messages::p2p::encoding::{
     operation::GetOperationsMessage,
 };
 
-use crate::{State, Action, ActionWithMeta, Service, service::RpcService};
+use tezos_api::ffi::BeginConstructionRequest;
+
+use crate::{Action, ActionWithMeta, Service, State, service::{ProtocolService, RpcService}};
 use crate::peer::message::{
     write::PeerMessageWriteInitAction,
     read::PeerMessageReadSuccessAction,
 };
+use crate::protocol::ProtocolAction;
 
 use super::{
     mempool_actions::{
@@ -33,6 +36,9 @@ pub fn mempool_effects<S>(
     S: Service,
 {
     match &action.action {
+        Action::Protocol(ProtocolAction::PrevalidatorForMempoolReady(pr)) => {
+            panic!("{:?}", pr);
+        },
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
             match message.message() {
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -41,6 +47,11 @@ pub fn mempool_effects<S>(
                         chain_id: current_head.chain_id().clone(),
                         current_block: current_head.current_block_header().clone(),
                     };
+                    store.service().protocol().begin_construction_for_mempool(BeginConstructionRequest {
+                        chain_id: current_head.chain_id().clone(),
+                        predecessor: current_head.current_block_header().clone(),
+                        protocol_data: None,
+                    });
                     store.dispatch(
                         MempoolRecvDoneAction {
                             address: *address,
@@ -107,14 +118,14 @@ pub fn mempool_effects<S>(
                         );
                     } else {
                         // should always have current head while waiting MempoolOperationRecvDone
-                        // TODO: should be forbidden by type system
+                        // TODO(vlad): should be forbidden by enabling condition
                     }
                 }
             }
         },
         Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
             let mempool_state = &store.state().mempool;
-            // TODO: duplicated code
+            // TODO(vlad): duplicated code
             if let Some(head_state) = mempool_state.head_state.clone() {
                 let pending = mempool_state.pending_operations.keys().cloned().collect();
                 let known_valid = mempool_state.applied_operations.keys()
@@ -135,12 +146,12 @@ pub fn mempool_effects<S>(
                 let resp = serde_json::Value::String("head is not ready".to_string());
                 store.service().rpc().respond(*rpc_id, resp);
                 // should always have current head while waiting MempoolOperationRecvDone
-                // TODO: should be forbidden by type system
+                // TODO(vlad): should be forbidden by enabling condition
             }
         },
         Action::MempoolBroadcast(MempoolBroadcastAction { address_exceptions, head_state, known_valid, pending }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
-            // TODO: add action removing peer_state for disconnected peers
+            // TODO(vlad): add action removing peer_state for disconnected peers
             for address in addresses {
                 if address_exceptions.contains(&address) {
                     continue;

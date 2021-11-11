@@ -17,6 +17,7 @@ pub trait ProtocolService {
 
     fn init_protocol_for_read(&mut self);
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest);
+    fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest);
 }
 
 pub struct ProtocolServiceDefault {
@@ -85,6 +86,14 @@ impl ProtocolService for ProtocolServiceDefault {
             connection.begin_construction_for_prevalidation(request)
                 .await
                 .map(ProtocolAction::PrevalidatorReady)
+        })
+    }
+
+    fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
+        self.spawn(|mut connection| async move {
+            connection.begin_construction_for_mempool(request)
+                .await
+                .map(ProtocolAction::PrevalidatorForMempoolReady)
         })
     }
 }
