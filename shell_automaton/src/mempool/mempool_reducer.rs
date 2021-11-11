@@ -7,21 +7,27 @@ use crate::{State, Action, ActionWithMeta};
 
 use super::{
     MempoolGetOperationsPendingAction, MempoolRecvDoneAction, MempoolOperationRecvDoneAction,
-    MempoolBroadcastDoneAction, MempoolOperationInjectAction,
+    MempoolBroadcastDoneAction, MempoolOperationInjectAction, MempoolBlockAppliedAction,
+    HeadState,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     let mut mempool_state = &mut state.mempool;
 
     match &action.action {
+        Action::MempoolBlockApplied(MempoolBlockAppliedAction { chain_id, block }) => {
+            mempool_state.local_head_state = Some(HeadState {
+                chain_id: chain_id.clone(),
+                current_block: block.clone(),
+            });
+        }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, head_state, message }) => {
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();
 
-            // TODO(vlad): check whether we can accept this head
-            mempool_state.head_state = Some(head_state.clone());
-
             let peer = mempool_state.peer_state.entry(*address).or_default();
+            // TODO(vlad): check whether we can accept this head
+            peer.head_state = Some(head_state.clone());
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
                     || mempool_state.applied_operations.contains_key(&hash)

@@ -5,8 +5,8 @@ use std::net::SocketAddr;
 
 use serde::{Serialize, Deserialize};
 
-use crypto::hash::OperationHash;
-use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
+use crypto::hash::{OperationHash, ChainId};
+use tezos_messages::p2p::encoding::{block_header::BlockHeader, mempool::Mempool, operation::Operation};
 
 use crate::service::rpc_service::RpcId;
 
@@ -108,6 +108,20 @@ pub struct MempoolBroadcastDoneAction {
 }
 
 impl EnablingCondition<State> for MempoolBroadcastDoneAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolBlockAppliedAction {
+    pub chain_id: ChainId,
+    pub block: BlockHeader,
+}
+
+impl EnablingCondition<State> for MempoolBlockAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;
