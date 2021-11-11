@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- FFI connection pool flags: `--ffi-pool-max-connections`, `--ffi-trpap-pool-max-connections`, `--ffi-twcap-pool-max-connections`, `--ffi-pool-connection-timeout-in-secs`, `--ffi-trpap-pool-connection-timeout-in-secs`, `--ffi-twcap-pool-connection-timeout-in-secs`, `--ffi-pool-max-lifetime-in-secs`, `--ffi-trpap-pool-max-lifetime-in-secs`, `--ffi-twcap-pool-max-lifetime-in-secs`, `--ffi-pool-idle-timeout-in-secs`, `--ffi-trpap-pool-idle-timeout-in-secs`, `--ffi-twcap-pool-idle-timeout-in-secs`.
+- Nothing.
 
 ### Fixed
 
@@ -30,12 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
-## [1.10.0] - 2021-11-08
+## [1.10.0] - 2021-11-11
 
 ### Changed
 
 - Rewrote P2P networking and peer management to new architecture.
 - Made IPC communication with the protocol runner processes asynchronous.
+- Renamed cli argument `--disable-peer-blacklist` to `--disable-peer-graylist`.
 
 ### Deprecated
 
@@ -43,11 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Actor based p2p networking and peer management.
-
-### Breaking
-
-- Renamed cli argument `--disable-peer-blacklist` to `--disable-peer-graylist`.
+- Actor based P2P networking and peer management.
+- FFI connection pool flags:
+  - `--ffi-pool-max-connections`
+  - `--ffi-trpap-pool-max-connections`
+  - `--ffi-twcap-pool-max-connections`
+  - `--ffi-pool-connection-timeout-in-secs`
+  - `--ffi-trpap-pool-connection-timeout-in-secs`
+  - `--ffi-twcap-pool-connection-timeout-in-secs`
+  - `--ffi-pool-max-lifetime-in-secs`
+  - `--ffi-trpap-pool-max-lifetime-in-secs`
+  - `--ffi-twcap-pool-max-lifetime-in-secs`
+  - `--ffi-pool-idle-timeout-in-secs`
+  - `--ffi-trpap-pool-idle-timeout-in-secs`
+  - `--ffi-twcap-pool-idle-timeout-in-secs`
 
 ## [1.9.1] - 2021-11-04
 
@@ -587,7 +597,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/tezedge/tezedge/releases/v1.10.0
 [1.9.1]: https://github.com/tezedge/tezedge/releases/v1.9.1
 [1.9.0]: https://github.com/tezedge/tezedge/releases/v1.9.0
 [1.8.0]: https://github.com/tezedge/tezedge/releases/v1.8.0
