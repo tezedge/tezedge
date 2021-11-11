@@ -8,8 +8,9 @@ use tezedge_actor_system::actors::*;
 use networking::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
+use crypto::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::{
-    MetadataMessage, NetworkVersion, PeerMessageResponse,
+    MetadataMessage, NetworkVersion, PeerMessageResponse, BlockHeader,
 };
 
 use crate::peer::PeerId;
@@ -48,6 +49,7 @@ pub enum ActorsMessageFrom {
     PeerStalled(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
+    BlockApplied(ChainId, BlockHeader),
     Shutdown,
 }
 

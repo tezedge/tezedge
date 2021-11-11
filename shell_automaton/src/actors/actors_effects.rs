@@ -3,6 +3,7 @@
 
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::mempool::MempoolBlockAppliedAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
 use crate::{Action, ActionWithMeta, Store};
@@ -30,6 +31,14 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                             address: peer_id.address,
                             message,
                         });
+                    }
+                    ActorsMessageFrom::BlockApplied(chain_id, block) => {
+                        store.dispatch(
+                            MempoolBlockAppliedAction {
+                                chain_id,
+                                block,
+                            },
+                        );
                     }
                 }
             }

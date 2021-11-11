@@ -18,7 +18,6 @@ use crate::peer::message::{
     write::PeerMessageWriteInitAction,
     read::PeerMessageReadSuccessAction,
 };
-use crate::protocol::ProtocolAction;
 
 use super::{
     mempool_actions::{
@@ -36,8 +35,8 @@ pub fn mempool_effects<S>(
     S: Service,
 {
     match &action.action {
-        Action::Protocol(ProtocolAction::PrevalidatorForMempoolReady(pr)) => {
-            panic!("{:?}", pr);
+        Action::Protocol(act) => {
+            // panic!("{:?}", act);
         },
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
             match message.message() {
@@ -47,11 +46,6 @@ pub fn mempool_effects<S>(
                         chain_id: current_head.chain_id().clone(),
                         current_block: current_head.current_block_header().clone(),
                     };
-                    store.service().protocol().begin_construction_for_mempool(BeginConstructionRequest {
-                        chain_id: current_head.chain_id().clone(),
-                        predecessor: current_head.current_block_header().clone(),
-                        protocol_data: None,
-                    });
                     store.dispatch(
                         MempoolRecvDoneAction {
                             address: *address,
@@ -74,7 +68,20 @@ pub fn mempool_effects<S>(
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
-                    store.dispatch(MempoolGetOperationsAction { address: *address });
+                    // TODO: only check if the head of the peer is known
+                    if let Some(head) = &peer.head_state {
+                        let req = BeginConstructionRequest {
+                            chain_id: head.chain_id.clone(),
+                            predecessor: head.current_block.clone(),
+                            protocol_data: None,
+                        };
+                        store.service().protocol().begin_construction_for_mempool(req);
+                    }
+                    store.dispatch(
+                        MempoolGetOperationsAction {
+                            address: *address,
+                        },
+                    );
                 } else {
                     // if this mempool doesn't introduce new operations, we have nothing to do
                 }
@@ -101,7 +108,7 @@ pub fn mempool_effects<S>(
             if let Some(peer) = mempool_state.peer_state.get(address) {
                 // received all pending operations from the particular peer
                 if peer.pending_full_content.is_empty() {
-                    if let Some(head_state) = mempool_state.head_state.clone() {
+                    if let Some(head_state) = peer.head_state.clone() {
                         let pending = mempool_state.pending_operations.keys();
                         let known_valid = mempool_state.applied_operations.keys()
                             .chain(mempool_state.branch_delayed_operations.keys())
@@ -126,7 +133,7 @@ pub fn mempool_effects<S>(
         Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
             let mempool_state = &store.state().mempool;
             // TODO(vlad): duplicated code
-            if let Some(head_state) = mempool_state.head_state.clone() {
+            if let Some(head_state) = mempool_state.local_head_state.clone() {
                 let pending = mempool_state.pending_operations.keys().cloned().collect();
                 let known_valid = mempool_state.applied_operations.keys()
                     .chain(mempool_state.branch_delayed_operations.keys())

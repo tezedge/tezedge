@@ -12,8 +12,8 @@ use tezos_messages::p2p::{
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
-    // the current head
-    pub head_state: Option<HeadState>,
+    // the current head applied
+    pub local_head_state: Option<HeadState>,
     // let's track what our peers know, and what we waiting from them
     pub peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks 
@@ -37,6 +37,8 @@ pub struct HeadState {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
+    // the current head of the peer
+    pub head_state: Option<HeadState>,
     // we received mempool from the peer and gonna send GetOperations
     pub requesting_full_content: HashSet<OperationHash>,
     // we sent GetOperations and pending full content of those operations
