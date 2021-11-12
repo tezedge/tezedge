@@ -3,7 +3,7 @@
 
 pub use shell_automaton::{service::ProtocolService, protocol::ProtocolAction};
 
-use tezos_api::ffi::BeginConstructionRequest;
+use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 #[derive(Debug, Clone)]
 pub struct ProtocolServiceDummy {}
@@ -26,6 +26,10 @@ impl ProtocolService for ProtocolServiceDummy {
     }
 
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
+        let _ = request;
+    }
+
+    fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest) {
         let _ = request;
     }
 }

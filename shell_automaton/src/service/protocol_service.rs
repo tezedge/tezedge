@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use slab::Slab;
 
 use tezos_protocol_ipc_client::{ProtocolServiceError, ProtocolRunnerApi, ProtocolRunnerConnection};
-use tezos_api::ffi::BeginConstructionRequest;
+use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::protocol::ProtocolAction;
 
@@ -18,6 +18,7 @@ pub trait ProtocolService {
     fn init_protocol_for_read(&mut self);
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest);
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest);
+    fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest);
 }
 
 pub struct ProtocolServiceDefault {
@@ -94,6 +95,14 @@ impl ProtocolService for ProtocolServiceDefault {
             connection.begin_construction_for_mempool(request)
                 .await
                 .map(ProtocolAction::PrevalidatorForMempoolReady)
+        })
+    }
+
+    fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest) {
+        self.spawn(|mut connection| async move {
+            connection.validate_operation_for_mempool(request)
+                .await
+                .map(ProtocolAction::OperationValidated)
         })
     }
 }
