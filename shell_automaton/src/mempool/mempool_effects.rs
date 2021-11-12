@@ -8,7 +8,7 @@ use tezos_messages::p2p::encoding::{
     peer::{PeerMessageResponse, PeerMessage},
     current_head::CurrentHeadMessage,
     mempool::Mempool,
-    operation::GetOperationsMessage,
+    operation::{GetOperationsMessage, OperationMessage},
 };
 
 use tezos_api::ffi::BeginConstructionRequest;
@@ -35,7 +35,7 @@ pub fn mempool_effects<S>(
     S: Service,
 {
     match &action.action {
-        Action::Protocol(act) => {
+        Action::Protocol(_) => {
             // panic!("{:?}", act);
         },
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
@@ -61,6 +61,27 @@ pub fn mempool_effects<S>(
                             operation: op.clone().into(),
                         },
                     );
+                },
+                PeerMessage::GetOperations(ref hashes) => {
+                    for hash in hashes.get_operations() {
+                        let mempool = &store.state().mempool;
+                        let op = None
+                            .or_else(|| mempool.applied_operations.get(hash))
+                            .or_else(|| mempool.branch_delayed_operations.get(hash))
+                            .or_else(|| mempool.branch_refused_operations.get(hash))
+                            .or_else(|| mempool.pending_operations.get(hash));
+
+                        if let Some(op) = op {
+                            let message = OperationMessage::from(op.clone());
+                            store.dispatch(
+                                PeerMessageWriteInitAction {
+                                    address: *address,
+                                    message: message.into(),
+                                }
+                                .into(),
+                            );
+                        }
+                    }
                 },
                 _ => (),
             }

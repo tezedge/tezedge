@@ -15,7 +15,7 @@ pub struct MempoolState {
     // the current head applied
     pub local_head_state: Option<HeadState>,
     // all blocks applied
-    pub applied_heads: HashSet<BlockHash>,
+    pub applied_block: HashSet<BlockHash>,
     // let's track what our peers know, and what we waiting from them
     pub peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks 
