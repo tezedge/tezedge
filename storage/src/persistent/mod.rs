@@ -78,24 +78,7 @@ pub trait MultiInstanceable {
         }
     }
 }
-/*
-crate::block_storage::BlockPrimaryIndex::descriptor(cache),
-                crate::block_storage::BlockByLevelIndex::descriptor(cache),
-                crate::block_storage::BlockByContextHashIndex::descriptor(cache),
-                crate::BlockMetaStorage::descriptor(cache),
-                crate::OperationsStorage::descriptor(cache),
-                crate::OperationsMetaStorage::descriptor(cache),
-                crate::SystemStorage::descriptor(cache),
-                crate::persistent::sequence::Sequences::descriptor(cache),
-                crate::MempoolStorage::descriptor(cache),
-                crate::ChainMetaStorage::descriptor(cache),
-                crate::PredecessorStorage::descriptor(cache),
-                crate::BlockAdditionalData::descriptor(cache),
-                crate::CycleMetaStorage::descriptor(cache),
-                crate::CycleErasStorage::descriptor(cache),
-                crate::ConstantsStorage::descriptor(cache),
- */
-fn nutos_db_cols() -> Vec<&'static str> {
+fn edgekv_db_cols() -> Vec<&'static str> {
     vec![
         crate::block_storage::BlockPrimaryIndex::column_name(),
         crate::block_storage::BlockByLevelIndex::column_name(),
@@ -135,7 +118,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             }
         }
         TezedgeDatabaseBackendConfiguration::EdgeKV => {
-            TezedgeDatabaseBackendOptions::Notus(EdgeKVBackend::new(config.db_path.as_path(), nutos_db_cols())?)
+            TezedgeDatabaseBackendOptions::EdgeKV(EdgeKVBackend::new(config.db_path.as_path(), edgekv_db_cols())?)
         }
     };
     Ok(TezedgeDatabase::new(backend, log))

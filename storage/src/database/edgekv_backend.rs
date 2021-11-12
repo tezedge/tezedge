@@ -34,30 +34,30 @@ impl EdgeKVBackend {
 }
 
 #[derive(Clone)]
-pub enum NotusDBIteratorMode {
+pub enum EdgeKVIteratorMode {
     Start,
     End,
     From(Vec<u8>, Direction),
     Prefix(Vec<u8>),
 }
 
-pub struct NotusDBIterator {
-    mode: NotusDBIteratorMode,
+pub struct EdgeKVIterator {
+    mode: EdgeKVIteratorMode,
     iter: edgekv::edgekv::DBIterator,
 }
 
-impl NotusDBIterator {
-    fn new(mode: NotusDBIteratorMode, db: &EdgeKV) -> Self {
+impl EdgeKVIterator {
+    fn new(mode: EdgeKVIteratorMode, db: &EdgeKV) -> Self {
         match mode.clone() {
-            NotusDBIteratorMode::Start => Self {
+            EdgeKVIteratorMode::Start => Self {
                 mode,
                 iter: db.iter(),
             },
-            NotusDBIteratorMode::End => Self {
+            EdgeKVIteratorMode::End => Self {
                 mode,
                 iter: db.iter(),
             },
-            NotusDBIteratorMode::From(key, direction) => {
+            EdgeKVIteratorMode::From(key, direction) => {
                 let iter = match direction {
                     Direction::Forward => db.range(key..),
                     Direction::Reverse => db.range(..=key),
@@ -65,7 +65,7 @@ impl NotusDBIterator {
 
                 Self { mode, iter }
             }
-            NotusDBIteratorMode::Prefix(key) => Self {
+            EdgeKVIteratorMode::Prefix(key) => Self {
                 mode,
                 iter: db.prefix(&key),
             },
@@ -74,18 +74,18 @@ impl NotusDBIterator {
 }
 impl TezdegeDatabaseBackendKV for EdgeKVBackend {}
 
-impl Iterator for NotusDBIterator {
+impl Iterator for EdgeKVIterator {
     type Item = Result<(Vec<u8>, Vec<u8>), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let next = match &self.mode {
-            NotusDBIteratorMode::Start => self.iter.next(),
-            NotusDBIteratorMode::End => self.iter.next_back(),
-            NotusDBIteratorMode::From(_, direction) => match direction {
+            EdgeKVIteratorMode::Start => self.iter.next(),
+            EdgeKVIteratorMode::End => self.iter.next_back(),
+            EdgeKVIteratorMode::From(_, direction) => match direction {
                 Direction::Forward => self.iter.next(),
                 Direction::Reverse => self.iter.next_back(),
             },
-            NotusDBIteratorMode::Prefix(_) => self.iter.next(),
+            EdgeKVIteratorMode::Prefix(_) => self.iter.next(),
         };
         match next {
             None => None,
@@ -238,13 +238,13 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
 
         let iter = match mode {
             BackendIteratorMode::Start => {
-                NotusDBIterator::new(NotusDBIteratorMode::Start, db)
+                EdgeKVIterator::new(EdgeKVIteratorMode::Start, db)
             }
             BackendIteratorMode::End => {
-                NotusDBIterator::new(NotusDBIteratorMode::End, db)
+                EdgeKVIterator::new(EdgeKVIteratorMode::End, db)
             }
             BackendIteratorMode::From(key, direction) => {
-                NotusDBIterator::new(NotusDBIteratorMode::From(key, direction), db)
+                EdgeKVIterator::new(EdgeKVIteratorMode::From(key, direction), db)
             }
         };
 
@@ -257,7 +257,7 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
         let db = self.db.get(column).ok_or(Error::NutosError { error: format!("Column Missing: {}", column) })?;
 
         let prefix_key = key[..max_key_len].to_vec();
-        let iter = NotusDBIterator::new(NotusDBIteratorMode::Prefix(prefix_key), db);
+        let iter = EdgeKVIterator::new(EdgeKVIteratorMode::Prefix(prefix_key), db);
 
         return Ok(Box::new(iter.map(|result| {
             result.map(|(k, v)| (k.into_boxed_slice(), v.into_boxed_slice()))

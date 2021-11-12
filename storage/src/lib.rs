@@ -807,7 +807,7 @@ pub mod tests_common {
                 )?)
             }
             else if cfg!(feature = "maindb-backend-edgekv") {
-                TezedgeDatabaseBackendOptions::Notus(database::edgekv_backend::EdgeKVBackend::new(
+                TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
                     path.join("db"),
                     vec![
                         block_storage::BlockPrimaryIndex::name(),

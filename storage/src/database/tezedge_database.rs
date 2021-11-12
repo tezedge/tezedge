@@ -80,7 +80,7 @@ pub type List<S> = Vec<(
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
     RocksDB(RocksDBBackend),
-    Notus(EdgeKVBackend),
+    EdgeKV(EdgeKVBackend),
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
@@ -155,7 +155,7 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
                 log: log.clone(),
             },
-            TezedgeDatabaseBackendOptions::Notus(backend) => TezedgeDatabase {
+            TezedgeDatabaseBackendOptions::EdgeKV(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
                 log: log.clone(),
             },
