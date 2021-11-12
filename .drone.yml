@@ -100,12 +100,14 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/011-hangzhou-protocol-parameters.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json drone-cache/sandbox_files
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_011_request.json drone-cache/sandbox_files
     - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json drone-cache/sandbox_files
     # copy other resources
     - cp ./light_node/etc/drone/assert_equals.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_equals.sh
@@ -1954,177 +1956,6 @@ depends_on:
   - build-tezedge-binaries
 
 #############################################################################################################
-# This pipeline test the sandbox launcher and its rpc server with activating the 009-florence protocol
-#
-# GIVEN that we run the the sandbox launcher binary WHEN we execute rpc calls to its rpc server THEN
-# all the actions are carried out correctly
-#############################################################################################################
----
-kind: pipeline
-name: corr/sandbox-launcher-rpc-server-009-florence
-
-trigger:
-  branch:
-    - master
-    - develop
-
-environment:
-  SODIUM_USE_PKG_CONFIG: 1
-  NETWORK: sandbox
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:18732
-  TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:3030
-
-steps:
-
-- name: prepare-data
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
-
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
-
-- name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
-  pull: if-not-exists
-  user: root
-  detach: true
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
-    - drone-cache/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path drone-cache/build_files/light-node --protocol-runner-path drone-cache/build_files/protocol-runner --log-level info --tezos-client-path drone-cache/build_files/tezos-client --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
-
-- name: start-tezedge-node-via-rpc
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - sleep 5
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
-
-- name: check-running-nodes
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-    - nodes_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 1 $nodes_count
-    - drone-cache/build_files/assert_contains.sh "$resp" "localhost"
-    - drone-cache/build_files/assert_contains.sh "$resp" "18732"
-
-- name: wait-sandbox-node-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: always
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: init-client
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
-
-- name: check-wallets
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # call get wallets
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
-    - echo "Wallets - $resp"
-    - wallets_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 2 $wallets_count
-
-- name: activate_protocol
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_009_request.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
-
-- name: wait-sandbox-node-start-level-1
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: check-context-constants
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # call context/constants on sandbox node
-    - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
-    - echo "Sandbox node context constants - $resp"
-    - drone-cache/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
-    - drone-cache/build_files/assert_contains.sh "$resp" "time_between_blocks"
-
-- name: bake-empty-block
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
-
-- name: wait-sandbox-node-start-level-2
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: stop-tezedge-node-via-rpc
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
-    # On a successfull stop, HTTP code 200 is returned
-    - drone-cache/build_files/assert_equals.sh 200 $resp
-
-- name: check-running-nodes-empty
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-    - nodes_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 0 $nodes_count
-
-image_pull_secrets:
-  - docker_pull_secret
-
-depends_on:
-  - build-tezedge-binaries
-
-#############################################################################################################
 # This pipeline test the sandbox launcher and its rpc server with activating the 010-granada protocol
 #
 # GIVEN that we run the the sandbox launcher binary WHEN we execute rpc calls to its rpc server THEN
@@ -2290,6 +2121,177 @@ steps:
       - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
       - nodes_count=$(echo $resp | jq '. | length')
       - drone-cache/build_files/assert_equals.sh 0 $nodes_count
+
+depends_on:
+  - build-tezedge-binaries
+
+#############################################################################################################
+# This pipeline test the sandbox launcher and its rpc server with activating the 009-florence protocol
+#
+# GIVEN that we run the the sandbox launcher binary WHEN we execute rpc calls to its rpc server THEN
+# all the actions are carried out correctly
+#############################################################################################################
+---
+kind: pipeline
+name: corr/sandbox-launcher-rpc-server-011-hangzhou
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:18732
+  TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:3030
+
+steps:
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: tezedge-sandbox-run
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
+  pull: if-not-exists
+  user: root
+  detach: true
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
+    - drone-cache/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path drone-cache/build_files/light-node --protocol-runner-path drone-cache/build_files/protocol-runner --log-level info --tezos-client-path drone-cache/build_files/tezos-client --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+
+- name: start-tezedge-node-via-rpc
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - sleep 5
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
+
+- name: check-running-nodes
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+    - nodes_count=$(echo $resp | jq '. | length')
+    - drone-cache/build_files/assert_equals.sh 1 $nodes_count
+    - drone-cache/build_files/assert_contains.sh "$resp" "localhost"
+    - drone-cache/build_files/assert_contains.sh "$resp" "18732"
+
+- name: wait-sandbox-node-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: always
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: init-client
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
+    - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
+
+- name: check-wallets
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    # call get wallets
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
+    - echo "Wallets - $resp"
+    - wallets_count=$(echo $resp | jq '. | length')
+    - drone-cache/build_files/assert_equals.sh 2 $wallets_count
+
+- name: activate_protocol
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_011_request.json)
+    - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
+
+- name: wait-sandbox-node-start-level-1
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: check-context-constants
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    # call context/constants on sandbox node
+    - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
+    - echo "Sandbox node context constants - $resp"
+    - drone-cache/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
+    - drone-cache/build_files/assert_contains.sh "$resp" "time_between_blocks"
+
+- name: bake-empty-block
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
+    - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
+
+- name: wait-sandbox-node-start-level-2
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: stop-tezedge-node-via-rpc
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
+    # On a successfull stop, HTTP code 200 is returned
+    - drone-cache/build_files/assert_equals.sh 200 $resp
+
+- name: check-running-nodes-empty
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+    - nodes_count=$(echo $resp | jq '. | length')
+    - drone-cache/build_files/assert_equals.sh 0 $nodes_count
+
+image_pull_secrets:
+  - docker_pull_secret
 
 depends_on:
   - build-tezedge-binaries
@@ -6146,8 +6148,8 @@ depends_on:
   - perf/tezedge-all-benchmarks
   - corr/tezedge-integration-tests
   - corr/tezedge-sandbox-transfer-and-baking-007-carthage
-  - corr/sandbox-launcher-rpc-server-009-florence
   - corr/sandbox-launcher-rpc-server-010-granada
+  - corr/sandbox-launcher-rpc-server-011-hangzhou
   - corr/tezedge-with-octez-baker-endorser-010-granada
   - corr/octez-python-tests-applied-to-tezedge-009-florence
   - corr/octez-python-tests-applied-to-tezedge-010-granada
@@ -6249,8 +6251,8 @@ depends_on:
   - perf/tezedge-all-benchmarks
   - corr/tezedge-integration-tests
   - corr/tezedge-sandbox-transfer-and-baking-007-carthage
-  - corr/sandbox-launcher-rpc-server-009-florence
   - corr/sandbox-launcher-rpc-server-010-granada
+  - corr/sandbox-launcher-rpc-server-011-hangzhou
   - corr/tezedge-with-octez-baker-endorser-010-granada
   - corr/octez-python-tests-applied-to-tezedge-009-florence
   - corr/octez-python-tests-applied-to-tezedge-010-granada
