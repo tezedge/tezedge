@@ -17,7 +17,7 @@ use anyhow::format_err;
 use itertools::Itertools;
 
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_008_2::rights::{BakingRights, EndorsingRight};
 
 use storage::cycle_storage::CycleData;

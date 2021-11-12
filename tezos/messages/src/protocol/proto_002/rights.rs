@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
+use crate::base::signature_public_key::SignaturePublicKeyHash;
 
 /// Endorsing rights structure, final response look like Vec<EndorsingRight>
 #[derive(Serialize, Debug, Clone)]
@@ -113,7 +113,7 @@ mod tests {
     use serde_json::json;
 
     use crate::base::rpc_support::ToRpcJsonMap;
-    use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
+    use crate::base::signature_public_key::SignaturePublicKeyHash;
     use crate::protocol::proto_002::rights::{BakingRights, EndorsingRight};
 
     #[test]
