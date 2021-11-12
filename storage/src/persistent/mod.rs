@@ -95,6 +95,9 @@ fn edgekv_db_cols() -> Vec<&'static str> {
         crate::CycleMetaStorage::column_name(),
         crate::CycleErasStorage::column_name(),
         crate::ConstantsStorage::column_name(),
+        crate::ShellAutomatonStateStorage::column_name(),
+        crate::ShellAutomatonActionStorage::column_name(),
+        crate::ShellAutomatonActionMetaStorage::column_name(),
     ]
 }
 
