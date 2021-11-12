@@ -20,6 +20,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 chain_id: chain_id.clone(),
                 current_block: block.clone(),
             });
+            match block.message_typed_hash() {
+                Ok(hash) => drop(mempool_state.applied_heads.insert(hash)),
+                Err(err) => {
+                    // TODO(vlad): unwrap
+                    let _ = err;
+                },
+            }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, head_state, message }) => {
             let pending = message.pending().iter().cloned();

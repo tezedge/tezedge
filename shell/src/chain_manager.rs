@@ -1939,6 +1939,13 @@ impl Receive<ProcessValidatedBlock> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ProcessValidatedBlock, _: Sender) {
+        let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
+            ChainId::clone(&msg.chain_id),
+            BlockHeader::clone(&msg.block.header),
+        );
+        if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
+            warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
+        }
         match self.process_applied_block(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
