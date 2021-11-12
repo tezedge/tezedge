@@ -30,17 +30,38 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
-            &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
-        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
-        let maindb = Arc::new(TezedgeDatabase::new(
-            TezedgeDatabaseBackendOptions::RocksDB(backend),
-            log,
-        ));
+        let backend = if cfg!(feature = "maindb-backend-rocksdb") {
+            let db = open_kv(
+                &path,
+                vec![Sequences::descriptor(&cache)],
+                &DbConfiguration::default(),
+            )?;
+            TezedgeDatabaseBackendOptions::RocksDB(
+                database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?,
+            )
+        } else if cfg!(feature = "maindb-backend-sled") {
+            TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
+                path.join("db"),
+            )?)
+        }
+        else if cfg!(feature = "maindb-backend-edgekv") {
+            TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
+                path.join("db"),
+                vec![
+                    Sequences::name()
+                ]
+            )?)
+        }else {
+            let db = open_kv(
+                &path,
+                vec![Sequences::descriptor(&cache)],
+                &DbConfiguration::default(),
+            )?;
+            TezedgeDatabaseBackendOptions::RocksDB(
+                database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?,
+            )
+        };
+        let maindb = Arc::new(TezedgeDatabase::new(backend, log));
 
         let sequences = Sequences::new(maindb, 1);
         let gen_1 = sequences.generator("gen_1");
@@ -71,17 +92,38 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
-            &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
-        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
-        let maindb = Arc::new(TezedgeDatabase::new(
-            TezedgeDatabaseBackendOptions::RocksDB(backend),
-            log,
-        ));
+        let backend = if cfg!(feature = "maindb-backend-rocksdb") {
+            let db = open_kv(
+                &path,
+                vec![Sequences::descriptor(&cache)],
+                &DbConfiguration::default(),
+            )?;
+            TezedgeDatabaseBackendOptions::RocksDB(
+                database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?,
+            )
+        } else if cfg!(feature = "maindb-backend-sled") {
+            TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
+                path.join("db"),
+            )?)
+        }
+        else if cfg!(feature = "maindb-backend-edgekv") {
+            TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
+                path.join("db"),
+                vec![
+                    Sequences::name()
+                ]
+            )?)
+        }else {
+            let db = open_kv(
+                &path,
+                vec![Sequences::descriptor(&cache)],
+                &DbConfiguration::default(),
+            )?;
+            TezedgeDatabaseBackendOptions::RocksDB(
+                database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?,
+            )
+        };
+        let maindb = Arc::new(TezedgeDatabase::new(backend, log));
         let sequences = Sequences::new(maindb, 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -126,7 +168,15 @@ fn generator_test_batch() -> Result<(), Error> {
             TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
                 path.join("db"),
             )?)
-        } else {
+        }
+        else if cfg!(feature = "maindb-backend-edgekv") {
+            TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
+                path.join("db"),
+                vec![
+                    Sequences::name()
+                ]
+            )?)
+        }else {
             let db = open_kv(
                 &path,
                 vec![Sequences::descriptor(&cache)],
