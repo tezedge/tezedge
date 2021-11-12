@@ -121,7 +121,7 @@ pub struct BlockAppliedAction {
     pub block: BlockHeader,
 }
 
-impl EnablingCondition<State> for MempoolBlockAppliedAction {
+impl EnablingCondition<State> for BlockAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;

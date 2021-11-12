@@ -9,16 +9,22 @@ use crypto::hash::{OperationHash, ChainId, BlockHash};
 use tezos_messages::p2p::{
     encoding::{block_header::BlockHeader, operation::Operation},
 };
+use tezos_api::ffi::PrevalidatorWrapper;
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
-    // the current head applied
-    pub local_head_state: Option<HeadState>,
     // all blocks applied
     pub applied_block: HashSet<BlockHash>,
+    // do not create prevalidator for any applied block, create prevalidator:
+    // * for block received as CurrentHead
+    // * for block of injected operation
+    pub prevalidator_block: Option<BlockHash>,
+    pub prevalidator: Option<PrevalidatorWrapper>,
+    // the current head applied
+    pub local_head_state: Option<HeadState>,
     // let's track what our peers know, and what we waiting from them
     pub peer_state: HashMap<SocketAddr, PeerState>,
-    // operations that passed basic checks 
+    // operations that passed basic checks, but not protocol
     pub pending_operations: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
@@ -35,6 +41,7 @@ pub struct MempoolState {
 pub struct HeadState {
     pub chain_id: ChainId,
     pub current_block: BlockHeader,
+    pub current_block_hash: BlockHash,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
