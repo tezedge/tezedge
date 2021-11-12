@@ -4,11 +4,14 @@
 use std::sync::Arc;
 use redux_rs::Store;
 
-use tezos_messages::p2p::encoding::{
-    peer::{PeerMessageResponse, PeerMessage},
-    current_head::CurrentHeadMessage,
-    mempool::Mempool,
-    operation::{GetOperationsMessage, OperationMessage},
+use tezos_messages::p2p::{
+    binary_message::MessageHash,
+    encoding::{
+        peer::{PeerMessageResponse, PeerMessage},
+        current_head::CurrentHeadMessage,
+        mempool::Mempool,
+        operation::{GetOperationsMessage, OperationMessage},
+    },
 };
 
 use tezos_api::ffi::BeginConstructionRequest;
@@ -23,7 +26,7 @@ use super::{
     mempool_actions::{
         MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-        MempoolOperationInjectAction,
+        MempoolOperationInjectAction, BlockAppliedAction,
     },
     mempool_state::HeadState,
 };
@@ -45,6 +48,8 @@ pub fn mempool_effects<S>(
                     let head_state = HeadState {
                         chain_id: current_head.chain_id().clone(),
                         current_block: current_head.current_block_header().clone(),
+                        // TODO(vlad): unwrap
+                        current_block_hash: current_head.current_block_header().message_typed_hash().unwrap(),
                     };
                     store.dispatch(
                         MempoolRecvDoneAction {
@@ -77,8 +82,7 @@ pub fn mempool_effects<S>(
                                 PeerMessageWriteInitAction {
                                     address: *address,
                                     message: message.into(),
-                                }
-                                .into(),
+                                },
                             );
                         }
                     }
@@ -86,18 +90,27 @@ pub fn mempool_effects<S>(
                 _ => (),
             }
         },
-        Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
+        Action::BlockApplied(BlockAppliedAction { chain_id, block }) => {
+            // TODO: remove it
+            let req = BeginConstructionRequest {
+                chain_id: chain_id.clone(),
+                predecessor: block.clone(),
+                protocol_data: None,
+            };
+            store.service().protocol().begin_construction_for_mempool(req);
+        },
+        Action::MempoolRecvDone(MempoolRecvDoneAction { address, head_state, .. }) => {
+            let mempool = &store.state().mempool;
+            if matches!((&mempool.prevalidator_block, &mempool.local_head_state), (Some(b), Some(state)) if state.current_block_hash.ne(b)) {
+                let req = BeginConstructionRequest {
+                    chain_id: head_state.chain_id.clone(),
+                    predecessor: head_state.current_block.clone(),
+                    protocol_data: None,
+                };
+                store.service().protocol().begin_construction_for_mempool(req);
+            }
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
-                    // TODO: only check if the head of the peer is known
-                    if let Some(head) = &peer.head_state {
-                        let req = BeginConstructionRequest {
-                            chain_id: head.chain_id.clone(),
-                            predecessor: head.current_block.clone(),
-                            protocol_data: None,
-                        };
-                        store.service().protocol().begin_construction_for_mempool(req);
-                    }
                     store.dispatch(
                         MempoolGetOperationsAction {
                             address: *address,

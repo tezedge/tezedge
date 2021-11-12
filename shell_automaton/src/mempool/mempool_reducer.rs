@@ -4,6 +4,7 @@
 use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::{State, Action, ActionWithMeta};
+use crate::protocol::ProtocolAction;
 
 use super::{
     MempoolGetOperationsPendingAction, MempoolRecvDoneAction, MempoolOperationRecvDoneAction,
@@ -15,10 +16,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     let mut mempool_state = &mut state.mempool;
 
     match &action.action {
+        Action::Protocol(act) => {
+            match act {
+                ProtocolAction::PrevalidatorForMempoolReady(prevalidator) => {
+                    mempool_state.prevalidator = Some(prevalidator.clone());
+                    println!("prevalidator: {:?}", prevalidator);
+                    // mempool_state.prevalidator_block = Some(...);
+                },
+                act => {
+                    println!("{:?}", act);
+                },
+            }
+        },
         Action::BlockApplied(BlockAppliedAction { chain_id, block }) => {
             mempool_state.local_head_state = Some(HeadState {
                 chain_id: chain_id.clone(),
                 current_block: block.clone(),
+                // TODO(vlad): unwrap
+                current_block_hash: block.message_typed_hash().unwrap(),
             });
             match block.message_typed_hash() {
                 Ok(hash) => drop(mempool_state.applied_block.insert(hash)),
