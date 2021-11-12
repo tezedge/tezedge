@@ -5,7 +5,7 @@ use std::{collections::{HashMap, HashSet}, net::SocketAddr};
 
 use serde::{Serialize, Deserialize};
 
-use crypto::hash::{OperationHash, ChainId};
+use crypto::hash::{OperationHash, ChainId, BlockHash};
 use tezos_messages::p2p::{
     encoding::{block_header::BlockHeader, operation::Operation},
 };
@@ -14,6 +14,8 @@ use tezos_messages::p2p::{
 pub struct MempoolState {
     // the current head applied
     pub local_head_state: Option<HeadState>,
+    // all blocks applied
+    pub applied_heads: HashSet<BlockHash>,
     // let's track what our peers know, and what we waiting from them
     pub peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks 
