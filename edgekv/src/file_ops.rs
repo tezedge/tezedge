@@ -1,16 +1,16 @@
 use chrono::Utc;
 use fs_extra::dir::DirOptions;
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions, Metadata};
-use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write, Cursor, Error, Read};
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write, Read};
 use std::path::{Path, PathBuf};
 use crate::Result;
 use crate::datastore::{KeyDirEntry, KeysDir};
 use crate::errors::EdgeKVError;
 use crate::schema::{DataEntry, Decoder, Encoder, HintEntry};
 use fs2::FileExt;
-use std::sync::atomic::Ordering;
-use std::cmp::min;
+
+
 use bloomfilter::Bloom;
 
 const DATA_FILE_EXTENSION: &str = "data";
@@ -56,7 +56,7 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn read(&self, entry_position: u64, size : usize) -> Result<DataEntry> {
+    pub fn read(&self, entry_position: u64, _size : usize) -> Result<DataEntry> {
         let data = File::open(self.data_file_path.as_path())?;
         let mut reader = BufReader::new(data);
         reader.seek(SeekFrom::Start(entry_position));
@@ -235,7 +235,7 @@ impl Drop for ActiveFilePair {
 }
 
 impl ActiveFilePair {
-    pub fn write(&self, entry: &DataEntry, keys_dir: &KeysDir) -> Result<KeyDirEntry> {
+    pub fn write(&self, entry: &DataEntry, _keys_dir: &KeysDir) -> Result<KeyDirEntry> {
         self.data_file.try_lock_exclusive()?;
         self.hint_file.try_lock_exclusive()?;
 
@@ -371,7 +371,7 @@ pub fn fetch_file_pairs<P: AsRef<Path>>(dir: P) -> Result<(BTreeMap<String, File
                 file_pair.bloom_filter_file_path = file_path.to_path_buf();
             }
             BUFFER_FILE_EXTENSION => {
-                buffer_files.insert(file_name.parse().map_err(|e| {
+                buffer_files.insert(file_name.parse().map_err(|_e| {
                     EdgeKVError::StringToIntegerParseError
                 })?,file_path.to_path_buf());
             }

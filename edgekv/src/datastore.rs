@@ -1,38 +1,34 @@
 use crate::datastore::DataIndex::Persisted;
 use crate::errors::EdgeKVError;
 use crate::file_ops::{create_new_file_pair, fetch_file_pairs, get_lock_file, ActiveFilePair, FilePair, Index};
-use crate::schema::{DataEntry, Encoder, Decoder, HintEntry};
+use crate::schema::{DataEntry, Encoder, Decoder};
 use fs2::FileExt;
-use serde::{Deserialize, Serialize};
-use std::alloc::Global;
-use std::collections::{BTreeMap, HashMap, BTreeSet};
+
+
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
-use std::ops::{RangeFrom, RangeBounds, Range, RangeInclusive, RangeToInclusive, RangeFull, Bound, Mul, Div, Add, DerefMut, Deref};
+use std::ops::{RangeBounds, Add};
 use std::path::{Path, PathBuf};
-use std::sync::{RwLock, Arc, PoisonError, RwLockReadGuard, RwLockWriteGuard};
-use std::ops;
+use std::sync::{RwLock, RwLockReadGuard};
+
 
 use crate::Result;
-use std::io::{Read, Cursor, Write, BufReader};
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::cmp::{min, max};
-use chrono::{Date, Utc};
+use std::io::{Write, BufReader};
+
+use std::cmp::{max};
+
 use std::option::Option::Some;
-use slab::Slab;
-use lru_cache::LruCache;
+
+
 use bloomfilter::Bloom;
-use std::rc::Rc;
-use std::collections::hash_map::RandomState;
-use std::collections::btree_map::Iter;
-use std::time::Instant;
+
+
+
+
 
 pub trait MergeOperator: Fn(&[u8], Option<Vec<u8>>, &[u8]) -> Option<Vec<u8>> {}
 
 impl<F> MergeOperator for F where F: Fn(&[u8], Option<Vec<u8>>, &[u8]) -> Option<Vec<u8>> {}
-
-pub struct Column {
-    merge_operator: Box<dyn MergeOperator>,
-}
 
 #[derive(Default, Debug, Clone)]
 pub struct KeyDirEntry {
@@ -77,8 +73,6 @@ impl KeyDirEntry {
             + self.file_id.len()
     }
 }
-
-type MultiMap<I, K, V> = BTreeMap<I, BTreeMap<K, V>>;
 
 pub struct KeysDir {
     bloom_filters : RwLock<BTreeMap<String,Bloom<Vec<u8>>>>,
@@ -214,7 +208,7 @@ impl KeysDir {
 
     pub fn contains(&self, key: &[u8]) -> Result<bool> {
 
-        let mut bloom_filters_writer = self
+        let bloom_filters_writer = self
             .bloom_filters
             .read()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
@@ -341,7 +335,7 @@ impl DataStore {
     }
 
     pub fn buffer_size(&self) -> usize {
-        let mut buffer = match self
+        let buffer = match self
             .buffer
             .read() {
             Ok(buff) => {
@@ -417,7 +411,7 @@ impl DataStore {
     }
 
     pub fn contains(&self, key: &[u8]) -> Result<bool> {
-        let mut buffer = self
+        let buffer = self
             .buffer
             .read()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
@@ -506,7 +500,7 @@ impl DataStore {
     }
 
     pub fn merge(&self) -> Result<()> {
-        let mut active_file = self
+        let active_file = self
             .active_file
             .read()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
@@ -558,7 +552,6 @@ impl DataStore {
 
 
         let mut buffer_file = OpenOptions::new().create(true).write(true).open(buffer_file_path.as_path())?;
-
         let mut bloom_filter = Bloom::new(20000, max(buffer.capacity(), 10));
 
         let single_buffer: Vec<_> = buffer.iter().flat_map(|(key, value)| {
@@ -582,8 +575,6 @@ impl DataStore {
             self.try_split(&mut active_file)?;
             self.index_dir.insert(active_file.as_file_pair().clone())?;
         }
-        self.keys_dir.insert_bloom(file_name.clone(), bloom_filter);
-        //println!("Sync Done {} Keys writen to database index id {}", key_size, file_name);
         Ok(())
     }
 
@@ -609,7 +600,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_data_store() {
-        let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+        let ds = DataStore::open("./testdir/_test_data_store").unwrap();
         ds.put(vec![1, 2, 3], vec![4, 5, 6])
             .unwrap();
         ds.sync_all(true);
@@ -622,7 +613,7 @@ mod tests {
     fn test_data_reopens() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -635,7 +626,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![9, 9, 6])
                 .unwrap();
             //ds.delete(&vec![3, 1, 2]).unwrap();
@@ -644,7 +635,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             //ds.delete(&vec![1, 2, 3]).unwrap();
             println!("{:#?}", ds.keys());
         }
@@ -657,7 +648,7 @@ mod tests {
     fn test_data_reopens_prefix() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.sync_all(true);
@@ -672,7 +663,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![9, 9, 6])
                 .unwrap();
             //ds.delete(&vec![3, 1, 2]).unwrap();
@@ -689,7 +680,7 @@ mod tests {
     fn test_data_gets_reopens() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -702,7 +693,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             println!("{:?}", ds.get(&vec![1, 2, 3]));
             println!("{:?}", ds.get(&vec![3, 1, 2]));
             println!("{:?}", ds.get(&vec![3, 1, 4]));
@@ -715,7 +706,7 @@ mod tests {
     fn test_data_iterator() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -741,7 +732,7 @@ mod tests {
     fn test_multi_thread_reads() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -754,7 +745,7 @@ mod tests {
         }
 
         {
-            let mut ds = Arc::new(DataStore::open("./testdir/_test_data_store").unwrap());
+            let ds = Arc::new(DataStore::open("./testdir/_test_data_store").unwrap());
             let mut handles = vec![];
             for i in 0..3 {
                 let ds = ds.clone();
@@ -785,7 +776,7 @@ mod tests {
     fn test_data_merge_store() {
         clean_up();
         {
-            let mut ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 5, 6])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -797,7 +788,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
             ds.put(vec![1, 2, 3], vec![4, 4, 4])
                 .unwrap();
             ds.put(vec![3, 1, 2], vec![12, 32, 1])
@@ -812,7 +803,7 @@ mod tests {
         let mut keys_after_merge = vec![];
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
             ds.put(vec![1, 2, 3], vec![9, 9, 6])
                 .unwrap();
             ds.delete(&vec![3, 1, 2]).unwrap();
@@ -820,7 +811,7 @@ mod tests {
         }
 
         {
-            let mut ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
+            let ds = DataStore::open("./testdir/_test_data_merge_store").unwrap();
             ds.merge();
             keys_after_merge = ds.keys();
         }

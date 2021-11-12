@@ -2,10 +2,10 @@ mod common;
 
 use crate::edgekv::EdgeKV;
 use log::{debug, warn};
-use std::alloc::Global;
-use std::sync::{Arc, RwLock};
+
+use std::sync::{Arc};
 use bloomfilter::Bloom;
-use std::sync::atomic::AtomicUsize;
+
 use serial_test::serial;
 const N_THREADS: usize = 2;
 const N_PER_THREAD: usize = 5;

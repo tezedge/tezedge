@@ -1,23 +1,21 @@
 use crate::datastore::{DataStore, MergeOperator};
-use crate::errors::EdgeKVError;
+
 use crate::Result;
-use std::collections::HashMap;
+
 use std::fmt::{Display, Formatter};
-use std::ops::{RangeFrom, Range, RangeBounds};
+use std::ops::{RangeBounds};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering, AtomicUsize};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use std::thread;
-use std::time::{Duration, Instant};
-use std::ops::Bound;
+use std::time::{Duration};
+
 
 pub struct EdgeKV {
     dir: PathBuf,
-    temp: bool,
     store: Arc<DataStore>,
     dropped: Arc<AtomicBool>,
     config: EdgeKVConfiguration,
-    writes: AtomicUsize,
 }
 
 impl Display for EdgeKV {
@@ -53,11 +51,27 @@ impl EdgeKV {
         let config = EdgeKVConfiguration::default();
         let instance = Self {
             dir: PathBuf::from(dir.as_ref()),
-            temp: false,
             store,
             dropped: Arc::new(AtomicBool::new(false)),
             config,
-            writes: AtomicUsize::new(0),
+        };
+        //Only for testing
+        let mut p = PathBuf::new();
+        p.push(dir);
+        let worker_name = p.file_name().map_or("".to_string(), |name| {
+            name.to_string_lossy().to_string()
+        });
+        instance.start_background_workers(worker_name);
+        Ok(instance)
+    }
+
+    pub fn open_with_configuration<P: AsRef<Path>>(dir: P, config : EdgeKVConfiguration) -> Result<Self> {
+        let store = Arc::new(DataStore::open(dir.as_ref())?);
+        let instance = Self {
+            dir: PathBuf::from(dir.as_ref()),
+            store,
+            dropped: Arc::new(AtomicBool::new(false)),
+            config,
         };
         //Only for testing
         let mut p = PathBuf::new();
@@ -88,25 +102,6 @@ impl EdgeKV {
             }
             drop(store)
         });
-    }
-
-    pub fn temp<P: AsRef<Path>>(dir: P) -> Result<Self> {
-        let store = Arc::new(DataStore::open(dir.as_ref())?);
-        let instance = Self {
-            dir: PathBuf::from(dir.as_ref()),
-            temp: true,
-            store,
-            dropped: Arc::new(AtomicBool::new(false)),
-            config: Default::default(),
-            writes: Default::default(),
-        };
-        //Only for testing
-        let mut p = PathBuf::new();
-        p.push(dir);
-        let worker_name = p.file_name().map_or("".to_string(), |name| {
-            name.to_string_lossy().to_string()
-        });
-        Ok(instance)
     }
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
         self.store
