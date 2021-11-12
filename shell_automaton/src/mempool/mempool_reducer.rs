@@ -7,7 +7,7 @@ use crate::{State, Action, ActionWithMeta};
 
 use super::{
     MempoolGetOperationsPendingAction, MempoolRecvDoneAction, MempoolOperationRecvDoneAction,
-    MempoolBroadcastDoneAction, MempoolOperationInjectAction, MempoolBlockAppliedAction,
+    MempoolBroadcastDoneAction, MempoolOperationInjectAction, BlockAppliedAction,
     HeadState,
 };
 
@@ -15,13 +15,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     let mut mempool_state = &mut state.mempool;
 
     match &action.action {
-        Action::MempoolBlockApplied(MempoolBlockAppliedAction { chain_id, block }) => {
+        Action::BlockApplied(BlockAppliedAction { chain_id, block }) => {
             mempool_state.local_head_state = Some(HeadState {
                 chain_id: chain_id.clone(),
                 current_block: block.clone(),
             });
             match block.message_typed_hash() {
-                Ok(hash) => drop(mempool_state.applied_heads.insert(hash)),
+                Ok(hash) => drop(mempool_state.applied_block.insert(hash)),
                 Err(err) => {
                     // TODO(vlad): unwrap
                     let _ = err;

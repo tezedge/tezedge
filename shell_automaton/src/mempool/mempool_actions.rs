@@ -116,7 +116,7 @@ impl EnablingCondition<State> for MempoolBroadcastDoneAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolBlockAppliedAction {
+pub struct BlockAppliedAction {
     pub chain_id: ChainId,
     pub block: BlockHeader,
 }
