@@ -209,8 +209,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - x_master
+    - x_develop
   ref:
     - refs/pull/*/head
 

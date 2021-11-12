@@ -5,7 +5,6 @@ use std::sync::Arc;
 use redux_rs::Store;
 
 use tezos_messages::p2p::{
-    binary_message::MessageHash,
     encoding::{
         peer::{PeerMessageResponse, PeerMessage},
         current_head::CurrentHeadMessage,
@@ -14,7 +13,7 @@ use tezos_messages::p2p::{
     },
 };
 
-use tezos_api::ffi::BeginConstructionRequest;
+use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::{Action, ActionWithMeta, Service, State, service::{ProtocolService, RpcService}};
 use crate::peer::message::{
@@ -48,8 +47,6 @@ pub fn mempool_effects<S>(
                     let head_state = HeadState {
                         chain_id: current_head.chain_id().clone(),
                         current_block: current_head.current_block_header().clone(),
-                        // TODO(vlad): unwrap
-                        current_block_hash: current_head.current_block_header().message_typed_hash().unwrap(),
                     };
                     store.dispatch(
                         MempoolRecvDoneAction {
@@ -71,7 +68,7 @@ pub fn mempool_effects<S>(
                     for hash in hashes.get_operations() {
                         let mempool = &store.state().mempool;
                         let op = None
-                            .or_else(|| mempool.applied_operations.get(hash))
+                            .or_else(|| mempool.applied_operations.get(hash).map(|(op, _)| op))
                             .or_else(|| mempool.branch_delayed_operations.get(hash))
                             .or_else(|| mempool.branch_refused_operations.get(hash))
                             .or_else(|| mempool.pending_operations.get(hash));
@@ -100,15 +97,17 @@ pub fn mempool_effects<S>(
             store.service().protocol().begin_construction_for_mempool(req);
         },
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, head_state, .. }) => {
-            let mempool = &store.state().mempool;
-            if matches!((&mempool.prevalidator_block, &mempool.local_head_state), (Some(b), Some(state)) if state.current_block_hash.ne(b)) {
-                let req = BeginConstructionRequest {
-                    chain_id: head_state.chain_id.clone(),
-                    predecessor: head_state.current_block.clone(),
-                    protocol_data: None,
-                };
-                store.service().protocol().begin_construction_for_mempool(req);
+            if !store.state().mempool.applied_block.contains(head_state.current_block.predecessor()) {
+                // if predecessor of the head is not applied,
+                // we did not bootstrapped yet, should not handle mempool
+                return;
             }
+            let req = BeginConstructionRequest {
+                chain_id: head_state.chain_id.clone(),
+                predecessor: head_state.current_block.clone(),
+                protocol_data: None,
+            };
+            store.service().protocol().begin_construction_for_mempool(req);
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(
@@ -164,7 +163,7 @@ pub fn mempool_effects<S>(
                 }
             }
         },
-        Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
+        Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, operation, .. }) => {
             let mempool_state = &store.state().mempool;
             // TODO(vlad): duplicated code
             if let Some(head_state) = mempool_state.local_head_state.clone() {
@@ -182,6 +181,16 @@ pub fn mempool_effects<S>(
                         pending,
                     },
                 );
+                let mempool_state = &store.state().mempool;
+                if let Some(prevalidator) = &mempool_state.prevalidator {
+                    let validate_req = ValidateOperationRequest {
+                        prevalidator: prevalidator.clone(),
+                        operation: operation.clone(),
+                    };
+                    store.service().protocol().validate_operation_for_mempool(validate_req);
+                } else {
+                    // TODO(vlad)
+                }
                 store.service().rpc().respond(*rpc_id, serde_json::Value::Null);
             } else {
                 let resp = serde_json::Value::String("head is not ready".to_string());

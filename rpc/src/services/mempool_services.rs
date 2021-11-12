@@ -59,12 +59,15 @@ pub async fn get_pending_operations(
             applied: {
                 state.applied_operations
                     .iter()
-                    .map(|(operation_hash, operation)| {
+                    .map(|(operation_hash, (operation, protocol_data))| {
+                        // TODO(vlad): unwrap
+                        let protocol_data: HashMap<String, Value> = serde_json::from_str(&protocol_data).unwrap();
                         let mut m = HashMap::new();
                         let hash = operation_hash.to_base58_check();
                         let branch = operation.branch().to_base58_check();
                         m.insert(String::from("hash"), Value::String(hash));
                         m.insert(String::from("branch"), Value::String(branch));
+                        m.extend(protocol_data);
                         m
                     })
                     .collect()

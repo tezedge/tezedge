@@ -18,8 +18,9 @@ pub struct MempoolState {
     // do not create prevalidator for any applied block, create prevalidator:
     // * for block received as CurrentHead
     // * for block of injected operation
-    pub prevalidator_block: Option<BlockHash>,
     pub prevalidator: Option<PrevalidatorWrapper>,
+    //
+    pub requesting_prevalidator_for: Option<BlockHash>,
     // the current head applied
     pub local_head_state: Option<HeadState>,
     // let's track what our peers know, and what we waiting from them
@@ -28,7 +29,7 @@ pub struct MempoolState {
     pub pending_operations: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
-    pub applied_operations: HashMap<OperationHash, Operation>,
+    pub applied_operations: HashMap<OperationHash, (Operation, String)>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
     pub branch_delayed_operations: HashMap<OperationHash, Operation>,
     // might be applied on a different branch if a reorganization happens
@@ -41,7 +42,6 @@ pub struct MempoolState {
 pub struct HeadState {
     pub chain_id: ChainId,
     pub current_block: BlockHeader,
-    pub current_block_hash: BlockHash,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]

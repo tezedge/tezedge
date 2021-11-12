@@ -3,7 +3,7 @@
 
 use serde::{Serialize, Deserialize};
 
-use tezos_api::ffi::{InitProtocolContextResult, PrevalidatorWrapper};
+use tezos_api::ffi::{InitProtocolContextResult, PrevalidatorWrapper, ValidateOperationResponse};
 
 use crate::{EnablingCondition, State};
 
@@ -13,6 +13,7 @@ pub enum ProtocolAction {
     InitProtocolDone(InitProtocolContextResult),
     PrevalidatorReady(PrevalidatorWrapper),
     PrevalidatorForMempoolReady(PrevalidatorWrapper),
+    OperationValidated(ValidateOperationResponse),
 }
 
 impl EnablingCondition<State> for ProtocolAction {

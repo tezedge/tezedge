@@ -20,8 +20,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             match act {
                 ProtocolAction::PrevalidatorForMempoolReady(prevalidator) => {
                     mempool_state.prevalidator = Some(prevalidator.clone());
-                    println!("prevalidator: {:?}", prevalidator);
-                    // mempool_state.prevalidator_block = Some(...);
+                },
+                ProtocolAction::OperationValidated(result) => {
+                    mempool_state.prevalidator = Some(result.prevalidator.clone());
+                    for applied in &result.result.applied {
+                        if let Some(op) = mempool_state.pending_operations.remove(&applied.hash) {
+                            mempool_state.applied_operations.insert(applied.hash.clone(), (op, applied.protocol_data_json.clone()));
+                        }
+                    }
                 },
                 act => {
                     println!("{:?}", act);
@@ -32,8 +38,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state.local_head_state = Some(HeadState {
                 chain_id: chain_id.clone(),
                 current_block: block.clone(),
-                // TODO(vlad): unwrap
-                current_block_hash: block.message_typed_hash().unwrap(),
             });
             match block.message_typed_hash() {
                 Ok(hash) => drop(mempool_state.applied_block.insert(hash)),
@@ -83,12 +87,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // TODO(vlad): received operation, but we did not requested it
             }
 
-            // TODO(vlad): prevalidate the operation
-            mempool_state.applied_operations.insert(operation_hash, operation.clone());
+            mempool_state.pending_operations.insert(operation_hash, operation.clone());
         },
         Action::MempoolOperationInject(MempoolOperationInjectAction { operation, operation_hash, .. }) => {
-            // TODO(vlad): prevalidate the operation
-            mempool_state.applied_operations.insert(operation_hash.clone(), operation.clone());
+            mempool_state.pending_operations.insert(operation_hash.clone(), operation.clone());
         },
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction { address, known_valid, pending }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
