@@ -825,6 +825,9 @@ pub mod tests_common {
                         CycleErasStorage::name(),
                         CycleMetaStorage::name(),
                         ConstantsStorage::name(),
+                        ShellAutomatonStateStorage::name(),
+                        ShellAutomatonActionStorage::name(),
+                        ShellAutomatonActionMetaStorage::name(),
                     ]
                 )?)
             }

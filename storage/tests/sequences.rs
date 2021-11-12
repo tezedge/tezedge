@@ -176,7 +176,16 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
                 path.join("db"),
             )?)
-        } else {
+        }
+        else if cfg!(feature = "maindb-backend-edgekv") {
+            TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
+                path.join("db"),
+                vec![
+                    Sequences::name()
+                ]
+            )?)
+        }
+        else {
             let db = open_kv(
                 &path,
                 vec![Sequences::descriptor(&cache)],
