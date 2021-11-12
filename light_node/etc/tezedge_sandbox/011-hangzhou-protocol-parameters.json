@@ -25,7 +25,7 @@
   "time_between_blocks": [ "1", "0" ], "endorsers_per_block": 256,
   "hard_gas_limit_per_operation": "1040000",
   "hard_gas_limit_per_block": "5200000", "proof_of_work_threshold": "-1",
-  "tokens_per_roll": "8000000000", "michelson_maximum_type_size": 1000,
+  "tokens_per_roll": "8000000000",
   "seed_nonce_revelation_tip": "125000", "origination_size": 257,
   "block_security_deposit": "640000000",
   "endorsement_security_deposit": "2500000",
