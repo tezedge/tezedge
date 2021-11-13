@@ -57,14 +57,16 @@ pub async fn get_pending_operations(
     Ok((
         MempoolOperations {
             applied: {
-                state.applied_operations
+                let ops = &state.validated_operations.ops;
+                state.validated_operations
+                    .applied
                     .iter()
-                    .map(|(operation_hash, (operation, protocol_data))| {
+                    .map(|applied| {
                         // TODO(vlad): unwrap
-                        let protocol_data: HashMap<String, Value> = serde_json::from_str(&protocol_data).unwrap();
+                        let protocol_data: HashMap<String, Value> = serde_json::from_str(&applied.protocol_data_json).unwrap();
                         let mut m = HashMap::new();
-                        let hash = operation_hash.to_base58_check();
-                        let branch = operation.branch().to_base58_check();
+                        let hash = applied.hash.to_base58_check();
+                        let branch = ops.get(&applied.hash).unwrap().branch().to_base58_check();
                         m.insert(String::from("hash"), Value::String(hash));
                         m.insert(String::from("branch"), Value::String(branch));
                         m.extend(protocol_data);

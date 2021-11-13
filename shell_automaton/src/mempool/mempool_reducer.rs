@@ -23,9 +23,28 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 },
                 ProtocolAction::OperationValidated(result) => {
                     mempool_state.prevalidator = Some(result.prevalidator.clone());
-                    for applied in &result.result.applied {
-                        if let Some(op) = mempool_state.pending_operations.remove(&applied.hash) {
-                            mempool_state.applied_operations.insert(applied.hash.clone(), (op, applied.protocol_data_json.clone()));
+                    for v in &result.result.applied {
+                        if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                            mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
+                            mempool_state.validated_operations.applied.push(v.clone());
+                        }
+                    }
+                    for v in &result.result.refused {
+                        if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                            mempool_state.validated_operations.refused_ops.insert(v.hash.clone(), op);
+                            mempool_state.validated_operations.refused.push(v.clone());
+                        }
+                    }
+                    for v in &result.result.branch_refused {
+                        if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                            mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
+                            mempool_state.validated_operations.branch_refused.push(v.clone());
+                        }
+                    }
+                    for v in &result.result.branch_delayed {
+                        if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                            mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
+                            mempool_state.validated_operations.branch_delayed.push(v.clone());
                         }
                     }
                 },
@@ -56,10 +75,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             peer.head_state = Some(head_state.clone());
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
-                    || mempool_state.applied_operations.contains_key(&hash)
-                    || mempool_state.branch_delayed_operations.contains_key(&hash)
-                    || mempool_state.branch_refused_operations.contains_key(&hash)
-                    || mempool_state.refused_operations.contains(&hash);
+                    || mempool_state.validated_operations.ops.contains_key(&hash);
                 if !known {
                     peer.requesting_full_content.insert(hash.clone());
                     // of course peer knows about it, because he sent us it

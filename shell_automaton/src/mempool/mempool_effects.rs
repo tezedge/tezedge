@@ -68,9 +68,7 @@ pub fn mempool_effects<S>(
                     for hash in hashes.get_operations() {
                         let mempool = &store.state().mempool;
                         let op = None
-                            .or_else(|| mempool.applied_operations.get(hash).map(|(op, _)| op))
-                            .or_else(|| mempool.branch_delayed_operations.get(hash))
-                            .or_else(|| mempool.branch_refused_operations.get(hash))
+                            .or_else(|| mempool.validated_operations.ops.get(hash))
                             .or_else(|| mempool.pending_operations.get(hash));
 
                         if let Some(op) = op {
@@ -142,12 +140,8 @@ pub fn mempool_effects<S>(
                 // received all pending operations from the particular peer
                 if peer.pending_full_content.is_empty() {
                     if let Some(head_state) = peer.head_state.clone() {
-                        let pending = mempool_state.pending_operations.keys();
-                        let known_valid = mempool_state.applied_operations.keys()
-                            .chain(mempool_state.branch_delayed_operations.keys())
-                            .chain(mempool_state.branch_refused_operations.keys());
-                        let known_valid = known_valid.cloned().collect();
-                        let pending = pending.cloned().collect();
+                        let pending = mempool_state.pending_operations.keys().cloned().collect();
+                        let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
                         store.dispatch(
                             MempoolBroadcastAction {
                                 address_exceptions: vec![*address],
@@ -168,11 +162,7 @@ pub fn mempool_effects<S>(
             // TODO(vlad): duplicated code
             if let Some(head_state) = mempool_state.local_head_state.clone() {
                 let pending = mempool_state.pending_operations.keys().cloned().collect();
-                let known_valid = mempool_state.applied_operations.keys()
-                    .chain(mempool_state.branch_delayed_operations.keys())
-                    .chain(mempool_state.branch_refused_operations.keys())
-                    .cloned()
-                    .collect();
+                let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
                 store.dispatch(
                     MempoolBroadcastAction {
                         address_exceptions: vec![],
