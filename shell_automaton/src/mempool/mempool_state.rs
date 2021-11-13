@@ -9,33 +9,39 @@ use crypto::hash::{OperationHash, ChainId, BlockHash};
 use tezos_messages::p2p::{
     encoding::{block_header::BlockHeader, operation::Operation},
 };
-use tezos_api::ffi::PrevalidatorWrapper;
+use tezos_api::ffi::{PrevalidatorWrapper, Applied, Errored};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
     // all blocks applied
-    pub applied_block: HashSet<BlockHash>,
+    pub(super) applied_block: HashSet<BlockHash>,
     // do not create prevalidator for any applied block, create prevalidator:
     // * for block received as CurrentHead
     // * for block of injected operation
-    pub prevalidator: Option<PrevalidatorWrapper>,
+    pub(super) prevalidator: Option<PrevalidatorWrapper>,
     //
-    pub requesting_prevalidator_for: Option<BlockHash>,
+    pub(super) requesting_prevalidator_for: Option<BlockHash>,
     // the current head applied
-    pub local_head_state: Option<HeadState>,
+    pub(super) local_head_state: Option<HeadState>,
     // let's track what our peers know, and what we waiting from them
-    pub peer_state: HashMap<SocketAddr, PeerState>,
+    pub(super) peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks, but not protocol
-    pub pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub validated_operations: ValidatedOperations,
+}
+
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+pub struct ValidatedOperations {
+    pub ops: HashMap<OperationHash, Operation>,
+    pub refused_ops: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
-    pub applied_operations: HashMap<OperationHash, (Operation, String)>,
+    pub applied: Vec<Applied>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
-    pub branch_delayed_operations: HashMap<OperationHash, Operation>,
+    pub branch_delayed: Vec<Errored>,
     // might be applied on a different branch if a reorganization happens
-    pub branch_refused_operations: HashMap<OperationHash, Operation>,
-    // let's memorize a hash of a bad operation and do not spend time checking it again
-    pub refused_operations: HashSet<OperationHash>,
+    pub branch_refused: Vec<Errored>,
+    pub refused: Vec<Errored>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -47,11 +53,11 @@ pub struct HeadState {
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
     // the current head of the peer
-    pub head_state: Option<HeadState>,
+    pub(super) head_state: Option<HeadState>,
     // we received mempool from the peer and gonna send GetOperations
-    pub requesting_full_content: HashSet<OperationHash>,
+    pub(super) requesting_full_content: HashSet<OperationHash>,
     // we sent GetOperations and pending full content of those operations
-    pub pending_full_content: HashSet<OperationHash>,
+    pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
-    pub known_operations: HashSet<OperationHash>,
+    pub(super) known_operations: HashSet<OperationHash>,
 }
