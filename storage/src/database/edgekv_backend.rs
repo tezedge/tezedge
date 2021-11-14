@@ -129,7 +129,6 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
         stat.total_write_duration += total_write_duration;
         stat.total_writes += 1;
 
-        stat.current_write_duration = total_write_duration;
         Ok(())
     }
 
@@ -146,6 +145,13 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
     }
 
     fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
+
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         if column == OperationsMetaStorage::column_name() {
             let db = self.db.get(column).ok_or(Error::EdgeKVError {
                 error: format!("Column Missing: {}", column),
@@ -179,6 +185,11 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
                     error: format!("{:?}", error),
                 })?;
         }
+
+        let total_update_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_update_duration += total_update_duration;
+        stat.total_updates += 1;
         Ok(())
     }
 
@@ -200,7 +211,6 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
         stat.total_read_duration += total_read_duration;
         stat.total_reads += 1;
 
-        stat.current_read_duration = total_read_duration;
         Ok(value)
     }
 
@@ -231,10 +241,11 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
     }
 
     fn flush(&self) -> Result<usize, Error> {
-        //Todo: expose flush in database
-        /*self.db.iter().for_each(|db|{
-
-        });*/
+        for (_,db) in self.db.iter() {
+            db.sync_all().map_err(|e| Error::EdgeKVError {
+                error: format!("EdgeKV Error: {:?}", e),
+            })?;
+        }
         Ok(0)
     }
 

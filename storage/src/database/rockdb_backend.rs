@@ -77,7 +77,6 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
         let mut stat = stats.entry(column).or_insert(Default::default());
         stat.total_write_duration += total_write_duration;
         stat.total_writes += 1;
-        stat.current_write_duration = total_write_duration;
         Ok(())
     }
 
@@ -92,14 +91,28 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
     }
 
     fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
+
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
-        self.db
+        let res = self.db
             .merge_cf_opt(cf, key, value, &default_write_options())
-            .map_err(Error::from)
+            .map_err(Error::from);
+
+        let total_update_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_update_duration += total_update_duration;
+        stat.total_updates += 1;
+
+        res
     }
 
     fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
@@ -120,7 +133,6 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
         stat.total_read_duration += total_read_duration;
         stat.total_reads += 1;
 
-        stat.current_read_duration = total_read_duration;
         Ok(value)
     }
 

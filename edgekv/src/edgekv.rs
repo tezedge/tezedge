@@ -15,7 +15,6 @@ use std::time::Duration;
 
 // TODO - TE-721: dir and config are not used
 pub struct EdgeKV {
-    dir: PathBuf,
     store: Arc<DataStore>,
     dropped: Arc<AtomicBool>,
     config: EdgeKVConfiguration,
@@ -33,7 +32,7 @@ impl Display for EdgeKV {
         writeln!(f, "{}", out)
     }
 }
-
+#[derive(Copy, Clone)]
 pub struct EdgeKVConfiguration {
     pub write_threshold: usize,
 }
@@ -53,7 +52,6 @@ impl EdgeKV {
         let store = Arc::new(DataStore::open(dir.as_ref())?);
         let config = EdgeKVConfiguration::default();
         let instance = Self {
-            dir: PathBuf::from(dir.as_ref()),
             store,
             dropped: Arc::new(AtomicBool::new(false)),
             config,
@@ -64,7 +62,7 @@ impl EdgeKV {
         let worker_name = p
             .file_name()
             .map_or("".to_string(), |name| name.to_string_lossy().to_string());
-        instance.start_background_workers(worker_name);
+        instance.start_background_workers(worker_name)?;
         Ok(instance)
     }
 
@@ -74,7 +72,6 @@ impl EdgeKV {
     ) -> Result<Self> {
         let store = Arc::new(DataStore::open(dir.as_ref())?);
         let instance = Self {
-            dir: PathBuf::from(dir.as_ref()),
             store,
             dropped: Arc::new(AtomicBool::new(false)),
             config,
@@ -85,15 +82,15 @@ impl EdgeKV {
         let worker_name = p
             .file_name()
             .map_or("".to_string(), |name| name.to_string_lossy().to_string());
-        instance.start_background_workers(worker_name);
+        instance.start_background_workers(worker_name)?;
         Ok(instance)
     }
 
-    fn start_background_workers(&self, worker_name: String) {
+    fn start_background_workers(&self, worker_name: String) -> Result<()> {
         let is_dropped = self.dropped.clone();
         let store = self.store.clone();
+        let config = self.config;
         //let max_hint_file_size = self.config.max_hint_file_size;
-        // TODO - TE-721: handle this error
         thread::Builder::new()
             .name(format!("edgekv-{}", worker_name))
             .spawn(move || {
@@ -103,18 +100,20 @@ impl EdgeKV {
                     if is_dropped {
                         break;
                     }
-                    if store.buffer_size() >= 1_000 {
-                        store.sync_all(true);
-                    } else {
-                        store.sync_all(false);
+                    match store.sync_all(store.buffer_size() >= config.write_threshold) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            //Todo log Error
+                            println!("Error {:?}", e)
+                        }
                     }
                 }
                 drop(store)
-            });
+            })?;
+        Ok(())
     }
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
-        // TODO - TE-721: handle this error
-        self.store.put(key, value);
+        self.store.put(key, value)?;
         Ok(())
     }
     pub fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>> {
@@ -156,12 +155,10 @@ impl EdgeKV {
         let merged_value = merge_operator(&key, old_value, &value);
         match merged_value {
             None => {
-                // TODO - TE-721: handle this error
-                self.delete(&key);
+                self.delete(&key)?;
             }
             Some(value) => {
-                // TODO - TE-721: handle this error
-                self.put(key, value);
+                self.put(key, value)?;
             }
         }
         Ok(())
@@ -200,7 +197,7 @@ impl Drop for EdgeKV {
 
 pub struct DBIterator {
     store: Arc<DataStore>,
-    inner: Vec<Vec<u8>>,
+    inner: Vec<Arc<Vec<u8>>>,
     cursor: usize,
 }
 

@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
 use std::ops::{Add, RangeBounds};
 use std::path::{Path, PathBuf};
-use std::sync::{RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard, Arc};
 
 use crate::Result;
 use std::io::{BufReader, Write};
@@ -22,7 +22,7 @@ use std::cmp::max;
 
 use std::option::Option::Some;
 
-use bloomfilter::Bloom;
+use lru_cache::LruCache;
 
 pub trait MergeOperator: Fn(&[u8], Option<Vec<u8>>, &[u8]) -> Option<Vec<u8>> {}
 
@@ -40,19 +40,6 @@ pub struct KeyDirEntry {
 enum DataIndex {
     Persisted(KeyDirEntry),
     InBuffer,
-}
-
-impl DataIndex {
-    // TODO - TE-721: unused
-    pub fn size_in_mem(&self) -> usize {
-        match self {
-            Persisted(s) => {
-                return s.size();
-            }
-            DataIndex::InBuffer => {}
-        }
-        std::mem::size_of_val(self)
-    }
 }
 
 impl KeyDirEntry {
@@ -73,13 +60,14 @@ impl KeyDirEntry {
     }
 }
 
+pub type IVec = Arc<Vec<u8>>;
+
 pub struct KeysDir {
-    bloom_filters: RwLock<BTreeMap<String, Bloom<Vec<u8>>>>,
-    keys: RwLock<BTreeMap<Vec<u8>, DataIndex>>,
+    keys: RwLock<BTreeMap<IVec, DataIndex>>,
 }
 
 impl KeysDir {
-    pub fn insert(&self, key: Vec<u8>, value: KeyDirEntry) -> Result<()> {
+    pub fn insert(&self, key: IVec, value: KeyDirEntry) -> Result<()> {
         let mut keys_dir_writer = self
             .keys
             .write()
@@ -97,22 +85,12 @@ impl KeysDir {
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
         keys_dir_writer.extend(
             bulk.iter()
-                .map(|(k, v)| (k.clone(), DataIndex::Persisted(v.clone()))),
+                .map(|(k, v)| (Arc::new(k.clone()), DataIndex::Persisted(v.clone()))),
         );
         Ok(())
     }
 
-    pub fn insert_bloom(&self, file_id: String, value: Bloom<Vec<u8>>) -> Result<()> {
-        let mut bloom_filters_writer = self
-            .bloom_filters
-            .write()
-            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
-
-        bloom_filters_writer.insert(file_id, value);
-        Ok(())
-    }
-
-    pub fn partial_insert(&self, key: Vec<u8>) -> Result<()> {
+    pub fn partial_insert(&self, key: IVec) -> Result<()> {
         let mut keys_dir_writer = self
             .keys
             .write()
@@ -122,7 +100,7 @@ impl KeysDir {
         Ok(())
     }
 
-    pub fn remove(&self, key: &[u8]) -> Result<()> {
+    pub fn remove(&self, key: &Vec<u8>) -> Result<()> {
         let mut keys_dir_writer = self
             .keys
             .write()
@@ -140,8 +118,7 @@ impl KeysDir {
         Ok(())
     }
 
-    //TODO - TE-721: change to use references
-    pub fn keys(&self) -> Vec<Vec<u8>> {
+    pub fn keys(&self) -> Vec<Arc<Vec<u8>>> {
         let keys_dir_reader = match self.keys.read() {
             Ok(rdr) => rdr,
             Err(_) => {
@@ -152,8 +129,7 @@ impl KeysDir {
         keys_dir_reader.iter().map(|(k, _)| k.clone()).collect()
     }
 
-    //TODO - TE-721: change to use references
-    pub fn range<R>(&self, range: R) -> Vec<Vec<u8>>
+    pub fn range<R>(&self, range: R) -> Vec<Arc<Vec<u8>>>
     where
         R: RangeBounds<Vec<u8>>,
     {
@@ -169,8 +145,7 @@ impl KeysDir {
             .collect()
     }
 
-    //TODO - TE-721: change to use references
-    pub fn prefix(&self, prefix: &Vec<u8>) -> Vec<Vec<u8>> {
+    pub fn prefix(&self, prefix: &Vec<u8>) -> Vec<Arc<Vec<u8>>> {
         let keys_dir_reader = match self.keys.read() {
             Ok(rdr) => rdr,
             Err(_) => {
@@ -184,7 +159,7 @@ impl KeysDir {
             .collect()
     }
 
-    pub fn get(&self, key: &[u8]) -> Option<KeyDirEntry> {
+    pub fn get(&self, key: &Vec<u8>) -> Option<KeyDirEntry> {
         let keys_dir_reader = match self.keys.read() {
             Ok(rdr) => rdr,
             Err(_) => {
@@ -213,29 +188,19 @@ impl KeysDir {
         keys_dir_reader.len()
     }
 
-    pub fn contains(&self, key: &[u8]) -> Result<bool> {
-        let bloom_filters_writer = self
-            .bloom_filters
-            .read()
-            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
-        for (_, bloomfilter) in bloom_filters_writer.iter() {
-            if bloomfilter.check(&key.to_vec()) {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
+    pub fn contains(&self, key: &Vec<u8>) -> Result<bool> {
+        let keys_dir_reader = self.keys.read()
+            .map_err(|e|{EdgeKVError::RWLockPoisonError(format!("{}", e))})?;
+        Ok(keys_dir_reader.contains_key(key))
     }
 }
 
 impl KeysDir {
     pub fn new(file_pairs: &BTreeMap<String, FilePair>) -> Result<Self> {
         let keys_dir = Self {
-            bloom_filters: Default::default(),
             keys: Default::default(),
         };
         for (_, fp) in file_pairs {
-            fp.fetch_bloom_filters(&keys_dir)?;
             fp.fetch_hint_entries(&keys_dir)?;
         }
         Ok(keys_dir)
@@ -288,9 +253,10 @@ pub struct DataStore {
     active_file: RwLock<ActiveFilePair>,
     keys_dir: KeysDir,
     index_dir: IndexDir,
-    buffer: RwLock<HashMap<Vec<u8>, Vec<u8>>>,
+    buffer: RwLock<HashMap<Arc<Vec<u8>>, Arc<Vec<u8>>>>,
     double_buffer: HashMap<Vec<u8>, DataEntry>,
     buffer_size: RwLock<usize>,
+    cache : RwLock<LruCache<Arc<Vec<u8>>, Arc<Vec<u8>>>>
 }
 
 pub fn fetch_double_buffer_file(
@@ -327,6 +293,7 @@ impl DataStore {
             buffer: RwLock::new(Default::default()),
             double_buffer,
             buffer_size: RwLock::new(0),
+            cache: RwLock::new(LruCache::new(24_000))
         };
         instance.lock()?;
         Ok(instance)
@@ -354,6 +321,8 @@ impl DataStore {
     }
 
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
+        let key = Arc::new(key);
+        let value = Arc::new(value);
         let mut buffer_size = self
             .buffer_size
             .write()
@@ -364,20 +333,35 @@ impl DataStore {
             .buffer
             .write()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
+
+        let mut cache = self
+            .cache
+            .write()
+            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
+
         buffer.insert(key.clone(), value.clone());
-        // TODO - TE-721: handle this error
-        self.keys_dir.partial_insert(key);
+        self.keys_dir.partial_insert(key.clone())?;
+        cache.insert(key.clone(), value.clone());
         Ok(())
     }
 
-    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>> {
         let buffer = self
             .buffer
             .read()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
 
+        let mut cache = self
+            .cache
+            .write()
+            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
+
         if let Some(value) = buffer.get(key) {
-            return Ok(Some(value.clone()));
+            return Ok(Some(value.to_vec()));
+        }
+
+        if let Some(value) = cache.get_mut(key) {
+            return Ok(Some(value.to_vec()));
         }
 
         let key_dir_entry = if let Some(entry) = self.keys_dir.get(key) {
@@ -395,14 +379,19 @@ impl DataStore {
             .ok_or(EdgeKVError::CorruptData)?;
         if let Ok(data_entry) = index.read(key_dir_entry.data_entry_position, key_dir_entry.size())
         {
+            cache.insert(Arc::new(key.clone()), Arc::new(data_entry.value()));
             return Ok(Some(data_entry.value()));
         }
         Ok(None)
     }
 
-    pub fn delete(&self, key: &[u8]) -> Result<()> {
+    pub fn delete(&self, key: &Vec<u8>) -> Result<()> {
         let mut buffer = self
             .buffer
+            .write()
+            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
+        let mut cache = self
+            .cache
             .write()
             .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
 
@@ -413,12 +402,12 @@ impl DataStore {
 
         buffer.remove(key);
         active_file.remove(key.to_vec())?;
-        // TODO - TE-721: handle this error
-        self.keys_dir.remove(key);
+        self.keys_dir.remove(key)?;
+        cache.remove(key);
         Ok(())
     }
 
-    pub fn contains(&self, key: &[u8]) -> Result<bool> {
+    pub fn contains(&self, key: &Vec<u8>) -> Result<bool> {
         let buffer = self
             .buffer
             .read()
@@ -450,7 +439,7 @@ impl DataStore {
         Ok(())
     }
 
-    pub fn keys(&self) -> Vec<Vec<u8>> {
+    pub fn keys(&self) -> Vec<Arc<Vec<u8>>> {
         self.keys_dir.keys()
     }
 
@@ -460,7 +449,7 @@ impl DataStore {
         Ok(())
     }
 
-    pub fn range<R>(&self, range: R) -> Vec<Vec<u8>>
+    pub fn range<R>(&self, range: R) -> Vec<Arc<Vec<u8>>>
     where
         R: RangeBounds<Vec<u8>>,
     {
@@ -493,7 +482,7 @@ impl DataStore {
         }
     }
 
-    pub fn prefix(&self, prefix: &Vec<u8>) -> Vec<Vec<u8>> {
+    pub fn prefix(&self, prefix: &Vec<u8>) -> Vec<Arc<Vec<u8>>> {
         self.keys_dir.prefix(prefix)
     }
 
@@ -515,8 +504,7 @@ impl DataStore {
                     if keys_dir_entry.file_id == index.file_id() {
                         let data_entry = index.read(hint.data_entry_position(), hint.size())?;
                         let key_entry = merged_file_pair.write(&data_entry, &self.keys_dir)?;
-                        // TODO - TE-721: handle this error
-                        self.keys_dir.insert(hint.key(), key_entry);
+                        self.keys_dir.insert(Arc::new(hint.key()), key_entry)?;
                     }
                 }
             }
@@ -524,8 +512,7 @@ impl DataStore {
             mark_for_removal.push(index.hint_file_path());
         }
 
-        // TODO - TE-721: handle this error
-        fs_extra::remove_items(&mark_for_removal);
+        fs_extra::remove_items(&mark_for_removal)?;
 
         Ok(())
     }
@@ -546,21 +533,15 @@ impl DataStore {
         buffer_file_path.push(self.dir.as_path());
         buffer_file_path.push(format!("{}.buff", file_name.as_str()));
 
-        let mut bloom_filter_file_path = PathBuf::new();
-        bloom_filter_file_path.push(self.dir.as_path());
-        bloom_filter_file_path.push(format!("{}.blmf", active_file.file_id()));
-
         let mut buffer_file = OpenOptions::new()
             .create(true)
             .write(true)
             .open(buffer_file_path.as_path())?;
-        let mut bloom_filter = Bloom::new(20000, max(buffer.capacity(), 10));
 
         let single_buffer: Vec<_> = buffer
             .iter()
             .flat_map(|(key, value)| {
-                bloom_filter.set(key);
-                let data_entry = DataEntry::new(key.clone(), value.clone());
+                let data_entry = DataEntry::new(key.to_vec(), value.to_vec());
                 data_entry.encode()
             })
             .collect();
@@ -569,15 +550,13 @@ impl DataStore {
 
         let mut key_entries: BTreeMap<Vec<u8>, KeyDirEntry> = BTreeMap::new();
         for (key, value) in buffer.drain() {
-            let data_entry = DataEntry::new(key.clone(), value);
+            let data_entry = DataEntry::new(key.to_vec(), value.to_vec());
             let key_dir_entry = active_file.write(&data_entry, &self.keys_dir)?;
-            key_entries.insert(key, key_dir_entry);
+            key_entries.insert(key.to_vec(), key_dir_entry);
         }
         active_file.sync()?;
-        // TODO - TE-721: handle this error
-        self.keys_dir.insert_bulk(key_entries);
-        // TODO - TE-721: handle this error
-        fs_extra::remove_items(&vec![buffer_file_path.as_path()]);
+        self.keys_dir.insert_bulk(key_entries)?;
+        fs_extra::remove_items(&vec![buffer_file_path.as_path()])?;
         if split_active_file {
             self.try_split(&mut active_file)?;
             self.index_dir.insert(active_file.as_file_pair().clone())?;
@@ -795,6 +774,6 @@ mod tests {
     }
 
     fn clean_up() {
-        fs_extra::dir::remove("./testdir").ok();
+        fs_extra::dir::remove("./testdir/_test_data_store").ok();
     }
 }

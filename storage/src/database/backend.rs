@@ -25,10 +25,9 @@ pub struct DBStats {
     pub total_writes: u64,
     #[serde(serialize_with = "to_u128")]
     pub total_write_duration: Duration,
+    pub total_updates: u64,
     #[serde(serialize_with = "to_u128")]
-    pub current_read_duration: Duration,
-    #[serde(serialize_with = "to_u128")]
-    pub current_write_duration: Duration,
+    pub total_update_duration: Duration,
 }
 
 fn to_u128<S>(x: &Duration, s: S) -> Result<S::Ok, S::Error>

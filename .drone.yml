@@ -6641,6 +6641,7 @@ steps:
           echo "===> Block level $b"
         done
         '
+      - curl -s localhost:8732/stats/dbrw | jq .
 
   - name: tezedge-old-node
     image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos

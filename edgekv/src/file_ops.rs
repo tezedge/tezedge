@@ -10,22 +10,19 @@ use fs2::FileExt;
 use fs_extra::dir::DirOptions;
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-
-use bloomfilter::Bloom;
+use std::sync::Arc;
 
 const DATA_FILE_EXTENSION: &str = "data";
 const HINT_FILE_EXTENSION: &str = "hint";
 const BUFFER_FILE_EXTENSION: &str = "buff";
-const BLOOM_FILTER_FILE_EXTENSION: &str = "blmf";
 
 #[derive(Debug, Clone)]
 pub struct FilePair {
     file_id: String,
     data_file_path: PathBuf,
     hint_file_path: PathBuf,
-    bloom_filter_file_path: PathBuf,
 }
 
 impl FilePair {
@@ -34,7 +31,6 @@ impl FilePair {
             file_id: file_id.to_string(),
             data_file_path: Default::default(),
             hint_file_path: Default::default(),
-            bloom_filter_file_path: Default::default(),
         }
     }
 
@@ -44,10 +40,6 @@ impl FilePair {
 
     pub fn hint_file_path(&self) -> String {
         String::from(self.hint_file_path.to_string_lossy())
-    }
-
-    pub fn bloom_filter_file_path(&self) -> String {
-        String::from(self.bloom_filter_file_path.to_string_lossy())
     }
 }
 #[derive(Debug)]
@@ -62,8 +54,7 @@ impl Index {
         let data = File::open(self.data_file_path.as_path())?;
         let mut reader = BufReader::new(data);
 
-        // TODO - TE-721: handle this error
-        reader.seek(SeekFrom::Start(entry_position));
+        reader.seek(SeekFrom::Start(entry_position))?;
 
         let data_entry = DataEntry::decode(&mut reader)?;
 
@@ -118,29 +109,7 @@ impl Index {
 }
 
 impl FilePair {
-    pub fn fetch_bloom_filters(&self, keys_dir: &KeysDir) -> Result<()> {
-        let mut raw_bloom_filter = Vec::new();
-        let bloomfilter_file = File::open(&self.bloom_filter_file_path.as_path())?;
-        let mut rdr = BufReader::new(bloomfilter_file);
 
-        // TODO - TE-721: handle this error
-        rdr.read_to_end(&mut raw_bloom_filter);
-
-        if raw_bloom_filter.is_empty() {
-            return Ok(());
-        }
-
-        //println!("[fetch_bloom_filters] Raw Bloom: {:?}", raw_bloom_filter);
-        let bloomfilter: Bloom<Vec<u8>> = match bincode::deserialize(&raw_bloom_filter) {
-            Ok(bf) => bf,
-            Err(_) => return Ok(()),
-        };
-
-        // TODO - TE-721: handle this error
-        keys_dir.insert_bloom(self.file_id.to_string(), bloomfilter);
-
-        Ok(())
-    }
     pub fn file_id(&self) -> String {
         self.file_id.to_owned()
     }
@@ -153,8 +122,7 @@ impl FilePair {
                 return Err(EdgeKVError::CorruptData);
             }
             if hint_entry.is_deleted() {
-                // TODO - TE-721: handle this error
-                keys_dir.remove(&hint_entry.key());
+                keys_dir.remove(&hint_entry.key())?;
             } else {
                 let key_dir_entry = KeyDirEntry::new(
                     self.file_id.to_string(),
@@ -162,8 +130,7 @@ impl FilePair {
                     hint_entry.value_size(),
                     hint_entry.data_entry_position(),
                 );
-                // TODO - TE-721: handle this error
-                keys_dir.insert(hint_entry.key(), key_dir_entry);
+                keys_dir.insert(Arc::new(hint_entry.key()), key_dir_entry)?;
             }
         }
         Ok(())
@@ -253,16 +220,14 @@ impl ActiveFilePair {
         let mut dfw = BufWriter::new(&self.data_file);
         let data_entry_position = dfw.seek(SeekFrom::End(0))?;
         dfw.write_all(&entry.encode())?;
-        // TODO - TE-721: handle this error
-        dfw.flush();
+        dfw.flush()?;
 
         //Append hint to hint file
         let hint_entry = HintEntry::from(entry, data_entry_position);
         let mut hfw = BufWriter::new(&self.hint_file);
         hfw.seek(SeekFrom::End(0))?;
         hfw.write_all(&hint_entry.encode())?;
-        // TODO - TE-721: handle htis error
-        hfw.flush();
+        hfw.flush()?;
 
         self.data_file.unlock()?;
         self.hint_file.unlock()?;
@@ -282,7 +247,7 @@ impl ActiveFilePair {
         hfw.seek(SeekFrom::End(0))?;
         hfw.write_all(&hint_entry.encode())?;
         // TODO - TE-721: handle this error
-        hfw.flush();
+        hfw.flush()?;
         self.hint_file.unlock()?;
         Ok(())
     }
@@ -302,10 +267,6 @@ pub fn create_new_file_pair<P: AsRef<Path>>(dir: P) -> Result<FilePair> {
     hint_file_path.push(format!("{}.{}", file_name, HINT_FILE_EXTENSION));
     hint_file_path.set_extension(HINT_FILE_EXTENSION);
 
-    let mut bloom_filter_file_path = PathBuf::new();
-    bloom_filter_file_path.push(dir.as_ref());
-    bloom_filter_file_path.push(format!("{}.{}", file_name, BLOOM_FILTER_FILE_EXTENSION));
-    bloom_filter_file_path.set_extension(BLOOM_FILTER_FILE_EXTENSION);
 
     OpenOptions::new()
         .create_new(true)
@@ -316,16 +277,10 @@ pub fn create_new_file_pair<P: AsRef<Path>>(dir: P) -> Result<FilePair> {
         .write(true)
         .open(hint_file_path.as_path())?;
 
-    OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(bloom_filter_file_path.as_path())?;
-
     Ok(FilePair {
         data_file_path,
         hint_file_path,
         file_id: file_name,
-        bloom_filter_file_path,
     })
 }
 
@@ -359,7 +314,6 @@ pub fn fetch_file_pairs<P: AsRef<Path>>(
             DATA_FILE_EXTENSION => {}
             HINT_FILE_EXTENSION => {}
             BUFFER_FILE_EXTENSION => {}
-            BLOOM_FILTER_FILE_EXTENSION => {}
             _ => {
                 continue;
             }
@@ -381,12 +335,6 @@ pub fn fetch_file_pairs<P: AsRef<Path>>(
                     .or_insert(FilePair::new(file_name));
                 file_pair.hint_file_path = file_path.to_path_buf();
             }
-            BLOOM_FILTER_FILE_EXTENSION => {
-                let file_pair = file_pairs
-                    .entry(file_name.to_owned())
-                    .or_insert(FilePair::new(file_name));
-                file_pair.bloom_filter_file_path = file_path.to_path_buf();
-            }
             BUFFER_FILE_EXTENSION => {
                 buffer_files.insert(
                     file_name
@@ -399,24 +347,4 @@ pub fn fetch_file_pairs<P: AsRef<Path>>(
         };
     }
     Ok((file_pairs, buffer_files))
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::file_ops::{create_new_file_pair, fetch_file_pairs};
-
-    #[test]
-    fn test_create_file_pairs() {
-        create_new_file_pair("./testdir").unwrap();
-        create_new_file_pair("./testdir").unwrap();
-        create_new_file_pair("./testdir").unwrap();
-
-        let (b, _) = fetch_file_pairs("./testdir").unwrap();
-        println!("{:#?}", b);
-        clean_up()
-    }
-
-    fn clean_up() {
-        fs_extra::dir::remove("./testdir").ok();
-    }
 }

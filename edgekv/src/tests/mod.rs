@@ -6,12 +6,11 @@ mod common;
 use crate::edgekv::EdgeKV;
 use log::{debug, warn};
 
-use bloomfilter::Bloom;
 use std::sync::Arc;
 
 use serial_test::serial;
-const N_THREADS: usize = 2;
-const N_PER_THREAD: usize = 5;
+const N_THREADS: usize = 4;
+const N_PER_THREAD: usize = 10;
 const N: usize = N_THREADS * N_PER_THREAD;
 // NB N should be multiple of N_THREADS
 const SPACE: usize = N;
@@ -182,7 +181,7 @@ fn tree_big_keys_iterator() {
     assert!(tree_scan.next().is_none());
 }
 
-#[test]
+/*#[test]
 #[serial]
 fn concurrent_tree_ops_no() {
     clean_up("_test_concurrent_tree_ops");
@@ -294,7 +293,7 @@ fn concurrent_tree_ops_no() {
 
     clean_up("_test_monotonic_inserts");
 }
-
+*/
 fn concatenate_merge(
     _key: &[u8],                // the key being merged
     old_value: Option<Vec<u8>>, // the previous value, if one existed
@@ -333,19 +332,4 @@ fn test_merge_operator() {
     //db.delete(&k.to_vec());
     //db.merge(concatenate_merge, k.to_vec(), vec![4]);
     //assert_eq!(db.get(&k.to_vec()).unwrap().unwrap(), vec![4]);
-}
-
-#[test]
-#[serial]
-fn test_bloom_filter() {
-    let mut bloomfilter = Bloom::new(4096, 10);
-    bloomfilter.set(&vec![1_u8, 2_u8, 3_u8]);
-    bloomfilter.set(&vec![4_u8, 5_u8, 6_u8]);
-    bloomfilter.set(&vec![7_u8, 8_u8, 9_u8]);
-
-    let decode = bincode::serialize(&bloomfilter).unwrap();
-    let de_bloomfilter: Bloom<Vec<u8>> = bincode::deserialize(&decode).unwrap();
-
-    assert_eq!(de_bloomfilter.check(&vec![4_u8, 5_u8, 6_u8]), true);
-    assert_eq!(de_bloomfilter.check(&vec![4_u8, 7_u8, 6_u8]), false);
 }

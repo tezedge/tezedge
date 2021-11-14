@@ -70,8 +70,8 @@ impl Decoder for DataEntry {
         let mut raw_value_bytes = vec![0_u8; out.value_size as usize];
 
         // TODO - TE-721: handle these errors
-        rdr.read_exact(&mut raw_key_bytes);
-        rdr.read_exact(&mut raw_value_bytes);
+        rdr.read_exact(&mut raw_key_bytes)?;
+        rdr.read_exact(&mut raw_value_bytes)?;
 
         out.key = raw_key_bytes;
         out.value = raw_value_bytes;
@@ -233,7 +233,7 @@ impl Decoder for HintEntry {
 
         let mut raw_key_bytes = vec![0_u8; out.key_size as usize];
         // TODO - TE-721: handle this error
-        rdr.read_exact(&mut raw_key_bytes);
+        rdr.read_exact(&mut raw_key_bytes)?;
         out.key = raw_key_bytes;
 
         Ok(out)
