@@ -8,6 +8,8 @@ use crypto::{crypto_box::PrecomputedKey, nonce::Nonce, CryptoError};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerChunkReadError {
+    /// Received chunk size = 0.
+    ZeroSize,
     IO(String),
     Crypto(String),
 }
