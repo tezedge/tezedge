@@ -541,3 +541,27 @@ fn test_handshaking_timeout_outgoing() {
         .get_blacklisted_ip(&peer_id.to_ipv4().ip())
         .is_some());
 }
+
+#[test]
+fn test_handshaking_connection_message_0_bytes_chunk() {
+    let mut cluster = build_cluster(0.0);
+
+    let peer_id = cluster.peer_init(0.0);
+
+    cluster.connect_to_peer(peer_id);
+    cluster.set_peer_connected(peer_id);
+
+    let peer = cluster.peer(peer_id);
+    peer.set_write_cond(IOCondition::NoLimit);
+    peer.set_read_cond(IOCondition::NoLimit);
+    peer.send_bytes(&[0, 0]);
+    cluster.dispatch_peer_ready_event(peer_id, true, true, false);
+
+    dbg!(cluster.state());
+    assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_none());
+    assert!(cluster
+        .state()
+        .peers
+        .get_blacklisted_ip(&peer_id.to_ipv4().ip())
+        .is_some());
+}
