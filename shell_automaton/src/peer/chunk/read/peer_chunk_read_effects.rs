@@ -41,6 +41,15 @@ pub fn peer_chunk_read_effects<S>(
                             chunk_state, ..
                         } => {
                             return match chunk_state {
+                                PeerChunkReadState::PendingBody { size, .. } if *size == 0 => {
+                                    store.dispatch(
+                                        PeerChunkReadErrorAction {
+                                            address: action.address,
+                                            error: PeerChunkReadError::ZeroSize,
+                                        }
+                                        .into(),
+                                    );
+                                }
                                 PeerChunkReadState::PendingSize { .. }
                                 | PeerChunkReadState::PendingBody { .. } => {
                                     if peer.try_read_loop.can_be_started() {
