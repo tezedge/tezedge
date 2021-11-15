@@ -1,17 +1,17 @@
 version: "3"
 
 services:
-  tezedge-memprof:
-    image: tezedge/tezedge-memprof:v1.6.7
-    privileged: true
-    environment:
-      - TEZEDGE_NODE_NAME=node_monitoring_tezedge-node_1
-    volumes:
-      - "/sys/kernel/debug:/sys/kernel/debug:rw"
-      - "/proc:/proc:rw"
-      - "/var/run/docker.sock:/var/run/docker.sock:rw"
-    ports:
-      - "17832:17832"
+  # tezedge-memprof:
+  #   image: tezedge/tezedge-memprof:v1.6.7
+  #   privileged: true
+  #   environment:
+  #     - TEZEDGE_NODE_NAME=node_monitoring_tezedge-node_1
+  #   volumes:
+  #     - "/sys/kernel/debug:/sys/kernel/debug:rw"
+  #     - "/proc:/proc:rw"
+  #     - "/var/run/docker.sock:/var/run/docker.sock:rw"
+  #   ports:
+  #     - "17832:17832"
 
   tezedge-debugger:
     image: tezedge/tezedge-debugger:v1.6.7
@@ -31,12 +31,10 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.13.0-frame-pointers-enabled
+    image: tezedge:timings
     pid: host
     network_mode: host
-    environment:
-      - TEZOS_CONTEXT=index-log-size=2_500_000
-    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--context-stats-db-path", "context-stats-db", "--peer-thresh-low", "15", "--peer-thresh-high", "30", "--record-shell-automaton-state-snapshots", "--record-shell-automaton-actions"]
+    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "tezedge", "--context-stats-db-path", "context-stats-db", "--peer-thresh-low", "15", "--peer-thresh-high", "30", "--context-kv-store", "ondisk"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -47,8 +45,8 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
-    depends_on:
-      - "tezedge-memprof"
+    # depends_on:
+    #   - "tezedge-memprof"
 
   ocaml-node:
     image: tezos/tezos:v9-release
@@ -67,7 +65,7 @@ services:
       - "ocaml-shared-data:/var/run/tezos/node"
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:latest
     environment:
       # need a better way to provide such information
       - API=[{"id":"tezedge","type":"tezedge","name":"tezedge.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"},{"name":"state"}]},{"id":"octez","type":"octez","name":"octez.${NODE_HOSTNAME_OR_IP:-localhost}","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18733","p2p_port":9733,"features":[{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
