@@ -57,7 +57,8 @@ use crate::protocol::ProtocolAction;
 use crate::mempool::{
     MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
     MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-    MempoolOperationInjectAction, BlockAppliedAction,
+    MempoolOperationInjectAction, BlockAppliedAction, MempoolValidateStartAction,
+    MempoolRpcRespondAction,
 };
 
 use crate::storage::request::{
@@ -247,6 +248,8 @@ pub enum Action {
     MempoolGetOperationsPending(MempoolGetOperationsPendingAction),
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
     MempoolOperationInject(MempoolOperationInjectAction),
+    MempoolValidateStart(MempoolValidateStartAction),
+    MempoolRpcRespond(MempoolRpcRespondAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     BlockApplied(BlockAppliedAction),
