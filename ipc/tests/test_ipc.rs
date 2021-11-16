@@ -13,6 +13,7 @@ mod common;
 
 #[test]
 #[serial]
+#[ignore] // Disabled for now, this crate is deprecated
 fn ipc_fork_and_client_exchange() -> Result<(), anyhow::Error> {
     let sock_path = temp_sock();
     assert!(!sock_path.exists());
@@ -69,6 +70,7 @@ fn ipc_fork_and_client_exchange() -> Result<(), anyhow::Error> {
 #[serial]
 // TODO: TE-218, ignored in PR #521, re-enable once TE-218 has been solved
 #[cfg_attr(target_os = "macos", ignore)]
+#[ignore] // Disabled for now, this crate is deprecated
 fn ipc_fork_and_try_read_with_timeout() -> Result<(), anyhow::Error> {
     let sock_path = temp_sock();
     assert!(!sock_path.exists());
@@ -144,6 +146,7 @@ fn ipc_fork_and_try_read_with_timeout() -> Result<(), anyhow::Error> {
 
 #[test]
 #[serial]
+#[ignore] // Disabled for now, this crate is deprecated
 fn ipc_accept_timeout() -> Result<(), anyhow::Error> {
     let mut server: IpcServer<String, String> = IpcServer::bind_path(&temp_sock())?;
     let result = server.try_accept(Duration::from_secs(2));

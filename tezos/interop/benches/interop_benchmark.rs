@@ -8,12 +8,12 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use crypto::hash::ProtocolHash;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData,
-    RustBytes, TezosRuntimeConfiguration,
+    RustBytes,
 };
 
 use ocaml_interop::{OCamlRuntime, ToOCaml};
 use tezos_interop::runtime;
-use tezos_interop::{ffi, runtime::OCamlBlockPanic};
+use tezos_interop::runtime::OCamlBlockPanic;
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -25,24 +25,24 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
     use ocaml_interop::ocaml;
-    use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+    use tezos_conv::*;
 
     ocaml! {
-        pub fn setup_benchmark_apply_block_response(response: ApplyBlockResponse);
+        pub fn setup_benchmark_apply_block_response(response: OCamlApplyBlockResponse);
         pub fn apply_block_request_decoded_roundtrip(
-            request: ApplyBlockRequest,
-        ) -> ApplyBlockResponse;
+            request: OCamlApplyBlockRequest,
+        ) -> OCamlApplyBlockResponse;
     }
 }
 
 fn init_bench_runtime() {
     // init runtime and turn on/off ocaml logging
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration {
-        debug_mode: false,
-        compute_context_action_tree_hashes: false,
-        log_enabled: false,
-    })
-    .unwrap();
+    //ffi::change_runtime_configuration(TezosRuntimeConfiguration {
+    //    debug_mode: false,
+    //    compute_context_action_tree_hashes: false,
+    //    log_enabled: false,
+    //})
+    //.unwrap();
 }
 
 fn block_operations_from_hex(

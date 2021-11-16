@@ -1,6 +1,6 @@
 [package]
 name = "tezos_messages"
-version = "1.9.1"
+version = "1.10.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -23,6 +23,9 @@ nom = "6.1"
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_encoding_derive = { path = "../encoding-derive" }
+quickcheck = "1.0.3"
+quickcheck_derive = { git = "https://github.com/tezedge/quickcheck_derive" }
+rand = "0.7.3"
 
 [[bench]]
 name = "message_benchmark"

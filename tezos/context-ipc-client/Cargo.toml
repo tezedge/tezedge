@@ -1,0 +1,15 @@
+[package]
+name = "tezos_context_ipc_client"
+version = "1.10.0"
+edition = "2018"
+authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0"
+# local dependencies
+async_ipc = { path = "../../async-ipc" }
+crypto = { path = "../../crypto" }
+tezos_context_api = { path = "../context-api" }
+tezos_protocol_ipc_client = { path = "../protocol-ipc-client" }

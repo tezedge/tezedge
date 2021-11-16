@@ -6,6 +6,7 @@ use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
 use anyhow::bail;
+use async_ipc::IpcError;
 use hex::FromHexError;
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,6 @@ use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
-use tezos_wrapper::InternalPoolError;
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
@@ -67,19 +67,21 @@ macro_rules! parse_block_hash_or_fail {
 #[derive(Debug, Error)]
 pub enum RpcServiceError {
     #[error("Storage read error, reason: {error:?}")]
-    StorageError { error: storage::StorageError },
+    StorageError {
+        #[from]
+        error: StorageError,
+    },
+    #[error("IPC error: {reason}")]
+    IpcError {
+        #[from]
+        reason: IpcError,
+    },
     #[error("No data found error, reason: {reason:?}")]
     NoDataFoundError { reason: String },
     #[error("Invalid parameters, reason: {reason:?}")]
     InvalidParameters { reason: String },
     #[error("Unexpected/unhandled error occurred, reason: {reason:?}")]
     UnexpectedError { reason: String },
-}
-
-impl From<storage::StorageError> for RpcServiceError {
-    fn from(error: StorageError) -> Self {
-        Self::StorageError { error }
-    }
 }
 
 impl From<FromHexError> for RpcServiceError {
@@ -100,14 +102,6 @@ impl From<MessageHashError> for RpcServiceError {
 
 impl From<serde_json::Error> for RpcServiceError {
     fn from(error: serde_json::Error) -> Self {
-        Self::UnexpectedError {
-            reason: format!("{}", error),
-        }
-    }
-}
-
-impl From<InternalPoolError> for RpcServiceError {
-    fn from(error: InternalPoolError) -> Self {
         Self::UnexpectedError {
             reason: format!("{}", error),
         }

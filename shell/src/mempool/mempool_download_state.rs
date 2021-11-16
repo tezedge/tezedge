@@ -3,11 +3,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rand::Rng;
-use tezedge_actor_system::actor::{ActorReference, ActorUri};
+use slog::Logger;
 
 use crypto::hash::OperationHash;
 use networking::PeerId;
@@ -15,6 +16,7 @@ use shell_integration::MempoolOperationRef;
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, Mempool, OperationMessage};
 
+use crate::shell_automaton_manager::ShellAutomatonSender;
 use crate::state::data_requester::tell_peer;
 use crate::state::peer_state::PeerState;
 
@@ -198,7 +200,9 @@ impl MempoolOperationState {
     /// Returns Option::Some(download_timeout), which means, that we scheduled something and want to check in [download_timeout] if that succecced or needs to reschedule
     pub fn process_downloading(
         &mut self,
-        peers_states: &mut HashMap<ActorUri, PeerState>,
+        peers_states: &mut HashMap<SocketAddr, PeerState>,
+        shell_automaton: &ShellAutomatonSender,
+        log: &Logger,
     ) -> Option<Duration> {
         let Self { operations, cfg } = self;
 
@@ -229,13 +233,13 @@ impl MempoolOperationState {
         let handle_reschedule_requests =
             |operation_hash: &OperationHash,
              peers_to_reschedule: Vec<(&Arc<PeerId>, &mut Option<Instant>)>,
-             closure_peers_states: &mut HashMap<ActorUri, PeerState>,
+             closure_peers_states: &mut HashMap<SocketAddr, PeerState>,
              selected_count: &mut usize,
              max_count: usize,
              requests: &mut HashMap<Arc<PeerId>, HashSet<OperationHash>>| {
                 for (peer, last_scheduled) in peers_to_reschedule {
                     // check if we can use peer for scheduling
-                    if let Some(peer_state) = closure_peers_states.get_mut(peer.peer_ref.uri()) {
+                    if let Some(peer_state) = closure_peers_states.get_mut(&peer.address) {
                         if *selected_count < max_count
                             && peer_state.available_mempool_operations_queue_capacity() > 0
                         {
@@ -284,8 +288,7 @@ impl MempoolOperationState {
                             .drain()
                             .filter_map(|peer| {
                                 // check if we can use peer for scheduling
-                                if let Some(peer_state) = peers_states.get_mut(peer.peer_ref.uri())
-                                {
+                                if let Some(peer_state) = peers_states.get_mut(&peer.address) {
                                     if selected_count < max_count
                                         && peer_state.available_mempool_operations_queue_capacity()
                                             > 0
@@ -400,14 +403,18 @@ impl MempoolOperationState {
                     .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
                     .for_each(|operations_to_download| {
                         tell_peer(
-                            GetOperationsMessage::new(operations_to_download.into()).into(),
+                            shell_automaton,
                             &peer,
+                            GetOperationsMessage::new(operations_to_download.into()).into(),
+                            log,
                         );
                     });
             } else {
                 tell_peer(
-                    GetOperationsMessage::new(operations_to_download).into(),
+                    shell_automaton,
                     &peer,
+                    GetOperationsMessage::new(operations_to_download).into(),
+                    log,
                 );
             }
         }
@@ -526,18 +533,18 @@ impl MempoolOperationState {
         mempool
     }
 
-    pub fn clear_peer_data(&mut self, peer_to_clear: &ActorUri) {
+    pub fn clear_peer_data(&mut self, peer_to_clear: &SocketAddr) {
         self.operations
             .retain(|_, operation_state| match operation_state {
                 MempoolOperationStatus::Missing(_, peers) => {
                     // remove peers
-                    peers.retain(|peer| peer.peer_ref.uri().ne(peer_to_clear));
+                    peers.retain(|peer| peer.address.ne(peer_to_clear));
                     // if no peers, then remove operation
                     !peers.is_empty()
                 }
                 MempoolOperationStatus::Requested(_, peers) => {
                     // remove peers
-                    peers.retain(|peer, _| peer.peer_ref.uri().ne(peer_to_clear));
+                    peers.retain(|peer, _| peer.address.ne(peer_to_clear));
                     // if no peers, then remove operation
                     !peers.is_empty()
                 }

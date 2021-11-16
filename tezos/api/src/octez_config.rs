@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::environment::{TezosEnvironmentConfiguration, TezosNetworkConfigurationError};
-use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 use std::convert::{TryFrom, TryInto};
+use tezos_context_api::{GenesisChain, PatchContext, ProtocolOverrides};
 
 #[derive(Deserialize, Debug)]
 pub struct OctezConfig {

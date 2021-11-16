@@ -1,4 +1,8 @@
-use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use crate::database::backend::{BackendIteratorMode, DBStats, TezedgeDatabaseBackendStore};
+use crate::database::edgekv_backend::EdgeKVBackend;
 use crate::database::error::Error;
 use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
@@ -6,6 +10,7 @@ use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::IteratorMode;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
@@ -77,12 +82,14 @@ pub type List<S> = Vec<(
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
     RocksDB(RocksDBBackend),
+    EdgeKV(EdgeKVBackend),
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezedgeDatabaseBackendConfiguration {
     Sled,
     RocksDB,
+    EdgeKV,
 }
 
 impl TezedgeDatabaseBackendConfiguration {
@@ -98,6 +105,7 @@ impl TezedgeDatabaseBackendConfiguration {
         match self {
             Self::Sled => vec!["sled"],
             Self::RocksDB => vec!["rocksdb"],
+            Self::EdgeKV => vec!["edgekv"],
         }
     }
 }
@@ -150,11 +158,19 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
                 log: log.clone(),
             },
+            TezedgeDatabaseBackendOptions::EdgeKV(backend) => TezedgeDatabase {
+                backend: Arc::new(backend),
+                log: log.clone(),
+            },
         }
     }
 
     fn flush(&self) -> Result<usize, Error> {
         self.backend.flush()
+    }
+
+    pub fn db_stats(&self) -> HashMap<&'static str, DBStats> {
+        self.backend.column_stats()
     }
 
     pub fn flush_checked(&self) {
@@ -219,6 +235,16 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 
         self.backend.write_batch(S::column_name(), generic_batch)?;
         Ok(())
+    }
+}
+
+impl TezedgeDatabase {
+    pub fn size(&self) -> HashMap<&'static str, usize> {
+        self.backend.size()
+    }
+
+    fn sync(&self) -> Result<(), Error> {
+        self.backend.sync()
     }
 }
 

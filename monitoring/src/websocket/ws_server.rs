@@ -9,6 +9,7 @@ use slog::{info, warn, Logger};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
+use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::WebSocket;
 use warp::Filter;
@@ -31,23 +32,26 @@ pub async fn run_websocket(
         .and(with_log(log.clone()))
         .and_then(ws_handler)
         .recover(move |rejection| handle_rejection(rejection, log.clone()))
-        .with(warp::cors().allow_any_origin());
+        .with(warp::cors().allow_any_origin())
+        .boxed();
 
     warp::serve(ws_route).run(address).await
 }
 
-fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
-    warp::any().map(move || clients.clone())
+fn with_clients(clients: Clients) -> BoxedFilter<(Clients,)> {
+    warp::any().map(move || clients.clone()).boxed()
 }
 
 fn with_max_number_of_websocket_connections(
     max_number_of_websocket_connections: u16,
-) -> impl Filter<Extract = (u16,), Error = Infallible> + Clone {
-    warp::any().map(move || max_number_of_websocket_connections)
+) -> BoxedFilter<(u16,)> {
+    warp::any()
+        .map(move || max_number_of_websocket_connections)
+        .boxed()
 }
 
-fn with_log(log: Logger) -> impl Filter<Extract = (Logger,), Error = Infallible> + Clone {
-    warp::any().map(move || log.clone())
+fn with_log(log: Logger) -> BoxedFilter<(Logger,)> {
+    warp::any().map(move || log.clone()).boxed()
 }
 
 #[derive(Debug)]

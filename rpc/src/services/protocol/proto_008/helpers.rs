@@ -20,6 +20,7 @@ use crate::services::protocol::ContextProtocolParam;
 use super::ProtocolConstants;
 
 /// Context constants used in baking and endorsing rights
+#[allow(dead_code)]
 #[derive(Debug, Clone, Getters)]
 pub struct RightsConstants {
     #[get = "pub(crate)"]

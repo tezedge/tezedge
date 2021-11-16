@@ -4,24 +4,24 @@
 // #![forbid(unsafe_code)]
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use slog::{debug, error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
-use networking::p2p::network_channel::NetworkChannel;
-use networking::ShellCompatibilityVersion;
+use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
 use shell::chain_feeder::ApplyBlock;
 use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::connector::ShellConnectorSupport;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
-use shell::peer_manager::PeerManager;
+use shell::shell_automaton_manager::ShellAutomatonManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::ShellCompatibilityVersion;
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::persistent::sequence::Sequences;
@@ -36,11 +36,10 @@ use storage::{
 };
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::TezosRuntimeLogLevel;
 use tezos_identity::Identity;
 use tezos_messages::Head;
-use tezos_wrapper::ProtocolEndpointConfiguration;
-use tezos_wrapper::TezosApiConnectionPoolError;
-use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::configuration::Environment;
 use crate::notification_integration::RpcNotificationCallbackActor;
@@ -71,96 +70,19 @@ fn create_tokio_runtime(
     builder.build()
 }
 
-/// Create pool for ffi protocol runner connections (used just for readonly context)
-/// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
-fn create_tezos_readonly_api_pool(
-    pool_name: &str,
-    pool_cfg: TezosApiConnectionPoolConfiguration,
+fn create_protocol_runner_configuration(
     env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_with_readonly_context(
-        String::from(pool_name),
-        pool_cfg,
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                debug_mode: false,
-                compute_context_action_tree_hashes: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.readonly(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
-    )
-}
-
-/// Create pool for ffi protocol runner connections (used just for ffi calls which does not need context)
-/// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
-fn create_tezos_without_context_api_pool(
-    pool_name: &str,
-    pool_cfg: TezosApiConnectionPoolConfiguration,
-    env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_without_context(
-        String::from(pool_name),
-        pool_cfg,
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                debug_mode: false,
-                compute_context_action_tree_hashes: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.clone(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
-    )
-}
-
-/// Create pool for ffi protocol runner connection (used for write to context)
-/// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
-fn create_tezos_writeable_api_pool(
-    env: &crate::configuration::Environment,
-    tokio_runtime: tokio::runtime::Handle,
-    log: Logger,
-) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    TezosApiConnectionPool::new_without_context(
-        String::from("tezos_writeable_api_pool"),
-        TezosApiConnectionPoolConfiguration {
-            // TODO: hard-coded, not used, make as Optional
-            idle_timeout: Duration::from_secs(1800),
-            // TODO: hard-coded, not used, make as Optional
-            max_lifetime: Duration::from_secs(21600),
-            connection_timeout: Duration::from_secs(30),
-            min_connections: 0,
-            max_connections: 1,
+) -> ProtocolRunnerConfiguration {
+    ProtocolRunnerConfiguration::new(
+        TezosRuntimeConfiguration {
+            log_enabled: env.logging.ocaml_log_enabled,
+            log_level: Some(TezosRuntimeLogLevel::Info),
         },
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
-                debug_mode: false,
-            },
-            env.tezos_network_config.clone(),
-            env.enable_testchain,
-            env.storage.context_storage_configuration.clone(),
-            &env.ffi.protocol_runner,
-            env.logging.slog.level,
-        ),
-        tokio_runtime,
-        log,
+        env.tezos_network_config.clone(),
+        env.enable_testchain,
+        env.storage.context_storage_configuration.clone(),
+        env.ffi.protocol_runner.clone(),
+        env.logging.slog.level,
     )
 }
 
@@ -186,45 +108,19 @@ fn block_on_actors(
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
-    // pool and event server dedicated for applying blocks to chain
-    let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(&env, tokio_runtime.handle().clone(), log.clone())
-            .expect("Failed to initialize writable API pool"),
+    let protocol_runner_configuration = create_protocol_runner_configuration(&env);
+    let mut tezos_protocol_api = ProtocolRunnerApi::new(
+        protocol_runner_configuration,
+        tokio_runtime.handle(),
+        log.clone(),
     );
-
-    // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api_pool = Arc::new(
-        create_tezos_readonly_api_pool(
-            "tezos_readonly_api_pool",
-            env.ffi.tezos_readonly_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize read-only API pool"),
-    );
-    let tezos_readonly_prevalidation_api_pool = Arc::new(
-        create_tezos_readonly_api_pool(
-            "tezos_readonly_prevalidation_api",
-            env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize read-only prevalidation API pool"),
-    );
-    let tezos_without_context_api_pool = Arc::new(
-        create_tezos_without_context_api_pool(
-            "tezos_without_context_api_pool",
-            env.ffi.tezos_without_context_api_pool.clone(),
-            &env,
-            tokio_runtime.handle().clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize API pool without context"),
-    );
+    tokio_runtime
+        .block_on(tezos_protocol_api.start(None))
+        .expect("Failed to launch protocol runner");
 
     info!(log, "Protocol runners initialized");
+
+    let tezos_protocol_api = Arc::new(tezos_protocol_api);
 
     info!(log, "Initializing actors... (5/8)";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
@@ -260,12 +156,26 @@ fn block_on_actors(
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
     let shell_channel =
         ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
+
+    // initialize shell automaton manager
+    let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
+        persistent_storage.clone(),
+        network_channel.clone(),
+        log.clone(),
+        identity.clone(),
+        shell_compatibility_version.clone(),
+        env.p2p.clone(),
+        env.identity.expected_pow,
+        init_storage_data.chain_id.clone(),
+    );
+
+    // initialize actors
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
         actor_system.clone(),
         log.clone(),
         persistent_storage.clone(),
         current_mempool_state_storage.clone(),
-        tezos_readonly_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         env.p2p.disable_mempool,
     ));
 
@@ -277,7 +187,7 @@ fn block_on_actors(
     let (block_applier, mut block_applier_thread_watcher) = ChainFeeder::actor(
         actor_system.as_ref(),
         persistent_storage.clone(),
-        tezos_writeable_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         init_storage_data.clone(),
         env.tezos_network_config.clone(),
         log.clone(),
@@ -335,9 +245,10 @@ fn block_on_actors(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
+        shell_automaton_manager.shell_automaton_sender(),
         shell_channel.clone(),
         persistent_storage.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         init_storage_data.clone(),
         is_sandbox,
         hydrated_current_head,
@@ -362,17 +273,15 @@ fn block_on_actors(
     let shell_connector =
         ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory.clone());
 
-    // initialize rpc server
     let mut rpc_server = RpcServer::new(
         log.clone(),
         Box::new(shell_connector),
+        rpc_shell_automaton_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
         &persistent_storage,
         current_mempool_state_storage,
-        tezos_readonly_api_pool.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
-        tezos_without_context_api_pool.clone(),
+        Arc::clone(&tezos_protocol_api),
         env.tezos_network_config,
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
@@ -411,7 +320,7 @@ fn block_on_actors(
     }
 
     if let Some(blocks) = blocks_replay.take() {
-        return schedule_replay_blocks(
+        schedule_replay_blocks(
             blocks,
             &init_storage_data,
             chain_manager,
@@ -420,22 +329,11 @@ fn block_on_actors(
             shell_channel,
             log.clone(),
         );
+        tokio_runtime.block_on(tezos_protocol_api.shutdown());
+        return;
     } else {
         // TODO: TE-386 - controlled startup
         std::thread::sleep(std::time::Duration::from_secs(2));
-
-        // and than open p2p and others
-        let _ = PeerManager::actor(
-            actor_system.as_ref(),
-            network_channel,
-            shell_channel.clone(),
-            tokio_runtime.handle().clone(),
-            identity,
-            shell_compatibility_version,
-            env.p2p,
-            env.identity.expected_pow,
-        )
-        .expect("Failed to create peer manager");
     }
 
     let mut is_setup_ok = true;
@@ -445,8 +343,10 @@ fn block_on_actors(
         error!(log, "Failed to start RPC server"; "reason" => format!("{:?}", e));
         is_setup_ok = false;
     };
-
     info!(log, "Actors initialized");
+
+    // start shell_automaton thread.
+    shell_automaton_manager.start();
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -460,10 +360,13 @@ fn block_on_actors(
             info!(log, "Ctrl-c or SIGINT received!");
         }
 
-        info!(log, "Shutting down rpc server (1/8)");
+        info!(log, "Shutting down shell automaton (1/9)");
+        drop(shell_automaton_manager);
+
+        info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
 
-        info!(log, "Shutting down of thread workers starting (2/8)");
+        info!(log, "Shutting down of thread workers starting (3/9)");
         if let Err(e) = block_applier_thread_watcher.stop() {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => block_applier_thread_watcher.thread_name(),
@@ -512,7 +415,7 @@ fn block_on_actors(
         };
         info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
-        info!(log, "Sending shutdown notification to actors (3/8)");
+        info!(log, "Sending shutdown notification to actors (4/9)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -521,17 +424,13 @@ fn block_on_actors(
             None,
         );
 
-        // give actors some time to shut down
-        info!(log, "Waiting 2s for shutdown of actors (2/6)");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        info!(log, "Shutting down actors (4/8)");
+        info!(log, "Shutting down actors (5/9)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (5/8)");
+        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (6/9)");
         if let Some(thread) = block_applier_thread_watcher.thread() {
             thread.thread().unpark();
             if let Err(e) = thread.join() {
@@ -562,18 +461,15 @@ fn block_on_actors(
         }
         info!(log, "Thread workers stopped");
 
-        info!(log, "Shutting down protocol runner pools (6/8)");
-        drop(tezos_readonly_api_pool);
-        drop(tezos_readonly_prevalidation_api_pool);
-        drop(tezos_without_context_api_pool);
-        drop(tezos_writeable_api_pool);
+        info!(log, "Shutting down protocol runners (7/9)");
+        tezos_protocol_api.shutdown().await;
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases (7/8)");
+        info!(log, "Flushing databases (8/9)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (8/8)");
+        info!(log, "Shutdown complete (9/9)");
     });
 }
 
@@ -841,7 +737,7 @@ fn main() {
 
     // create/initialize databases
     info!(log, "Loading databases... (3/8)");
-
+    let instant = Instant::now();
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let mut caches = GlobalRocksDbCacheHolder::with_capacity(1);
@@ -880,6 +776,15 @@ fn main() {
             )
             .expect("Failed to create/initialize MainDB database (db)")
         }
+        TezedgeDatabaseBackendConfiguration::EdgeKV => initialize_maindb(
+            &log,
+            None,
+            &env.storage.db,
+            env.storage.db.expected_db_version,
+            &main_chain,
+            env.storage.main_db,
+        )
+        .expect("Failed to create/initialize MainDB database (db)"),
     };
 
     let commit_logs = Arc::new(
@@ -910,7 +815,11 @@ fn main() {
                     .as_ref()
                     .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
 
-                info!(log, "Databases loaded successfully");
+                info!(
+                    log,
+                    "Databases loaded successfully {} ms",
+                    instant.elapsed().as_millis()
+                );
                 block_on_actors(
                     env,
                     init_data,

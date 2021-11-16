@@ -1,0 +1,34 @@
+[package]
+name = "shell_automaton"
+version = "1.10.0"
+edition = "2018"
+
+[dependencies]
+bytes = "1.0.1"
+hex = "0.4"
+slab = { version = "0.4.3", features = ["serde"] }
+rand = "0.7.3"
+mio = { version = "0.7.13", features = ["os-poll", "net"] }
+dns-lookup = "1.0.1"
+derive_more = "0.99.16"
+enum-kinds = "0.5.1"
+tokio = { version = "1.12", features = ["time", "rt-multi-thread"] }
+tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
+
+thiserror = "1.0"
+bincode = "1.3"
+derive_builder = "0.9"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+strum = "0.20"
+strum_macros = "0.20"
+
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.10.0-1", features = ["serde"] }
+
+crypto = { path = "../crypto" }
+storage = { path = "../storage" }
+networking = { path = "../networking" }
+tezos_encoding = { path = "../tezos/encoding" }
+tezos_identity = { path = "../tezos/identity" }
+tezos_messages = { path = "../tezos/messages" }

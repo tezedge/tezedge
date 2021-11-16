@@ -1,6 +1,6 @@
 [package]
 name = "protocol-runner"
-version = "1.9.1"
+version = "1.10.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -15,7 +15,7 @@ slog-term = "2.8"
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
-tezos_client = { path = "../tezos/client" }
+tezos_context = { path = "../tezos/context" }
+tezos_context_api = { path = "../tezos/context-api" }
 tezos_interop = { path = "../tezos/interop" }
-tezos_wrapper = { path = "../tezos/wrapper" }
 tezos_messages = { path = "../tezos/messages" }

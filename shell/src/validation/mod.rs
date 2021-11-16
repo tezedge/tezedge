@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use chrono::TimeZone;
+use tezos_protocol_ipc_client::{ProtocolRunnerConnection, ProtocolServiceError};
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
@@ -23,7 +24,6 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use tezos_messages::{Head, TimestampOutOfRangeError};
-use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 
@@ -209,12 +209,12 @@ impl From<StorageError> for PrevalidateOperationError {
 
 /// Validates operation before added to mempool
 /// Operation is decoded and applied to context according to current head in mempool
-pub fn prevalidate_operation(
+pub async fn prevalidate_operation(
     chain_id: &ChainId,
     operation_hash: &OperationHash,
     operation: &Operation,
     current_mempool_state: &CurrentMempoolStateStorageRef,
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
     block_storage: &impl BlockStorageReader,
     block_meta_storage: &impl BlockMetaStorageReader,
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
@@ -239,38 +239,35 @@ pub fn prevalidate_operation(
     // TODO: check max_ttl for too old branch
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
-    let mempool_state =
-        current_mempool_state
-            .read()
-            .map_err(|e| PrevalidateOperationError::UnexpectedError {
+    let mempool_head = {
+        let mempool_state = current_mempool_state.read().map_err(|e| {
+            PrevalidateOperationError::UnexpectedError {
                 operation_hash: operation_hash.to_base58_check(),
                 reason: format!("Failed to obtain mempool lock, reason: {}", e),
-            })?;
-
-    // check if operations is already in mempool
-    if mempool_state.is_already_in_mempool(operation_hash) {
-        return Err(PrevalidateOperationError::AlreadyInMempool {
-            operation_hash: operation_hash.to_base58_check(),
-        });
-    }
-
-    let mempool_head = match mempool_state.head().as_ref() {
-        Some(head) => match block_storage.get(head)? {
-            Some(head) => {
-                // release lock asap
-                drop(mempool_state);
-                head
             }
+        })?;
+
+        // check if operations is already in mempool
+        if mempool_state.is_already_in_mempool(operation_hash) {
+            return Err(PrevalidateOperationError::AlreadyInMempool {
+                operation_hash: operation_hash.to_base58_check(),
+            });
+        }
+
+        match mempool_state.head().as_ref() {
+            Some(head) => match block_storage.get(head)? {
+                Some(head) => head,
+                None => {
+                    return Err(PrevalidateOperationError::UnknownBranch {
+                        branch: head.to_base58_check(),
+                    });
+                }
+            },
             None => {
-                return Err(PrevalidateOperationError::UnknownBranch {
-                    branch: head.to_base58_check(),
+                return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
+                    reason: "no head in mempool".to_string(),
                 });
             }
-        },
-        None => {
-            return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
-                reason: "no head in mempool".to_string(),
-            });
         }
     };
 
@@ -279,21 +276,23 @@ pub fn prevalidate_operation(
 
     // begin construction of a new empty block
     let prevalidator = api
-        .begin_construction(BeginConstructionRequest {
+        .begin_construction_for_prevalidation(BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: (&*mempool_head.header).clone(),
             protocol_data: None,
         })
+        .await
         .map_err(|e| PrevalidateOperationError::ValidationError {
             operation_hash: operation_hash.to_base58_check(),
             reason: e,
         })?;
 
     // validate operation to new empty/dummpy block
-    api.validate_operation(ValidateOperationRequest {
+    api.validate_operation_for_prevalidation(ValidateOperationRequest {
         prevalidator,
         operation: operation.clone(),
     })
+    .await
     .map(|r| r.result)
     .map_err(|e| PrevalidateOperationError::ValidationError {
         operation_hash: operation_hash.to_base58_check(),
@@ -306,18 +305,21 @@ pub fn prevalidate_operation(
 /// - checks begin_application, if predecessor
 ///
 /// Returns None if everything, else return error
-pub fn check_multipass_validation(
+pub async fn check_multipass_validation(
     chain_id: &ChainId,
     protocol_hash: ProtocolHash,
     validated_block_header: &BlockHeader,
     predecessor: Option<BlockHeaderWithHash>,
-    api: &ProtocolController,
+    api: &mut ProtocolRunnerConnection,
 ) -> Option<ProtocolServiceError> {
     // 1. check encoding for protocol_data
-    if let Err(e) = api.assert_encoding_for_protocol_data(
-        protocol_hash,
-        validated_block_header.protocol_data().clone(),
-    ) {
+    if let Err(e) = api
+        .assert_encoding_for_protocol_data(
+            protocol_hash,
+            validated_block_header.protocol_data().clone(),
+        )
+        .await
+    {
         return Some(e);
     };
 
@@ -329,7 +331,7 @@ pub fn check_multipass_validation(
             block_header: validated_block_header.clone(),
         };
 
-        if let Err(e) = api.begin_application(request) {
+        if let Err(e) = api.begin_application(request).await {
             return Some(e);
         }
     }

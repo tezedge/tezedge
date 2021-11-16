@@ -38,7 +38,8 @@ pub async fn context_constants(
                 block_hash,
                 create_rpc_request(req).await?,
                 &env,
-            ),
+            )
+            .await,
             env.log(),
         )
     } else {
@@ -90,7 +91,8 @@ pub async fn baking_rights(
                     block_hash,
                     create_rpc_request(req).await?,
                     &env,
-                ),
+                )
+                .await,
                 env.log(),
             )
         }
@@ -145,7 +147,8 @@ pub async fn endorsing_rights(
                     block_hash,
                     create_rpc_request(req).await?,
                     &env,
-                ),
+                )
+                .await,
                 env.log(),
             )
         }
@@ -170,7 +173,7 @@ pub async fn votes_listings(
         parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
 
     // try to call our implementation
-    match services::protocol::get_votes_listings(&chain_id, &block_hash, &env) {
+    match services::protocol::get_votes_listings(&chain_id, &block_hash, &env).await {
         Ok(votings) => result_to_json_response(Ok(votings), env.log()),
         Err(VotesError::UnsupportedProtocolRpc { protocol }) => {
             // if our implementation returns None, it means that the protocol does not support
@@ -189,7 +192,8 @@ pub async fn votes_listings(
                     block_hash,
                     create_rpc_request(req).await?,
                     &env,
-                ),
+                )
+                .await,
                 env.log(),
             )
         }
@@ -224,7 +228,8 @@ pub async fn call_protocol_rpc(
         block_hash,
         json_request,
         &env,
-    );
+    )
+    .await;
 
     match result {
         Ok(result) => {

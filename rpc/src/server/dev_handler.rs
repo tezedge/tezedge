@@ -1,15 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use anyhow::format_err;
-use hyper::{Body, Request};
-use slog::warn;
-
 use crate::helpers::{parse_block_hash, parse_chain_id, RpcServiceError, MAIN_CHAIN_ID};
 use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
+use anyhow::format_err;
+use hyper::{Body, Request};
+use slog::warn;
 use std::sync::Arc;
 
 pub async fn dev_blocks(
@@ -53,7 +52,7 @@ pub async fn dev_blocks(
     let limit = query.get_usize("limit").unwrap_or(50);
 
     result_to_json_response(
-        dev_services::get_blocks(chain_id, from_block_id, every_nth_level, limit, &env),
+        dev_services::get_blocks(chain_id, from_block_id, every_nth_level, limit, &env).await,
         env.log(),
     )
 }
@@ -90,6 +89,15 @@ pub async fn dev_contract_actions(
         dev_services::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()),
         env.log(),
     )
+}
+
+pub async fn dev_db_stats(
+    _: Request<Body>,
+    _params: Params,
+    _query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    result_to_json_response(Ok(env.persistent_storage.main_db().db_stats()), env.log())
 }
 
 pub async fn dev_action_cursor(
@@ -258,4 +266,62 @@ pub async fn dev_version(
     _: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_dev_version())
+}
+
+pub async fn dev_shell_automaton_state_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    match query.get_u64("action_id") {
+        Some(target_action_id) => make_json_response(
+            &dev_services::get_shell_automaton_state_after(&env, target_action_id).await?,
+        ),
+        None => make_json_response(&dev_services::get_shell_automaton_state_current(&env).await?),
+    }
+}
+
+pub async fn dev_shell_automaton_actions_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&match query.get_usize("rev").eq(&Some(1)) {
+        false => {
+            dev_services::get_shell_automaton_actions(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+        true => {
+            dev_services::get_shell_automaton_actions_reverse(
+                &env,
+                query.get_u64("cursor"),
+                query.get_usize("limit"),
+            )
+            .await?
+        }
+    })
+}
+
+pub async fn dev_shell_automaton_actions_stats_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_actions_stats(&env).await?)
+}
+
+pub async fn dev_shell_automaton_actions_graph_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)
 }

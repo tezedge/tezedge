@@ -12,7 +12,9 @@
 //!
 //! CryptoboxPublicKeyHash - generated as a hash of [`PublicKey`], for example used as a peer_id
 
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+use std::fmt::{self, Debug};
 
 use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
@@ -56,7 +58,7 @@ fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZ
 }
 
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PublicKey`]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PublicKey(box_::PublicKey);
 
 impl PublicKey {
@@ -87,7 +89,7 @@ impl FromHex for PublicKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::SecretKey`]
 pub struct SecretKey(box_::SecretKey);
 
@@ -129,7 +131,7 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
     Ok((sk, pk, pkh))
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);
 
@@ -141,6 +143,10 @@ impl PrecomputedKey {
     /// * `sk_as_hex_string` - Hex string representing secret key
     pub fn precompute(pk: &PublicKey, sk: &SecretKey) -> Self {
         Self(box_::precompute(pk.as_ref(), sk.as_ref()))
+    }
+
+    pub fn from_bytes(bytes: [u8; box_::PRECOMPUTEDKEYBYTES]) -> Self {
+        Self(box_::PrecomputedKey(bytes))
     }
 
     /// Encrypt binary message
@@ -166,6 +172,12 @@ impl PrecomputedKey {
             Ok(msg) => Ok(msg),
             Err(()) => Err(CryptoError::FailedToDecrypt),
         }
+    }
+}
+
+impl Debug for PrecomputedKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PrecomputedKey(****)")
     }
 }
 

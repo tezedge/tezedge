@@ -7,10 +7,10 @@ use std::sync::Arc;
 use crypto::hash::ContextHash;
 use storage::tests_common::TmpStorage;
 use storage::{BlockHeaderWithHash, BlockStorage};
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_context::initializer::initialize_tezedge_context;
-use tezos_context::{context_key, ContextError, ContextKey, TezedgeContext};
+use tezos_context::{context_key, ContextError, TezedgeContext};
 use tezos_context::{IndexApi, ProtocolContextApi, ShellContextApi};
+use tezos_context_api::{ContextKey, TezosContextTezEdgeStorageConfiguration};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 #[test]

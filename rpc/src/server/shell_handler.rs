@@ -139,45 +139,45 @@ pub async fn mempool_monitor_operations(
         mempool_query,
     ))
 }
+// TODO: TE-685
+// pub async fn blocks(
+//     _: Request<Body>,
+//     params: Params,
+//     query: Query,
+//     env: Arc<RpcServiceEnvironment>,
+// ) -> ServiceResult {
+//     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+//     let length = query.get_str("length").unwrap_or("0");
+//     let head_param = query.get_str("head").unwrap_or("head");
+//     // TODO: mutliparameter
+//     let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
+//     // TODO: implement min_date query arg
 
-pub async fn blocks(
-    _: Request<Body>,
-    params: Params,
-    query: Query,
-    env: Arc<RpcServiceEnvironment>,
-) -> ServiceResult {
-    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let length = query.get_str("length").unwrap_or("0");
-    let head_param = query.get_str("head").unwrap_or("head");
-    // TODO: mutliparameter
-    let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
-    // TODO: implement min_date query arg
+//     // Quick hack to handle the normal case that is not working right now (returns an empty array
+//     // instead of an array with the hash of the head)
+//     if head_param == "head" {
+//         return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
+//     }
 
-    // Quick hack to handle the normal case that is not working right now (returns an empty array
-    // instead of an array with the hash of the head)
-    if head_param == "head" {
-        return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
-    }
+//     // TODO: This can be implemented in a more optimised and cleaner way
+//     // Note: Need to investigate the "more heads per level" variant
 
-    // TODO: This can be implemented in a more optimised and cleaner way
-    // Note: Need to investigate the "more heads per level" variant
+//     let block_hashes = base_services::get_block_hashes(
+//         chain_id,
+//         head,
+//         None,
+//         length.parse::<usize>()?,
+//         env.persistent_storage(),
+//     )
+//     .map(|hashes| {
+//         hashes
+//             .iter()
+//             .map(|block| block.to_base58_check())
+//             .collect::<Vec<String>>()
+//     });
 
-    let block_hashes = base_services::get_block_hashes(
-        chain_id,
-        head,
-        None,
-        length.parse::<usize>()?,
-        env.persistent_storage(),
-    )
-    .map(|hashes| {
-        hashes
-            .iter()
-            .map(|block| block.to_base58_check())
-            .collect::<Vec<String>>()
-    });
-
-    result_to_json_response(block_hashes, env.log())
-}
+//     result_to_json_response(block_hashes, env.log())
+// }
 
 pub async fn chains_block_id(
     _: Request<Body>,
@@ -265,7 +265,7 @@ pub async fn context_raw_bytes(
     let depth = query.get_usize("depth");
 
     result_to_json_response(
-        base_services::get_context_raw_bytes(&chain_id, &block_hash, prefix, depth, &env),
+        base_services::get_context_raw_bytes(&chain_id, &block_hash, prefix, depth, &env).await,
         env.log(),
     )
 }
@@ -655,7 +655,8 @@ pub async fn preapply_operations(
             block_hash,
             rpc_request,
             &env,
-        ),
+        )
+        .await,
         env.log(),
     )
 }
@@ -675,7 +676,8 @@ pub async fn preapply_block(
 
     // launcher - we need the error from preapply
     result_to_json_response(
-        services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env),
+        services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env)
+            .await,
         env.log(),
     )
 }

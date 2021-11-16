@@ -67,7 +67,8 @@ Edit `TezedgeDatabaseBackendConfiguration` enum and
 pub enum TezedgeDatabaseBackendConfiguration {
     Sled,
     RocksDB,
-		//Add new database backend 
+    EdgeKV,
+	//Add new database backend
 }
 ```
 
@@ -122,4 +123,10 @@ Run storage tests with `rocksdb` as backend
 
 ```bash
 cargo test storage --features maindb-backend-rocksdb
+```
+
+Rust storage tests with `edgekv` as backend
+
+```bash
+cargo test storage --features maindb-backend-edgekv
 ```

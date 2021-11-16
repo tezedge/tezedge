@@ -10,7 +10,7 @@ use thiserror::Error;
 use crypto::hash::*;
 
 /// Possible errors for schema
-#[derive(Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum SchemaError {
     #[error("Failed to encode value")]
     EncodeError,

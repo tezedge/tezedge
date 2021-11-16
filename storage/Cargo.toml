@@ -1,6 +1,6 @@
 [package]
 name = "storage"
-version = "1.9.1"
+version = "1.10.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -22,10 +22,13 @@ sled = "0.34.6"
 strum = "0.20"
 strum_macros = "0.20"
 zstd = "0.5.3+zstd.1.4.5"
+edgekv = { path = "../edgekv" }
+
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_context_api = { path = "../tezos/context-api" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
@@ -44,7 +47,7 @@ criterion = "0.3"
 fs_extra = "1.2.0"
 # TODO - TE-498 - remove dependency to OLD commit log
 commitlog = "0.1"
-
 [features]
 maindb-backend-rocksdb = []
 maindb-backend-sled = []
+maindb-backend-edgekv = []

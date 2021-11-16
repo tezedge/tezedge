@@ -1,6 +1,6 @@
 [package]
 name = "shell"
-version = "1.9.1"
+version = "1.10.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -27,15 +27,14 @@ tokio = { version = "1.12", features = ["time"] }
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell_integration = { path = "../shell-integration" }
+shell_automaton = { path = "../shell_automaton" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_context = { path = "../tezos/context" }
-tezos_wrapper = { path = "../tezos/wrapper" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 
 [dev-dependencies]
-r2d2 = "0.8.9"
 serial_test = "0.5"
 slog-async = "2.6"
 slog-term = "2.8"
@@ -45,5 +44,5 @@ tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
-ipc = { path = "../ipc" }
-tezos-sys = { path = "../tezos/sys" }
+async_ipc = { path = "../async-ipc" }
+tezos_context_api = { path = "../tezos/context-api" }

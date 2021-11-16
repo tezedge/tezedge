@@ -6,24 +6,33 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
+use std::borrow::Cow;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
-use anyhow::bail;
 use crypto::hash::ContractKt1Hash;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use shell_automaton::service::storage_service::ActionGraph;
+use shell_automaton::{Action, ActionWithId};
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
+use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use shell_automaton::ActionId;
 use storage::cycle_eras_storage::CycleEra;
+use storage::database::backend::BoxedSliceKV;
+use storage::database::error::Error as DBError;
+use storage::persistent::Decoder;
 //use tezos_context::actions::context_action_storage::{
 //    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
 //    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 //};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
-    CycleErasStorage, PersistentStorage,
+    CycleErasStorage, Direction, IteratorMode, PersistentStorage, ShellAutomatonActionMetaStorage,
+    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
@@ -251,7 +260,7 @@ pub(crate) fn ensure_context_action_storage(
 }
 
 /// Retrieve blocks from database.
-pub(crate) fn get_blocks(
+pub(crate) async fn get_blocks(
     _chain_id: ChainId,
     block_hash: BlockHash,
     every_nth_level: Option<i32>,
@@ -265,22 +274,30 @@ pub(crate) fn get_blocks(
             .get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
         None => BlockStorage::new(env.persistent_storage())
             .get_multiple_with_json_data(&block_hash, limit),
-    }?
-    .into_iter()
-    .map(|(block_header, block_json_data)| {
+    }?;
+
+    // NOTE: using a single connection here, but could connect to multiple runners, worth it?
+    let mut connection = env.tezos_protocol_api().readable_connection().await?;
+
+    let mut result = Vec::with_capacity(blocks.len());
+
+    for (block_header, block_json_data) in blocks {
         if let Some(block_additional_data) = block_meta_storage.get_additional_data(&block_hash)? {
-            let response = env
-                .tezos_without_context_api()
-                .pool
-                .get()?
-                .api
+            let response = connection
                 .apply_block_result_metadata(
                     block_header.header.context().clone(),
                     block_json_data.block_header_proto_metadata_bytes,
                     block_additional_data.max_operations_ttl().into(),
                     block_additional_data.protocol_hash,
                     block_additional_data.next_protocol_hash,
-                )?;
+                )
+                .await;
+
+            let response = if let Ok(response) = response {
+                response
+            } else {
+                continue;
+            };
 
             let metadata: BlockMetadata = serde_json::from_str(&response).unwrap_or_default();
             let cycle_position = if let Some(level) = metadata.get("level") {
@@ -291,22 +308,15 @@ pub(crate) fn get_blocks(
                 None
             };
 
-            Ok(SlimBlockData {
+            result.push(SlimBlockData {
                 level: block_header.header.level(),
                 block_hash: block_header.hash.to_base58_check(),
                 timestamp: block_header.header.timestamp().to_string(),
                 cycle_position,
-            })
-        } else {
-            bail!(
-                "No additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            )
+            });
         }
-    })
-    .filter_map(Result::ok)
-    .collect::<Vec<SlimBlockData>>();
-    Ok(blocks)
+    }
+    Ok(result)
 }
 
 /// Struct to show in tezedge explorer to lower data flow
@@ -369,4 +379,317 @@ pub(crate) fn contract_id_to_contract_address_for_index(
     };
 
     Ok(contract_address)
+}
+
+pub(crate) async fn get_shell_automaton_state_current(
+    env: &RpcServiceEnvironment,
+) -> Result<shell_automaton::State, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetCurrentGlobalState { channel: tx })
+        .await;
+    rx.await
+}
+
+pub(crate) async fn get_shell_automaton_state_after(
+    env: &RpcServiceEnvironment,
+    target_action_id: u64,
+) -> anyhow::Result<shell_automaton::State> {
+    let mut state = shell_automaton_state_closest(env, target_action_id).await?;
+
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+
+    tokio::task::spawn_blocking(move || {
+        let actions_iter = action_storage
+            .find(IteratorMode::From(
+                Cow::Owned(target_action_id),
+                Direction::Forward,
+            ))?
+            .map(shell_automaton_actions_decode_map);
+
+        for result in actions_iter {
+            let action = result?;
+            let action_id = u64::from(action.id);
+
+            if action_id <= target_action_id {
+                shell_automaton::reducer(&mut state, &action);
+            }
+            if action_id >= target_action_id {
+                break;
+            }
+        }
+        Ok(state)
+    })
+    .await?
+}
+
+#[allow(dead_code)]
+pub(crate) async fn get_shell_automaton_action(
+    env: &RpcServiceEnvironment,
+    action_id: u64,
+) -> anyhow::Result<Option<ActionWithId<Action>>> {
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+    tokio::task::spawn_blocking(move || {
+        Ok(action_storage
+            .get::<Action>(&action_id)?
+            .map(|action| ActionWithId {
+                id: ActionId::new_unchecked(action_id),
+                action,
+            }))
+    })
+    .await?
+}
+
+fn shell_automaton_actions_decode_map(
+    result: Result<BoxedSliceKV, DBError>,
+) -> Result<ActionWithId<Action>, StorageError> {
+    let (key, value) = result?;
+    Ok(ActionWithId {
+        id: ActionId::new_unchecked(u64::decode(&key)?),
+        action: Action::decode(&value)?,
+    })
+}
+
+pub(crate) async fn shell_automaton_state_closest(
+    env: &RpcServiceEnvironment,
+    target_action_id: u64,
+) -> anyhow::Result<shell_automaton::State> {
+    let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
+
+    tokio::task::spawn_blocking(move || {
+        match snapshot_storage.get_closest_before(&target_action_id)? {
+            Some(v) => Ok(v),
+            None => Err(anyhow::anyhow!("snapshot not available")),
+        }
+    })
+    .await?
+}
+
+/// Action sent from rpc.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct RpcShellAutomatonAction {
+    #[serde(flatten)]
+    action: ActionWithId<Action>,
+    state: shell_automaton::State,
+    /// Time between this action and the next one.
+    duration: u64,
+}
+
+pub(crate) async fn get_shell_automaton_actions(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<usize>,
+) -> anyhow::Result<VecDeque<RpcShellAutomatonAction>> {
+    let snapshot_storage = ShellAutomatonStateStorage::new(env.persistent_storage());
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+
+    let limit = limit.unwrap_or(20).max(1).min(1000);
+
+    tokio::task::spawn_blocking(move || {
+        let mut actions_iter = action_storage
+            .find(match cursor {
+                Some(cursor) => IteratorMode::From(Cow::Owned(cursor - 1), Direction::Reverse),
+                None => IteratorMode::End,
+            })?
+            .map(shell_automaton_actions_decode_map);
+
+        let mut result_actions = Vec::with_capacity(limit + 1);
+
+        for _ in 0..=limit {
+            match actions_iter.next().transpose()? {
+                Some(action) => result_actions.push(action),
+                None => break,
+            }
+        }
+
+        let state: shell_automaton::State = match result_actions.last() {
+            Some(first_action) => {
+                match snapshot_storage.get_closest_before(&first_action.id.into())? {
+                    Some(v) => Ok(v),
+                    None => Err(anyhow::anyhow!("snapshot not available")),
+                }?
+            }
+            None => return Ok(VecDeque::new()),
+        };
+
+        let mut actions_to_apply = vec![];
+
+        for result in actions_iter {
+            let action = result?;
+
+            if action.id > state.last_action.id() {
+                actions_to_apply.push(action);
+            } else if action.id == state.last_action.id() {
+                actions_to_apply.push(action);
+                break;
+            } else {
+                break;
+            }
+        }
+
+        let state = actions_to_apply
+            .into_iter()
+            .rev()
+            .fold(state, |mut state, action| {
+                shell_automaton::reducer(&mut state, &action);
+                state
+            });
+
+        let action_times = result_actions
+            .iter()
+            .rev()
+            .map(|x| u64::from(x.id))
+            .collect::<Vec<_>>();
+
+        Ok(result_actions
+            .into_iter()
+            .rev()
+            .enumerate()
+            .take(limit)
+            .fold(
+                (state, VecDeque::with_capacity(limit)),
+                |(mut state, mut result), (index, action)| {
+                    let action_time = u64::from(action.id);
+                    let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
+                    shell_automaton::reducer(&mut state, &action);
+                    result.push_front(RpcShellAutomatonAction {
+                        action,
+                        state: state.clone(),
+                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                    });
+                    (state, result)
+                },
+            )
+            .1)
+    })
+    .await?
+}
+
+pub(crate) async fn get_shell_automaton_actions_reverse(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<usize>,
+) -> anyhow::Result<VecDeque<RpcShellAutomatonAction>> {
+    let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
+
+    let cursor = cursor.unwrap_or(0);
+    let limit = limit.unwrap_or(20).max(1).min(1000);
+
+    let mut state = shell_automaton_state_closest(env, cursor).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let mut actions_iter = action_storage
+            .find(IteratorMode::From(
+                Cow::Owned(state.last_action.id().into()),
+                Direction::Forward,
+            ))?
+            .map(shell_automaton_actions_decode_map)
+            .peekable();
+
+        loop {
+            match actions_iter.peek() {
+                Some(Ok(action)) if u64::from(action.id) >= cursor => break,
+                None => break,
+                _ => {}
+            }
+            if let Some(action) = actions_iter.next().transpose()? {
+                shell_automaton::reducer(&mut state, &action);
+            }
+        }
+
+        let mut result_actions = VecDeque::with_capacity(limit + 1);
+
+        for _ in 0..=limit {
+            match actions_iter.next().transpose()? {
+                Some(action) => result_actions.push_front(action),
+                None => break,
+            }
+        }
+
+        let action_times = result_actions
+            .iter()
+            .rev()
+            .map(|x| u64::from(x.id))
+            .collect::<Vec<_>>();
+
+        Ok(result_actions
+            .into_iter()
+            .rev()
+            .enumerate()
+            .take(limit)
+            .fold(
+                (state, VecDeque::with_capacity(limit)),
+                |(mut state, mut result), (index, action)| {
+                    let action_time = u64::from(action.id);
+                    let next_action_time = action_times.get(index + 1).cloned().unwrap_or(0);
+
+                    shell_automaton::reducer(&mut state, &action);
+                    result.push_front(RpcShellAutomatonAction {
+                        action,
+                        state: state.clone(),
+                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                    });
+                    (state, result)
+                },
+            )
+            .1)
+    })
+    .await?
+}
+
+pub(crate) type ShellAutomatonActionsStats = HashMap<String, ShellAutomatonActionStats>;
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ShellAutomatonActionStats {
+    total_calls: u64,
+    total_duration: u64,
+}
+
+pub(crate) async fn get_shell_automaton_actions_stats(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<ShellAutomatonActionsStats> {
+    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
+
+    let meta = match action_meta_storage.get_stats()? {
+        Some(v) => v,
+        None => return Ok(Default::default()),
+    };
+
+    Ok(meta
+        .stats
+        .into_iter()
+        .map(|(action_kind, meta)| {
+            (
+                action_kind,
+                ShellAutomatonActionStats {
+                    total_calls: meta.total_calls,
+                    total_duration: meta.total_duration,
+                },
+            )
+        })
+        .collect())
+}
+
+pub(crate) async fn get_shell_automaton_actions_graph(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
+
+    let graph: ActionGraph = action_meta_storage.get_graph()?.unwrap_or_default();
+
+    Ok(graph
+        .into_iter()
+        .enumerate()
+        .map(|(action_id, node)| {
+            serde_json::json!({
+                "actionId": action_id,
+                "actionKind": node.action_kind,
+                "nextActions": node.next_actions,
+            })
+        })
+        .collect())
 }

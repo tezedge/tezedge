@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt::Debug;
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 use std::{convert::TryFrom, fmt};
-use std::{fmt::Debug, path::PathBuf};
 
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,6 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, FromBytesError, OperationHash,
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
-use tezos_messages::base::rpc_support::{RpcJsonMap, UniversalValue};
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{
@@ -21,72 +20,19 @@ use tezos_messages::p2p::encoding::prelude::{
 };
 use url::Url;
 
-use crate::ocaml_conv::ffi_error_ids;
+pub mod ffi_error_ids {
+    pub const APPLY_ERROR: &str = "ffi.apply_error";
+    pub const CALL_ERROR: &str = "ffi.call_error";
+    pub const CALL_EXCEPTION: &str = "ffi.call_exception";
+    pub const INCONSISTENT_OPERATIONS_HASH: &str = "ffi.inconsistent_operations_hash";
+    pub const INCOMPLETE_OPERATIONS: &str = "ffi.incomplete_operations";
+    pub const PREDECESSOR_MISMATCH: &str = "ffi.predecessor_mismatch";
+    pub const UNAVAILABLE_PROTOCOL: &str = "ffi.unavailable_protocol";
+    pub const UNKNOWN_CONTEXT: &str = "ffi.unknown_context";
+    pub const UNKNOWN_PREDECESSOR_CONTEXT: &str = "ffi.unknown_predecessor_context";
+}
 
 pub type RustBytes = Vec<u8>;
-
-/// Genesis block information structure
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct GenesisChain {
-    pub time: String,
-    pub block: String,
-    pub protocol: String,
-}
-
-/// Voted protocol overrides
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct ProtocolOverrides {
-    pub user_activated_upgrades: Vec<(i32, String)>,
-    pub user_activated_protocol_overrides: Vec<(String, String)>,
-}
-
-impl ProtocolOverrides {
-    pub fn user_activated_upgrades_to_rpc_json(&self) -> Vec<RpcJsonMap> {
-        self.user_activated_upgrades
-            .iter()
-            .map(|(level, protocol)| {
-                let mut json = RpcJsonMap::new();
-                json.insert("level", UniversalValue::num(*level));
-                json.insert(
-                    "replacement_protocol",
-                    UniversalValue::string(protocol.to_string()),
-                );
-                json
-            })
-            .collect::<Vec<RpcJsonMap>>()
-    }
-
-    pub fn user_activated_protocol_overrides_to_rpc_json(&self) -> Vec<RpcJsonMap> {
-        self.user_activated_protocol_overrides
-            .iter()
-            .map(|(replaced_protocol, replacement_protocol)| {
-                let mut json = RpcJsonMap::new();
-                json.insert(
-                    "replaced_protocol",
-                    UniversalValue::string(replaced_protocol.to_string()),
-                );
-                json.insert(
-                    "replacement_protocol",
-                    UniversalValue::string(replacement_protocol.to_string()),
-                );
-                json
-            })
-            .collect::<Vec<RpcJsonMap>>()
-    }
-}
-
-/// Patch_context key json
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
-pub struct PatchContext {
-    pub key: String,
-    pub json: String,
-}
-
-impl fmt::Debug for PatchContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(key: {}, json: {})", &self.key, &self.json)
-    }
-}
 
 /// Test chain information
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,105 +42,20 @@ pub struct TestChain {
     pub expiration_date: String,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum TezosRuntimeLogLevel {
+    App,
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
+
 /// Holds configuration for OCaml runtime - e.g. arguments which are passed to OCaml and can be change in runtime
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
-    pub debug_mode: bool,
-    pub compute_context_action_tree_hashes: bool,
-}
-
-// Must be in sync with ffi_config.ml
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct TezosContextIrminStorageConfiguration {
-    pub data_dir: String,
-}
-
-// Must be in sync with ffi_config.ml
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum ContextKvStoreConfiguration {
-    ReadOnlyIpc,
-    InMem,
-}
-
-// Must be in sync with ffi_config.ml
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct TezosContextTezEdgeStorageConfiguration {
-    pub backend: ContextKvStoreConfiguration,
-    pub ipc_socket_path: Option<String>,
-}
-
-// Must be in sync with ffi_config.ml
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum TezosContextStorageConfiguration {
-    IrminOnly(TezosContextIrminStorageConfiguration),
-    TezEdgeOnly(TezosContextTezEdgeStorageConfiguration),
-    Both(
-        TezosContextIrminStorageConfiguration,
-        TezosContextTezEdgeStorageConfiguration,
-    ),
-}
-
-impl TezosContextStorageConfiguration {
-    /// Used to produce a configuration for the readonly protocol runners from the configuration used in the main protocol runner.
-    ///
-    /// If only Irmin is enabled, the resulting configuration is the same.
-    /// If only TezEdge is enabled, the resulting configuration switches the backend to the readonly IPC implementation.
-    /// If both Irmin and TezEdge are enabled, an only-Irmin configuration is enabled.
-    pub fn readonly(&self) -> Self {
-        match self {
-            TezosContextStorageConfiguration::IrminOnly(_) => self.clone(),
-            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
-                TezosContextStorageConfiguration::TezEdgeOnly(
-                    TezosContextTezEdgeStorageConfiguration {
-                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
-                        ..tezedge.clone()
-                    },
-                )
-            }
-            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
-                TezosContextStorageConfiguration::TezEdgeOnly(
-                    TezosContextTezEdgeStorageConfiguration {
-                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
-                        ..tezedge.clone()
-                    },
-                )
-            }
-        }
-    }
-
-    pub fn get_ipc_socket_path(&self) -> Option<String> {
-        match self {
-            TezosContextStorageConfiguration::IrminOnly(_) => None,
-            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
-                tezedge.ipc_socket_path.clone()
-            }
-            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
-                tezedge.ipc_socket_path.clone()
-            }
-        }
-    }
-
-    pub fn tezedge_is_enabled(&self) -> bool {
-        match self {
-            TezosContextStorageConfiguration::IrminOnly(_) => false,
-            TezosContextStorageConfiguration::TezEdgeOnly(_) => true,
-            TezosContextStorageConfiguration::Both(_, _) => true,
-        }
-    }
-}
-
-// Must be in sync with ffi_config.ml
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TezosContextConfiguration {
-    pub storage: TezosContextStorageConfiguration,
-    pub genesis: GenesisChain,
-    pub protocol_overrides: ProtocolOverrides,
-    pub commit_genesis: bool,
-    pub enable_testchain: bool,
-    pub readonly: bool,
-    pub sandbox_json_patch_context: Option<PatchContext>,
-    pub context_stats_db_path: Option<PathBuf>,
+    pub log_level: Option<TezosRuntimeLogLevel>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Builder)]
@@ -476,6 +337,7 @@ pub struct ForkingTestchainData {
 ///
 /// `head_error_id` is the id of the main error in the trace, useful for mapping into a Rust error.
 /// `trace_json` is json of the trace.
+#[derive(Debug)]
 pub struct TezosErrorTrace {
     pub head_error_id: String,
     pub trace_json: String,
@@ -499,20 +361,6 @@ impl From<TezosErrorTrace> for CallError {
         CallError::FailedToCall {
             error_id: error.head_error_id.clone(),
             trace_message: error.trace_json,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Error)]
-pub enum TezosRuntimeConfigurationError {
-    #[error("Change OCaml settings failed, message: {message}!")]
-    ChangeConfigurationError { message: String },
-}
-
-impl From<TezosErrorTrace> for TezosRuntimeConfigurationError {
-    fn from(error: TezosErrorTrace) -> Self {
-        TezosRuntimeConfigurationError::ChangeConfigurationError {
-            message: error.trace_json,
         }
     }
 }
@@ -567,6 +415,17 @@ pub enum ApplyBlockError {
     InvalidRequestResponseData { message: String },
 }
 
+// Extracts the parameters from a JSON error coming from the protocol runner like:
+// [{"kind":"permanent","id":"ffi.incomplete_operations","expected":4,"actual":1}]
+// If cannot be parsed, returns 0 as the values.
+fn extract_incomplete_operation_values_from_json(json: &str) -> (usize, usize) {
+    let json = serde_json::from_str::<serde_json::Value>(json).unwrap_or(serde_json::Value::Null);
+    let expected = json[0]["expected"].as_u64().unwrap_or(0) as usize;
+    let actual = json[0]["actual"].as_u64().unwrap_or(0) as usize;
+
+    (expected, actual)
+}
+
 impl From<CallError> for ApplyBlockError {
     fn from(error: CallError) -> Self {
         match error {
@@ -582,6 +441,11 @@ impl From<CallError> for ApplyBlockError {
                 ffi_error_ids::PREDECESSOR_MISMATCH => ApplyBlockError::PredecessorMismatch {
                     message: trace_message,
                 },
+                ffi_error_ids::INCOMPLETE_OPERATIONS => {
+                    let (expected, actual) =
+                        extract_incomplete_operation_values_from_json(&trace_message);
+                    ApplyBlockError::IncompleteOperations { expected, actual }
+                }
                 _ => ApplyBlockError::FailedToApplyBlock {
                     message: trace_message,
                 },
@@ -1013,11 +877,53 @@ impl From<CallError> for ComputePathError {
     }
 }
 
+/// Error types generated by a tezos protocol.
+#[derive(Error, Debug)]
+pub enum ProtocolError {
+    /// Protocol rejected to apply a block.
+    #[error("Apply block error: {reason}")]
+    ApplyBlockError { reason: ApplyBlockError },
+    #[error("Assert encoding for protocol data error: {reason}")]
+    AssertEncodingForProtocolDataError { reason: ProtocolDataError },
+    #[error("Begin construction error: {reason}")]
+    BeginApplicationError { reason: BeginApplicationError },
+    #[error("Begin construction error: {reason}")]
+    BeginConstructionError { reason: BeginConstructionError },
+    #[error("Validate operation error: {reason}")]
+    ValidateOperationError { reason: ValidateOperationError },
+    #[error("Protocol rpc call error: {reason}")]
+    ProtocolRpcError {
+        reason: ProtocolRpcError,
+        request_path: String,
+    },
+    #[error("Helper Preapply call error: {reason}")]
+    HelpersPreapplyError { reason: HelpersPreapplyError },
+    #[error("Compute path call error: {reason}")]
+    ComputePathError { reason: ComputePathError },
+    /// OCaml part failed to initialize tezos storage.
+    #[error("OCaml storage init error: {reason}")]
+    OcamlStorageInitError { reason: TezosStorageInitError },
+    /// OCaml part failed to get genesis data.
+    #[error("Failed to get genesis data: {reason}")]
+    GenesisResultDataError { reason: GetDataError },
+    #[error("Failed to decode binary data to json ({caller}): {reason}")]
+    FfiJsonEncoderError {
+        caller: String,
+        reason: FfiJsonEncoderError,
+    },
+
+    #[error("Failed to get key from history: {reason}")]
+    ContextGetKeyFromHistoryError { reason: String },
+    #[error("Failed to get values by prefix: {reason}")]
+    ContextGetKeyValuesByPrefixError { reason: String },
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;
 
     use assert_json_diff::assert_json_eq;
+    use tezos_context_api::ProtocolOverrides;
 
     use super::*;
 

@@ -22,7 +22,6 @@ use storage::{
     BlockStorageReader, ConstantsStorage, CycleMetaStorage,
 };
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
-use tezos_context::context_key_owned;
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
@@ -32,7 +31,8 @@ use crate::server::RpcServiceEnvironment;
 use crate::services::base_services::{
     get_additional_data_or_fail, get_context_hash, get_raw_block_header_with_hash,
 };
-use tezos_wrapper::TezedgeContextClientError;
+use tezos_context_api::context_key_owned;
+use tezos_context_ipc_client::TezedgeContextClientError;
 
 mod proto_001;
 mod proto_002;
@@ -464,7 +464,7 @@ impl From<RpcServiceError> for VotesError {
     }
 }
 
-pub(crate) fn get_votes_listings(
+pub(crate) async fn get_votes_listings(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
@@ -481,7 +481,8 @@ pub(crate) fn get_votes_listings(
     // get protocol version
     let protocol_hash = if let Some(protocol_hash) = env
         .tezedge_context()
-        .get_key_from_history(&context_hash, context_key_owned!("protocol"))?
+        .get_key_from_history(&context_hash, context_key_owned!("protocol"))
+        .await?
     {
         ProtocolHash::try_from(protocol_hash)?
     } else {
@@ -502,34 +503,34 @@ pub(crate) fn get_votes_listings(
             })
         }
         SupportedProtocol::Proto003 => {
-            proto_003::votes_services::get_votes_listings(env, &context_hash)
+            proto_003::votes_services::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto004 => {
-            proto_004::votes_services::get_votes_listings(env, &context_hash)
+            proto_004::votes_services::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto005 => Err(VotesError::UnsupportedProtocolError {
             protocol: supported_protocol.protocol_hash(),
         }),
         SupportedProtocol::Proto005_2 => {
-            proto_005_2::votes_services::get_votes_listings(env, &context_hash)
+            proto_005_2::votes_services::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto006 => {
-            proto_006::votes_services::get_votes_listings(env, &context_hash)
+            proto_006::votes_services::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto007 => {
-            proto_007::votes_services::get_votes_listings(env, &context_hash)
+            proto_007::votes_services::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto008 => {
-            proto_008::votes_service::get_votes_listings(env, &context_hash)
+            proto_008::votes_service::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto008_2 => {
-            proto_008_2::votes_service::get_votes_listings(env, &context_hash)
+            proto_008_2::votes_service::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto009 => {
-            proto_009::votes_service::get_votes_listings(env, &context_hash)
+            proto_009::votes_service::get_votes_listings(env, &context_hash).await
         }
         SupportedProtocol::Proto010 => {
-            proto_010::votes_service::get_votes_listings(env, &context_hash)
+            proto_010::votes_service::get_votes_listings(env, &context_hash).await
         }
     }
 }
@@ -583,7 +584,7 @@ pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
     convert = "{(chain_id.clone(), block_hash.clone(), rpc_request.ffi_rpc_router_cache_key())}",
     result = true
 )]
-pub(crate) fn call_protocol_rpc_with_cache(
+pub(crate) async fn call_protocol_rpc_with_cache(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -592,20 +593,8 @@ pub(crate) fn call_protocol_rpc_with_cache(
 ) -> Result<Arc<(u16, String)>, RpcCallError> {
     let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, env)?;
 
-    let controller = env.tezos_readonly_api().pool.get()?;
-    let result = controller.api.call_protocol_rpc(request);
-
-    // The protocol runner is considerable to be in an broken state
-    // if we get a timeout in a second call after which we got a timeout
-    // already. In that case we shut that protocol runner down.
-    let broken_protocol_runner = match &result {
-        Ok(_) => false,
-        Err(error) => error.is_ipc_timeout_chain(),
-    };
-
-    if broken_protocol_runner {
-        controller.set_release_on_return_to_pool();
-    }
+    let mut controller = env.tezos_protocol_api().readable_connection().await?;
+    let result = controller.call_protocol_rpc(request).await;
 
     // TODO: retry on other errors?
 
@@ -621,7 +610,7 @@ pub(crate) fn call_protocol_rpc_with_cache(
     }
 }
 
-pub(crate) fn call_protocol_rpc(
+pub(crate) async fn call_protocol_rpc(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -632,6 +621,7 @@ pub(crate) fn call_protocol_rpc(
         RpcMethod::GET => {
             //uses cache if the request is GET request
             match call_protocol_rpc_with_cache(chain_param, chain_id, block_hash, rpc_request, env)
+                .await
             {
                 Ok(response) => Ok(response),
                 Err(RpcCallError::ErrorResponse(response)) => Ok(response),
@@ -669,11 +659,11 @@ pub(crate) fn call_protocol_rpc(
 
             // TODO: retry?
             let response = env
-                .tezos_readonly_api()
-                .pool
-                .get()?
-                .api
+                .tezos_protocol_api()
+                .readable_connection()
+                .await?
                 .call_protocol_rpc(request)
+                .await
                 .map_err(|e| RpcServiceError::UnexpectedError {
                     reason: format!("Failed to call protocol rpc, reason: {}", e),
                 })?;
@@ -686,7 +676,7 @@ pub(crate) fn call_protocol_rpc(
     }
 }
 
-pub(crate) fn preapply_operations(
+pub(crate) async fn preapply_operations(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -713,11 +703,11 @@ pub(crate) fn preapply_operations(
 
     // TODO: retry?
     let response = env
-        .tezos_readonly_api()
-        .pool
-        .get()?
-        .api
+        .tezos_protocol_api()
+        .readable_connection()
+        .await?
         .helpers_preapply_operations(request)
+        .await
         .map_err(|e| RpcServiceError::UnexpectedError {
             reason: format!("Failed to call helpers_preapply_operations, reason: {}", e),
         })?;
@@ -725,7 +715,7 @@ pub(crate) fn preapply_operations(
     serde_json::from_str(&response.body).map_err(|e| e.into())
 }
 
-pub(crate) fn preapply_block(
+pub(crate) async fn preapply_block(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -773,11 +763,11 @@ pub(crate) fn preapply_block(
 
     // TODO: retry?
     let response = env
-        .tezos_readonly_api()
-        .pool
-        .get()?
-        .api
+        .tezos_protocol_api()
+        .readable_connection()
+        .await?
         .helpers_preapply_block(request)
+        .await
         .map_err(|e| RpcServiceError::UnexpectedError {
             reason: format!("Failed to call helpers_preapply_block, reason: {}", e),
         })?;

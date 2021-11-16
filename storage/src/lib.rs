@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #![forbid(unsafe_code)]
-#![feature(allocator_api)]
 
 use std::path::Path;
 use std::sync::Arc;
@@ -11,22 +10,21 @@ use std::{
     path::PathBuf,
 };
 
+pub use rocksdb;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
+use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
 use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
 };
-use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_api::{
-    environment::{
-        get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
-    },
-    ffi::TezosContextStorageConfiguration,
+use tezos_api::environment::{
+    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
@@ -50,6 +48,7 @@ pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
 use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
+pub use crate::shell_automaton::*;
 pub use crate::system_storage::SystemStorage;
 
 pub mod block_meta_storage;
@@ -65,6 +64,7 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
+mod shell_automaton;
 pub mod system_storage;
 
 /// Extension of block header with block hash
@@ -539,6 +539,9 @@ pub mod initializer {
                 crate::CycleMetaStorage::descriptor(cache),
                 crate::CycleErasStorage::descriptor(cache),
                 crate::ConstantsStorage::descriptor(cache),
+                crate::ShellAutomatonStateStorage::descriptor(cache),
+                crate::ShellAutomatonActionStorage::descriptor(cache),
+                crate::ShellAutomatonActionMetaStorage::descriptor(cache),
             ]
         }
     }
@@ -789,6 +792,9 @@ pub mod tests_common {
                         CycleErasStorage::descriptor(&db_cache),
                         CycleMetaStorage::descriptor(&db_cache),
                         ConstantsStorage::descriptor(&db_cache),
+                        ShellAutomatonStateStorage::descriptor(&db_cache),
+                        ShellAutomatonActionStorage::descriptor(&db_cache),
+                        ShellAutomatonActionMetaStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
@@ -798,6 +804,30 @@ pub mod tests_common {
             } else if cfg!(feature = "maindb-backend-sled") {
                 TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
                     path.join("db"),
+                )?)
+            } else if cfg!(feature = "maindb-backend-edgekv") {
+                TezedgeDatabaseBackendOptions::EdgeKV(database::edgekv_backend::EdgeKVBackend::new(
+                    path.join("db"),
+                    vec![
+                        block_storage::BlockPrimaryIndex::name(),
+                        block_storage::BlockByLevelIndex::name(),
+                        block_storage::BlockByContextHashIndex::name(),
+                        BlockMetaStorage::name(),
+                        OperationsStorage::name(),
+                        OperationsMetaStorage::name(),
+                        SystemStorage::name(),
+                        Sequences::name(),
+                        MempoolStorage::name(),
+                        ChainMetaStorage::name(),
+                        PredecessorStorage::name(),
+                        BlockAdditionalData::name(),
+                        CycleErasStorage::name(),
+                        CycleMetaStorage::name(),
+                        ConstantsStorage::name(),
+                        ShellAutomatonStateStorage::name(),
+                        ShellAutomatonActionStorage::name(),
+                        ShellAutomatonActionMetaStorage::name(),
+                    ],
                 )?)
             } else {
                 let kv = Arc::new(open_kv(
@@ -818,6 +848,9 @@ pub mod tests_common {
                         CycleErasStorage::descriptor(&db_cache),
                         CycleMetaStorage::descriptor(&db_cache),
                         ConstantsStorage::descriptor(&db_cache),
+                        ShellAutomatonStateStorage::descriptor(&db_cache),
+                        ShellAutomatonActionStorage::descriptor(&db_cache),
+                        ShellAutomatonActionMetaStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);

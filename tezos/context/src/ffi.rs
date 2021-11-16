@@ -20,6 +20,7 @@ use ocaml_interop::*;
 use crypto::hash::ContextHash;
 
 use crate::{
+    from_ocaml::OCamlQueryKind,
     initializer::initialize_tezedge_index,
     timings,
     working_tree::{
@@ -30,8 +31,11 @@ use crate::{
     ContextKeyValueStore, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
 };
-use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
+use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
+use tezos_conv::{
+    OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+    OCamlTezosContextTezEdgeStorageConfiguration,
+};
 
 // TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
@@ -96,9 +100,62 @@ impl From<TezedgeContext> for TezedgeContextFFI {
     }
 }
 
-fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&'a str> {
+/// Array where we store the context keys from ocaml.
+///
+/// This avoid the cost to allocate a Vec<_> on each ffi call.
+enum KeysArray<'a> {
+    Inlined {
+        length: usize,
+        array: [&'a str; KEYS_ARRAY_LENGTH],
+    },
+    Heap(Vec<&'a str>),
+}
+
+const KEYS_ARRAY_LENGTH: usize = 128;
+
+impl<'a> KeysArray<'a> {
+    fn new() -> Self {
+        Self::Inlined {
+            length: 0,
+            array: [""; KEYS_ARRAY_LENGTH],
+        }
+    }
+
+    fn push(&mut self, str_ref: &'a str) {
+        match self {
+            KeysArray::Inlined { length, array } => {
+                if *length < KEYS_ARRAY_LENGTH {
+                    array[*length] = str_ref;
+                    *length += 1;
+                } else {
+                    let mut vec = Vec::with_capacity(KEYS_ARRAY_LENGTH * 2);
+                    vec.extend_from_slice(&array[..]);
+                    vec.push(str_ref);
+                    *self = Self::Heap(vec);
+                }
+            }
+            KeysArray::Heap(heap) => {
+                heap.push(str_ref);
+            }
+        }
+    }
+}
+
+impl<'a> std::ops::Deref for KeysArray<'a> {
+    type Target = [&'a str];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            KeysArray::Inlined { length, array } => &array[..*length],
+            KeysArray::Heap(heap) => &heap,
+        }
+    }
+}
+
+fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> KeysArray<'a> {
     let mut key = rt.get(key);
-    let mut vector: Vec<&str> = Vec::with_capacity(128);
+
+    let mut vector: KeysArray = KeysArray::new();
 
     while let Some((head, tail)) = key.uncons() {
         vector.push(unsafe { head.as_str_unchecked() });
@@ -142,7 +199,7 @@ ocaml_export! {
 
     fn tezedge_index_init(
         rt,
-        configuration: OCamlRef<TezosContextTezEdgeStorageConfiguration>,
+        configuration: OCamlRef<OCamlTezosContextTezEdgeStorageConfiguration>,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
     ) -> OCaml<Result<DynBox<TezedgeIndexFFI>, String>> {
         let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);
@@ -804,12 +861,12 @@ ocaml_export! {
 
     fn tezedge_timing_context_action(
         rt,
-        query_name: OCamlRef<String>,
+        query_kind: OCamlRef<OCamlQueryKind>,
         key: OCamlRef<OCamlList<String>>,
         irmin_time: f64,
         tezedge_time: f64,
     ) {
-        timings::context_query(rt, query_name, key, irmin_time, tezedge_time);
+        timings::context_query(rt, query_kind, key, irmin_time, tezedge_time);
         OCaml::unit()
     }
 
@@ -905,5 +962,22 @@ pub fn initialize_callbacks() {
             tezedge_timing_context_action,
             tezedge_timing_init,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keys_array() {
+        let mut s = KeysArray::new();
+
+        for i in 0..KEYS_ARRAY_LENGTH + 10 {
+            s.push("a");
+            let bytes = &*s;
+
+            assert_eq!(bytes.len(), i + 1);
+        }
     }
 }

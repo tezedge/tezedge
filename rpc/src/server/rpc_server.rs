@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use shell::mempool::CurrentMempoolStateStorageRef;
+use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
 use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
@@ -13,7 +14,7 @@ use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_wrapper::TezosApiConnectionPool;
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
 use tokio::runtime::Handle;
 
 use crate::server::{spawn_server, RpcCollectedState, RpcServiceEnvironment};
@@ -42,13 +43,12 @@ impl RpcServer {
     pub fn new(
         log: Logger,
         shell_connector: ShellConnectorRef,
+        shell_automaton_channel: RpcShellAutomatonChannel,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        tezos_readonly_api: Arc<TezosApiConnectionPool>,
-        tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        tezos_without_context_api: Arc<TezosApiConnectionPool>,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         tezos_env: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
@@ -63,13 +63,12 @@ impl RpcServer {
         let env = Arc::new(RpcServiceEnvironment::new(
             Arc::new(tokio_executor),
             shell_connector,
+            shell_automaton_channel.sender(),
             tezos_env,
             network_version,
             persistent_storage,
             current_mempool_state_storage,
-            tezos_readonly_api,
-            tezos_readonly_prevalidation_api,
-            tezos_without_context_api,
+            tezos_protocol_api,
             init_storage_data.chain_id.clone(),
             shared_state,
             init_storage_data.context_stats_db_path.clone(),

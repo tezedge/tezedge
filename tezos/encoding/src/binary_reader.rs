@@ -5,10 +5,11 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Error produced by a [BinaryReader].
-#[derive(Debug, Clone, Error)]
+#[derive(Serialize, Deserialize, Debug, Clone, Error)]
 pub enum BinaryReaderError {
     Error(String),
     UnknownTag(String),

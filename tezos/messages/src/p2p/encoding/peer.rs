@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::p2p::{binary_message::SizeFromChunk, encoding::prelude::*, peer_message_size};
 use tezos_encoding::enc::BinWriter;
@@ -11,7 +11,30 @@ use tezos_encoding::nom::NomReader;
 
 use super::limits::MESSAGE_MAX_SIZE;
 
-#[derive(Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
+pub const MESSAGE_TYPE_COUNT: usize = 18;
+
+pub const MESSAGE_TYPE_TEXTS: [&str; MESSAGE_TYPE_COUNT] = [
+    "Disconnect",
+    "Advertise",
+    "SwapRequest",
+    "SwapAck",
+    "Bootstrap",
+    "GetCurrentBranch",
+    "CurrentBranch",
+    "Deactivate",
+    "GetCurrentHead",
+    "CurrentHead",
+    "GetBlockHeaders",
+    "BlockHeader",
+    "GetOperations",
+    "Operation",
+    "GetProtocols",
+    "Protocol",
+    "GetOperationsForBlocks",
+    "OperationsForBlocks",
+];
+
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
 #[encoding(tags = "u16")]
 pub enum PeerMessage {
     #[encoding(tag = 0x01)]
@@ -52,11 +75,48 @@ pub enum PeerMessage {
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
-#[derive(Clone, Serialize, Debug, Getters, HasEncoding, NomReader, BinWriter)]
+impl PeerMessage {
+    pub fn type_str_for_message_index(index: usize) -> &'static str {
+        if index < MESSAGE_TYPE_COUNT {
+            MESSAGE_TYPE_TEXTS[index]
+        } else {
+            "<invalid index for message type>"
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            PeerMessage::Disconnect => 0,
+            PeerMessage::Advertise(_) => 1,
+            PeerMessage::SwapRequest(_) => 2,
+            PeerMessage::SwapAck(_) => 3,
+            PeerMessage::Bootstrap => 4,
+            PeerMessage::GetCurrentBranch(_) => 5,
+            PeerMessage::CurrentBranch(_) => 6,
+            PeerMessage::Deactivate(_) => 7,
+            PeerMessage::GetCurrentHead(_) => 8,
+            PeerMessage::CurrentHead(_) => 9,
+            PeerMessage::GetBlockHeaders(_) => 10,
+            PeerMessage::BlockHeader(_) => 11,
+            PeerMessage::GetOperations(_) => 12,
+            PeerMessage::Operation(_) => 13,
+            PeerMessage::GetProtocols(_) => 14,
+            PeerMessage::Protocol(_) => 15,
+            PeerMessage::GetOperationsForBlocks(_) => 16,
+            PeerMessage::OperationsForBlocks(_) => 17,
+        }
+    }
+
+    pub fn get_type_str(&self) -> &'static str {
+        Self::type_str_for_message_index(self.index())
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, BinWriter)]
 #[encoding(dynamic = "MESSAGE_MAX_SIZE")]
 pub struct PeerMessageResponse {
     #[get = "pub"]
-    message: PeerMessage,
+    pub message: PeerMessage,
 
     /// Encrypted bytes read from stream including chunk sizes.
     #[encoding(skip)]

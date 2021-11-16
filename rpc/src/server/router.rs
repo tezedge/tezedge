@@ -67,11 +67,12 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/chains/:chain_id/chain_id",
         shell_handler::get_chain_id,
     );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks",
-        shell_handler::blocks,
-    );
+    // TODO: TE-685
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks",
+    //     shell_handler::blocks,
+    // );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id",
@@ -293,6 +294,26 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/state",
+        dev_handler::dev_shell_automaton_state_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/actions",
+        dev_handler::dev_shell_automaton_actions_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/actions_stats",
+        dev_handler::dev_shell_automaton_actions_stats_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/actions_graph",
+        dev_handler::dev_shell_automaton_actions_graph_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/stats/memory",
         dev_handler::dev_stats_memory,
     );
@@ -305,6 +326,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/stats/context",
         dev_handler::context_stats,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/stats/dbrw",
+        dev_handler::dev_db_stats,
     );
     routes.handle(
         hash_set![Method::GET],

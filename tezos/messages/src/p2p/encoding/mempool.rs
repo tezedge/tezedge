@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::OperationHash;
 use tezos_encoding::enc::BinWriter;
@@ -14,6 +14,7 @@ use super::limits::{MEMPOOL_MAX_OPERATIONS, MEMPOOL_MAX_SIZE};
 #[derive(
     Clone,
     Serialize,
+    Deserialize,
     Debug,
     Default,
     Getters,

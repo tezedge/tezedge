@@ -1,16 +1,22 @@
-use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use crate::database::backend::{BackendIteratorMode, DBStats, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
 use crate::database::tezedge_database::TezdegeDatabaseBackendKV;
 use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 use crate::persistent::database::default_kv_options;
 use crate::persistent::DbConfiguration;
 use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch, WriteOptions, DB};
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use super::backend::BackendIterator;
 
 pub struct RocksDBBackend {
+    column_stats: Arc<RwLock<HashMap<&'static str, DBStats>>>,
     db: Arc<rocksdb::DB>,
 }
 
@@ -27,11 +33,17 @@ impl RocksDBBackend {
             },
         )
         .map(Arc::new)?;
-        Ok(Self { db })
+        Ok(Self {
+            column_stats: Arc::new(Default::default()),
+            db,
+        })
     }
 
     pub fn from_db(db: Arc<rocksdb::DB>) -> Result<Self, Error> {
-        Ok(Self { db })
+        Ok(Self {
+            column_stats: Arc::new(Default::default()),
+            db,
+        })
     }
 
     fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, Error>
@@ -43,8 +55,15 @@ impl RocksDBBackend {
     }
 }
 impl TezdegeDatabaseBackendKV for RocksDBBackend {}
+
 impl TezedgeDatabaseBackendStore for RocksDBBackend {
     fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let cf = self
             .db
             .cf_handle(column)
@@ -52,7 +71,13 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
 
         self.db
             .put_cf_opt(cf, key, value, &default_write_options())
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+
+        let total_write_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_write_duration += total_write_duration;
+        stat.total_writes += 1;
+        Ok(())
     }
 
     fn delete(&self, column: &'static str, key: &[u8]) -> Result<(), Error> {
@@ -66,22 +91,49 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
     }
 
     fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
-        self.db
+        let res = self
+            .db
             .merge_cf_opt(cf, key, value, &default_write_options())
-            .map_err(Error::from)
+            .map_err(Error::from);
+
+        let total_update_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_update_duration += total_update_duration;
+        stat.total_updates += 1;
+
+        res
     }
 
     fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+        let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        let timer = Instant::now();
+
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
-        self.db.get_cf(cf, key).map_err(Error::from)
+        let value = self.db.get_cf(cf, key).map_err(Error::from)?;
+
+        let total_read_duration = timer.elapsed();
+        let mut stat = stats.entry(column).or_insert(Default::default());
+        stat.total_read_duration += total_read_duration;
+        stat.total_reads += 1;
+
+        Ok(value)
     }
 
     fn contains(&self, column: &'static str, key: &[u8]) -> Result<bool, Error> {
@@ -113,6 +165,15 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
     fn flush(&self) -> Result<usize, Error> {
         self.db.flush()?;
         Ok(0)
+    }
+
+    fn size(&self) -> HashMap<&'static str, usize> {
+        // TODO - TE-721: this doesn't compute anyhting
+        HashMap::new()
+    }
+
+    fn sync(&self) -> Result<(), Error> {
+        todo!()
     }
 
     fn find<'a>(
@@ -150,6 +211,16 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
         Ok(Box::new(
             self.db.prefix_iterator_cf(cf, key).map(|kv| Ok(kv)),
         ))
+    }
+
+    fn column_stats(&self) -> HashMap<&'static str, DBStats> {
+        let stats = match self.column_stats.read().map_err(|e| Error::GuardPoison {
+            error: format!("{}", e),
+        }) {
+            Ok(stats) => stats,
+            Err(_) => return Default::default(),
+        };
+        stats.clone()
     }
 }
 

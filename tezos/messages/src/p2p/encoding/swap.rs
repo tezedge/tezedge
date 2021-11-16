@@ -3,7 +3,7 @@
 
 use crypto::hash::CryptoboxPublicKeyHash;
 use getset::Getters;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
@@ -13,6 +13,7 @@ use super::limits::P2P_POINT_MAX_SIZE;
 
 #[derive(
     Serialize,
+    Deserialize,
     Debug,
     Getters,
     Clone,

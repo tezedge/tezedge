@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.9.1
+    image: tezedge/tezedge:v1.10.0
     command: [
         "--network", "${TEZOS_NETWORK}",
         "--p2p-port=9732",
@@ -13,9 +13,6 @@ services:
         "--tezos-context-storage", "irmin",
         "--peer-thresh-low", "60",
         "--peer-thresh-high", "80",
-        "--ffi-pool-max-connections", "2",
-        "--ffi-trpap-pool-max-connections", "1",
-        "--ffi-twcap-pool-max-connections", "1"
     ]
     logging:
       # Produce syslogs instead of terminal logs
@@ -35,7 +32,7 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.7.1
+    image: tezedge/tezedge-explorer:v1.9.1
     environment:
       API: >
         [
