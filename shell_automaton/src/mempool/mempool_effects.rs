@@ -136,25 +136,20 @@ pub fn mempool_effects<S>(
         },
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { address, .. }) => {
             let mempool_state = &store.state().mempool;
-            if let Some(peer) = mempool_state.peer_state.get(address) {
-                // received all pending operations from the particular peer
-                if peer.pending_full_content.is_empty() {
-                    if let Some(head_state) = peer.head_state.clone() {
-                        let pending = mempool_state.pending_operations.keys().cloned().collect();
-                        let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
-                        store.dispatch(
-                            MempoolBroadcastAction {
-                                address_exceptions: vec![*address],
-                                head_state,
-                                known_valid,
-                                pending,
-                            },
-                        );
-                    } else {
-                        // should always have current head while waiting MempoolOperationRecvDone
-                        // TODO(vlad): should be forbidden by enabling condition
-                    }
-                }
+            if let Some(head_state) = mempool_state.local_head_state.clone() {
+                let pending = mempool_state.pending_operations.keys().cloned().collect();
+                let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
+                store.dispatch(
+                    MempoolBroadcastAction {
+                        address_exceptions: vec![*address],
+                        head_state,
+                        known_valid,
+                        pending,
+                    },
+                );
+            } else {
+                // should always have current head while waiting MempoolOperationRecvDone
+                // TODO(vlad): should be forbidden by enabling condition
             }
         },
         Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, operation, .. }) => {
@@ -202,12 +197,12 @@ pub fn mempool_effects<S>(
                 };
                 let known_valid = known_valid
                     .iter()
-                    .filter(|hash| !peer.known_operations.contains(*hash))
+                    .filter(|hash| !peer.seen_operations.contains(*hash))
                     .cloned()
                     .collect::<Vec<_>>();
                 let pending = pending
                     .iter()
-                    .filter(|hash| !peer.known_operations.contains(*hash))
+                    .filter(|hash| !peer.seen_operations.contains(*hash))
                     .cloned()
                     .collect::<Vec<_>>();
                 let message = CurrentHeadMessage::new(

@@ -66,20 +66,20 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 },
             }
         }
-        Action::MempoolRecvDone(MempoolRecvDoneAction { address, head_state, message }) => {
+        Action::MempoolRecvDone(MempoolRecvDoneAction { address, message, head_state }) => {
+            let _ = head_state; // block application process should care about this message
+
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            // TODO(vlad): check whether we can accept this head
-            peer.head_state = Some(head_state.clone());
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
                     || mempool_state.validated_operations.ops.contains_key(&hash);
                 if !known {
                     peer.requesting_full_content.insert(hash.clone());
                     // of course peer knows about it, because he sent us it
-                    peer.known_operations.insert(hash);
+                    peer.seen_operations.insert(hash);
                 }
             }
         },
@@ -100,7 +100,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
             if !peer.pending_full_content.remove(&operation_hash) {
-                // TODO(vlad): received operation, but we did not requested it
+                // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 
             mempool_state.pending_operations.insert(operation_hash, operation.clone());
@@ -111,8 +111,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction { address, known_valid, pending }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
-            peer.known_operations.extend(known_valid.iter().cloned());
-            peer.known_operations.extend(pending.iter().cloned());
+            peer.seen_operations.extend(known_valid.iter().cloned());
+            peer.seen_operations.extend(pending.iter().cloned());
         },
         _ => (),
     }

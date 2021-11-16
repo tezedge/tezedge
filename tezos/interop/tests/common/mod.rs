@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(dead_code)]
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

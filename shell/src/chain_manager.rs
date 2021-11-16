@@ -430,7 +430,7 @@ impl ChainManager {
                             .log()
                             .new(slog::o!("peer" => peer.peer_id.address.to_string()));
 
-                        if matches!(received.message.message(), PeerMessage::CurrentHead(_) | PeerMessage::Operation(_) | PeerMessage::GetOperations(_)) {
+                        if matches!(received.message.message(), PeerMessage::GetCurrentHead(_) | PeerMessage::Operation(_) | PeerMessage::GetOperations(_)) {
                             return Ok(());
                         }
                         match received.message.message() {
@@ -686,8 +686,10 @@ impl ChainManager {
                                             }
 
                                             // schedule mempool download, if enabled and instantied
+                                            let mempool_handled_by_state_machine = true;
+
                                             if !mempool_prevalidator_factory.p2p_disable_mempool
-                                                && mempool_prevalidator.is_some()
+                                                && mempool_prevalidator.is_some() && !mempool_handled_by_state_machine
                                             {
                                                 if mempool_operation_state
                                                     .add_missing_mempool_operations_for_download(
