@@ -329,6 +329,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/stats/dbrw",
+        dev_handler::dev_db_stats,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/stats/:chain_id/blocks/:block_id",
         dev_handler::block_actions,
     );

@@ -4,7 +4,7 @@
 // #![forbid(unsafe_code)]
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use slog::{debug, error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
@@ -737,7 +737,7 @@ fn main() {
 
     // create/initialize databases
     info!(log, "Loading databases... (3/8)");
-
+    let instant = Instant::now();
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let mut caches = GlobalRocksDbCacheHolder::with_capacity(1);
@@ -776,6 +776,15 @@ fn main() {
             )
             .expect("Failed to create/initialize MainDB database (db)")
         }
+        TezedgeDatabaseBackendConfiguration::EdgeKV => initialize_maindb(
+            &log,
+            None,
+            &env.storage.db,
+            env.storage.db.expected_db_version,
+            &main_chain,
+            env.storage.main_db,
+        )
+        .expect("Failed to create/initialize MainDB database (db)"),
     };
 
     let commit_logs = Arc::new(
@@ -806,7 +815,11 @@ fn main() {
                     .as_ref()
                     .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
 
-                info!(log, "Databases loaded successfully");
+                info!(
+                    log,
+                    "Databases loaded successfully {} ms",
+                    instant.elapsed().as_millis()
+                );
                 block_on_actors(
                     env,
                     init_data,
