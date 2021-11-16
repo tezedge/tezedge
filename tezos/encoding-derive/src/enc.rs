@@ -40,6 +40,7 @@ pub(crate) fn generate_encoding(encoding: &Encoding) -> TokenStream {
         Encoding::List(size, encoding, span) => generate_list_encoding(size, encoding, *span),
         Encoding::Sized(size, encoding, span) => generate_sized_encoding(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_encoding(size, encoding, *span),
+        Encoding::ShortDynamic(encoding, span) => generate_short_dynamic_encoding(encoding, *span),
         Encoding::Dynamic(size, encoding, span) => generate_dynamic_encoding(size, encoding, *span),
         Encoding::Zarith(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Z),
         Encoding::MuTez(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Mutez),
@@ -64,7 +65,7 @@ fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
 fn generate_field_encoding(field: &FieldEncoding) -> Option<TokenStream> {
     if let FieldKind::Encoded(encoding) = &field.kind {
         let name = field.name.to_string();
-        let encoding = generate_encoding(&encoding);
+        let encoding = generate_encoding(encoding);
         Some(
             quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding)),
         )
@@ -130,6 +131,11 @@ fn generate_bounded_encoding<'a>(
 ) -> TokenStream {
     let encoding = generate_encoding(encoding);
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::Bounded(#size, Box::new(#encoding)))
+}
+
+fn generate_short_dynamic_encoding<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
+    let encoding = generate_encoding(encoding);
+    quote_spanned!(span=> tezos_encoding::encoding::Encoding::ShortDynamic(Box::new(#encoding)))
 }
 
 fn generate_dynamic_encoding<'a>(
