@@ -1,7 +1,7 @@
 [package]
 name = "edgekv"
 version = "1.10.0"
-authors = ["mambisi <mambisi@gmail.com>"]
+authors = ["Mambisi Zempare <mambisi.zempare@viablesystems.io>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
