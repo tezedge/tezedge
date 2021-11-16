@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
-    blake2b::Blake2bError,
+    blake2b::{self, Blake2bError},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -304,6 +304,44 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake
     let result = crate::blake2b::digest_256(&block_hash.0)?;
     Ok(ChainId::from_bytes(&result[0..HashType::ChainId.size()])
         .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
+}
+
+#[derive(Debug, Error)]
+pub enum TryFromPKError {
+    #[error("Error calculating digest")]
+    Digest(#[from] Blake2bError),
+    #[error("Invalid hash size")]
+    Size(#[from] FromBytesError),
+}
+
+impl TryFrom<PublicKeyEd25519> for ContractTz1Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeyEd25519) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
+}
+
+impl TryFrom<PublicKeySecp256k1> for ContractTz2Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeySecp256k1) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
+}
+
+impl TryFrom<PublicKeyP256> for ContractTz3Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeyP256) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
 }
 
 #[cfg(test)]
