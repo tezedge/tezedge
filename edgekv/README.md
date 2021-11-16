@@ -47,3 +47,20 @@ where `K : Vec<u8>` read from the hint file and V is a rust struct `KeyDirEntry`
 | key_size            | `u64`     | Key size                    |
 | value_size          | `u64`     | Value size                  |
 | data_entry_position | `u64`     | Data entry position in File |
+
+
+# Usage
+
+```rust
+    let db = EdgeKV::open("db").unwrap();
+
+    let k = b"k1";
+
+    db.put(k.to_vec(), vec![0]).unwrap();
+    db.merge(concatenate_merge, k.to_vec(), vec![1]).unwrap();
+    db.merge(concatenate_merge, k.to_vec(), vec![2]).unwrap();
+    assert_eq!(db.get(&k.to_vec()).unwrap().unwrap(), vec![0, 1, 2]);
+
+    db.put(k.to_vec(), vec![3]).unwrap();
+    assert_eq!(db.get(&k.to_vec()).unwrap().unwrap(), vec![3]);
+```
