@@ -2,7 +2,7 @@
 FROM tezedge/tezos-opam-builder:debian10
 
 USER root
-RUN apt-get install -y openssl libssl-dev
+RUN apt-get install -y openssl libssl-dev zlib1g
 
 USER appuser
 
