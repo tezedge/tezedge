@@ -8,7 +8,7 @@ use crate::protocol::ProtocolAction;
 
 use super::{
     MempoolGetOperationsPendingAction, MempoolRecvDoneAction, MempoolOperationRecvDoneAction,
-    MempoolBroadcastDoneAction, MempoolOperationInjectAction, BlockAppliedAction,
+    MempoolBroadcastDoneAction, MempoolOperationInjectAction, BlockAppliedAction, MempoolRpcRespondAction,
     HeadState,
 };
 
@@ -28,11 +28,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
                             mempool_state.validated_operations.applied.push(v.clone());
                         }
+                        if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
+                            mempool_state.injected_rpc_ids.insert(v.hash.clone(), rpc_id);
+                        }
                     }
                     for v in &result.result.refused {
                         if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                             mempool_state.validated_operations.refused_ops.insert(v.hash.clone(), op);
                             mempool_state.validated_operations.refused.push(v.clone());
+                        }
+                        if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
+                            mempool_state.injected_rpc_ids.insert(v.hash.clone(), rpc_id);
                         }
                     }
                     for v in &result.result.branch_refused {
@@ -40,11 +46,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
                             mempool_state.validated_operations.branch_refused.push(v.clone());
                         }
+                        if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
+                            mempool_state.injected_rpc_ids.insert(v.hash.clone(), rpc_id);
+                        }
                     }
                     for v in &result.result.branch_delayed {
                         if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                             mempool_state.validated_operations.ops.insert(v.hash.clone(), op);
                             mempool_state.validated_operations.branch_delayed.push(v.clone());
+                        }
+                        if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
+                            mempool_state.injected_rpc_ids.insert(v.hash.clone(), rpc_id);
                         }
                     }
                 },
@@ -105,8 +117,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             mempool_state.pending_operations.insert(operation_hash, operation.clone());
         },
-        Action::MempoolOperationInject(MempoolOperationInjectAction { operation, operation_hash, .. }) => {
+        Action::MempoolOperationInject(MempoolOperationInjectAction { operation, operation_hash, rpc_id }) => {
+            mempool_state.injecting_rpc_ids.insert(operation_hash.clone(), rpc_id.clone());
             mempool_state.pending_operations.insert(operation_hash.clone(), operation.clone());
+        },
+        Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
+            state.mempool.injected_rpc_ids.clear();
         },
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction { address, known_valid, pending }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();

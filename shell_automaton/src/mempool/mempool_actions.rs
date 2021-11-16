@@ -85,14 +85,33 @@ impl EnablingCondition<State> for MempoolOperationInjectAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolBroadcastAction {
-    pub address_exceptions: Vec<SocketAddr>,
-    pub head_state: HeadState,
-    pub known_valid: Vec<OperationHash>,
-    pub pending: Vec<OperationHash>,
+pub struct MempoolValidateStartAction {
+    pub operation: Operation,
 }
 
+impl EnablingCondition<State> for MempoolValidateStartAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolBroadcastAction {}
+
 impl EnablingCondition<State> for MempoolBroadcastAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolRpcRespondAction {}
+
+impl EnablingCondition<State> for MempoolRpcRespondAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;

@@ -16,6 +16,7 @@ use tezos_messages::p2p::{
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::{Action, ActionWithMeta, Service, State, service::{ProtocolService, RpcService}};
+use crate::protocol::ProtocolAction;
 use crate::peer::message::{
     write::PeerMessageWriteInitAction,
     read::PeerMessageReadSuccessAction,
@@ -25,7 +26,8 @@ use super::{
     mempool_actions::{
         MempoolRecvDoneAction, MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationRecvDoneAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-        MempoolOperationInjectAction, BlockAppliedAction,
+        MempoolOperationInjectAction, BlockAppliedAction, MempoolValidateStartAction,
+        MempoolRpcRespondAction,
     },
     mempool_state::HeadState,
 };
@@ -37,7 +39,24 @@ pub fn mempool_effects<S>(
     S: Service,
 {
     match &action.action {
-        Action::Protocol(_) => {
+        Action::Protocol(act) => {
+            match act {
+                ProtocolAction::OperationValidated(_) => {
+                    store.dispatch(MempoolBroadcastAction {});
+                    // respond
+                    let resp = if store.state().mempool.local_head_state.is_some() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String("head is not ready".to_string())
+                    };
+                    let to_respond = store.state().mempool.injected_rpc_ids.values().cloned().collect::<Vec<_>>();
+                    for rpc_id in to_respond {
+                        store.service().rpc().respond(rpc_id, resp.clone());
+                    }
+                    store.dispatch(MempoolRpcRespondAction {});
+                },
+                _ => {},
+            }
             // panic!("{:?}", act);
         },
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
@@ -134,74 +153,56 @@ pub fn mempool_effects<S>(
                 );
             }
         },
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { address, .. }) => {
+        | Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
+        | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, ..  }) => {
+            store.dispatch(
+                MempoolValidateStartAction {
+                    operation: operation.clone(),
+                },
+            );
+        },
+        Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
             let mempool_state = &store.state().mempool;
-            if let Some(head_state) = mempool_state.local_head_state.clone() {
-                let pending = mempool_state.pending_operations.keys().cloned().collect();
-                let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
-                store.dispatch(
-                    MempoolBroadcastAction {
-                        address_exceptions: vec![*address],
-                        head_state,
-                        known_valid,
-                        pending,
-                    },
-                );
+            if let Some(prevalidator) = &mempool_state.prevalidator {
+                let validate_req = ValidateOperationRequest {
+                    prevalidator: prevalidator.clone(),
+                    operation: operation.clone(),
+                };
+                store.service().protocol().validate_operation_for_mempool(validate_req);
             } else {
-                // should always have current head while waiting MempoolOperationRecvDone
-                // TODO(vlad): should be forbidden by enabling condition
+                // TODO(vlad): prevalidator is not ready yet
+                // need to wait it and restart the action
             }
         },
-        Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, operation, .. }) => {
-            let mempool_state = &store.state().mempool;
-            // TODO(vlad): duplicated code
-            if let Some(head_state) = mempool_state.local_head_state.clone() {
-                let pending = mempool_state.pending_operations.keys().cloned().collect();
-                let known_valid = mempool_state.validated_operations.ops.keys().cloned().collect();
-                store.dispatch(
-                    MempoolBroadcastAction {
-                        address_exceptions: vec![],
-                        head_state,
-                        known_valid,
-                        pending,
-                    },
-                );
-                let mempool_state = &store.state().mempool;
-                if let Some(prevalidator) = &mempool_state.prevalidator {
-                    let validate_req = ValidateOperationRequest {
-                        prevalidator: prevalidator.clone(),
-                        operation: operation.clone(),
-                    };
-                    store.service().protocol().validate_operation_for_mempool(validate_req);
-                } else {
-                    // TODO(vlad)
-                }
-                store.service().rpc().respond(*rpc_id, serde_json::Value::Null);
-            } else {
-                let resp = serde_json::Value::String("head is not ready".to_string());
-                store.service().rpc().respond(*rpc_id, resp);
-                // should always have current head while waiting MempoolOperationRecvDone
-                // TODO(vlad): should be forbidden by enabling condition
-            }
-        },
-        Action::MempoolBroadcast(MempoolBroadcastAction { address_exceptions, head_state, known_valid, pending }) => {
+        Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
+            let head_state = match store.state().mempool.local_head_state.clone() {
+                Some(v) => v,
+                None => {
+                    // should always have current head here
+                    // TODO(vlad): should be forbidden by enabling condition
+                    return;
+                },
+            };
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             // TODO(vlad): add action removing peer_state for disconnected peers
             for address in addresses {
-                if address_exceptions.contains(&address) {
-                    continue;
-                }
                 let peer = match store.state().mempool.peer_state.get(&address) {
                     Some(v) => v,
                     None => continue,
                 };
-                let known_valid = known_valid
-                    .iter()
+    
+                let known_valid = store.state()
+                    .mempool
+                    .pending_operations
+                    .keys()
                     .filter(|hash| !peer.seen_operations.contains(*hash))
                     .cloned()
                     .collect::<Vec<_>>();
-                let pending = pending
-                    .iter()
+                let pending = store.state()
+                    .mempool
+                    .validated_operations
+                    .ops
+                    .keys()
                     .filter(|hash| !peer.seen_operations.contains(*hash))
                     .cloned()
                     .collect::<Vec<_>>();

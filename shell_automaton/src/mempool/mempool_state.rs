@@ -11,6 +11,8 @@ use tezos_messages::p2p::{
 };
 use tezos_api::ffi::{PrevalidatorWrapper, Applied, Errored};
 
+use crate::service::rpc_service::RpcId;
+
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
     // all blocks applied
@@ -21,6 +23,10 @@ pub struct MempoolState {
     pub(super) prevalidator: Option<PrevalidatorWrapper>,
     //
     pub(super) requesting_prevalidator_for: Option<BlockHash>,
+    // performing rpc
+    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
+    // performed rpc
+    pub(super) injected_rpc_ids: HashMap<OperationHash, RpcId>,
     // the current head applied
     pub(super) local_head_state: Option<HeadState>,
     // let's track what our peers know, and what we waiting from them
