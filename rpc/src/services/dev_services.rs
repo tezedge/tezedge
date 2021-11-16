@@ -490,7 +490,7 @@ pub(crate) async fn get_shell_automaton_actions(
     tokio::task::spawn_blocking(move || {
         let mut actions_iter = action_storage
             .find(match cursor {
-                Some(cursor) => IteratorMode::From(Cow::Owned(cursor - 1), Direction::Reverse),
+                Some(cursor) => IteratorMode::From(Cow::Owned(cursor.max(1) - 1), Direction::Reverse),
                 None => IteratorMode::End,
             })?
             .map(shell_automaton_actions_decode_map);
