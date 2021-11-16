@@ -11,6 +11,7 @@ use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
+use crate::prechecker::PrecheckerState;
 use crate::rights::RightsState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
@@ -50,6 +51,8 @@ pub struct State {
 
     pub mempool: MempoolState,
 
+    pub prechecker: PrecheckerState,
+
     pub rights: RightsState,
 
     pub paused_loops: PausedLoopsState,
@@ -70,6 +73,8 @@ impl State {
             storage: StorageState::new(),
             mempool: MempoolState::default(),
             rights: RightsState::default(),
+
+            prechecker: PrecheckerState::default(),
 
             paused_loops: PausedLoopsState::new(),
 
