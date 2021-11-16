@@ -91,7 +91,6 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
     }
 
     fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
-
         let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
             error: format!("{}", e),
         })?;
@@ -103,7 +102,8 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
-        let res = self.db
+        let res = self
+            .db
             .merge_cf_opt(cf, key, value, &default_write_options())
             .map_err(Error::from);
 

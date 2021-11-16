@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
 use std::ops::{Add, RangeBounds};
 use std::path::{Path, PathBuf};
-use std::sync::{RwLock, RwLockReadGuard, Arc};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use crate::Result;
 use std::io::{BufReader, Write};
@@ -189,8 +189,10 @@ impl KeysDir {
     }
 
     pub fn contains(&self, key: &Vec<u8>) -> Result<bool> {
-        let keys_dir_reader = self.keys.read()
-            .map_err(|e|{EdgeKVError::RWLockPoisonError(format!("{}", e))})?;
+        let keys_dir_reader = self
+            .keys
+            .read()
+            .map_err(|e| EdgeKVError::RWLockPoisonError(format!("{}", e)))?;
         Ok(keys_dir_reader.contains_key(key))
     }
 }
@@ -256,7 +258,7 @@ pub struct DataStore {
     buffer: RwLock<HashMap<Arc<Vec<u8>>, Arc<Vec<u8>>>>,
     double_buffer: HashMap<Vec<u8>, DataEntry>,
     buffer_size: RwLock<usize>,
-    cache : RwLock<LruCache<Arc<Vec<u8>>, Arc<Vec<u8>>>>
+    cache: RwLock<LruCache<Arc<Vec<u8>>, Arc<Vec<u8>>>>,
 }
 
 pub fn fetch_double_buffer_file(
@@ -293,7 +295,7 @@ impl DataStore {
             buffer: RwLock::new(Default::default()),
             double_buffer,
             buffer_size: RwLock::new(0),
-            cache: RwLock::new(LruCache::new(24_000))
+            cache: RwLock::new(LruCache::new(24_000)),
         };
         instance.lock()?;
         Ok(instance)

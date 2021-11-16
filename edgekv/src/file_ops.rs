@@ -109,7 +109,6 @@ impl Index {
 }
 
 impl FilePair {
-
     pub fn file_id(&self) -> String {
         self.file_id.to_owned()
     }
@@ -266,7 +265,6 @@ pub fn create_new_file_pair<P: AsRef<Path>>(dir: P) -> Result<FilePair> {
     hint_file_path.push(dir.as_ref());
     hint_file_path.push(format!("{}.{}", file_name, HINT_FILE_EXTENSION));
     hint_file_path.set_extension(HINT_FILE_EXTENSION);
-
 
     OpenOptions::new()
         .create_new(true)

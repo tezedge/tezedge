@@ -145,7 +145,6 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
     }
 
     fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
-
         let mut stats = self.column_stats.write().map_err(|e| Error::GuardPoison {
             error: format!("{}", e),
         })?;
@@ -241,7 +240,7 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
     }
 
     fn flush(&self) -> Result<usize, Error> {
-        for (_,db) in self.db.iter() {
+        for (_, db) in self.db.iter() {
             db.sync_all().map_err(|e| Error::EdgeKVError {
                 error: format!("EdgeKV Error: {:?}", e),
             })?;
