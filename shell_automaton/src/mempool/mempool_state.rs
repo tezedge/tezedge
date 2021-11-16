@@ -52,12 +52,10 @@ pub struct HeadState {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
-    // the current head of the peer
-    pub(super) head_state: Option<HeadState>,
     // we received mempool from the peer and gonna send GetOperations
     pub(super) requesting_full_content: HashSet<OperationHash>,
     // we sent GetOperations and pending full content of those operations
     pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
-    pub(super) known_operations: HashSet<OperationHash>,
+    pub(super) seen_operations: HashSet<OperationHash>,
 }
