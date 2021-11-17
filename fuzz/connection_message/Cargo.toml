@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_connection_message"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 publish = false

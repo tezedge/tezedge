@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2018"
 
