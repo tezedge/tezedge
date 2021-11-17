@@ -16,7 +16,7 @@ ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
 
 #USER root
-RUN apt-get update && apt-get install clang libclang-dev libssl-dev -y
+RUN apt-get update && apt-get install clang libclang-dev libssl-dev zlib1g -y
 RUN apt-get update && apt-get install gosu -y
 RUN echo "interceptor_via_lib:protocol-runner" > /asan.supp
 
