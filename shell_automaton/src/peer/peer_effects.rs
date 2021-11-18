@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-
-use redux_rs::{ActionWithId, Store};
 use std::io;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::paused_loops::{PausedLoop, PausedLoopsAddAction};
 use crate::service::{MioService, Service};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
 use super::binary_message::write::PeerBinaryMessageWriteState;
@@ -32,7 +30,7 @@ use super::{
     PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
 };
 
-pub fn peer_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
+pub fn peer_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
@@ -83,10 +81,10 @@ where
                 .collect::<Vec<_>>();
 
             for address in read_addresses {
-                store.dispatch(PeerTryReadLoopStartAction { address }.into());
+                store.dispatch(PeerTryReadLoopStartAction { address });
             }
             for address in write_addresses {
-                store.dispatch(PeerTryWriteLoopStartAction { address }.into());
+                store.dispatch(PeerTryWriteLoopStartAction { address });
             }
         }
         // Handle peer related mio event.
@@ -94,7 +92,9 @@ where
             let address = event.address();
 
             if event.is_closed() {
-                return store.dispatch(PeerConnectionClosedAction { address }.into());
+                return {
+                    store.dispatch(PeerConnectionClosedAction { address });
+                };
             }
 
             if event.is_writable() {
@@ -110,31 +110,31 @@ where
                         PeerConnectionState::Incoming(PeerConnectionIncomingState::Pending {
                             ..
                         }) => {
-                            store.dispatch(PeerConnectionIncomingSuccessAction { address }.into());
+                            store.dispatch(PeerConnectionIncomingSuccessAction { address });
                         }
                         PeerConnectionState::Outgoing(PeerConnectionOutgoingState::Pending {
                             ..
                         }) => {
-                            store.dispatch(PeerConnectionOutgoingSuccessAction { address }.into());
+                            store.dispatch(PeerConnectionOutgoingSuccessAction { address });
                         }
                         _ => {}
                     },
                     _ => {}
                 }
 
-                store.dispatch(PeerTryWriteLoopStartAction { address }.into());
+                store.dispatch(PeerTryWriteLoopStartAction { address });
             }
 
             if event.is_readable() {
-                store.dispatch(PeerTryReadLoopStartAction { address }.into());
+                store.dispatch(PeerTryReadLoopStartAction { address });
             }
         }
         Action::PeerTryWriteLoopStart(action) => {
             let address = action.address;
             let peer_max_io_syscalls = store.state().config.peer_max_io_syscalls;
 
-            let finish = |store: &mut Store<State, S, Action>, address, result| {
-                store.dispatch(PeerTryWriteLoopFinishAction { address, result }.into())
+            let finish = |store: &mut Store<S>, address, result| {
+                store.dispatch(PeerTryWriteLoopFinishAction { address, result });
             };
 
             for _ in 0..peer_max_io_syscalls {
@@ -155,7 +155,11 @@ where
 
                 let mut mio_peer = match store.service.mio().peer_get(peer_token) {
                     Some(peer) => peer,
-                    None => return store.dispatch(PeerDisconnectAction { address }.into()),
+                    None => {
+                        return {
+                            store.dispatch(PeerDisconnectAction { address });
+                        }
+                    }
                 };
 
                 let chunk_state = match &peer.status {
@@ -192,25 +196,22 @@ where
                 };
 
                 match mio_peer.write(&chunk.raw()[*prev_written..]) {
-                    Ok(written) if written > 0 => store.dispatch(
-                        PeerChunkWritePartAction {
+                    Ok(written) if written > 0 => {
+                        store.dispatch(PeerChunkWritePartAction {
                             address: action.address,
                             written,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     Ok(_) => return finish(store, address, PeerIOLoopResult::FullyConsumed),
                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
                         return finish(store, address, PeerIOLoopResult::FullyConsumed);
                     }
                     Err(err) => {
-                        return store.dispatch(
-                            PeerChunkWriteErrorAction {
-                                address: action.address,
-                                error: err.into(),
-                            }
-                            .into(),
-                        )
+                        store.dispatch(PeerChunkWriteErrorAction {
+                            address: action.address,
+                            error: err.into(),
+                        });
+                        return;
                     }
                 }
             }
@@ -218,22 +219,21 @@ where
             finish(store, address, PeerIOLoopResult::MaxIOSyscallBoundReached);
         }
         Action::PeerTryWriteLoopFinish(action) => match &action.result {
-            PeerIOLoopResult::MaxIOSyscallBoundReached => store.dispatch(
-                PausedLoopsAddAction {
+            PeerIOLoopResult::MaxIOSyscallBoundReached => {
+                store.dispatch(PausedLoopsAddAction {
                     data: PausedLoop::PeerTryWrite {
                         peer_address: action.address,
                     },
-                }
-                .into(),
-            ),
+                });
+            }
             _ => {}
         },
         Action::PeerTryReadLoopStart(action) => {
             let address = action.address;
             let peer_max_io_syscalls = store.state().config.peer_max_io_syscalls;
 
-            let finish = |store: &mut Store<State, S, Action>, address, result| {
-                store.dispatch(PeerTryReadLoopFinishAction { address, result }.into())
+            let finish = |store: &mut Store<S>, address, result| {
+                store.dispatch(PeerTryReadLoopFinishAction { address, result });
             };
 
             for _ in 0..peer_max_io_syscalls {
@@ -254,7 +254,11 @@ where
 
                 let mut mio_peer = match store.service.mio().peer_get(peer_token) {
                     Some(peer) => peer,
-                    None => return store.dispatch(PeerDisconnectAction { address }.into()),
+                    None => {
+                        return {
+                            store.dispatch(PeerDisconnectAction { address });
+                        }
+                    }
                 };
 
                 let chunk_state = match &peer.status {
@@ -301,20 +305,19 @@ where
                 match mio_peer.read(bytes_to_read) {
                     Ok(bytes) if bytes.len() > 0 => {
                         let bytes = bytes.to_vec();
-                        store.dispatch(PeerChunkReadPartAction { address, bytes }.into());
+                        store.dispatch(PeerChunkReadPartAction { address, bytes });
                     }
                     Ok(_) => return finish(store, address, PeerIOLoopResult::FullyConsumed),
                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
                         return finish(store, address, PeerIOLoopResult::FullyConsumed);
                     }
                     Err(err) => {
-                        return store.dispatch(
-                            PeerChunkReadErrorAction {
+                        return {
+                            store.dispatch(PeerChunkReadErrorAction {
                                 address,
                                 error: err.into(),
-                            }
-                            .into(),
-                        )
+                            });
+                        }
                     }
                 }
             }
@@ -322,14 +325,13 @@ where
             finish(store, address, PeerIOLoopResult::MaxIOSyscallBoundReached);
         }
         Action::PeerTryReadLoopFinish(action) => match &action.result {
-            PeerIOLoopResult::MaxIOSyscallBoundReached => store.dispatch(
-                PausedLoopsAddAction {
+            PeerIOLoopResult::MaxIOSyscallBoundReached => {
+                store.dispatch(PausedLoopsAddAction {
                     data: PausedLoop::PeerTryRead {
                         peer_address: action.address,
                     },
-                }
-                .into(),
-            ),
+                });
+            }
             _ => {}
         },
         _ => {}

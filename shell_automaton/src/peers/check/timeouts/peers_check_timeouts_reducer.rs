@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::peers::check::timeouts::PeersCheckTimeoutsState;
-use crate::{Action, ActionWithId, State};
+use crate::{Action, ActionWithMeta, State};
 
-pub fn peers_check_timeouts_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peers_check_timeouts_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersCheckTimeoutsInit(_) => {
             if matches!(

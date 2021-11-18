@@ -25,7 +25,7 @@ use shell_automaton::{
         PeerToken,
     },
     peers::{add::PeersAddIncomingPeerAction, remove::PeersRemoveAction},
-    reducer, Action, ActionId, ActionWithId, Config, State,
+    reducer, ActionId, ActionWithMeta, Config, State,
 };
 
 macro_rules! peer_actions {
@@ -72,7 +72,7 @@ macro_rules! peer_actions {
     };
 }
 
-fn prepare_actions(count: usize) -> Vec<ActionWithId<Action>> {
+fn prepare_actions(count: usize) -> Vec<ActionWithMeta> {
     let actions = peer_actions!(count, {
             PeersAddIncomingPeerAction { token_address },
             PeersRemoveAction { address },
@@ -96,9 +96,10 @@ fn prepare_actions(count: usize) -> Vec<ActionWithId<Action>> {
         });
     actions
         .into_iter()
-        .map(|action| ActionWithId {
+        .map(|action| ActionWithMeta {
             action,
             id: ActionId::new_unchecked(0),
+            depth: 0,
         })
         .collect()
 }
@@ -235,7 +236,7 @@ fn connection_threshold_simulation() {
     }
 }
 
-fn dump_graph(name: &str, graph: state_explorer::Graph<ActionWithId<Action>, ConnectedPeers>) {
+fn dump_graph(name: &str, graph: state_explorer::Graph<ActionWithMeta, ConnectedPeers>) {
     std::fs::File::create(name)
         .and_then(|mut f| {
             writeln!(f, "digraph ConnectionThreshold {}", '{')?;

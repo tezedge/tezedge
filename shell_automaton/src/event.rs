@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
 use crate::peer::PeerToken;
+use crate::{EnablingCondition, State};
 
 /// Event coming from `Manager`.
 ///
@@ -29,11 +30,34 @@ pub enum Event {
     P2pPeerUnknown(P2pPeerUnknownEvent),
 }
 
+impl EnablingCondition<State> for Event {
+    fn is_enabled(&self, state: &State) -> bool {
+        match self {
+            Self::Wakeup(e) => e.is_enabled(state),
+            Self::P2pServer(e) => e.is_enabled(state),
+            Self::P2pPeer(e) => e.is_enabled(state),
+            Self::P2pPeerUnknown(e) => e.is_enabled(state),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WakeupEvent;
 
+impl EnablingCondition<State> for WakeupEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pServerEvent;
+
+impl EnablingCondition<State> for P2pServerEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pPeerEvent {
@@ -49,6 +73,12 @@ pub struct P2pPeerEvent {
 
     /// Connection to peer has been closed.
     pub is_closed: bool,
+}
+
+impl EnablingCondition<State> for P2pPeerEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }
 
 impl P2pPeerEvent {
@@ -90,4 +120,10 @@ pub struct P2pPeerUnknownEvent {
 
     /// Connection to peer has been closed.
     pub is_closed: bool,
+}
+
+impl EnablingCondition<State> for P2pPeerUnknownEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }

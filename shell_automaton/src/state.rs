@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionId, ActionWithId};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
@@ -12,7 +11,7 @@ use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
 use crate::storage::StorageState;
-use crate::{Action, ActionKind};
+use crate::{ActionId, ActionKind, ActionWithMeta};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionIdWithKind {
@@ -86,7 +85,7 @@ impl State {
     }
 
     #[inline(always)]
-    pub(crate) fn set_last_action(&mut self, action: &ActionWithId<Action>) {
+    pub(crate) fn set_last_action(&mut self, action: &ActionWithMeta) {
         let prev_action = std::mem::replace(
             &mut self.last_action,
             ActionIdWithKind {

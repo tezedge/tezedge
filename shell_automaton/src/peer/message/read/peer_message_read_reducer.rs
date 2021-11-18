@@ -1,15 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::PeerMessageReadState;
 
-pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerMessageReadInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {

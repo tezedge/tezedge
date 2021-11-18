@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::service::rpc_service::RpcResponse;
 use crate::service::{RpcService, Service};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
-pub fn rpc_effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
+pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WakeupEvent(_) => {
             while let Ok(msg) = store.service().rpc().try_recv() {

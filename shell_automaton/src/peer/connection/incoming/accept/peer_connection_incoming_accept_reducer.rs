@@ -1,15 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
-use crate::action::Action;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
-use crate::State;
+use crate::{Action, ActionWithMeta, State};
 
 use super::PeerConnectionIncomingAcceptState;
 
-pub fn peer_connection_incoming_accept_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_connection_incoming_accept_reducer(state: &mut State, action: &ActionWithMeta) {
     let action_time = action.time_as_nanos();
 
     match &action.action {

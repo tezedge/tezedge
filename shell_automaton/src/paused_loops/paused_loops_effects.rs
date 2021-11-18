@@ -1,17 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::Store;
-
 use crate::peer::{PeerTryReadLoopStartAction, PeerTryWriteLoopStartAction};
-use crate::{Action, ActionWithId, Service, State};
+use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
     PausedLoop, PausedLoopCurrent, PausedLoopsResumeNextInitAction,
     PausedLoopsResumeNextSuccessAction,
 };
 
-pub fn paused_loops_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
+pub fn paused_loops_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
@@ -20,7 +18,7 @@ where
     match &action.action {
         Action::PausedLoopsResumeAll(_) => {
             for _ in 0..state.paused_loops.len() {
-                store.dispatch(PausedLoopsResumeNextInitAction {}.into())
+                store.dispatch(PausedLoopsResumeNextInitAction {});
             }
         }
         Action::PausedLoopsResumeNextInit(_) => {
@@ -32,15 +30,15 @@ where
             match paused_loop {
                 PausedLoop::PeerTryWrite { peer_address } => {
                     let address = *peer_address;
-                    store.dispatch(PeerTryWriteLoopStartAction { address }.into());
+                    store.dispatch(PeerTryWriteLoopStartAction { address });
                 }
                 PausedLoop::PeerTryRead { peer_address } => {
                     let address = *peer_address;
-                    store.dispatch(PeerTryReadLoopStartAction { address }.into());
+                    store.dispatch(PeerTryReadLoopStartAction { address });
                 }
             }
 
-            store.dispatch(PausedLoopsResumeNextSuccessAction {}.into());
+            store.dispatch(PausedLoopsResumeNextSuccessAction {});
         }
         _ => {}
     }

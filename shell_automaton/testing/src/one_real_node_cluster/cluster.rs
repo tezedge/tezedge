@@ -5,12 +5,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
-use redux_rs::Store;
 
 use shell_automaton::event::{P2pPeerEvent, P2pServerEvent};
 use shell_automaton::peer::PeerCrypto;
 use shell_automaton::peers::add::multi::PeersAddMultiAction;
-use shell_automaton::{effects, reducer, Action, State};
+use shell_automaton::{effects, reducer, Action, EnablingCondition, State, Store};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
@@ -108,7 +107,7 @@ impl Service for ServiceMocked {
 
 #[derive(Clone)]
 pub struct Cluster {
-    store: Store<State, ServiceMocked, Action>,
+    store: Store<ServiceMocked>,
 }
 
 impl Cluster {
@@ -132,7 +131,10 @@ impl Cluster {
         self.store.state()
     }
 
-    pub fn dispatch(&mut self, action: Action) {
+    pub fn dispatch<T>(&mut self, action: T) -> bool
+    where
+        T: Into<Action> + EnablingCondition<State>,
+    {
         self.store.dispatch(action)
     }
 
@@ -142,17 +144,14 @@ impl Cluster {
         is_readable: bool,
         is_writable: bool,
         is_closed: bool,
-    ) {
-        self.dispatch(
-            P2pPeerEvent {
-                token: peer_id.to_token(),
-                address: peer_id.to_ipv4(),
-                is_readable,
-                is_writable,
-                is_closed,
-            }
-            .into(),
-        )
+    ) -> bool {
+        self.dispatch(P2pPeerEvent {
+            token: peer_id.to_token(),
+            address: peer_id.to_ipv4(),
+            is_readable,
+            is_writable,
+            is_closed,
+        })
     }
 
     pub fn peer_init(&mut self, pow_target: f64) -> MioPeerMockedId {
@@ -180,7 +179,7 @@ impl Cluster {
         }
         self.store.service.mio().backlog_push(peer_id);
 
-        self.dispatch(P2pServerEvent {}.into())
+        self.dispatch(P2pServerEvent {});
     }
 
     pub fn connect_to_peer(&mut self, peer_id: MioPeerMockedId) {
@@ -196,9 +195,8 @@ impl Cluster {
             // to it if it doesn't have enough peers.
             PeersAddMultiAction {
                 addresses: vec![peer_id.to_ipv4()],
-            }
-            .into(),
-        )
+            },
+        );
     }
 
     pub fn set_peer_connected(&mut self, peer_id: MioPeerMockedId) {
@@ -215,7 +213,7 @@ impl Cluster {
             ),
         }
 
-        self.dispatch_peer_ready_event(peer_id, false, true, false)
+        self.dispatch_peer_ready_event(peer_id, false, true, false);
     }
 
     /// Automatically create and set peer crypto based on stored conn messages.

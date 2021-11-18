@@ -1,14 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
-use crate::action::Action;
-use crate::State;
+use crate::{Action, ActionWithMeta, State};
 
 use super::StorageStateSnapshotCreateState;
 
-pub fn storage_state_snapshot_create_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn storage_state_snapshot_create_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::StorageStateSnapshotCreatePending(action) => {
             let state = &mut state.storage.state_snapshot.create;

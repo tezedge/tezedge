@@ -1,12 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::actors::actors_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
-use crate::{Action, ActionId, State};
+use crate::{Action, ActionId, ActionWithMeta, Store};
 
 use crate::logger::logger_effects;
 use crate::paused_loops::paused_loops_effects;
@@ -37,10 +35,7 @@ use crate::storage::state_snapshot::create::{
 
 use crate::rpc::rpc_effects;
 
-fn last_action_effects<S: Service>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) {
+fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     if !store.state.get().config.record_actions {
         return;
     }
@@ -67,18 +62,13 @@ fn last_action_effects<S: Service>(
     ));
 }
 
-fn applied_actions_count_effects<S: Service>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) {
+fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     if !matches!(&action.action, Action::StorageStateSnapshotCreateInit(_)) {
-        if StorageStateSnapshotCreateInitAction::enabling_condition(store.state()) {
-            store.dispatch(StorageStateSnapshotCreateInitAction {}.into());
-        }
+        store.dispatch(StorageStateSnapshotCreateInitAction {});
     }
 }
 
-pub fn effects<S: Service>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>) {
+pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     // these four effects must be first and in this order!
     logger_effects(store, action);
     last_action_effects(store, action);

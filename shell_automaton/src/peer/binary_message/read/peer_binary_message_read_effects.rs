@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
 use tezos_messages::p2p::{
     binary_message::SizeFromChunk,
     encoding::{ack::AckMessage, metadata::MetadataMessage, peer::PeerMessageResponse},
@@ -15,7 +14,7 @@ use crate::{
     peer::chunk::read::{PeerChunkRead, PeerChunkReadInitAction, PeerChunkReadState},
     peers::graylist::PeersGraylistAddressAction,
 };
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
 use super::{
     peer_binary_message_read_actions::{
@@ -26,10 +25,8 @@ use super::{
     PeerBinaryMessageReadChunkReadyAction,
 };
 
-pub fn peer_binary_message_read_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peer_binary_message_read_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -59,12 +56,11 @@ pub fn peer_binary_message_read_effects<S>(
                 };
 
                 match binary_message_state {
-                    PeerBinaryMessageReadState::PendingFirstChunk { .. } => store.dispatch(
-                        PeerChunkReadInitAction {
+                    PeerBinaryMessageReadState::PendingFirstChunk { .. } => {
+                        store.dispatch(PeerChunkReadInitAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     _ => {}
                 };
             }
@@ -85,20 +81,18 @@ pub fn peer_binary_message_read_effects<S>(
                                 },
                             ..
                         } => match MetadataMessage::size_from_chunk(&chunk) {
-                            Ok(size) => store.dispatch(
-                                PeerBinaryMessageReadSizeReadyAction {
+                            Ok(size) => {
+                                store.dispatch(PeerBinaryMessageReadSizeReadyAction {
                                     address: action.address,
                                     size,
-                                }
-                                .into(),
-                            ),
-                            Err(err) => store.dispatch(
-                                PeerBinaryMessageReadErrorAction {
+                                });
+                            }
+                            Err(err) => {
+                                store.dispatch(PeerBinaryMessageReadErrorAction {
                                     address: action.address,
                                     error: err.into(),
-                                }
-                                .into(),
-                            ),
+                                });
+                            }
                         },
                         PeerHandshakingStatus::AckMessageReadPending {
                             binary_message_state:
@@ -112,20 +106,18 @@ pub fn peer_binary_message_read_effects<S>(
                                 },
                             ..
                         } => match AckMessage::size_from_chunk(&chunk) {
-                            Ok(size) => store.dispatch(
-                                PeerBinaryMessageReadSizeReadyAction {
+                            Ok(size) => {
+                                store.dispatch(PeerBinaryMessageReadSizeReadyAction {
                                     address: action.address,
                                     size,
-                                }
-                                .into(),
-                            ),
-                            Err(err) => store.dispatch(
-                                PeerBinaryMessageReadErrorAction {
+                                });
+                            }
+                            Err(err) => {
+                                store.dispatch(PeerBinaryMessageReadErrorAction {
                                     address: action.address,
                                     error: err.into(),
-                                }
-                                .into(),
-                            ),
+                                });
+                            }
                         },
                         PeerHandshakingStatus::MetadataMessageReadPending {
                             binary_message_state,
@@ -135,21 +127,17 @@ pub fn peer_binary_message_read_effects<S>(
                             binary_message_state,
                             ..
                         } => match binary_message_state {
-                            PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
-                                PeerBinaryMessageReadChunkReadyAction {
+                            PeerBinaryMessageReadState::Pending { .. } => {
+                                store.dispatch(PeerBinaryMessageReadChunkReadyAction {
                                     address: action.address,
-                                }
-                                .into(),
-                            ),
+                                });
+                            }
                             PeerBinaryMessageReadState::Ready { message, .. } => {
                                 let message = message.clone();
-                                store.dispatch(
-                                    PeerBinaryMessageReadReadyAction {
-                                        address: action.address,
-                                        message,
-                                    }
-                                    .into(),
-                                )
+                                store.dispatch(PeerBinaryMessageReadReadyAction {
+                                    address: action.address,
+                                    message,
+                                });
                             }
                             _ => {}
                         },
@@ -168,36 +156,30 @@ pub fn peer_binary_message_read_effects<S>(
                                         },
                                     ..
                                 } => match PeerMessageResponse::size_from_chunk(&chunk) {
-                                    Ok(size) => store.dispatch(
-                                        PeerBinaryMessageReadSizeReadyAction {
+                                    Ok(size) => {
+                                        store.dispatch(PeerBinaryMessageReadSizeReadyAction {
                                             address: action.address,
                                             size,
-                                        }
-                                        .into(),
-                                    ),
-                                    Err(err) => store.dispatch(
-                                        PeerBinaryMessageReadErrorAction {
+                                        });
+                                    }
+                                    Err(err) => {
+                                        store.dispatch(PeerBinaryMessageReadErrorAction {
                                             address: action.address,
                                             error: err.into(),
-                                        }
-                                        .into(),
-                                    ),
-                                },
-                                PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
-                                    PeerBinaryMessageReadChunkReadyAction {
-                                        address: action.address,
+                                        });
                                     }
-                                    .into(),
-                                ),
+                                },
+                                PeerBinaryMessageReadState::Pending { .. } => {
+                                    store.dispatch(PeerBinaryMessageReadChunkReadyAction {
+                                        address: action.address,
+                                    });
+                                }
                                 PeerBinaryMessageReadState::Ready { message, .. } => {
                                     let message = message.clone();
-                                    store.dispatch(
-                                        PeerBinaryMessageReadReadyAction {
-                                            address: action.address,
-                                            message,
-                                        }
-                                        .into(),
-                                    )
+                                    store.dispatch(PeerBinaryMessageReadReadyAction {
+                                        address: action.address,
+                                        message,
+                                    });
                                 }
                                 _ => {}
                             },
@@ -234,21 +216,17 @@ pub fn peer_binary_message_read_effects<S>(
                 };
 
                 match binary_message_state {
-                    PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
-                        PeerChunkReadInitAction {
+                    PeerBinaryMessageReadState::Pending { .. } => {
+                        store.dispatch(PeerChunkReadInitAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     PeerBinaryMessageReadState::Ready { message, .. } => {
                         let message = message.clone();
-                        store.dispatch(
-                            PeerBinaryMessageReadReadyAction {
-                                address: action.address,
-                                message,
-                            }
-                            .into(),
-                        )
+                        store.dispatch(PeerBinaryMessageReadReadyAction {
+                            address: action.address,
+                            message,
+                        });
                     }
                     _ => {}
                 }
@@ -280,33 +258,26 @@ pub fn peer_binary_message_read_effects<S>(
                 };
 
                 match binary_message_state {
-                    PeerBinaryMessageReadState::Pending { .. } => store.dispatch(
-                        PeerChunkReadInitAction {
+                    PeerBinaryMessageReadState::Pending { .. } => {
+                        store.dispatch(PeerChunkReadInitAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     PeerBinaryMessageReadState::Ready { message, .. } => {
                         let message = message.clone();
-                        store.dispatch(
-                            PeerBinaryMessageReadReadyAction {
-                                address: action.address,
-                                message,
-                            }
-                            .into(),
-                        )
+                        store.dispatch(PeerBinaryMessageReadReadyAction {
+                            address: action.address,
+                            message,
+                        });
                     }
                     _ => {}
                 }
             }
         }
         Action::PeerBinaryMessageReadError(action) => {
-            store.dispatch(
-                PeersGraylistAddressAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+            store.dispatch(PeersGraylistAddressAction {
+                address: action.address,
+            });
         }
         _ => {}
     }

@@ -6,6 +6,8 @@ use std::net::SocketAddr;
 
 use tezos_messages::p2p::binary_message::BinaryChunk;
 
+use crate::{EnablingCondition, State};
+
 use super::PeerChunkWriteError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -14,10 +16,22 @@ pub struct PeerChunkWriteSetContentAction {
     pub content: Vec<u8>,
 }
 
+impl EnablingCondition<State> for PeerChunkWriteSetContentAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteEncryptContentAction {
     pub address: SocketAddr,
     pub encrypted_content: Vec<u8>,
+}
+
+impl EnablingCondition<State> for PeerChunkWriteEncryptContentAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -26,10 +40,22 @@ pub struct PeerChunkWriteCreateChunkAction {
     pub chunk: BinaryChunk,
 }
 
+impl EnablingCondition<State> for PeerChunkWriteCreateChunkAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWritePartAction {
     pub address: SocketAddr,
     pub written: usize,
+}
+
+impl EnablingCondition<State> for PeerChunkWritePartAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,7 +64,19 @@ pub struct PeerChunkWriteErrorAction {
     pub error: PeerChunkWriteError,
 }
 
+impl EnablingCondition<State> for PeerChunkWriteErrorAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWriteReadyAction {
     pub address: SocketAddr,
+}
+
+impl EnablingCondition<State> for PeerChunkWriteReadyAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }

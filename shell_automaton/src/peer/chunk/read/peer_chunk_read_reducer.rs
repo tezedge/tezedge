@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
@@ -9,9 +8,9 @@ use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
 use crate::peer::{PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
-pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerChunkReadInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
