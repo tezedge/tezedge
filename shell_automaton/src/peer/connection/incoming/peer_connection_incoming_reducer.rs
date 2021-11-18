@@ -1,14 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
 use crate::peer::connection::PeerConnectionState;
-use crate::{action::Action, peer::PeerStatus, State};
+use crate::peer::PeerStatus;
+use crate::{Action, ActionWithMeta, State};
 
 use super::PeerConnectionIncomingState;
 
-pub fn peer_connection_incoming_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_connection_incoming_reducer(state: &mut State, action: &ActionWithMeta) {
     let action_time = action.time_as_nanos();
 
     match &action.action {

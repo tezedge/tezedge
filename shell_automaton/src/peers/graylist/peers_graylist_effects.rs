@@ -1,40 +1,29 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::PeerStatus;
 use crate::peers::remove::PeersRemoveAction;
-use crate::service::Service;
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{PeersGraylistIpAddAction, PeersGraylistIpAddedAction, PeersGraylistIpRemovedAction};
 
-pub fn peers_graylist_effects<S: Service>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) {
+pub fn peers_graylist_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersGraylistAddress(action) => {
             if store.state.get().config.peers_graylist_disable {
-                return store.dispatch(
-                    PeerDisconnectAction {
-                        address: action.address,
-                    }
-                    .into(),
-                );
+                store.dispatch(PeerDisconnectAction {
+                    address: action.address,
+                });
+                return;
             }
 
-            store.dispatch(
-                PeersGraylistIpAddAction {
-                    ip: action.address.ip(),
-                }
-                .into(),
-            );
+            store.dispatch(PeersGraylistIpAddAction {
+                ip: action.address.ip(),
+            });
         }
         Action::PeersGraylistIpAdd(action) => {
-            store.dispatch(PeersGraylistIpAddedAction { ip: action.ip }.into());
+            store.dispatch(PeersGraylistIpAddedAction { ip: action.ip });
         }
         Action::PeersGraylistIpAdded(action) => {
             let peers = &store.state.get().peers;
@@ -57,15 +46,15 @@ pub fn peers_graylist_effects<S: Service>(
                 });
 
             for address in remove_peers {
-                store.dispatch(PeersRemoveAction { address }.into());
+                store.dispatch(PeersRemoveAction { address });
             }
 
             for address in disconnect_peers {
-                store.dispatch(PeerDisconnectAction { address }.into());
+                store.dispatch(PeerDisconnectAction { address });
             }
         }
         Action::PeersGraylistIpRemove(action) => {
-            store.dispatch(PeersGraylistIpRemovedAction { ip: action.ip }.into());
+            store.dispatch(PeersGraylistIpRemovedAction { ip: action.ip });
         }
         _ => {}
     }

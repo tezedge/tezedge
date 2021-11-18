@@ -3,13 +3,11 @@
 
 use std::sync::Arc;
 
-use redux_rs::ActionWithId;
-
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
-pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerMessageWriteInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {

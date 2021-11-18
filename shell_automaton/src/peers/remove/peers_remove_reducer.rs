@@ -1,11 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
+use crate::peer::PeerStatus;
+use crate::{Action, ActionWithMeta, State};
 
-use crate::{action::Action, peer::PeerStatus, State};
-
-pub fn peers_remove_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peers_remove_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersRemove(action) => {
             if let Some(peer) = state.peers.get(&action.address) {

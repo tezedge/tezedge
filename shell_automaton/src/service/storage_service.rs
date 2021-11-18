@@ -20,7 +20,7 @@ use storage::{
 };
 
 use crate::request::RequestId;
-use crate::{Action, ActionId, ActionKind, ActionWithId, State};
+use crate::{Action, ActionId, ActionKind, ActionWithMeta, State};
 
 use super::service_channel::{
     worker_channel, RequestSendError, ResponseTryRecvError, ServiceWorkerRequester,
@@ -51,7 +51,7 @@ impl From<storage::StorageError> for StorageError {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestPayload {
     StateSnapshotPut(Box<State>),
-    ActionPut(Box<ActionWithId<Action>>),
+    ActionPut(Box<ActionWithMeta>),
     ActionMetaUpdate {
         action_id: ActionId,
         action_kind: ActionKind,

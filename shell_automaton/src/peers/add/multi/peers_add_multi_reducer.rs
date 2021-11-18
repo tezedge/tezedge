@@ -1,14 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
 use crate::peer::{Peer, PeerIOLoopState, PeerQuota, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::PeersAddMultiAction;
 
-pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersAddMulti(PeersAddMultiAction { addresses }) => {
             let max_len = state

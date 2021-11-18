@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
-use crate::{action::Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::{StorageRequestState, StorageRequestStatus};
 
-pub fn storage_request_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::StorageRequestCreate(action) => {
             state.storage.requests.add(StorageRequestState {

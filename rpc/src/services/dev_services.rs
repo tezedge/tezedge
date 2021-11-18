@@ -14,7 +14,7 @@ use std::vec;
 use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
 use shell_automaton::service::storage_service::ActionGraph;
-use shell_automaton::{Action, ActionWithId};
+use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
@@ -429,13 +429,15 @@ pub(crate) async fn get_shell_automaton_state_after(
 pub(crate) async fn get_shell_automaton_action(
     env: &RpcServiceEnvironment,
     action_id: u64,
-) -> anyhow::Result<Option<ActionWithId<Action>>> {
+) -> anyhow::Result<Option<ActionWithMeta>> {
     let action_storage = ShellAutomatonActionStorage::new(env.persistent_storage());
     tokio::task::spawn_blocking(move || {
         Ok(action_storage
             .get::<Action>(&action_id)?
-            .map(|action| ActionWithId {
+            .map(|action| ActionWithMeta {
                 id: ActionId::new_unchecked(action_id),
+                // TODO: include in the storage.
+                depth: 0,
                 action,
             }))
     })
@@ -444,10 +446,12 @@ pub(crate) async fn get_shell_automaton_action(
 
 fn shell_automaton_actions_decode_map(
     result: Result<BoxedSliceKV, DBError>,
-) -> Result<ActionWithId<Action>, StorageError> {
+) -> Result<ActionWithMeta, StorageError> {
     let (key, value) = result?;
-    Ok(ActionWithId {
+    Ok(ActionWithMeta {
         id: ActionId::new_unchecked(u64::decode(&key)?),
+        // TODO: include in the storage.
+        depth: 0,
         action: Action::decode(&value)?,
     })
 }
@@ -471,7 +475,7 @@ pub(crate) async fn shell_automaton_state_closest(
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RpcShellAutomatonAction {
     #[serde(flatten)]
-    action: ActionWithId<Action>,
+    action: ActionWithMeta,
     state: shell_automaton::State,
     /// Time between this action and the next one.
     duration: u64,
@@ -490,7 +494,9 @@ pub(crate) async fn get_shell_automaton_actions(
     tokio::task::spawn_blocking(move || {
         let mut actions_iter = action_storage
             .find(match cursor {
-                Some(cursor) => IteratorMode::From(Cow::Owned(cursor.max(1) - 1), Direction::Reverse),
+                Some(cursor) => {
+                    IteratorMode::From(Cow::Owned(cursor.max(1) - 1), Direction::Reverse)
+                }
                 None => IteratorMode::End,
             })?
             .map(shell_automaton_actions_decode_map);

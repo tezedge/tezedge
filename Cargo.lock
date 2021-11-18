@@ -2721,7 +2721,7 @@ dependencies = [
 [[package]]
 name = "redux-rs"
 version = "0.1.0"
-source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0-1#4303b957d24fbc932c532ea7f8704ca6b0125f65"
+source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.11.0#594a29e8e9a78ad9a2651fcaa4528957b27d7def"
 dependencies = [
  "serde 1.0.130",
 ]
@@ -3173,7 +3173,6 @@ dependencies = [
  "bytes",
  "crypto",
  "networking",
- "redux-rs",
  "serde 1.0.130",
  "shell_automaton",
  "storage",

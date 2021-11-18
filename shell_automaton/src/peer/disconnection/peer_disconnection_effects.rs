@@ -1,21 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 use crate::peer::PeerStatus;
 use crate::peers::remove::PeersRemoveAction;
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, MioService, Service};
-use crate::{action::Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
 use super::PeerDisconnectedAction;
 
-pub fn peer_disconnection_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peer_disconnection_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -30,10 +26,10 @@ pub fn peer_disconnection_effects<S>(
                 PeerStatus::Disconnecting(disconnection_state) => {
                     let peer_token = disconnection_state.token;
                     store.service().mio().peer_disconnect(peer_token);
-                    store.dispatch(PeerDisconnectedAction { address }.into());
+                    store.dispatch(PeerDisconnectedAction { address });
                 }
                 PeerStatus::Disconnected => {
-                    store.dispatch(PeerDisconnectedAction { address }.into());
+                    store.dispatch(PeerDisconnectedAction { address });
                 }
                 _ => return,
             };
@@ -48,8 +44,8 @@ pub fn peer_disconnection_effects<S>(
                         .actors()
                         .send(ActorsMessageTo::PeerDisconnected(address));
 
-                    store.dispatch(PeersRemoveAction { address }.into());
-                    store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+                    store.dispatch(PeersRemoveAction { address });
+                    store.dispatch(PeerConnectionOutgoingRandomInitAction {});
                 }
             }
         }

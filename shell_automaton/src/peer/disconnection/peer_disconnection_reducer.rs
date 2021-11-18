@@ -1,15 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
+use crate::peer::disconnection::PeerDisconnecting;
+use crate::peer::PeerStatus;
+use crate::{Action, ActionWithMeta, State};
 
-use crate::{
-    action::Action,
-    peer::{disconnection::PeerDisconnecting, PeerStatus},
-    State,
-};
-
-pub fn peer_disconnection_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_disconnection_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerDisconnect(action) => {
             let peer = match state.peers.get_mut(&action.address) {

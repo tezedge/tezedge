@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{chain_reducers, ActionWithId};
+use redux_rs::chain_reducers;
 
-use crate::action::Action;
+use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::paused_loops::paused_loops_reducer;
@@ -31,15 +31,15 @@ use crate::peers::remove::peers_remove_reducer;
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
 
-pub fn last_action_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
     state.set_last_action(action);
 }
 
-pub fn applied_actions_count_reducer(state: &mut State, _: &ActionWithId<Action>) {
+pub fn applied_actions_count_reducer(state: &mut State, _: &ActionWithMeta) {
     state.applied_actions_count += 1;
 }
 
-pub fn reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::StorageStateSnapshotCreateInit(_) => {
             // This action shouldn't cause changes in the state, so that in the

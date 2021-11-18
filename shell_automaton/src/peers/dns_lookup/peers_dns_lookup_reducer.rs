@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
-use crate::{action::Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::{PeersDnsLookupState, PeersDnsLookupStatus};
 
-pub fn peers_dns_lookup_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peers_dns_lookup_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersDnsLookupInit(action) => {
             state.peers.dns_lookup = Some(PeersDnsLookupState {
