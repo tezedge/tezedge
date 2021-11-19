@@ -468,6 +468,21 @@ where
     }
 }
 
+/// Reserves `size` trailing bytes of the input and applies parser to the rest of the input.
+#[inline(always)]
+pub fn reserve<'a, O, F>(size: usize, mut parser: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
+where
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
+{
+    move |input| {
+        let input_len = input.len();
+        let reserved_len = input_len - std::cmp::min(input_len, size);
+        let reserved_input = &input[..reserved_len];
+        let (reserved_input, out) = parser(reserved_input)?;
+        Ok((&input[reserved_len - reserved_input.len()..], out))
+    }
+}
+
 /// Applies the `parser` to the input, addin field context to the error.
 #[inline(always)]
 pub fn field<'a, O, F>(
@@ -717,6 +732,15 @@ mod test {
         let res: NomResult<u32> = bounded(3, u32(Endianness::Big))(input);
         let err = res.expect_err("Error is expected");
         assert_eq!(err, limit_error(&input[..3], BoundedEncodingKind::Bounded));
+    }
+
+    #[test]
+    fn test_reserved() {
+        let input = &[0, 0, 0, 1];
+        let mut parser = tuple((reserve(1, list(u8)), u8));
+        let (input, res) = parser(input).unwrap();
+        assert_eq!(input.len(), 0);
+        assert_eq!(res, (vec![0; 3], 1));
     }
 
     #[test]
