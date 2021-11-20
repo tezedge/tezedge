@@ -805,6 +805,7 @@ version = "1.15.0"
 dependencies = [
  "anyhow",
  "base58",
+ "byteorder",
  "fuzzcheck",
  "hex",
  "libsecp256k1",

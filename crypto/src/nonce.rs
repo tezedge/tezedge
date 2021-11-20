@@ -1,10 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-
-use num_bigint::{BigUint, RandBigInt};
+use byteorder::{ByteOrder, BigEndian};
 
 use crate::{blake2b::Blake2bError, CryptoError};
 
@@ -24,68 +23,59 @@ macro_rules! merge_slices {
     }}
 }
 
+const NONCE_WORDS: usize = 12;
+
 /// Arbitrary number that can be used once in communication.
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Nonce {
-    value: BigUint,
+    value: [u16; NONCE_WORDS],
 }
 
 impl Nonce {
     /// Create new nonce from raw bytes
     pub fn new(bytes: &[u8]) -> Self {
-        Nonce {
-            value: BigUint::from_bytes_be(bytes),
-        }
+        assert!(bytes.len() <= NONCE_SIZE);
+        let mut _bytes: [u8; NONCE_SIZE] = [0; NONCE_SIZE];
+        _bytes.copy_from_slice(bytes);
+        let mut value: [u16; NONCE_WORDS] = [0; NONCE_WORDS];
+        BigEndian::read_u16_into(&_bytes, &mut value);
+        Nonce { value }
     }
 
     /// Generate new random nonce
     pub fn random() -> Self {
-        let mut rng = rand::thread_rng();
-        let value: BigUint = rng.gen_biguint((NONCE_SIZE * 8) as u64);
+        let mut value: [u16; NONCE_WORDS] = [0; NONCE_WORDS];
+        rand::thread_rng().fill(&mut value);
         Nonce { value }
     }
 
     /// Increment this nonce by one
     pub fn increment(&self) -> Self {
-        Nonce {
-            value: &self.value + 1u32,
+        let mut value: [u16; NONCE_WORDS] = [0; NONCE_WORDS];
+        value.copy_from_slice(&self.value);
+        
+        let mut pos = NONCE_WORDS - 1;
+        loop {
+            let result: u32 = value[pos] as u32 + 1u32;
+            value[pos] = (result & 0xffffu32) as u16;
+    
+            if result < 0x10000u32 || pos == 0 {
+                break
+            }
+
+            pos -= 1;
         }
+
+        Nonce { value }
     }
 
     /// Create bytes representation equal to this nonce with correct nonce size, else return error
+    /// TODO: new implementation can't fail so we could get rid of `Result` in return type. 
     pub fn get_bytes(&self) -> Result<[u8; NONCE_SIZE], CryptoError> {
-        let mut bytes = self.value.to_bytes_be();
-
-        // lets check size
-        let bytes_with_correct_size = match bytes.len().cmp(&NONCE_SIZE) {
-            Ordering::Equal => bytes,
-            Ordering::Less => {
-                // prefix if less then expected
-                let mut zero_prefixed_bytes = vec![0u8; NONCE_SIZE - bytes.len()];
-                zero_prefixed_bytes.append(&mut bytes);
-                zero_prefixed_bytes
-            }
-            Ordering::Greater => {
-                return Err(CryptoError::InvalidNonceSize {
-                    expected: NONCE_SIZE,
-                    actual: bytes.len(),
-                })
-            }
-        };
-
-        // check size
-        if bytes_with_correct_size.len() != NONCE_SIZE {
-            return Err(CryptoError::InvalidNonceSize {
-                expected: NONCE_SIZE,
-                actual: bytes_with_correct_size.len(),
-            });
-        };
-
-        // convert to correct key size
-        let mut arr = [0u8; NONCE_SIZE];
-        arr.copy_from_slice(&bytes_with_correct_size);
-        Ok(arr)
+        let mut result: [u8; NONCE_SIZE] = [0; NONCE_SIZE];
+        BigEndian::write_u16_into(&self.value, &mut result);
+        Ok(result)
     }
 }
 
@@ -195,8 +185,14 @@ mod tests {
     }
 
     #[test]
-    fn too_big_value_produces_panic() {
-        let nonce = Nonce::new(&[0x1F; NONCE_SIZE + 1]);
-        assert!(nonce.get_bytes().is_err());
+    fn too_big_value_wraps() -> Result<(), anyhow::Error> {
+        let bytes_0 = hex::decode("ffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+        let nonce_0 = Nonce::new(&bytes_0);
+        let nonce_1 = nonce_0.increment();
+        let bytes_1 = nonce_1.get_bytes()?;
+        let expected_bytes_1 =
+            hex::decode("000000000000000000000000000000000000000000000000").unwrap();
+        assert_eq!(expected_bytes_1, bytes_1);
+        Ok(())
     }
 }
