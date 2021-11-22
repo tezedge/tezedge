@@ -11,15 +11,34 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, PublicKeyEd25519, PublicKeyP256,
-    PublicKeySecp256k1,
+use crypto::{
+    blake2b,
+    hash::{
+        ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashTrait, PublicKeyEd25519,
+        PublicKeyP256, PublicKeySecp256k1, Signature,
+    },
+    CryptoError, PublicKeySignatureVerifier,
 };
 
 use crate::base::ConversionError;
 
 use super::SignatureCurve;
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
+
+/// Signature watermark that is prepended to the bytes for signing and verifying.
+///
+/// It is
+/// - 0x01 + chain id for a block header signature,
+/// - 0x02 + chain id for an endorsement signature,
+/// - 0x03 for other operations
+#[derive(Clone, Debug)]
+pub enum SignatureWatermark {
+    BlockHeader(ChainId),
+    Endorsement(ChainId),
+    GenericOperation,
+    Custom(Vec<u8>),
+    None,
+}
 
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader, BinWriter)]
@@ -119,6 +138,56 @@ impl SignaturePublicKey {
             }
         } else {
             Err(ConversionError::InvalidPublicKey)
+        }
+    }
+
+    pub fn verify_signature<B>(
+        &self,
+        signature: &Signature,
+        watermark: SignatureWatermark,
+        bytes: B,
+    ) -> Result<bool, CryptoError>
+    where
+        B: AsRef<[u8]>,
+    {
+        // TODO directly use `sodiumoxide::generichash` to avoid constructing single slice to be hashed
+        let bytes_ref = bytes.as_ref();
+        let bytes = match watermark {
+            SignatureWatermark::BlockHeader(chain_id) => {
+                let mut bytes = Vec::with_capacity(1 + ChainId::hash_size() + bytes_ref.len());
+                bytes.push(0x01);
+                bytes.extend_from_slice(chain_id.as_ref());
+                bytes.extend_from_slice(bytes_ref);
+                bytes
+            }
+            SignatureWatermark::Endorsement(chain_id) => {
+                let mut bytes = Vec::with_capacity(1 + ChainId::hash_size() + bytes_ref.len());
+                bytes.push(0x02);
+                bytes.extend_from_slice(chain_id.as_ref());
+                bytes.extend_from_slice(bytes_ref);
+                bytes
+            }
+            SignatureWatermark::GenericOperation => {
+                let mut bytes = Vec::with_capacity(1 + bytes_ref.len());
+                bytes.push(0x03);
+                bytes.extend_from_slice(bytes_ref);
+                bytes
+            }
+            SignatureWatermark::Custom(prefix) => {
+                let mut bytes = Vec::with_capacity(prefix.len() + bytes_ref.len());
+                bytes.extend_from_slice(&prefix);
+                bytes.extend_from_slice(bytes_ref);
+                bytes
+            }
+            SignatureWatermark::None => bytes_ref.to_vec(),
+        };
+        let hash = blake2b::digest_256(&bytes)
+            .map_err(|_| ())
+            .map_err(|_| CryptoError::InvalidMessage)?;
+        match self {
+            SignaturePublicKey::Ed25519(pk) => pk.verify_signature(signature, &hash),
+            SignaturePublicKey::Secp256k1(pk) => pk.verify_signature(signature, &hash),
+            SignaturePublicKey::P256(pk) => pk.verify_signature(signature, &hash),
         }
     }
 }

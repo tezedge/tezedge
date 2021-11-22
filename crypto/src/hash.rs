@@ -1,11 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
     blake2b::{self, Blake2bError},
+    CryptoError, PublicKeySignatureVerifier,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -47,7 +48,7 @@ pub trait HashTrait: Into<Hash> + AsRef<Hash> {
 }
 
 /// Error creating hash from bytes
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum FromBytesError {
     /// Invalid data size
     #[error("invalid hash size")]
@@ -106,6 +107,14 @@ macro_rules! define_hash {
                 f.debug_tuple(stringify!($name))
                     .field(&self.to_base58_check())
                     .finish()
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                // TODO - TE-373: with b58 this could be done without the need
+                // to perform a heap allocation.
+                write!(f, "{}", &self.to_base58_check())
             }
         }
 
@@ -347,6 +356,89 @@ impl TryFrom<PublicKeyP256> for ContractTz3Hash {
         let hash = blake2b::digest_160(&source.0)?;
         let typed_hash = Self::from_bytes(&hash)?;
         Ok(typed_hash)
+    }
+}
+
+impl TryFrom<&PublicKeyEd25519> for sodiumoxide::crypto::sign::PublicKey {
+    type Error = FromBytesError;
+
+    fn try_from(source: &PublicKeyEd25519) -> Result<Self, Self::Error> {
+        Ok(sodiumoxide::crypto::sign::PublicKey(
+            source
+                .0
+                .as_slice()
+                .try_into()
+                .map_err(|_| FromBytesError::InvalidSize)?,
+        ))
+    }
+}
+
+impl TryFrom<&Signature> for sodiumoxide::crypto::sign::Signature {
+    type Error = FromBytesError;
+
+    fn try_from(source: &Signature) -> Result<Self, Self::Error> {
+        Ok(sodiumoxide::crypto::sign::Signature(
+            source
+                .0
+                .as_slice()
+                .try_into()
+                .map_err(|_| FromBytesError::InvalidSize)?,
+        ))
+    }
+}
+
+impl PublicKeySignatureVerifier for PublicKeyEd25519 {
+    type Signature = Signature;
+    type Error = CryptoError;
+
+    /// Verifies the correctness of `bytes` signed by Ed25519 as the `signature`.
+    fn verify_signature(&self, signature: &Signature, bytes: &[u8]) -> Result<bool, Self::Error> {
+        Ok(sodiumoxide::crypto::sign::verify_detached(
+            &signature
+                .try_into()
+                .map_err(|_| CryptoError::InvalidSignature)?,
+            bytes,
+            &self.try_into().map_err(|_| CryptoError::InvalidPublicKey)?,
+        ))
+    }
+}
+
+impl PublicKeySignatureVerifier for PublicKeySecp256k1 {
+    type Signature = Signature;
+    type Error = CryptoError;
+
+    /// Verifies the correctness of `bytes` signed by Secp256k1 as the `signature`.
+    fn verify_signature(&self, _signature: &Signature, _bytes: &[u8]) -> Result<bool, Self::Error> {
+        Err(CryptoError::Unsupported("Secp256k1 signature verification"))
+        // let pk = libsecp256k1::PublicKey::parse_slice(
+        //     &self.0,
+        //     Some(libsecp256k1::PublicKeyFormat::Compressed),
+        // )
+        // .map_err(|_| CryptoError::InvalidPublicKey)?;
+        // let sig = libsecp256k1::Signature::parse_standard_slice(&signature.0)
+        //     .map_err(|_| CryptoError::InvalidSignature)?;
+        // let msg =
+        //     libsecp256k1::Message::parse_slice(bytes).map_err(|_| CryptoError::InvalidMessage)?;
+
+        // Ok(libsecp256k1::verify(&msg, &sig, &pk))
+    }
+}
+
+impl PublicKeySignatureVerifier for PublicKeyP256 {
+    type Signature = Signature;
+    type Error = CryptoError;
+
+    /// Verifies the correctness of `bytes` signed by P256 as the `signature`.
+    fn verify_signature(&self, _signature: &Signature, _bytes: &[u8]) -> Result<bool, Self::Error> {
+        Err(CryptoError::Unsupported("P256 signature verification"))
+        // use p256::ecdsa::signature::Verifier;
+        // let pk = p256::ecdsa::VerifyingKey::from_sec1_bytes(&self.0)
+        //     .map_err(|_| CryptoError::InvalidPublicKey)?;
+        // let p: [u8; 32] = signature.0[..32].try_into().unwrap();
+        // let r: [u8; 32] = signature.0[32..].try_into().unwrap();
+        // let sig = p256::ecdsa::Signature::from_scalars(p, r)
+        //     .map_err(|_| CryptoError::InvalidSignature)?;
+        // Ok(pk.verify(bytes, &sig).is_ok())
     }
 }
 
@@ -679,5 +771,51 @@ mod tests {
             HashType::Signature.hash_to_b58check(&hex::decode(decoded)?)?
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_ed255519_signature_verification() {
+        let pk = PublicKeyEd25519::from_base58_check(
+            "edpkvWR5truf7AMF3PZVCXx7ieQLCW4MpNDzM3VwPfmFWVbBZwswBw",
+        )
+        .unwrap();
+        let sig = Signature::from_base58_check(
+            "sigdGBG68q2vskMuac4AzyNb1xCJTfuU8MiMbQtmZLUCYydYrtTd5Lessn1EFLTDJzjXoYxRasZxXbx6tHnirbEJtikcMHt3"
+        ).unwrap();
+        let msg = hex::decode("bcbb7b77cb0712e4cd02160308cfd53e8dde8a7980c4ff28b62deb12304913c2")
+            .unwrap();
+
+        let result = pk.verify_signature(&sig, &msg).unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_secp256k1_signature_verification() {
+        let pk = PublicKeySecp256k1::from_base58_check(
+            "sppk7ZXoGh6opHN9xxRamJUgYhAY1qaBcyq8Sp8gt2Dsp9a7df4Hixp",
+        )
+        .unwrap();
+        let sig = Signature::from_base58_check("sigrxGzAs4J3znY1FsdFxnNBdiJZiQ6wz8hFUVXqityFqZG6EMNqMYWtMhyy6Ag8UobkhCdoy9GiWxmZYU6Caib5oDH6hNbg").unwrap();
+        let msg = hex::decode("bcbb7b77cb0712e4cd02160308cfd53e8dde8a7980c4ff28b62deb12304913c2")
+            .unwrap();
+
+        let result = pk.verify_signature(&sig, &msg).unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_p256_signature_verification() {
+        let pk = PublicKeyP256::from_base58_check(
+            "p2pk67BDiffYFzGweYKDPpY15JrZSWCqPVfx8KuU2bzjubhmot1n1KZ",
+        )
+        .unwrap();
+        let sig = Signature::from_base58_check("sigYMEZtHhUmNfqG1WZ2fZRL4qcBfT5KLUviHYM3ccHfWTtgB7YY6ngJpWhaSMyQzfY9WRDNLKGLi3XtmGBy1gPbGRA6gfg7").unwrap();
+        let msg = hex::decode("bcbb7b77cb0712e4cd02160308cfd53e8dde8a7980c4ff28b62deb12304913c2")
+            .unwrap();
+
+        let result = pk.verify_signature(&sig, &msg).unwrap();
+        assert!(result);
     }
 }

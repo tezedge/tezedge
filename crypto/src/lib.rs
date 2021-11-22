@@ -24,4 +24,24 @@ pub enum CryptoError {
     InvalidNonceSize { expected: usize, actual: usize },
     #[error("Failed to decrypt")]
     FailedToDecrypt,
+    #[error("Failed to construct public key")]
+    InvalidPublicKey,
+    #[error("Failed to construct signature")]
+    InvalidSignature,
+    #[error("Failed to construct message")]
+    InvalidMessage,
+    #[error("Unsupported algorithm `{0}`")]
+    Unsupported(&'static str),
+}
+
+/// Public key that supports signature verification
+pub trait PublicKeySignatureVerifier {
+    type Signature;
+    type Error;
+
+    fn verify_signature(
+        &self,
+        signature: &Self::Signature,
+        msg: &[u8],
+    ) -> Result<bool, Self::Error>;
 }
