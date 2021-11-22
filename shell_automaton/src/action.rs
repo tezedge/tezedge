@@ -59,7 +59,14 @@ use crate::peers::graylist::{
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction, PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerOperationDecodedAction, PrecheckerPrecheckOperationAction, PrecheckerValidateEndorsementAction};
+use crate::prechecker::{
+    PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
+    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
+    PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
+    PrecheckerGetEndorsingRightsAction, PrecheckerInitErrorAction, PrecheckerNotEndorsementAction,
+    PrecheckerOperationDecodedAction, PrecheckerPrecheckOperationAction,
+    PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
+};
 use crate::protocol::ProtocolAction;
 
 use crate::rights::{
@@ -271,16 +278,19 @@ pub enum Action {
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     BlockApplied(BlockAppliedAction),
 
-
+    PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction),
     PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerOperationDecoded(PrecheckerOperationDecodedAction),
+    PrecheckerWaitForBlockApplication(PrecheckerWaitForBlockApplicationAction),
+    PrecheckerBlockApplied(PrecheckerBlockAppliedAction),
     PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction),
     PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction),
     PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction),
     PrecheckerEndorsementValidationReady(PrecheckerEndorsementValidationReadyAction),
+    PrecheckerNotEndorsement(PrecheckerNotEndorsementAction),
+    PrecheckerInitError(PrecheckerInitErrorAction),
     PrecheckerError(PrecheckerErrorAction),
-
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),
     RightsEndorsingRightsGetBlockHeader(RightsEndorsingRightsGetBlockHeaderAction),

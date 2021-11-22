@@ -3,65 +3,170 @@
 
 use std::convert::TryInto;
 
+use crypto::{blake2b, hash::BlockHash};
 use redux_rs::{ActionWithId, Store};
+use slog::{debug, error};
 use tezos_messages::p2p::{
-    binary_message::{BinaryRead, MessageHash},
-    encoding::operation::Operation,
+    binary_message::{BinaryWrite, MessageHash, MessageHashError},
+    encoding::block_header::BlockHeader,
 };
 
 use crate::{
-    mempool::MempoolOperationRecvDoneAction, prechecker::PrevalidatorEndorsementOperation, Action, Service,
-    State,
+    mempool::{BlockAppliedAction, MempoolOperationRecvDoneAction},
+    prechecker::AppliedBlockCache,
+    rights::{
+        EndorsingRightsKey, RightsEndorsingRightsErrorAction, RightsEndorsingRightsReadyAction,
+        RightsGetEndorsingRightsAction,
+    },
+    Action, Service, State,
 };
 
-use super::{Key, OperationDecodedContents, PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction, PrecheckerEndorsingRightsReadyAction, PrecheckerError, PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerOperationDecodedAction, PrecheckerOperationState, PrecheckerPrecheckOperationAction, PrecheckerValidateEndorsementAction, PrecheckerValidationError};
+use super::{
+    Key, OperationDecodedContents, PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
+    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
+    PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
+    PrecheckerGetEndorsingRightsAction, PrecheckerInitErrorAction, PrecheckerNotEndorsementAction,
+    PrecheckerOperationDecodedAction, PrecheckerOperationState, PrecheckerPrecheckOperationAction,
+    PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
+};
 
-pub fn preckecker_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
+pub fn prechecker_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithId<Action>)
 where
     S: Service,
 {
-    let prechecker_state_operations = &store.state.get().prechecker.operations;
+    let prechecker_state = &store.state.get().prechecker;
+    let prechecker_state_operations = &prechecker_state.operations;
+    let log = &store.state.get().log;
     match &action.action {
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { address, operation }) => {
-            // TODO get the hash along with the operation
-            let hash = match operation.message_hash() {
+        Action::BlockApplied(BlockAppliedAction {
+            block,
+            chain_id,
+            is_bootstrapped,
+        }) => {
+            if !is_bootstrapped {
+                return;
+            }
+            let block_hash = match get_block_hash(&block) {
+                Ok(block_hash) => block_hash,
+                Err(err) => {
+                    error!(log, "Cannot cache applied block at level {}", block.level(); "error" => err.to_string());
+                    return;
+                }
+            };
+
+            debug!(log, "New block applied"; "block_hash" => block_hash.to_string());
+
+            store.dispatch(
+                PrecheckerCacheAppliedBlockAction {
+                    block_hash: block_hash.clone(),
+                    chain_id: chain_id.clone(),
+                    block_header: block.clone(),
+                }
+                .into(),
+            );
+
+            for key in &store
+                .state
+                .get()
+                .prechecker
+                .operations
+                .iter()
+                .filter_map(|(key, state)| {
+                    if let PrecheckerOperationState::PendingBlockApplication {
+                        block_hash: operation_block_hash,
+                        ..
+                    } = state
+                    {
+                        if &block_hash == operation_block_hash {
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(PrecheckerBlockAppliedAction { key: key.clone() }.into());
+            }
+        }
+
+        // debug only
+        Action::PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction {
+            block_hash,
+            ..
+        }) => {
+            for (key, state) in prechecker_state.non_terminals() {
+                state.block_hash().map(|bh| if bh != block_hash {
+                    debug!(log, "Prevalidation operation still unprocessed";
+                           "operation" => key.operation.to_string(), "state" => state.as_ref(), "block_hash" => bh.to_string());
+                });
+            }
+        }
+
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction {
+            address: _,
+            operation,
+        }) => {
+            let binary_encoding = match operation.as_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    store.dispatch(PrecheckerInitErrorAction { error: err.into() }.into());
+                    return;
+                }
+            };
+
+            let hash = match blake2b::digest_256(&binary_encoding) {
                 Ok(hash) => hash,
                 Err(err) => {
-                    eprintln!("Error getting hash of the message: {}", err);
+                    store.dispatch(PrecheckerInitErrorAction { error: err.into() }.into());
                     return;
                 }
             };
             let key = match hash.try_into() {
                 Ok(hash) => Key { operation: hash },
                 Err(err) => {
-                    eprintln!("Error constructing typed hash of the message: {}", err);
+                    store.dispatch(PrecheckerInitErrorAction { error: err.into() }.into());
                     return;
                 }
             };
             store.dispatch(
                 PrecheckerPrecheckOperationAction {
                     key,
-                    operation: operation.clone(),
+                    block_hash: operation.branch().clone(),
+                    operation_binary_encoding: binary_encoding,
                 }
                 .into(),
             );
         }
         Action::PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction { key, .. }) => {
-            if let Some(PrecheckerOperationState::Init { .. }) =
-                prechecker_state_operations.get(key)
-            {
-                store.dispatch(PrecheckerDecodeOperationAction { key: key.clone() }.into());
-            }
+            let action = match prechecker_state_operations.get(key) {
+                Some(PrecheckerOperationState::Init { .. }) => {
+                    PrecheckerDecodeOperationAction { key: key.clone() }.into()
+                }
+                Some(PrecheckerOperationState::Ready {}) => {
+                    PrecheckerEndorsementValidationReadyAction { key: key.clone() }.into()
+                }
+                Some(PrecheckerOperationState::Error { error }) => PrecheckerErrorAction {
+                    key: key.clone(),
+                    error: error.clone(),
+                }
+                .into(),
+                _ => return,
+            };
+            store.dispatch(action);
         }
         Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key }) => {
-            if let Some(PrecheckerOperationState::PendingContentDecoding { operation }) =
-                prechecker_state_operations.get(key)
+            if let Some(PrecheckerOperationState::PendingContentDecoding {
+                operation_binary_encoding,
+                ..
+            }) = prechecker_state_operations.get(key)
             {
                 // TODO use proper protocol to parse operation
-                match tezos_messages::protocol::proto_010::operation::OperationContents::from_bytes(
-                    operation.data(),
-                ) {
-                    Ok(contents) => {
+                match OperationDecodedContents::parse(&operation_binary_encoding) {
+                    Ok(contents) if contents.is_endorsement() => {
                         store.dispatch(
                             PrecheckerOperationDecodedAction {
                                 key: key.clone(),
@@ -70,7 +175,9 @@ where
                             .into(),
                         );
                     }
-                    // TODO: report error or checking verdict?
+                    Ok(_) => {
+                        store.dispatch(PrecheckerNotEndorsementAction { key: key.clone() }.into());
+                    }
                     Err(err) => store.dispatch(
                         PrecheckerErrorAction {
                             key: key.clone(),
@@ -81,62 +188,179 @@ where
                 }
             }
         }
-        Action::PrecheckerOperationDecoded(PrecheckerOperationDecodedAction { key, contents }) => {}
-        Action::PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction { key }) => {}
-        Action::PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction { key }) => {}
-        Action::PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction { key }) => {}
-        Action::PrecheckerEndorsementValidationReady(
-            PrecheckerEndorsementValidationReadyAction { key, result },
-        ) => {}
+        Action::PrecheckerOperationDecoded(PrecheckerOperationDecodedAction { key, .. }) => {
+            if let Some(PrecheckerOperationState::DecodedContentReady { .. }) =
+                prechecker_state_operations.get(key)
+            {
+                store.dispatch(PrecheckerWaitForBlockApplicationAction { key: key.clone() }.into());
+            }
+        }
+        Action::PrecheckerWaitForBlockApplication(PrecheckerWaitForBlockApplicationAction {
+            key,
+        }) => {
+            if let Some(PrecheckerOperationState::PendingBlockApplication { block_hash, .. }) =
+                prechecker_state_operations.get(key)
+            {
+                if prechecker_state.applied_blocks.contains_key(block_hash) {
+                    store.dispatch(PrecheckerBlockAppliedAction { key: key.clone() }.into());
+                }
+            }
+        }
+        Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
+            if let Some(PrecheckerOperationState::BlockApplied { .. }) =
+                prechecker_state_operations.get(key)
+            {
+                store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() }.into());
+            }
+        }
 
+        Action::PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction { key }) => {
+            if let Some(PrecheckerOperationState::PendingEndorsingRights { block_hash, .. }) =
+                prechecker_state_operations.get(key)
+            {
+                let current_block_hash = block_hash.clone();
+                store.dispatch(
+                    RightsGetEndorsingRightsAction {
+                        key: EndorsingRightsKey {
+                            current_block_hash,
+                            level: None,
+                        },
+                    }
+                    .into(),
+                );
+            }
+        }
+        Action::RightsEndorsingRightsReady(RightsEndorsingRightsReadyAction {
+            key:
+                EndorsingRightsKey {
+                    current_block_hash,
+                    level: None,
+                },
+            endorsing_rights,
+        }) => {
+            for key in prechecker_state_operations
+                .iter()
+                .filter_map(|(key, state)| {
+                    if let PrecheckerOperationState::PendingEndorsingRights { block_hash, .. } =
+                        state
+                    {
+                        if block_hash == current_block_hash {
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(
+                    PrecheckerEndorsingRightsReadyAction {
+                        key,
+                        endorsing_rights: endorsing_rights.clone(),
+                    }
+                    .into(),
+                );
+            }
+        }
+        Action::RightsEndorsingRightsError(RightsEndorsingRightsErrorAction {
+            key:
+                EndorsingRightsKey {
+                    current_block_hash,
+                    level: None,
+                },
+            error,
+        }) => {
+            for key in prechecker_state_operations
+                .iter()
+                .filter_map(|(key, state)| {
+                    if let PrecheckerOperationState::PendingEndorsingRights { block_hash, .. } =
+                        state
+                    {
+                        if block_hash == current_block_hash {
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(
+                    PrecheckerErrorAction {
+                        key,
+                        error: error.clone().into(),
+                    }
+                    .into(),
+                );
+            }
+        }
+        Action::PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction {
+            key,
+            ..
+        }) => {
+            if let Some(PrecheckerOperationState::EndorsingRightsReady { .. }) =
+                prechecker_state_operations.get(key)
+            {
+                store.dispatch(PrecheckerValidateEndorsementAction { key: key.clone() }.into());
+            }
+        }
+        Action::PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction { key }) => {
+            if let Some(PrecheckerOperationState::PendingOperationPrechecking {
+                block_hash,
+                operation_binary_encoding,
+                operation_decoded_contents,
+                endorsing_rights,
+            }) = prechecker_state_operations.get(key)
+            {
+                let chain_id = match store.state.get().prechecker.applied_blocks.get(block_hash) {
+                    Some(AppliedBlockCache { chain_id, .. }) => chain_id,
+                    None => {
+                        error!(log, "!!! Missing chain id"; "block_hash" => block_hash.to_string());
+                        return;
+                    }
+                };
+                use super::EndorsementValidator;
+                let validation_result = match operation_decoded_contents {
+                    OperationDecodedContents::Proto010(operation) => operation
+                        .validate_endorsement(
+                            operation_binary_encoding,
+                            chain_id,
+                            endorsing_rights,
+                            log,
+                        ),
+                };
+
+                if let Err(err) = validation_result {
+                    store.dispatch(
+                        PrecheckerErrorAction {
+                            key: key.clone(),
+                            error: err.into(),
+                        }
+                        .into(),
+                    );
+                } else {
+                    store.dispatch(
+                        PrecheckerEndorsementValidationReadyAction { key: key.clone() }.into(),
+                    )
+                }
+            }
+        }
         _ => (),
     }
 }
 
-fn get_operation_contents(
-    operation: Operation,
-) -> Result<OperationDecodedContents, PrecheckerValidationError> {
-    use tezos_messages::protocol::proto_010::operation::*;
-    let OperationContents {
-        contents,
-        signature,
-    } = match OperationContents::from_bytes(operation.data()) {
-        Ok(contents) => contents,
-        Err(err) => return Err(err.into()),
-    };
-    let only_contents = if contents.len() == 1 {
-        contents[0]
+fn get_block_hash(block_header: &BlockHeader) -> Result<BlockHash, MessageHashError> {
+    let block_hash: BlockHash = if let Some(hash) = block_header.hash().as_ref() {
+        hash.as_slice().try_into()?
     } else {
-        return Ok(OperationDecodedContents::Other);
+        block_header.message_hash()?.try_into()?
     };
-    let decoded_contents = match only_contents {
-        Contents::Endorsement(EndorsementOperation { level }) => {
-            OperationDecodedContents::Endorsement(super::PrevalidatorEndorsementOperation {
-                branch: operation.branch().clone(),
-                signature,
-                level,
-                slot: None,
-            })
-        }
-        Contents::EndorsementWithSlot(
-            EndorsementWithSlotOperation {
-                slot,
-                endorsement:
-                    InlinedEndorsement {
-                        branch: inl_branch,
-                        operations: InlinedEndorsementContents::Endorsement(InlinedEndorsementVariant { level }),
-                        signature: inl_signature,
-                    },
-            },
-        ) => {
-            OperationDecodedContents::Endorsement(super::PrevalidatorEndorsementOperation {
-                branch: operation.branch().clone(),
-                signature,
-                level,
-                slot: None,
-            })
-        }
-        _ => return Ok(OperationDecodedContents::Other),
-    };
-    Ok(decoded_contents)
+
+    Ok(block_hash)
 }

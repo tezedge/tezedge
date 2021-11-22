@@ -45,7 +45,8 @@ pub trait StorageService {
 type StorageWorkerRequester = ServiceWorkerRequester<StorageRequest, StorageResponse>;
 type StorageWorkerResponder = ServiceWorkerResponder<StorageRequest, StorageResponse>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, thiserror::Error)]
+#[error("Error accessing storage: {0}")]
 pub struct StorageError(String);
 
 impl From<storage::StorageError> for StorageError {

@@ -44,7 +44,7 @@ pub struct EndorsingRights {
     pub delegate_to_slots: HashMap<Delegate, Vec<Slot>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum EndorsingRightsRequest {
     /// Request for endorsing rights for the given level is initialized.
     Init {
@@ -123,17 +123,26 @@ pub enum EndorsingRightsRequest {
     Error(EndorsingRightsError),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum EndorsingRightsError {
-    Storage(StorageError),
+    #[error("Storage error: {0}")]
+    Storage(#[from] StorageError),
+    #[error("Missing block header")]
     MissingBlockHeader,
+    #[error("Missing block header")]
     MissingProtocolHash,
+    #[error("Missing block header")]
     MissingProtocolConstants,
+    #[error("Error parsing protocol constants: {0}")]
     ParseProtocolConstants(String),
+    #[error("Missing cycle eras")]
     MissingCycleEras,
-    Cycle(CycleError),
+    #[error("Error calculating cycle: {0}")]
+    Cycle(#[from] CycleError),
+    #[error("Missing cycle meta data")]
     MissingCycleData,
-    Calculation(EndorsingRightsCalculationError),
+    #[error("Error calculating endorsing rights: {0}")]
+    Calculation(#[from] EndorsingRightsCalculationError),
 }
 
 /*

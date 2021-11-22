@@ -5,7 +5,7 @@ use std::{collections::HashMap, convert::TryInto, num::TryFromIntError, time::In
 
 use crypto::blake2b::{self, Blake2bError};
 use redux_rs::{ActionWithMeta, Store};
-use slog::debug;
+use slog::{debug, error};
 use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::base::{
     signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
@@ -38,6 +38,7 @@ where
     S: Service,
 {
     let endorsing_rights_state = &store.state.get().rights.endorsing_rights;
+    let log = &store.state.get().log;
     match &action.action {
         /*
         Action::BlockApplied(BlockAppliedAction {
@@ -58,9 +59,31 @@ where
         }
         */
         Action::RightsGetEndorsingRights(RightsGetEndorsingRightsAction { key }) => {
-            if let Some(EndorsingRightsRequest::Init { .. }) = endorsing_rights_state.get(key) {
-                store
-                    .dispatch(RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() });
+            match endorsing_rights_state.get(key) {
+                Some(EndorsingRightsRequest::Init { .. }) => {
+                    debug!(log, "Endorsing rights request"; "key" => format!("{:?}", key));
+                    for (key, state) in endorsing_rights_state {
+                        match state {
+                            EndorsingRightsRequest::Init { .. } | EndorsingRightsRequest::Ready(_) => (),
+                            _ => debug!(log, "Endorsing rights in pending state"; "key" => format!("{:?}", key), "state" => state.as_ref()),
+                        }
+                    }
+                    store.dispatch(
+                        RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() }.into(),
+                    );
+                }
+                Some(EndorsingRightsRequest::Ready(endorsing_rights)) => {
+                    debug!(log, "Endorsing rights reusing ready request"; "key" => format!("{:?}", key));
+                    let endorsing_rights = endorsing_rights.clone();
+                    store.dispatch(
+                        RightsEndorsingRightsReadyAction {
+                            key: key.clone(),
+                            endorsing_rights,
+                        }
+                        .into(),
+                    );
+                }
+                _ => (),
             }
         }
 
@@ -537,6 +560,10 @@ where
                 }
             }
         }
+        Action::RightsEndorsingRightsError(RightsEndorsingRightsErrorAction { key, error }) => {
+            error!(log, "Error getting endorsing rights"; "key" => format!("{:?}", key), "error" => error.to_string());
+        }
+
         _ => (),
     }
 }

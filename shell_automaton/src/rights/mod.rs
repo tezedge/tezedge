@@ -21,9 +21,9 @@ mod utils;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
 pub struct EndorsingRightsKey {
     /// Current block hash.
-    current_block_hash: BlockHash,
+    pub current_block_hash: BlockHash,
     /// Level of block to calculate endorsing rights for. If `None`, `current_block_hash` is used instead.
-    level: Option<Level>,
+    pub level: Option<Level>,
 }
 
 pub use crate::storage::kv_cycle_meta::Cycle;
