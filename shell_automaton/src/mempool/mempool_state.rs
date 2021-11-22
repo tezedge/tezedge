@@ -21,7 +21,7 @@ pub struct MempoolState {
     // do not create prevalidator for any applied block, create prevalidator:
     // * for block received as CurrentHead
     // * for block of injected operation
-    pub(super) prevalidator: Option<PrevalidatorWrapper>,
+    pub prevalidator: Option<PrevalidatorWrapper>,
     //
     pub(super) requesting_prevalidator_for: Option<BlockHash>,
     // performing rpc

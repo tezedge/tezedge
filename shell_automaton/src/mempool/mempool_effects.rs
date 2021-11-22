@@ -109,18 +109,19 @@ pub fn mempool_effects<S>(
             }
         }
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, ..
+            chain_id, block, is_bootstrapped,
         }) => {
-            // TODO: remove it
-            let req = BeginConstructionRequest {
-                chain_id: chain_id.clone(),
-                predecessor: block.clone(),
-                protocol_data: None,
-            };
-            store
-                .service()
-                .protocol()
-                .begin_construction_for_mempool(req);
+            if *is_bootstrapped {
+                let req = BeginConstructionRequest {
+                    chain_id: chain_id.clone(),
+                    predecessor: block.clone(),
+                    protocol_data: None,
+                };
+                store
+                    .service()
+                    .protocol()
+                    .begin_construction_for_mempool(req);
+            }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
