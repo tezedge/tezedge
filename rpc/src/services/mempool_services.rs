@@ -53,11 +53,12 @@ pub async fn get_pending_operations(
             reason: "too many requests, the channel between shell and rpc is full".to_string(),
         })?
         .mempool;
+    let ops = &state.validated_operations.ops;
+    let prevalidator = &state.prevalidator.as_ref().unwrap();
 
     Ok((
         MempoolOperations {
             applied: {
-                let ops = &state.validated_operations.ops;
                 state
                     .validated_operations
                     .applied
@@ -76,9 +77,145 @@ pub async fn get_pending_operations(
                     })
                     .collect()
             },
-            refused: vec![],
-            branch_refused: vec![],
-            branch_delayed: vec![],
+            // TODO: duplicated code
+            refused: {
+                let mut result = Vec::with_capacity(state.validated_operations.refused.len());
+                for v in &state.validated_operations.refused {
+                    let operation_hash = v.hash.to_base58_check();
+                    let operation = match ops.get(&v.hash) {
+                        Some(b) => b,
+                        None => {
+                            return Err(RpcServiceError::UnexpectedError {
+                                reason: format!(
+                                    "missing operation data for operation_hash: {}",
+                                    &operation_hash
+                                ),
+                            });
+                        }
+                    };
+                    let protocol_data: HashMap<String, Value> = if v
+                        .protocol_data_json_with_error_json
+                        .protocol_data_json
+                        .is_empty()
+                    {
+                        HashMap::new()
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)?
+                    };
+
+                    let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
+                        Value::Null
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)?
+                    };
+
+                    let mut m = HashMap::new();
+                    m.insert(String::from("protocol"), Value::String(prevalidator.protocol.to_base58_check()));
+                    m.insert(
+                        String::from("branch"),
+                        Value::String(operation.branch().to_base58_check()),
+                    );
+                    m.extend(protocol_data);
+                    m.insert(String::from("error"), error);
+                    result.push(Value::Array(vec![
+                        Value::String(operation_hash),
+                        serde_json::to_value(m)?,
+                    ]));
+                }
+                result
+            },
+            branch_refused: {
+                let mut result = Vec::with_capacity(state.validated_operations.branch_refused.len());
+                for v in &state.validated_operations.branch_refused {
+                    let operation_hash = v.hash.to_base58_check();
+                    let operation = match ops.get(&v.hash) {
+                        Some(b) => b,
+                        None => {
+                            return Err(RpcServiceError::UnexpectedError {
+                                reason: format!(
+                                    "missing operation data for operation_hash: {}",
+                                    &operation_hash
+                                ),
+                            });
+                        }
+                    };
+                    let protocol_data: HashMap<String, Value> = if v
+                        .protocol_data_json_with_error_json
+                        .protocol_data_json
+                        .is_empty()
+                    {
+                        HashMap::new()
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)?
+                    };
+
+                    let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
+                        Value::Null
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)?
+                    };
+
+                    let mut m = HashMap::new();
+                    m.insert(String::from("protocol"), Value::String(prevalidator.protocol.to_base58_check()));
+                    m.insert(
+                        String::from("branch"),
+                        Value::String(operation.branch().to_base58_check()),
+                    );
+                    m.extend(protocol_data);
+                    m.insert(String::from("error"), error);
+                    result.push(Value::Array(vec![
+                        Value::String(operation_hash),
+                        serde_json::to_value(m)?,
+                    ]));
+                }
+                result
+            },
+            branch_delayed: {
+                let mut result = Vec::with_capacity(state.validated_operations.branch_delayed.len());
+                for v in &state.validated_operations.branch_delayed {
+                    let operation_hash = v.hash.to_base58_check();
+                    let operation = match ops.get(&v.hash) {
+                        Some(b) => b,
+                        None => {
+                            return Err(RpcServiceError::UnexpectedError {
+                                reason: format!(
+                                    "missing operation data for operation_hash: {}",
+                                    &operation_hash
+                                ),
+                            });
+                        }
+                    };
+                    let protocol_data: HashMap<String, Value> = if v
+                        .protocol_data_json_with_error_json
+                        .protocol_data_json
+                        .is_empty()
+                    {
+                        HashMap::new()
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)?
+                    };
+
+                    let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
+                        Value::Null
+                    } else {
+                        serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)?
+                    };
+
+                    let mut m = HashMap::new();
+                    m.insert(String::from("protocol"), Value::String(prevalidator.protocol.to_base58_check()));
+                    m.insert(
+                        String::from("branch"),
+                        Value::String(operation.branch().to_base58_check()),
+                    );
+                    m.extend(protocol_data);
+                    m.insert(String::from("error"), error);
+                    result.push(Value::Array(vec![
+                        Value::String(operation_hash),
+                        serde_json::to_value(m)?,
+                    ]));
+                }
+                result
+            },
             unprocessed: vec![],
         },
         None,
