@@ -56,6 +56,7 @@ pub trait StorageService {
 type StorageWorkerRequester = ServiceWorkerRequester<StorageRequest, StorageResponse>;
 type StorageWorkerResponder = ServiceWorkerResponder<StorageRequest, StorageResponse>;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, thiserror::Error)]
 #[error("Error accessing storage: {0}")]
 pub struct StorageError(String);
@@ -100,6 +101,7 @@ pub enum StorageRequestPayload {
     },
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseSuccess {
     StateSnapshotPutSuccess(ActionId),
@@ -125,6 +127,7 @@ pub enum StorageResponseSuccess {
     StoreApplyBlockResultSuccess(Arc<BlockAdditionalData>),
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseError {
     StateSnapshotPutError(ActionId, StorageError),
@@ -173,6 +176,7 @@ impl StorageRequest {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageResponse {
     pub req_id: Option<RequestId>,

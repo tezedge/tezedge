@@ -8,9 +8,10 @@ use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
 use crypto::hash::BlockHash;
-use hyper::{Body, Request};
+use hyper::{Body, Request, Response};
 use slog::warn;
 use std::sync::Arc;
+use storage::persistent::Encoder;
 
 pub async fn dev_blocks(
     _: Request<Body>,
@@ -282,6 +283,27 @@ pub async fn dev_shell_automaton_state_get(
         ),
         None => make_json_response(&dev_services::get_shell_automaton_state_current(&env).await?),
     }
+}
+
+pub async fn dev_shell_automaton_state_raw_get(
+    _: Request<Body>,
+    _: Params,
+    _query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let state = dev_services::get_shell_automaton_state_current(&env).await?;
+    let contents = state.encode()?;
+
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .body(Body::from(contents))?)
 }
 
 pub async fn dev_shell_automaton_actions_get(

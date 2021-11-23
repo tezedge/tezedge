@@ -9,7 +9,15 @@ use crate::{EnablingCondition, State};
 
 use super::PeersTimeouts;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+// TODO: add Default for BasicEnum in fuzzcheck-rs and uncomment this code
+//#[cfg(feature = "fuzzing")]
+//use super::PeersTimeoutsMutator;
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::IpAddrMutator;
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::vector::VecMutator;
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsInitAction {}
 
@@ -19,10 +27,13 @@ impl EnablingCondition<State> for PeersCheckTimeoutsInitAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsSuccessAction {
+    // TODO: add Default for BasicEnum in fuzzcheck-rs and uncomment this code
+    //#[cfg_attr(feature = "fuzzing", field_mutator(PeersTimeoutsMutator))]
     pub peer_timeouts: PeersTimeouts,
+    #[cfg_attr(feature = "fuzzing", field_mutator(VecMutator<IpAddr, IpAddrMutator>))]
     pub graylist_timeouts: Vec<IpAddr>,
 }
 
@@ -32,7 +43,7 @@ impl EnablingCondition<State> for PeersCheckTimeoutsSuccessAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersCheckTimeoutsCleanupAction {}
 

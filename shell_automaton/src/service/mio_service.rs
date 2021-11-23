@@ -45,7 +45,7 @@ pub trait MioService {
     fn peer_get(&mut self, token: PeerToken) -> Option<MioPeerRefMut<Self::PeerStream>>;
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingAcceptError {
     /// Not ready to make further progress.

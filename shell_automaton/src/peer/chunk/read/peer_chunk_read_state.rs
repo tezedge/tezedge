@@ -6,7 +6,7 @@ use std::io;
 
 use crypto::{crypto_box::PrecomputedKey, nonce::Nonce, CryptoError};
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerChunkReadError {
     /// Received chunk size = 0.
@@ -27,7 +27,7 @@ impl From<CryptoError> for PeerChunkReadError {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ReadCrypto {
     pub precomputed_key: PrecomputedKey,
@@ -44,14 +44,14 @@ impl ReadCrypto {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkRead {
     pub crypto: ReadCrypto,
     pub state: PeerChunkReadState,
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, strum_macros::AsRefStr)]
 pub enum PeerChunkReadState {
     Init,

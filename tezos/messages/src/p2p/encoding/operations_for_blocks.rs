@@ -27,6 +27,15 @@ use crate::p2p::encoding::operation::Operation;
 
 use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZE};
 
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::{
+    mutators::{
+        tuples::{Tuple1, Tuple1Mutator, TupleMutatorWrapper, TupleStructure},
+        vector::VecMutator,
+    },
+    DefaultMutator,
+};
+
 /// Maximal length for path in a Merkle tree for list of lists of operations.
 /// This is calculated from Tezos limit on that Operation_list_list size:
 ///
@@ -38,7 +47,7 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 /// thus any path should be 3 steps at most.
 ///
 pub const MAX_PASS_MERKLE_DEPTH: usize = 3;
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -75,7 +84,7 @@ impl OperationsForBlock {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,
@@ -119,7 +128,7 @@ impl From<OperationsForBlocksMessage> for Vec<Operation> {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathRight {
     #[get = "pub"]
@@ -148,7 +157,7 @@ impl Generated for PathRight {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathLeft {
     #[get = "pub"]
@@ -177,7 +186,7 @@ impl Generated for PathLeft {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, tezos_encoding::generator::Generated)]
 pub enum PathItem {
     Right(PathRight),
@@ -194,9 +203,63 @@ impl PathItem {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Path(pub Vec<PathItem>);
+
+#[cfg(feature = "fuzzing")]
+impl TupleStructure<Tuple1<Vec<PathItem>>> for Path {
+    #[no_coverage]
+    fn get_ref<'a>(&'a self) -> (&'a Vec<PathItem>,) {
+        (&self.0,)
+    }
+    #[no_coverage]
+    fn get_mut<'a>(&'a mut self) -> (&'a mut Vec<PathItem>,) {
+        (&mut self.0,)
+    }
+    #[no_coverage]
+    fn new(t: (Vec<PathItem>,)) -> Self {
+        Self { 0: t.0 }
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+type VecPathItemMutator = VecMutator<PathItem, <PathItem as fuzzcheck::DefaultMutator>::Mutator>;
+
+#[cfg(feature = "fuzzing")]
+pub struct PathMutator {
+    mutator: TupleMutatorWrapper<Tuple1Mutator<VecPathItemMutator>, Tuple1<Vec<PathItem>>>,
+}
+
+#[cfg(feature = "fuzzing")]
+impl PathMutator {
+    #[no_coverage]
+    pub fn new() -> Self {
+        let bounded_mut =
+            VecPathItemMutator::new(PathItem::default_mutator(), 0..=MAX_PASS_MERKLE_DEPTH);
+
+        Self {
+            mutator: TupleMutatorWrapper::new(Tuple1Mutator::new(bounded_mut)),
+        }
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+impl fuzzcheck::MutatorWrapper for PathMutator {
+    type Wrapped = TupleMutatorWrapper<Tuple1Mutator<VecPathItemMutator>, Tuple1<Vec<PathItem>>>;
+    #[no_coverage]
+    fn wrapped_mutator(&self) -> &Self::Wrapped {
+        &self.mutator
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+impl fuzzcheck::DefaultMutator for Path {
+    type Mutator = PathMutator;
+    #[no_coverage]
+    fn default_mutator() -> Self::Mutator {
+        PathMutator::new()
+    }
+}
 
 impl Path {
     pub fn op() -> Self {
@@ -338,7 +401,7 @@ impl tezos_encoding::generator::Generated for Path {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

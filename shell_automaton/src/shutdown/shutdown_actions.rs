@@ -7,6 +7,7 @@ use crate::{EnablingCondition, State};
 
 use super::ShutdownState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShutdownInitAction {}
 
@@ -19,6 +20,7 @@ impl EnablingCondition<State> for ShutdownInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShutdownPendingAction {}
 
@@ -31,6 +33,7 @@ impl EnablingCondition<State> for ShutdownPendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShutdownSuccessAction {}
 

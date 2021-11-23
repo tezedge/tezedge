@@ -13,7 +13,7 @@ use tezos_encoding::nom::NomReader;
 
 use crate::p2p::binary_message::SizeFromChunk;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

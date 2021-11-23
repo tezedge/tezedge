@@ -32,7 +32,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debu
 strum = "0.20"
 strum_macros = "0.20"
 
-redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.11.0", features = ["serde"] }
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", rev = "c2f6946", features = ["serde"] }
 
 crypto = { path = "../crypto" }
 storage = { path = "../storage" }
@@ -46,5 +46,28 @@ tezos_context_api = { path = "../tezos/context-api" }
 tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 tezos_protocol_ipc_messages = { path = "../tezos/protocol-ipc-messages" }
 
-fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+fuzzcheck_mutators_derive = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
+once_cell = "1.8.0"
+ureq = "2.4.0"
+num-bigint = "0.3"
+
+enum_dispatch = "0.3.7"
+
+[features]
+fuzzing = [
+    "fuzzcheck",
+    "fuzzcheck_mutators_derive",
+    "redux-rs/fuzzing",
+    "crypto/fuzzing",
+    "storage/fuzzing",
+    "tezos_encoding/fuzzing",
+    "tezos_identity/fuzzing",
+    "tezos_messages/fuzzing",
+    "tezos_api/fuzzing",
+    "tezos_context_api/fuzzing",
+    "tezos_protocol_ipc_client/fuzzing",
+    "tezos_protocol_ipc_messages/fuzzing",
+    "async_ipc/fuzzing"
+    ]

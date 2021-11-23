@@ -10,7 +10,10 @@ use crate::{EnablingCondition, State};
 
 use super::PeerConnectionOutgoingStatePhase;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionOutgoingError {
     IO(IOErrorKind),
@@ -24,7 +27,7 @@ impl From<std::io::Error> for PeerConnectionOutgoingError {
 }
 
 /// Initialize outgoing connection to a random potential peer.
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionOutgoingRandomInitAction {}
 
@@ -35,9 +38,10 @@ impl EnablingCondition<State> for PeerConnectionOutgoingRandomInitAction {
 }
 
 /// Initialize outgoing connection to potential peer.
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionOutgoingInitAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -47,10 +51,12 @@ impl EnablingCondition<State> for PeerConnectionOutgoingInitAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionOutgoingPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    #[cfg_attr(feature = "fuzzing", field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
 }
 
@@ -60,9 +66,10 @@ impl EnablingCondition<State> for PeerConnectionOutgoingPendingAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionOutgoingErrorAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub error: PeerConnectionOutgoingError,
 }
@@ -73,9 +80,10 @@ impl EnablingCondition<State> for PeerConnectionOutgoingErrorAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionOutgoingSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 

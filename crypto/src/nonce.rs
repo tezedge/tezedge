@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use byteorder::{ByteOrder, BigEndian};
 
 use crate::{blake2b::Blake2bError, CryptoError};
 
@@ -26,7 +26,7 @@ macro_rules! merge_slices {
 const NONCE_WORDS: usize = 12;
 
 /// Arbitrary number that can be used once in communication.
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Nonce {
     value: [u16; NONCE_WORDS],
@@ -54,14 +54,14 @@ impl Nonce {
     pub fn increment(&self) -> Self {
         let mut value: [u16; NONCE_WORDS] = [0; NONCE_WORDS];
         value.copy_from_slice(&self.value);
-        
+
         let mut pos = NONCE_WORDS - 1;
         loop {
             let result: u32 = value[pos] as u32 + 1u32;
             value[pos] = (result & 0xffffu32) as u16;
-    
+
             if result < 0x10000u32 || pos == 0 {
-                break
+                break;
             }
 
             pos -= 1;
@@ -71,7 +71,7 @@ impl Nonce {
     }
 
     /// Create bytes representation equal to this nonce with correct nonce size, else return error
-    /// TODO: new implementation can't fail so we could get rid of `Result` in return type. 
+    /// TODO: new implementation can't fail so we could get rid of `Result` in return type.
     pub fn get_bytes(&self) -> Result<[u8; NONCE_SIZE], CryptoError> {
         let mut result: [u8; NONCE_SIZE] = [0; NONCE_SIZE];
         BigEndian::write_u16_into(&self.value, &mut result);
@@ -80,7 +80,7 @@ impl Nonce {
 }
 
 /// Pair of local/remote nonces
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct NoncePair {
     pub local: Nonce,

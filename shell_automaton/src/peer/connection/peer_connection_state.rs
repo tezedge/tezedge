@@ -12,7 +12,7 @@ use crate::peer::connection::outgoing::{
 };
 use crate::peer::PeerToken;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionState {
     Outgoing(PeerConnectionOutgoingState),
@@ -35,7 +35,7 @@ impl PeerConnectionState {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionStatePhase {
     Outgoing(PeerConnectionOutgoingStatePhase),

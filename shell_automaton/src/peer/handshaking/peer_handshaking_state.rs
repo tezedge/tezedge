@@ -24,7 +24,7 @@ use crate::peer::chunk::read::PeerChunkReadState;
 use crate::peer::chunk::write::PeerChunkWriteState;
 use crate::peer::{PeerCrypto, PeerToken};
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Error, Debug, Clone)]
 pub enum PeerHandshakingError {
     #[error("Chunk error: {0}")]
@@ -79,9 +79,13 @@ impl From<Blake2bError> for PeerHandshakingError {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
-#[enum_kind(PeerHandshakingPhase, derive(Serialize, Deserialize), cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator)))]
+#[enum_kind(
+    PeerHandshakingPhase,
+    derive(Serialize, Deserialize),
+    cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))
+)]
 pub enum PeerHandshakingStatus {
     Init {
         time: u64,

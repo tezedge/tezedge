@@ -6,9 +6,13 @@ use std::net::{IpAddr, SocketAddr};
 
 use crate::{EnablingCondition, State};
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::{IpAddrMutator, SocketAddrMutator};
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistAddressAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -18,9 +22,10 @@ impl EnablingCondition<State> for PeersGraylistAddressAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpAddAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -30,9 +35,10 @@ impl EnablingCondition<State> for PeersGraylistIpAddAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpAddedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -42,9 +48,10 @@ impl EnablingCondition<State> for PeersGraylistIpAddedAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpRemoveAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -54,9 +61,10 @@ impl EnablingCondition<State> for PeersGraylistIpRemoveAction {
     }
 }
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpRemovedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 

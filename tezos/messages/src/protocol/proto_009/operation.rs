@@ -197,6 +197,7 @@ pub enum Contents {
 
 /// Double_endorsement_evidence (tag 2).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-endorsement-evidence-tag-2].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct DoubleEndorsementEvidenceOperation {
     #[encoding(dynamic)]
@@ -208,6 +209,7 @@ pub struct DoubleEndorsementEvidenceOperation {
 
 /// Endorsement_with_slot (tag 10).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-with-slot-tag-10].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct EndorsementWithSlotOperation {
     #[encoding(dynamic)]
@@ -217,6 +219,7 @@ pub struct EndorsementWithSlotOperation {
 
 /// Failing_noop (tag 17).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#failing-noop-tag-17].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct FailingNoopOperation {
     #[encoding(dynamic)]

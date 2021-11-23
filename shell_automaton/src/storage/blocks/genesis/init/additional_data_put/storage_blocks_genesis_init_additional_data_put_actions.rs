@@ -9,6 +9,7 @@ use crate::{EnablingCondition, State};
 
 use super::StorageBlocksGenesisInitAdditionalDataPutState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitAdditionalDataPutInitAction {}
 
@@ -23,6 +24,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutInitA
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitAdditionalDataPutPendingAction {}
 
@@ -37,6 +39,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutPendi
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitAdditionalDataPutErrorAction {}
 
@@ -51,6 +54,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutError
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitAdditionalDataPutSuccessAction {}
 

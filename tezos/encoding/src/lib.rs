@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 //! This crate provides serialization and deserialization functionality for the data types used by the Tezos shell.
 
@@ -14,3 +15,6 @@ pub mod enc;
 pub mod encoding;
 pub mod generator;
 pub mod nom;
+
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;

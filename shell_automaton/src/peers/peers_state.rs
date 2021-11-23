@@ -11,7 +11,7 @@ use crate::peer::{Peer, PeerStatus};
 use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBlacklistState {
     /// Peer is temporarily graylisted.
@@ -119,9 +119,19 @@ impl PeersState {
         self.potential_iter().count()
     }
 
+    /// Iterator over `Connected` peers.
+    pub fn connected_iter<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+        self.list.iter().filter(|(_, peer)| peer.is_connected())
+    }
+
     /// Number of peers that we have established tcp connection with.
     pub fn connected_len(&self) -> usize {
-        self.iter().filter(|(_, peer)| peer.is_connected()).count()
+        self.connected_iter().count()
+    }
+
+    #[inline(always)]
+    pub fn is_blacklisted(&self, ip: &IpAddr) -> bool {
+        self.get_blacklisted_ip(ip).is_some()
     }
 
     #[inline(always)]

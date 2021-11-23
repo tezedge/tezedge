@@ -14,6 +14,7 @@ use crate::{EnablingCondition, State};
 
 use super::{BlockApplierApplyError, BlockApplierApplyState};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierEnqueueBlockAction {
     pub chain_id: Arc<ChainId>,
@@ -26,6 +27,7 @@ impl EnablingCondition<State> for BlockApplierEnqueueBlockAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyInitAction {
     pub chain_id: Arc<ChainId>,
@@ -43,6 +45,7 @@ impl EnablingCondition<State> for BlockApplierApplyInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyPrepareDataPendingAction {
     pub storage_req_id: RequestId,
@@ -57,6 +60,7 @@ impl EnablingCondition<State> for BlockApplierApplyPrepareDataPendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyPrepareDataSuccessAction {
     pub block: Arc<BlockHeaderWithHash>,
@@ -73,6 +77,7 @@ impl EnablingCondition<State> for BlockApplierApplyPrepareDataSuccessAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyProtocolRunnerApplyInitAction {}
 
@@ -85,6 +90,7 @@ impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyInitAction
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyProtocolRunnerApplyPendingAction {}
 
@@ -97,6 +103,7 @@ impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyPendingAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyProtocolRunnerApplyRetryAction {
     /// Block application error because of which we are retrying.
@@ -115,6 +122,7 @@ impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyRetryActio
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyProtocolRunnerApplySuccessAction {
     pub apply_result: Arc<ApplyBlockResponse>,
@@ -129,6 +137,7 @@ impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplySuccessAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyStoreApplyResultPendingAction {
     pub storage_req_id: RequestId,
@@ -143,6 +152,7 @@ impl EnablingCondition<State> for BlockApplierApplyStoreApplyResultPendingAction
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyStoreApplyResultSuccessAction {
     pub block_additional_data: Arc<BlockAdditionalData>,
@@ -157,6 +167,7 @@ impl EnablingCondition<State> for BlockApplierApplyStoreApplyResultSuccessAction
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyErrorAction {
     pub error: BlockApplierApplyError,
@@ -173,6 +184,7 @@ impl EnablingCondition<State> for BlockApplierApplyErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplySuccessAction {}
 

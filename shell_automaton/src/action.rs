@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use derive_more::From;
+use enum_dispatch::enum_dispatch;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
@@ -151,6 +152,7 @@ pub use redux_rs::{ActionId, EnablingCondition};
 
 pub type ActionWithMeta = redux_rs::ActionWithMeta<Action>;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct InitAction {}
 
@@ -160,6 +162,7 @@ impl EnablingCondition<State> for InitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MioWaitForEventsAction {}
 
@@ -169,6 +172,7 @@ impl EnablingCondition<State> for MioWaitForEventsAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MioTimeoutEvent {}
 
@@ -198,8 +202,8 @@ impl EnablingCondition<State> for MioTimeoutEvent {
         Hash
     )
 )]
-
 #[serde(tag = "kind", content = "content")]
+#[enum_dispatch(EnablingCondition<State>)]
 pub enum Action {
     Init(InitAction),
 

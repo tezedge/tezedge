@@ -13,7 +13,7 @@ use super::limits::{
     GET_PROTOCOLS_MAX_LENGTH, PROTOCOL_COMPONENT_MAX_SIZE,
 };
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -29,7 +29,7 @@ pub struct ProtocolMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -50,7 +50,7 @@ pub struct Component {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -78,7 +78,7 @@ impl Protocol {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

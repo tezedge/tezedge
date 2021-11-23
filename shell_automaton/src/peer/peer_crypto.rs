@@ -14,7 +14,7 @@ use super::chunk::write::WriteCrypto;
 
 /// PeerCrypto is responsible for encrypting/decrypting messages and
 /// managing nonces.
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerCrypto {
     /// Precomputed key is created from merge of peer public key and our secret key.

@@ -23,6 +23,7 @@ pub struct CycleMetaStorage {
     kv: Arc<CycleMetaStorageKV>,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Getters)]
 pub struct CycleData {
     #[get = "pub"]

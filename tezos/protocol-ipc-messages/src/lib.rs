@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 use std::path::PathBuf;
 
@@ -126,8 +127,13 @@ pub struct JsonEncodeApplyBlockOperationsMetadataParams {
 }
 
 /// This event message is generated as a response to the `ProtocolMessage` command.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
-#[enum_kind(NodeMessageKind, derive(Serialize, Deserialize,))]
+#[enum_kind(
+    NodeMessageKind,
+    derive(Serialize, Deserialize),
+    cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))
+)]
 pub enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),

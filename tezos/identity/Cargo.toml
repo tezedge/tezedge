@@ -16,3 +16,6 @@ crypto = { path = "../../crypto" }
 [dev-dependencies]
 assert-json-diff = "2"
 thiserror = "1.0"
+
+[features]
+fuzzing = [ "crypto/fuzzing" ]

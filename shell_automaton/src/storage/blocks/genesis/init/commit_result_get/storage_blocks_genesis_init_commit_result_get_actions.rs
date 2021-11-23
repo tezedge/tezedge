@@ -13,6 +13,7 @@ use crate::{EnablingCondition, State};
 
 use super::StorageBlocksGenesisInitCommitResultGetState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitCommitResultGetInitAction {}
 
@@ -27,6 +28,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetInitAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitCommitResultGetPendingAction {
     pub token: ProtocolRunnerToken,
@@ -43,6 +45,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetPending
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitCommitResultGetErrorAction {
     pub error: ProtocolServiceError,
@@ -59,6 +62,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetErrorAc
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitCommitResultGetSuccessAction {
     pub commit_result: CommitGenesisResult,

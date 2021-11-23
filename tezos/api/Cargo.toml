@@ -21,7 +21,12 @@ crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
 tezos_context_api = { path = "../context-api" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
 [dev-dependencies]
 assert-json-diff = "2"
 hex = "0.4"
+
+[features]
+fuzzing = ["fuzzcheck", "crypto/fuzzing", "tezos_encoding/fuzzing", "tezos_messages/fuzzing", "tezos_context_api/fuzzing"]
+

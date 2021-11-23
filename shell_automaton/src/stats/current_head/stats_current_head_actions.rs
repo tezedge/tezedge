@@ -11,6 +11,10 @@ use tezos_messages::{
 
 use crate::{ActionId, State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadRpcGetPeersAction {
     pub rpc_id: RpcId,
@@ -23,6 +27,7 @@ impl EnablingCondition<State> for StatsCurrentHeadRpcGetPeersAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadRpcGetApplicationAction {
     pub rpc_id: RpcId,
@@ -35,8 +40,10 @@ impl EnablingCondition<State> for StatsCurrentHeadRpcGetApplicationAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadReceivedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub level: Level,
     pub hash: BlockHash,
@@ -51,6 +58,7 @@ impl EnablingCondition<State> for StatsCurrentHeadReceivedAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadPrecheckSuccessAction {
     pub hash: BlockHash,
@@ -64,8 +72,10 @@ impl EnablingCondition<State> for StatsCurrentHeadPrecheckSuccessAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadPrepareSendAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub level: Level,
     pub hash: BlockHash,
@@ -82,8 +92,10 @@ impl EnablingCondition<State> for StatsCurrentHeadPrepareSendAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadSentAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub timestamp: ActionId,
 }
@@ -98,8 +110,10 @@ impl EnablingCondition<State> for StatsCurrentHeadSentAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadSentErrorAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -113,6 +127,7 @@ impl EnablingCondition<State> for StatsCurrentHeadSentErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadPruneAction {
     pub timestamp: ActionId,

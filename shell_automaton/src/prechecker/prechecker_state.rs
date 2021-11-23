@@ -29,6 +29,7 @@ use crate::{
 
 use super::{EndorsementValidationError, OperationProtocolData};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
 #[serde(into = "String", try_from = "String")]
 pub struct Key {
@@ -114,6 +115,7 @@ pub struct PrevalidatorEndorsementWithSlotOperation {
     pub signed_contents: Vec<u8>,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum OperationDecodedContents {
     Proto010(tezos_messages::protocol::proto_010::operation::Operation),
@@ -182,6 +184,7 @@ pub enum PrecheckerOperationState {
     },
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum PrecheckerResponseError {
     #[error("Error converting to binary encoding: {0}")]
@@ -206,6 +209,7 @@ impl From<BinaryWriterError> for PrecheckerResponseError {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum PrecheckerError {
     #[error("Error decoding protocol specific operation contents: {0}")]

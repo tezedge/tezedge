@@ -8,7 +8,7 @@ use crate::{ActionId, EnablingCondition, State};
 
 use super::StorageStateSnapshotCreateState;
 
-#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateInitAction {}
 
@@ -33,6 +33,7 @@ impl EnablingCondition<State> for StorageStateSnapshotCreateInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreatePendingAction {
     pub action_id: ActionId,
@@ -45,6 +46,7 @@ impl EnablingCondition<State> for StorageStateSnapshotCreatePendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateErrorAction {
     pub action_id: ActionId,
@@ -57,6 +59,7 @@ impl EnablingCondition<State> for StorageStateSnapshotCreateErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateSuccessAction {
     pub action_id: ActionId,
