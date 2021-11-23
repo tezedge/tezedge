@@ -8,7 +8,7 @@ use storage::{cycle_eras_storage::CycleErasData, cycle_storage::CycleData};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use crate::storage::kv_block_header;
-use crate::{State, EnablingCondition};
+use crate::{EnablingCondition, State};
 
 use super::{
     utils::Position, Cycle, EndorsingRights, EndorsingRightsError, EndorsingRightsKey,

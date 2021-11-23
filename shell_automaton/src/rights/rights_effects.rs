@@ -4,7 +4,6 @@
 use std::{collections::HashMap, convert::TryInto, num::TryFromIntError, time::Instant};
 
 use crypto::blake2b::{self, Blake2bError};
-use redux_rs::{ActionWithMeta, Store};
 use slog::{debug, error};
 use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::base::{
@@ -17,7 +16,7 @@ use crate::{
     storage::{
         kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_eras, kv_cycle_meta,
     },
-    Action, Service, State,
+    Action, ActionWithMeta, Service, Store,
 };
 
 use super::{
@@ -33,7 +32,7 @@ use super::{
     RightsGetEndorsingRightsAction,
 };
 
-pub fn rights_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta<Action>)
+pub fn rights_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
@@ -64,24 +63,22 @@ where
                     debug!(log, "Endorsing rights request"; "key" => format!("{:?}", key));
                     for (key, state) in endorsing_rights_state {
                         match state {
-                            EndorsingRightsRequest::Init { .. } | EndorsingRightsRequest::Ready(_) => (),
-                            _ => debug!(log, "Endorsing rights in pending state"; "key" => format!("{:?}", key), "state" => state.as_ref()),
+                            EndorsingRightsRequest::Init { .. }
+                            | EndorsingRightsRequest::Ready(_) => (),
+                            _ => {
+                                debug!(log, "Endorsing rights in pending state"; "key" => format!("{:?}", key), "state" => state.as_ref())
+                            }
                         }
                     }
-                    store.dispatch(
-                        RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() }.into(),
-                    );
+                    store.dispatch(RightsEndorsingRightsGetBlockHeaderAction { key: key.clone() });
                 }
                 Some(EndorsingRightsRequest::Ready(endorsing_rights)) => {
                     debug!(log, "Endorsing rights reusing ready request"; "key" => format!("{:?}", key));
                     let endorsing_rights = endorsing_rights.clone();
-                    store.dispatch(
-                        RightsEndorsingRightsReadyAction {
-                            key: key.clone(),
-                            endorsing_rights,
-                        }
-                        .into(),
-                    );
+                    store.dispatch(RightsEndorsingRightsReadyAction {
+                        key: key.clone(),
+                        endorsing_rights,
+                    });
                 }
                 _ => (),
             }
@@ -94,11 +91,9 @@ where
             if let Some(EndorsingRightsRequest::PendingBlockHeader { .. }) =
                 endorsing_rights_state.get(key)
             {
-                store.dispatch(
-                    kv_block_header::StorageBlockHeaderGetAction {
-                        key: key.current_block_hash.clone(),
-                    },
-                );
+                store.dispatch(kv_block_header::StorageBlockHeaderGetAction {
+                    key: key.current_block_hash.clone(),
+                });
             }
         }
         Action::StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction {
@@ -117,12 +112,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsBlockHeaderReadyAction {
-                        key,
-                        block_header: value.clone(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsBlockHeaderReadyAction {
+                    key,
+                    block_header: value.clone(),
+                });
             }
         }
         Action::StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction {
@@ -141,12 +134,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsErrorAction {
-                        key,
-                        error: error.clone().into(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsErrorAction {
+                    key,
+                    error: error.clone().into(),
+                });
             }
         }
         Action::RightsEndorsingRightsBlockHeaderReady(
@@ -155,9 +146,7 @@ where
             if let Some(EndorsingRightsRequest::BlockHeaderReady { .. }) =
                 endorsing_rights_state.get(key)
             {
-                store.dispatch(
-                    RightsEndorsingRightsGetProtocolHashAction { key: key.clone() },
-                );
+                store.dispatch(RightsEndorsingRightsGetProtocolHashAction { key: key.clone() });
             }
         }
 
@@ -190,12 +179,10 @@ where
                 .cloned()
                 .collect();
             for rights_key in rights_keys {
-                store.dispatch(
-                    RightsEndorsingRightsProtocolHashReadyAction {
-                        key: rights_key.clone(),
-                        proto_hash: value.next_protocol_hash.clone(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsProtocolHashReadyAction {
+                    key: rights_key.clone(),
+                    proto_hash: value.next_protocol_hash.clone(),
+                });
             }
         }
         Action::StorageBlockAdditionalDataError(
@@ -213,12 +200,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsErrorAction {
-                        key,
-                        error: error.clone().into(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsErrorAction {
+                    key,
+                    error: error.clone().into(),
+                });
             }
         }
         Action::RightsEndorsingRightsProtocolHashReady(
@@ -227,9 +212,8 @@ where
             if let Some(EndorsingRightsRequest::ProtocolHashReady { .. }) =
                 endorsing_rights_state.get(key)
             {
-                store.dispatch(
-                    RightsEndorsingRightsGetProtocolConstantsAction { key: key.clone() },
-                );
+                store
+                    .dispatch(RightsEndorsingRightsGetProtocolConstantsAction { key: key.clone() });
             }
         }
 
@@ -269,14 +253,17 @@ where
             {
                 match serde_json::from_str::<ProtocolConstants>(value) {
                     Ok(constants) => {
-                        store.dispatch(RightsEndorsingRightsProtocolConstantsReadyAction { key, constants });
+                        store.dispatch(RightsEndorsingRightsProtocolConstantsReadyAction {
+                            key,
+                            constants,
+                        });
                     }
                     Err(err) => {
                         store.dispatch(RightsEndorsingRightsErrorAction {
                             key,
                             error: err.into(),
                         });
-                    },
+                    }
                 }
             }
         }
@@ -301,12 +288,10 @@ where
                 .cloned()
                 .collect();
             for rights_key in rights_keys {
-                store.dispatch(
-                    RightsEndorsingRightsErrorAction {
-                        key: rights_key,
-                        error: error.clone().into(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsErrorAction {
+                    key: rights_key,
+                    error: error.clone().into(),
+                });
             }
         }
         Action::RightsEndorsingRightsProtocolConstantsReady(
@@ -353,12 +338,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsCycleErasReadyAction {
-                        key,
-                        cycle_eras: value.clone(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsCycleErasReadyAction {
+                    key,
+                    cycle_eras: value.clone(),
+                });
             }
         }
         Action::StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction {
@@ -385,12 +368,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsErrorAction {
-                        key,
-                        error: error.clone().into(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsErrorAction {
+                    key,
+                    error: error.clone().into(),
+                });
             }
         }
         Action::RightsEndorsingRightsCycleErasReady(
@@ -416,11 +397,13 @@ where
                     data_protocol_constants.preserved_cycles,
                 );
                 match get_cycle {
-                    Ok((cycle, position)) => store.dispatch(RightsEndorsingRightsCycleReadyAction {
-                        key: key.clone(),
-                        cycle,
-                        position,
-                    }),
+                    Ok((cycle, position)) => {
+                        store.dispatch(RightsEndorsingRightsCycleReadyAction {
+                            key: key.clone(),
+                            cycle,
+                            position,
+                        })
+                    }
                     Err(err) => store.dispatch(RightsEndorsingRightsErrorAction {
                         key: key.clone(),
                         error: err.into(),
@@ -470,12 +453,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsCycleDataReadyAction {
-                        key,
-                        cycle_data: value.clone(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsCycleDataReadyAction {
+                    key,
+                    cycle_data: value.clone(),
+                });
             }
         }
         Action::StorageCycleMetaError(kv_cycle_meta::StorageCycleMetaErrorAction {
@@ -501,12 +482,10 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
             {
-                store.dispatch(
-                    RightsEndorsingRightsErrorAction {
-                        key,
-                        error: error.clone().into(),
-                    },
-                );
+                store.dispatch(RightsEndorsingRightsErrorAction {
+                    key,
+                    error: error.clone().into(),
+                });
             }
         }
         Action::RightsEndorsingRightsCycleDataReady(

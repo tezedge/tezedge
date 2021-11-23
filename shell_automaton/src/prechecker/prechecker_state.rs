@@ -122,14 +122,16 @@ impl PrecheckerOperationState {
 
     pub(super) fn block_hash(&self) -> Option<&BlockHash> {
         match self {
-            PrecheckerOperationState::Init { block_hash, .. } |
-            PrecheckerOperationState::PendingContentDecoding { block_hash, .. } |
-            PrecheckerOperationState::DecodedContentReady { block_hash, .. } |
-            PrecheckerOperationState::PendingBlockApplication { block_hash, .. } |
-            PrecheckerOperationState::BlockApplied { block_hash, .. } |
-            PrecheckerOperationState::PendingEndorsingRights { block_hash, .. } |
-            PrecheckerOperationState::EndorsingRightsReady { block_hash, .. } |
-            PrecheckerOperationState::PendingOperationPrechecking { block_hash, .. } => Some(block_hash),
+            PrecheckerOperationState::Init { block_hash, .. }
+            | PrecheckerOperationState::PendingContentDecoding { block_hash, .. }
+            | PrecheckerOperationState::DecodedContentReady { block_hash, .. }
+            | PrecheckerOperationState::PendingBlockApplication { block_hash, .. }
+            | PrecheckerOperationState::BlockApplied { block_hash, .. }
+            | PrecheckerOperationState::PendingEndorsingRights { block_hash, .. }
+            | PrecheckerOperationState::EndorsingRightsReady { block_hash, .. }
+            | PrecheckerOperationState::PendingOperationPrechecking { block_hash, .. } => {
+                Some(block_hash)
+            }
             _ => None,
         }
     }

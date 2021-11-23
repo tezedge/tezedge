@@ -4,10 +4,9 @@
 use std::time::Instant;
 
 use crypto::hash::ChainId;
-use slog::{FnValue, Logger, debug, trace};
+use slog::{debug, trace, FnValue, Logger};
 use tezos_messages::{
-    base::signature_public_key::SignatureWatermark,
-    p2p::binary_message::BinaryWrite,
+    base::signature_public_key::SignatureWatermark, p2p::binary_message::BinaryWrite,
 };
 
 use crate::rights::{Delegate, EndorsingRights};

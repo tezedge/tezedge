@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
+use crate::ActionWithMeta;
 use slog::{debug, error};
 
 use crate::{Action, State};
@@ -15,7 +15,7 @@ use super::{
     PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
 };
 
-pub fn prechecker_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
     let prechecker_state = &mut state.prechecker;
     match &action.action {
         Action::PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction {
