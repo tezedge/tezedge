@@ -63,8 +63,9 @@ use crate::prechecker::{
     PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
     PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
     PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
-    PrecheckerGetEndorsingRightsAction, PrecheckerInitErrorAction, PrecheckerNotEndorsementAction,
-    PrecheckerOperationDecodedAction, PrecheckerPrecheckOperationAction,
+    PrecheckerGetEndorsingRightsAction, PrecheckerNotEndorsementAction,
+    PrecheckerOperationDecodedAction, PrecheckerPrecheckOperationInitAction,
+    PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponseAction,
     PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
 };
 use crate::protocol::ProtocolAction;
@@ -278,8 +279,10 @@ pub enum Action {
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     BlockApplied(BlockAppliedAction),
 
+    PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction),
+    PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction),
     PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction),
-    PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
+    PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerOperationDecoded(PrecheckerOperationDecodedAction),
     PrecheckerWaitForBlockApplication(PrecheckerWaitForBlockApplicationAction),
@@ -289,7 +292,6 @@ pub enum Action {
     PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction),
     PrecheckerEndorsementValidationReady(PrecheckerEndorsementValidationReadyAction),
     PrecheckerNotEndorsement(PrecheckerNotEndorsementAction),
-    PrecheckerInitError(PrecheckerInitErrorAction),
     PrecheckerError(PrecheckerErrorAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),

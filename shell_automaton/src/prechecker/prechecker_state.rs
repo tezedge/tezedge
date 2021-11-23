@@ -8,10 +8,7 @@ use crypto::{
     hash::{BlockHash, ChainId, FromBytesError, OperationHash, Signature},
 };
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
-use tezos_messages::p2p::{
-    binary_message::BinaryRead,
-    encoding::block_header::{BlockHeader, Level},
-};
+use tezos_messages::p2p::{binary_message::BinaryRead, encoding::{block_header::{BlockHeader, Level}, operation::Operation}};
 
 use crate::rights::{Delegate, EndorsingRights, EndorsingRightsError};
 
@@ -66,41 +63,41 @@ pub enum OperationDecodedContents {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
     Init {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
     },
     PendingContentDecoding {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
     },
     DecodedContentReady {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     PendingBlockApplication {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     BlockApplied {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     PendingEndorsingRights {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     EndorsingRightsReady {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights: EndorsingRights,
     },
     PendingOperationPrechecking {
-        block_hash: BlockHash,
+        operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights: EndorsingRights,
@@ -108,6 +105,7 @@ pub enum PrecheckerOperationState {
     Ready,
     NotEndorsement,
     Error {
+        operation: Option<Operation>,
         error: PrecheckerError,
     },
 }
@@ -121,33 +119,37 @@ impl PrecheckerOperationState {
     }
 
     pub(super) fn block_hash(&self) -> Option<&BlockHash> {
+        self.operation().map(Operation::branch)
+    }
+
+    pub(super) fn operation(&self) -> Option<&Operation> {
         match self {
-            PrecheckerOperationState::Init { block_hash, .. }
-            | PrecheckerOperationState::PendingContentDecoding { block_hash, .. }
-            | PrecheckerOperationState::DecodedContentReady { block_hash, .. }
-            | PrecheckerOperationState::PendingBlockApplication { block_hash, .. }
-            | PrecheckerOperationState::BlockApplied { block_hash, .. }
-            | PrecheckerOperationState::PendingEndorsingRights { block_hash, .. }
-            | PrecheckerOperationState::EndorsingRightsReady { block_hash, .. }
-            | PrecheckerOperationState::PendingOperationPrechecking { block_hash, .. } => {
-                Some(block_hash)
-            }
+            PrecheckerOperationState::Init { operation, .. } |
+            PrecheckerOperationState::PendingContentDecoding { operation, .. } |
+            PrecheckerOperationState::DecodedContentReady { operation, .. } |
+            PrecheckerOperationState::PendingBlockApplication { operation, .. } |
+            PrecheckerOperationState::BlockApplied { operation, .. } |
+            PrecheckerOperationState::PendingEndorsingRights { operation, .. } |
+            PrecheckerOperationState::EndorsingRightsReady { operation, .. } |
+            PrecheckerOperationState::PendingOperationPrechecking { operation, .. } => Some(operation),
             _ => None,
         }
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
-pub enum PrecheckerInitError {
+pub enum PrecheckerResponseError {
     #[error("Error converting to binary encoding: {0}")]
     Encoding(String),
     #[error("Error calculating hash: {0}")]
     Hashing(#[from] Blake2bError),
     #[error("Error converting to operation hash: {0}")]
     TypedHash(#[from] FromBytesError),
+    #[error("Error getting endorsing righst: {0}")]
+    Rights(#[from] EndorsingRightsError),
 }
 
-impl From<BinaryWriterError> for PrecheckerInitError {
+impl From<BinaryWriterError> for PrecheckerResponseError {
     fn from(error: BinaryWriterError) -> Self {
         Self::Encoding(error.to_string())
     }

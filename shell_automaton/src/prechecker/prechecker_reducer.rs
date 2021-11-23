@@ -11,8 +11,9 @@ use super::{
     PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
     PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
     PrecheckerGetEndorsingRightsAction, PrecheckerNotEndorsementAction,
-    PrecheckerOperationDecodedAction, PrecheckerOperationState, PrecheckerPrecheckOperationAction,
-    PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
+    PrecheckerOperationDecodedAction, PrecheckerOperationState,
+    PrecheckerPrecheckOperationInitAction, PrecheckerValidateEndorsementAction,
+    PrecheckerWaitForBlockApplicationAction,
 };
 
 pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -32,14 +33,14 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 });
         }
 
-        Action::PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction {
+        Action::PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction {
             key,
-            block_hash,
+            operation,
             operation_binary_encoding,
         }) => {
             prechecker_state.operations.entry(key.clone()).or_insert(
                 PrecheckerOperationState::Init {
-                    block_hash: block_hash.clone(),
+                    operation: operation.clone(),
                     operation_binary_encoding: operation_binary_encoding.clone(),
                 },
             );
@@ -49,14 +50,14 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::Init {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::PendingContentDecoding {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::PendingContentDecoding {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                         };
                     }
@@ -66,14 +67,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
-                    if let PrecheckerOperationState::PendingContentDecoding {
-                        block_hash,
-                        operation_binary_encoding,
-                    } = operation
-                    {
-                        *operation = PrecheckerOperationState::DecodedContentReady {
-                            block_hash: block_hash.clone(),
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingContentDecoding { operation, operation_binary_encoding } = state {
+                        *state = PrecheckerOperationState::DecodedContentReady {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: contents.clone(),
                         };
@@ -86,15 +83,15 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::DecodedContentReady {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::PendingBlockApplication {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::PendingBlockApplication {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
                         };
@@ -105,15 +102,15 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::PendingBlockApplication {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::BlockApplied {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::BlockApplied {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
                         }
@@ -124,15 +121,15 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::BlockApplied {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::PendingEndorsingRights {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::PendingEndorsingRights {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
                         }
@@ -146,15 +143,15 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::PendingEndorsingRights {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::EndorsingRightsReady {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::EndorsingRightsReady {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
                             endorsing_rights: endorsing_rights.clone(),
@@ -166,16 +163,16 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
+                .and_modify(|state| {
                     if let PrecheckerOperationState::EndorsingRightsReady {
-                        block_hash,
+                        operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
                         endorsing_rights,
-                    } = operation
+                    } = state
                     {
-                        *operation = PrecheckerOperationState::PendingOperationPrechecking {
-                            block_hash: block_hash.clone(),
+                        *state = PrecheckerOperationState::PendingOperationPrechecking {
+                            operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
                             endorsing_rights: endorsing_rights.clone(),
@@ -190,11 +187,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
-                    if let PrecheckerOperationState::PendingOperationPrechecking { .. } = operation
-                    {
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingOperationPrechecking { .. } = state {
                         debug!(log, ">>> Prechecking successfull"; "operation" => key.to_string());
-                        *operation = PrecheckerOperationState::Ready;
+                        *state = PrecheckerOperationState::Ready;
                     }
                 });
         }
@@ -203,10 +199,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
-                    if let PrecheckerOperationState::PendingContentDecoding { .. } = operation {
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingContentDecoding { .. } = state {
                         error!(log, ">>> Prechecking cannot be performed"; "operation" => key.to_string());
-                        *operation = PrecheckerOperationState::NotEndorsement;
+                        *state = PrecheckerOperationState::NotEndorsement;
                     }
                 });
         }
@@ -215,10 +211,11 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|operation| {
-                    if !matches!(operation, PrecheckerOperationState::Error { .. }) {
+                .and_modify(|state| {
+                    if !matches!(state, PrecheckerOperationState::Error { .. }) {
                         error!(log, ">>> Prechecking error"; "operation" => key.to_string(), "error" => error.to_string());
-                        *operation = PrecheckerOperationState::Error {
+                        *state = PrecheckerOperationState::Error {
+                            operation: state.operation().cloned(),
                             error: error.clone(),
                         }
                     }
