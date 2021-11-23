@@ -54,7 +54,11 @@ pub async fn get_pending_operations(
         })?
         .mempool;
     let ops = &state.validated_operations.ops;
-    let prevalidator = &state.prevalidator.as_ref().unwrap();
+    let prevalidator = match &state.prevalidator {
+        Some(v) => v,
+        None => return Ok((MempoolOperations::default(), None)),
+    };
+    let current_head = &state.local_head_state;
 
     Ok((
         MempoolOperations {
@@ -63,17 +67,23 @@ pub async fn get_pending_operations(
                     .validated_operations
                     .applied
                     .iter()
-                    .map(|applied| {
+                    .filter_map(|applied| {
                         // TODO(vlad): unwrap
+                        let branch = ops.get(&applied.hash).unwrap().branch();
+                        if let Some((_, hash)) = current_head {
+                            if branch.ne(hash) {
+                                return None;
+                            }
+                        }
+                        let branch = branch.to_base58_check();
                         let protocol_data: HashMap<String, Value> =
                             serde_json::from_str(&applied.protocol_data_json).unwrap();
                         let mut m = HashMap::new();
                         let hash = applied.hash.to_base58_check();
-                        let branch = ops.get(&applied.hash).unwrap().branch().to_base58_check();
                         m.insert(String::from("hash"), Value::String(hash));
                         m.insert(String::from("branch"), Value::String(branch));
                         m.extend(protocol_data);
-                        m
+                        Some(m)
                     })
                     .collect()
             },
@@ -382,8 +392,17 @@ pub async fn inject_operation(
 
     let result = tokio::time::timeout(INJECT_OPERATION_WAIT_TIMEOUT, receiver).await;
     match result {
-        // do we need the response
-        Ok(Ok(_)) => (),
+        Ok(Ok(serde_json::Value::Null)) => (),
+        Ok(Ok(serde_json::Value::String(reason))) => {
+            return Err(RpcServiceError::UnexpectedError {
+                reason,
+            });
+        },
+        Ok(Ok(resp)) => {
+            return Err(RpcServiceError::UnexpectedError {
+                reason: resp.to_string(),
+            });
+        },
         Ok(Err(_)) => warn!(
             env.log(),
             "Operation injection, state machine failed to respond"

@@ -100,6 +100,19 @@ impl EnablingCondition<State> for MempoolValidateStartAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolValidateWaitPrevalidatorAction {
+    pub operation: Operation,
+}
+
+impl EnablingCondition<State> for MempoolValidateWaitPrevalidatorAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {}
 
 impl EnablingCondition<State> for MempoolBroadcastAction {

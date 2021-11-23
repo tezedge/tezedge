@@ -29,11 +29,13 @@ pub struct MempoolState {
     // performed rpc
     pub(super) injected_rpc_ids: HashMap<OperationHash, RpcId>,
     // the current head applied
-    pub(super) local_head_state: Option<HeadState>,
+    pub local_head_state: Option<(HeadState, BlockHash)>,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
-    // operations that passed basic checks, but not protocol
+    // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    // operations that passed basic checks, are not sent because prevalidator is not ready
+    pub(super) wait_prevalidator_operations: HashMap<OperationHash, Operation>,
     pub validated_operations: ValidatedOperations,
 }
 
