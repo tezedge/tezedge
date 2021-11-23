@@ -25,7 +25,7 @@ use super::{
         BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
         MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
-        MempoolRpcRespondAction, MempoolValidateStartAction,
+        MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
     },
     mempool_state::HeadState,
 };
@@ -36,9 +36,22 @@ pub fn mempool_effects<S>(
 ) where
     S: Service,
 {
+    // println!("{:#?}", action);
+    if store.state().config.disable_mempool {
+        if let Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) = &action.action {
+            store.service().rpc().respond(rpc_id.clone(), serde_json::Value::String("mempool disabled".to_string()));
+        }
+        return;
+    }
     match &action.action {
         Action::Protocol(act) => {
             match act {
+                ProtocolAction::PrevalidatorForMempoolReady(_) => {
+                    let ops = store.state().mempool.wait_prevalidator_operations.clone();
+                    for (_, operation) in ops {
+                        store.dispatch(MempoolValidateStartAction { operation });
+                    }
+                }
                 ProtocolAction::OperationValidated(_) => {
                     store.dispatch(MempoolBroadcastAction {});
                     // respond
@@ -58,7 +71,7 @@ pub fn mempool_effects<S>(
                         store.service().rpc().respond(rpc_id, resp.clone());
                     }
                     store.dispatch(MempoolRpcRespondAction {});
-                },
+                }
                 _ => {}
             }
             // panic!("{:?}", act);
@@ -128,12 +141,10 @@ pub fn mempool_effects<S>(
             head_state,
             ..
         }) => {
-            if !store
-                .state()
-                .mempool
-                .applied_block
-                .contains(head_state.current_block.predecessor())
-            {
+            let blocks = &store.state().mempool.applied_block;
+            let level = head_state.current_block.level();
+            let pred = head_state.current_block.predecessor();
+            if !blocks.contains(pred) && level > 1 {
                 // if predecessor of the head is not applied,
                 // we did not bootstrapped yet, should not handle mempool
                 return;
@@ -177,12 +188,15 @@ pub fn mempool_effects<S>(
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
+            // if !store.state().mempool.applied_block.contains(operation.branch()) {
+            //     panic!();
+            // }
             store
-            .dispatch(
-                MempoolValidateStartAction {
-                    operation: operation.clone(),
-                },
-            );
+                .dispatch(
+                    MempoolValidateStartAction {
+                        operation: operation.clone(),
+                    },
+                );
         }
         Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
             let mempool_state = &store.state().mempool;
@@ -196,12 +210,11 @@ pub fn mempool_effects<S>(
                     .protocol()
                     .validate_operation_for_mempool(validate_req);
             } else {
-                // TODO(vlad): prevalidator is not ready yet
-                // need to wait it and restart the action
+                store.dispatch(MempoolValidateWaitPrevalidatorAction { operation: operation.clone() });
             }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
-            let head_state = match store.state().mempool.local_head_state.clone() {
+            let (head_state, head_hash) = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
                 None => {
                     // should always have current head here
@@ -220,18 +233,24 @@ pub fn mempool_effects<S>(
                 let known_valid = store
                     .state()
                     .mempool
-                    .pending_operations
-                    .keys()
-                    .filter(|hash| !peer.seen_operations.contains(*hash))
+                    .validated_operations
+                    .ops
+                    .iter()
+                    .filter(|(hash, op)| {
+                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                    })
+                    .map(|(hash, _)| hash)
                     .cloned()
                     .collect::<Vec<_>>();
                 let pending = store
                     .state()
                     .mempool
-                    .validated_operations
-                    .ops
-                    .keys()
-                    .filter(|hash| !peer.seen_operations.contains(*hash))
+                    .pending_operations
+                    .iter()
+                    .filter(|(hash, op)| {
+                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                    })
+                    .map(|(hash, _)| hash)
                     .cloned()
                     .collect::<Vec<_>>();
                 let message = CurrentHeadMessage::new(
