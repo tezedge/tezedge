@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
+#![feature(no_coverage)]
 
 //! This crate provides serialization and deserialization functionality for the data types used by the Tezos shell.
 

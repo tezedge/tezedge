@@ -63,7 +63,6 @@ pub enum FromBytesError {
 
 macro_rules! define_hash {
     ($name:ident) => {
-        #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
         #[derive(
             Clone,
             PartialEq,
@@ -107,6 +106,18 @@ macro_rules! define_hash {
                 // TODO - TE-373: with b58 this could be done without the need
                 // to perform a heap allocation.
                 write!(f, "{}", self.to_base58_check())
+            }
+        }
+
+        // TODO: should we mutate hashes?
+        #[cfg(fuzzing)]
+        impl fuzzcheck::DefaultMutator for $name {
+            type Mutator = fuzzcheck::mutators::unit::UnitMutator<$name>;
+            #[no_coverage]
+            fn default_mutator() -> Self::Mutator {
+                fuzzcheck::mutators::unit::UnitMutator::new(
+                    $name([0u8; HashType::$name.size()].into())
+                )
             }
         }
 

@@ -16,7 +16,15 @@ pub struct PeersAddIncomingPeerAction {
 }
 
 impl EnablingCondition<State> for PeersAddIncomingPeerAction {
-    fn is_enabled(&self, _: &State) -> bool {
+    fn is_enabled(&self, state: &State) -> bool {
+        if state.peers.connected_len() >= state.config.peers_connected_max {
+            return false
+        }
+
+        if state.peers.is_blacklisted(&self.address.ip()) {
+            return false
+        }
+
         true
     }
 }
