@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
-tokio = { version = "1.8", features = ["full"] }
+tokio = { version = "1.12", features = ["full"] }
 nix = "0.19"
 # local dependencies
 async_ipc = { path = "../../async-ipc" }
