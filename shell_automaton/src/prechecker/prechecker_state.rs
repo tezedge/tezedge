@@ -8,7 +8,13 @@ use crypto::{
     hash::{BlockHash, ChainId, FromBytesError, OperationHash, Signature},
 };
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
-use tezos_messages::p2p::{binary_message::BinaryRead, encoding::{block_header::{BlockHeader, Level}, operation::Operation}};
+use tezos_messages::p2p::{
+    binary_message::BinaryRead,
+    encoding::{
+        block_header::{BlockHeader, Level},
+        operation::Operation,
+    },
+};
 
 use crate::rights::{Delegate, EndorsingRights, EndorsingRightsError};
 
@@ -102,8 +108,16 @@ pub enum PrecheckerOperationState {
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights: EndorsingRights,
     },
-    Ready,
-    NotEndorsement,
+    Applied {
+        protocol_data: String,
+    },
+    Refused {
+        // TODO remove when all EC types are supported
+        operation: Operation,
+        protocol_data: String,
+        error: EndorsementValidationError,
+    },
+    ProtocolNeeded,
     Error {
         operation: Option<Operation>,
         error: PrecheckerError,
@@ -113,7 +127,10 @@ pub enum PrecheckerOperationState {
 impl PrecheckerOperationState {
     fn is_terminal(&self) -> bool {
         match self {
-            Self::Ready | Self::NotEndorsement | Self::Error { .. } => true,
+            Self::Applied { .. }
+            | Self::Refused { .. }
+            | Self::ProtocolNeeded
+            | Self::Error { .. } => true,
             _ => false,
         }
     }
@@ -124,14 +141,16 @@ impl PrecheckerOperationState {
 
     pub(super) fn operation(&self) -> Option<&Operation> {
         match self {
-            PrecheckerOperationState::Init { operation, .. } |
-            PrecheckerOperationState::PendingContentDecoding { operation, .. } |
-            PrecheckerOperationState::DecodedContentReady { operation, .. } |
-            PrecheckerOperationState::PendingBlockApplication { operation, .. } |
-            PrecheckerOperationState::BlockApplied { operation, .. } |
-            PrecheckerOperationState::PendingEndorsingRights { operation, .. } |
-            PrecheckerOperationState::EndorsingRightsReady { operation, .. } |
-            PrecheckerOperationState::PendingOperationPrechecking { operation, .. } => Some(operation),
+            PrecheckerOperationState::Init { operation, .. }
+            | PrecheckerOperationState::PendingContentDecoding { operation, .. }
+            | PrecheckerOperationState::DecodedContentReady { operation, .. }
+            | PrecheckerOperationState::PendingBlockApplication { operation, .. }
+            | PrecheckerOperationState::BlockApplied { operation, .. }
+            | PrecheckerOperationState::PendingEndorsingRights { operation, .. }
+            | PrecheckerOperationState::EndorsingRightsReady { operation, .. }
+            | PrecheckerOperationState::PendingOperationPrechecking { operation, .. } => {
+                Some(operation)
+            }
             _ => None,
         }
     }
@@ -147,6 +166,8 @@ pub enum PrecheckerResponseError {
     TypedHash(#[from] FromBytesError),
     #[error("Error getting endorsing righst: {0}")]
     Rights(#[from] EndorsingRightsError),
+    #[error("Error parsing protocol data: {0}")]
+    Decode(#[from] BinaryReaderError),
 }
 
 impl From<BinaryWriterError> for PrecheckerResponseError {
@@ -161,8 +182,6 @@ pub enum PrecheckerError {
     OperationContentsDecode(#[from] BinaryReaderError),
     #[error("Error getting endorsing rights: {0}")]
     EndorsingRights(#[from] EndorsingRightsError),
-    #[error("Error prevalidating endorsement operation: {0}")]
-    EndorsementValidation(#[from] EndorsementValidationError),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]

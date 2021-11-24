@@ -61,11 +61,11 @@ use crate::peers::graylist::{
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::{
     PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
-    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
-    PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
-    PrecheckerGetEndorsingRightsAction, PrecheckerNotEndorsementAction,
-    PrecheckerOperationDecodedAction, PrecheckerPrecheckOperationInitAction,
-    PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponseAction,
+    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationAppliedAction,
+    PrecheckerEndorsementValidationRefusedAction, PrecheckerEndorsingRightsReadyAction,
+    PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerOperationDecodedAction,
+    PrecheckerPrecheckOperationInitAction, PrecheckerPrecheckOperationRequestAction,
+    PrecheckerPrecheckOperationResponseAction, PrecheckerProtocolNeededAction,
     PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
 };
 use crate::protocol::ProtocolAction;
@@ -290,8 +290,9 @@ pub enum Action {
     PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction),
     PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction),
     PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction),
-    PrecheckerEndorsementValidationReady(PrecheckerEndorsementValidationReadyAction),
-    PrecheckerNotEndorsement(PrecheckerNotEndorsementAction),
+    PrecheckerEndorsementValidationApplied(PrecheckerEndorsementValidationAppliedAction),
+    PrecheckerEndorsementValidationRefused(PrecheckerEndorsementValidationRefusedAction),
+    PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerError(PrecheckerErrorAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),

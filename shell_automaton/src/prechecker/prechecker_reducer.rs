@@ -8,11 +8,11 @@ use crate::{Action, State};
 
 use super::{
     AppliedBlockCache, PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
-    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationReadyAction,
-    PrecheckerEndorsingRightsReadyAction, PrecheckerErrorAction,
-    PrecheckerGetEndorsingRightsAction, PrecheckerNotEndorsementAction,
-    PrecheckerOperationDecodedAction, PrecheckerOperationState,
-    PrecheckerPrecheckOperationInitAction, PrecheckerValidateEndorsementAction,
+    PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationAppliedAction,
+    PrecheckerEndorsementValidationRefusedAction, PrecheckerEndorsingRightsReadyAction,
+    PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerOperationDecodedAction,
+    PrecheckerOperationState, PrecheckerPrecheckOperationInitAction,
+    PrecheckerProtocolNeededAction, PrecheckerValidateEndorsementAction,
     PrecheckerWaitForBlockApplicationAction,
 };
 
@@ -68,7 +68,11 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingContentDecoding { operation, operation_binary_encoding } = state {
+                    if let PrecheckerOperationState::PendingContentDecoding {
+                        operation,
+                        operation_binary_encoding,
+                    } = state
+                    {
                         *state = PrecheckerOperationState::DecodedContentReady {
                             operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
@@ -180,8 +184,8 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 });
         }
-        Action::PrecheckerEndorsementValidationReady(
-            PrecheckerEndorsementValidationReadyAction { key },
+        Action::PrecheckerEndorsementValidationApplied(
+            PrecheckerEndorsementValidationAppliedAction { key, protocol_data },
         ) => {
             let log = &state.log;
             prechecker_state
@@ -190,19 +194,43 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .and_modify(|state| {
                     if let PrecheckerOperationState::PendingOperationPrechecking { .. } = state {
                         debug!(log, ">>> Prechecking successfull"; "operation" => key.to_string());
-                        *state = PrecheckerOperationState::Ready;
+                        *state = PrecheckerOperationState::Applied {
+                            protocol_data: protocol_data.clone(),
+                        };
                     }
                 });
         }
-        Action::PrecheckerNotEndorsement(PrecheckerNotEndorsementAction { key }) => {
+        Action::PrecheckerEndorsementValidationRefused(
+            PrecheckerEndorsementValidationRefusedAction {
+                key,
+                protocol_data,
+                error,
+            },
+        ) => {
+            let log = &state.log;
+            prechecker_state
+                .operations
+                .entry(key.clone())
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingOperationPrechecking { operation, .. } = state {
+                        debug!(log, ">>> Prechecking successfull"; "operation" => key.to_string());
+                        *state = PrecheckerOperationState::Refused {
+                            operation: operation.clone(),
+                            protocol_data: protocol_data.clone(),
+                            error: error.clone(),
+                        };
+                    }
+                });
+        }
+        Action::PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction { key }) => {
             let log = &state.log;
             prechecker_state
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
                     if let PrecheckerOperationState::PendingContentDecoding { .. } = state {
-                        error!(log, ">>> Prechecking cannot be performed"; "operation" => key.to_string());
-                        *state = PrecheckerOperationState::NotEndorsement;
+                        debug!(log, ">>> Prechecking cannot be performed"; "operation" => key.to_string());
+                        *state = PrecheckerOperationState::ProtocolNeeded;
                     }
                 });
         }

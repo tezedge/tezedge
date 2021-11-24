@@ -4,6 +4,7 @@
 use tezos_messages::p2p::binary_message::MessageHash;
 use crypto::hash::BlockHash;
 
+use crate::prechecker::{PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction};
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
@@ -173,11 +174,38 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .pending_operations
                 .insert(operation_hash.clone(), operation.clone());
         }
-        Action::MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction {
-            operation,
-        }) => {
-            // TODO(vlad): hash
-            mempool_state.wait_prevalidator_operations.insert(operation.message_typed_hash().unwrap(), operation.clone());
+        Action::PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction { response }) => {
+            match response {
+                PrecheckerPrecheckOperationResponse::Applied(applied) => {
+                    if let Some(op) = mempool_state.pending_operations.remove(&applied.hash) {
+                        mempool_state
+                            .validated_operations
+                            .ops
+                            .insert(applied.hash.clone(), op);
+                        mempool_state.validated_operations.applied.push(applied.clone());
+                    }
+                    if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&applied.hash) {
+                        mempool_state
+                            .injected_rpc_ids
+                            .insert(applied.hash.clone(), rpc_id);
+                    }
+                }
+                PrecheckerPrecheckOperationResponse::Refused(errored) => {
+                    if let Some(op) = mempool_state.pending_operations.remove(&errored.hash) {
+                        mempool_state
+                            .validated_operations
+                            .refused_ops
+                            .insert(errored.hash.clone(), op);
+                        mempool_state.validated_operations.refused.push(errored.clone());
+                    }
+                    if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
+                        mempool_state
+                            .injected_rpc_ids
+                            .insert(errored.hash.clone(), rpc_id);
+                    }
+                }
+                _ => (),
+            }
         }
         Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
             state.mempool.injected_rpc_ids.clear();

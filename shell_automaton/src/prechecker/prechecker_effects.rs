@@ -12,7 +12,9 @@ use tezos_messages::p2p::{
 
 use crate::{
     mempool::BlockAppliedAction,
-    prechecker::AppliedBlockCache,
+    prechecker::{
+        Applied, AppliedBlockCache, PrecheckerEndorsementValidationRefusedAction, Refused,
+    },
     rights::{
         EndorsingRightsKey, RightsEndorsingRightsErrorAction, RightsEndorsingRightsReadyAction,
         RightsGetEndorsingRightsAction,
@@ -23,12 +25,12 @@ use crate::{
 use super::{
     EndorsementValidationError, Key, OperationDecodedContents, PrecheckerBlockAppliedAction,
     PrecheckerCacheAppliedBlockAction, PrecheckerDecodeOperationAction,
-    PrecheckerEndorsementValidationReadyAction, PrecheckerEndorsingRightsReadyAction,
-    PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerNotEndorsementAction,
+    PrecheckerEndorsementValidationAppliedAction, PrecheckerEndorsingRightsReadyAction,
+    PrecheckerError, PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction,
     PrecheckerOperationDecodedAction, PrecheckerOperationState,
     PrecheckerPrecheckOperationInitAction, PrecheckerPrecheckOperationRequestAction,
-    PrecheckerPrecheckOperationResponseAction, PrecheckerValidateEndorsementAction,
-    PrecheckerWaitForBlockApplicationAction,
+    PrecheckerPrecheckOperationResponseAction, PrecheckerProtocolNeededAction,
+    PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
 };
 
 pub fn prechecker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -141,8 +143,12 @@ where
                 Some(PrecheckerOperationState::Init { .. }) => {
                     store.dispatch(PrecheckerDecodeOperationAction { key: key.clone() });
                 }
-                Some(PrecheckerOperationState::Ready {}) => {
-                    store.dispatch(PrecheckerEndorsementValidationReadyAction { key: key.clone() });
+                Some(PrecheckerOperationState::Applied { protocol_data }) => {
+                    let action = PrecheckerEndorsementValidationAppliedAction {
+                        key: key.clone(),
+                        protocol_data: protocol_data.clone(),
+                    };
+                    store.dispatch(action);
                 }
                 Some(PrecheckerOperationState::Error { error, .. }) => {
                     let error = error.clone();
@@ -166,7 +172,7 @@ where
                         });
                     }
                     Ok(_) => {
-                        store.dispatch(PrecheckerNotEndorsementAction { key: key.clone() });
+                        store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
                     }
                     Err(err) => {
                         store.dispatch(PrecheckerErrorAction::new(key.clone(), err));
@@ -320,53 +326,78 @@ where
                         ),
                 };
 
-                if let Err(err) = validation_result {
-                    store.dispatch(PrecheckerErrorAction::new(key.clone(), err.clone()));
-                } else {
-                    store.dispatch(PrecheckerEndorsementValidationReadyAction { key: key.clone() });
-                }
+                match validation_result {
+                    Ok(Applied { protocol_data }) => {
+                        store.dispatch(PrecheckerEndorsementValidationAppliedAction {
+                            key: key.clone(),
+                            protocol_data,
+                        })
+                    }
+                    Err(Refused {
+                        protocol_data,
+                        error,
+                    }) => store.dispatch(PrecheckerEndorsementValidationRefusedAction {
+                        key: key.clone(),
+                        protocol_data,
+                        error,
+                    }),
+                };
             }
         }
-        Action::PrecheckerEndorsementValidationReady(
-            PrecheckerEndorsementValidationReadyAction { key },
+        Action::PrecheckerEndorsementValidationApplied(
+            PrecheckerEndorsementValidationAppliedAction { key, protocol_data },
         ) => {
-            if let Some(PrecheckerOperationState::Ready) = prechecker_state_operations.get(key) {
+            if let Some(PrecheckerOperationState::Applied { .. }) =
+                prechecker_state_operations.get(key)
+            {
                 store.dispatch(PrecheckerPrecheckOperationResponseAction::valid(
                     &key.operation,
+                    protocol_data.clone(),
                 ));
             }
         }
+        Action::PrecheckerEndorsementValidationRefused(
+            PrecheckerEndorsementValidationRefusedAction { key, .. },
+        ) => {
+            if let Some(PrecheckerOperationState::Refused {
+                protocol_data,
+                error,
+                operation,
+            }) = prechecker_state_operations.get(key)
+            {
+                match error {
+                    EndorsementValidationError::UnsupportedPublicKey => {
+                        let action =
+                            PrecheckerPrecheckOperationResponseAction::prevalidate(operation);
+                        store.dispatch(action);
+                    }
+                    _ => {
+                        let action = PrecheckerPrecheckOperationResponseAction::reject(
+                            &key.operation,
+                            protocol_data.clone(),
+                            serde_json::to_string(error).unwrap_or("<unserialized>".to_string()),
+                        );
+                        store.dispatch(action);
+                    }
+                }
+            }
+        }
         Action::PrecheckerError(PrecheckerErrorAction { key, error }) => {
-            if let Some(PrecheckerOperationState::Error { operation, .. }) =
+            if let Some(PrecheckerOperationState::Error { .. }) =
                 prechecker_state_operations.get(key)
             {
                 match error {
-                    super::PrecheckerError::OperationContentsDecode(_) => {
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::reject(
-                            &key.operation,
-                        ));
-                    }
-                    super::PrecheckerError::EndorsingRights(err) => {
+                    PrecheckerError::EndorsingRights(err) => {
                         error!(log, "Getting endorsing rights failed"; "operation" => key.to_string(), "error" => err.to_string());
                         store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
                             err.clone(),
                         ));
                     }
-                    super::PrecheckerError::EndorsementValidation(err) => match err {
-                        EndorsementValidationError::UnsupportedPublicKey => {
-                            if let Some(operation) = operation {
-                                let action = PrecheckerPrecheckOperationResponseAction::prevalidate(
-                                    operation,
-                                );
-                                store.dispatch(action);
-                            }
-                        }
-                        _ => {
-                            store.dispatch(PrecheckerPrecheckOperationResponseAction::reject(
-                                &key.operation,
-                            ));
-                        }
-                    },
+                    PrecheckerError::OperationContentsDecode(err) => {
+                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
+                            err.clone(),
+                        ));
+                    }
                 }
             }
         }

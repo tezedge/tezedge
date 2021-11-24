@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
 use crate::{rights::EndorsingRights, EnablingCondition, State};
 
-use super::{Key, OperationDecodedContents, PrecheckerError, PrecheckerResponseError};
+use super::{EndorsementValidationError, Key, OperationDecodedContents, PrecheckerError, PrecheckerResponseError};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecheckOperationRequestAction {
@@ -32,22 +33,38 @@ impl EnablingCondition<State> for PrecheckerPrecheckOperationResponseAction {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PrecheckerPrecheckOperationResponse {
-    Valid(OperationHash),
-    Reject(OperationHash),
+    /// The operation can be applied.
+    Applied(Applied),
+    /// The operation cannot be applied.
+    Refused(Errored),
+    /// Prechecker cannot decide if the operation is correct. Protocol based prevalidator is needed.
     Prevalidate(Operation),
+    /// Errro occurred while prechecking the operation.
     Error(PrecheckerResponseError),
 }
 
 impl PrecheckerPrecheckOperationResponseAction {
-    pub(super) fn valid(operation_hash: &OperationHash) -> Self {
+    pub(super) fn valid(operation_hash: &OperationHash, json: String) -> Self {
+        let applied = Applied {
+            hash: operation_hash.clone(),
+            protocol_data_json: json,
+        };
         Self {
-            response: PrecheckerPrecheckOperationResponse::Valid(operation_hash.clone()),
+            response: PrecheckerPrecheckOperationResponse::Applied(applied),
         }
     }
 
-    pub(super) fn reject(operation_hash: &OperationHash) -> Self {
+    pub(super) fn reject(operation_hash: &OperationHash, protocol_data: String, error: String) -> Self {
+        let errored = Errored {
+            hash: operation_hash.clone(),
+            is_endorsement: Some(true),
+            protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                error_json: error,
+                protocol_data_json: protocol_data,
+            },
+        };
         Self {
-            response: PrecheckerPrecheckOperationResponse::Reject(operation_hash.clone()),
+            response: PrecheckerPrecheckOperationResponse::Refused(errored),
         }
     }
 
@@ -112,12 +129,20 @@ pub struct PrecheckerValidateEndorsementAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerEndorsementValidationReadyAction {
+pub struct PrecheckerEndorsementValidationAppliedAction {
     pub key: Key,
+    pub protocol_data: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerNotEndorsementAction {
+pub struct PrecheckerEndorsementValidationRefusedAction {
+    pub key: Key,
+    pub protocol_data: String,
+    pub error: EndorsementValidationError,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrecheckerProtocolNeededAction {
     pub key: Key,
 }
 
@@ -200,13 +225,19 @@ impl EnablingCondition<State> for PrecheckerValidateEndorsementAction {
         true
     }
 }
-impl EnablingCondition<State> for PrecheckerEndorsementValidationReadyAction {
+impl EnablingCondition<State> for PrecheckerEndorsementValidationAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
     }
 }
-impl EnablingCondition<State> for PrecheckerNotEndorsementAction {
+impl EnablingCondition<State> for PrecheckerEndorsementValidationRefusedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+impl EnablingCondition<State> for PrecheckerProtocolNeededAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true

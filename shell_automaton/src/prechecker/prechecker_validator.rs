@@ -35,6 +35,37 @@ pub enum EndorsementValidationError {
     HashError,
     #[error("Failed to verify the operation's inlined signature")]
     InlinedSignatureMismatch,
+    #[error("Cannot serialize as JSON")]
+    JsonSerialization(String),
+}
+
+impl From<serde_json::Error> for EndorsementValidationError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::JsonSerialization(error.to_string())
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Applied {
+    pub protocol_data: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Refused {
+    pub protocol_data: String,
+    pub error: EndorsementValidationError,
+}
+
+impl Refused {
+    fn new<E>(protocol_data: &str, error: E) -> Self
+    where
+        E: Into<EndorsementValidationError>,
+    {
+        Self {
+            protocol_data: protocol_data.to_string(),
+            error: error.into(),
+        }
+    }
 }
 
 pub(super) trait EndorsementValidator {
@@ -44,7 +75,7 @@ pub(super) trait EndorsementValidator {
         chain_id: &ChainId,
         rights: &EndorsingRights,
         log: &Logger,
-    ) -> Result<(), EndorsementValidationError>;
+    ) -> Result<Applied, Refused>;
 }
 
 impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Operation {
@@ -54,34 +85,40 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
         chain_id: &ChainId,
         rights: &EndorsingRights,
         log: &Logger,
-    ) -> Result<(), EndorsementValidationError> {
+    ) -> Result<Applied, Refused> {
         use tezos_messages::protocol::proto_010::operation::*;
 
         let start = Instant::now();
 
+        let protocol_data = match serde_json::to_string(self) {
+            Ok(v) => v,
+            Err(err) => return Err(Refused::new("{}", err)),
+        };
+        let refused = |error| Err(Refused::new(&protocol_data, error));
+
         let contents = if self.contents.len() == 1 {
             &self.contents[0]
         } else {
-            return Err(EndorsementValidationError::InvalidContents);
+            return refused(EndorsementValidationError::InvalidContents);
         };
 
         match contents {
             Contents::Endorsement(EndorsementOperation { level: _ }) => {
-                Err(EndorsementValidationError::UnwrappedEndorsement)
+                refused(EndorsementValidationError::UnwrappedEndorsement)
             }
             Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
                 let slot = *slot as usize;
                 let delegate = if slot < rights.slot_to_delegate.len() {
                     &rights.slot_to_delegate[slot]
                 } else {
-                    return Err(EndorsementValidationError::InvalidSlot);
+                    return refused(EndorsementValidationError::InvalidSlot);
                 };
 
                 let signature = &endorsement.signature;
                 let mut encoded = endorsement.branch.as_ref().to_vec();
                 let binary_endorsement = match endorsement.operations.as_bytes() {
                     Ok(bytes) => bytes,
-                    Err(_) => return Err(EndorsementValidationError::EncodingError),
+                    Err(_) => return refused(EndorsementValidationError::EncodingError),
                 };
                 encoded.extend(binary_endorsement);
 
@@ -101,17 +138,17 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                     encoded,
                 ) {
                     Ok(true) => (),
-                    Ok(_) => return Err(EndorsementValidationError::InlinedSignatureMismatch),
-                    Err(_) => return Err(EndorsementValidationError::SignatureError),
+                    Ok(_) => return refused(EndorsementValidationError::InlinedSignatureMismatch),
+                    Err(_) => return refused(EndorsementValidationError::SignatureError),
                 }
 
                 let done = Instant::now();
 
                 debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying));
 
-                Ok(())
+                Ok(Applied { protocol_data })
             }
-            _ => return Err(EndorsementValidationError::InvalidContents),
+            _ => refused(EndorsementValidationError::InvalidContents),
         }
     }
 }

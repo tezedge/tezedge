@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 use redux_rs::Store;
+use slog::error;
 use std::sync::Arc;
 
-use tezos_messages::p2p::encoding::{
+use tezos_messages::{p2p::encoding::{
     current_head::CurrentHeadMessage,
     mempool::Mempool,
     operation::{GetOperationsMessage, OperationMessage},
     peer::{PeerMessage, PeerMessageResponse},
-};
+}, protocol::proto_001::operation};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction};
+use crate::{peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction}, prechecker::{PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction}};
 use crate::protocol::ProtocolAction;
 use crate::{
     service::{ProtocolService, RpcService},
@@ -188,15 +189,44 @@ pub fn mempool_effects<S>(
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            // if !store.state().mempool.applied_block.contains(operation.branch()) {
-            //     panic!();
-            // }
-            store
-                .dispatch(
-                    MempoolValidateStartAction {
-                        operation: operation.clone(),
-                    },
-                );
+            store.dispatch(
+                PrecheckerPrecheckOperationRequestAction {
+                    operation: operation.clone(),
+                },
+            );
+        }
+        Action::PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction { response }) => {
+            match response {
+                PrecheckerPrecheckOperationResponse::Applied(_) |
+                PrecheckerPrecheckOperationResponse::Refused(_) => {
+                    store.dispatch(MempoolBroadcastAction {});
+                    // respond
+                    let resp = if store.state().mempool.local_head_state.is_some() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String("head is not ready".to_string())
+                    };
+                    let to_respond = store
+                        .state()
+                        .mempool
+                        .injected_rpc_ids
+                        .values()
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    for rpc_id in to_respond {
+                        store.service().rpc().respond(rpc_id, resp.clone());
+                    }
+                    store.dispatch(MempoolRpcRespondAction {});
+                }
+                PrecheckerPrecheckOperationResponse::Prevalidate(operation) => {
+                    store.dispatch(
+                        MempoolValidateStartAction {
+                            operation: operation.clone(),
+                        },
+                    );
+                },
+                _ => (),
+            }
         }
         Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
             let mempool_state = &store.state().mempool;
