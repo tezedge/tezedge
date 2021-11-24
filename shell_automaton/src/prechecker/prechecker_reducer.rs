@@ -7,7 +7,7 @@ use slog::{debug, error};
 use crate::{Action, State};
 
 use super::{
-    AppliedBlockCache, PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
+    CurrentBlock, PrecheckerBlockAppliedAction, PrecheckerCacheAppliedBlockAction,
     PrecheckerDecodeOperationAction, PrecheckerEndorsementValidationAppliedAction,
     PrecheckerEndorsementValidationRefusedAction, PrecheckerEndorsingRightsReadyAction,
     PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction, PrecheckerOperationDecodedAction,
@@ -24,13 +24,11 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             chain_id,
             block_header,
         }) => {
-            prechecker_state
-                .applied_blocks
-                .entry(block_hash.clone())
-                .or_insert(AppliedBlockCache {
-                    chain_id: chain_id.clone(),
-                    block_header: block_header.clone(),
-                });
+            prechecker_state.current_block = Some(CurrentBlock {
+                chain_id: chain_id.clone(),
+                block_hash: block_hash.clone(),
+                block_header: block_header.clone(),
+            })
         }
 
         Action::PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction {
@@ -83,6 +81,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::PrecheckerWaitForBlockApplication(PrecheckerWaitForBlockApplicationAction {
             key,
+            level,
         }) => {
             prechecker_state
                 .operations
@@ -98,11 +97,12 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                             operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
+                            level: *level,
                         };
                     }
                 });
         }
-        Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
+        Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key, .. }) => {
             prechecker_state
                 .operations
                 .entry(key.clone())
@@ -111,12 +111,14 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                         operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
+                        level,
                     } = state
                     {
                         *state = PrecheckerOperationState::BlockApplied {
                             operation: operation.clone(),
                             operation_binary_encoding: operation_binary_encoding.clone(),
                             operation_decoded_contents: operation_decoded_contents.clone(),
+                            level: *level,
                         }
                     }
                 });
@@ -130,6 +132,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                         operation,
                         operation_binary_encoding,
                         operation_decoded_contents,
+                        ..
                     } = state
                     {
                         *state = PrecheckerOperationState::PendingEndorsingRights {
@@ -212,7 +215,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingOperationPrechecking { operation, .. } = state {
+                    if let PrecheckerOperationState::PendingOperationPrechecking {
+                        operation, ..
+                    } = state
+                    {
                         debug!(log, ">>> Prechecking successfull"; "operation" => key.to_string());
                         *state = PrecheckerOperationState::Refused {
                             operation: operation.clone(),

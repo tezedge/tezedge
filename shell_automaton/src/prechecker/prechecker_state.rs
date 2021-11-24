@@ -18,7 +18,7 @@ use tezos_messages::p2p::{
 
 use crate::rights::{Delegate, EndorsingRights, EndorsingRightsError};
 
-use super::EndorsementValidationError;
+use super::{EndorsementValidationError, OperationProtocolData};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
 pub struct Key {
@@ -34,7 +34,14 @@ impl std::fmt::Display for Key {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PrecheckerState {
     pub operations: HashMap<Key, PrecheckerOperationState>,
-    pub applied_blocks: HashMap<BlockHash, AppliedBlockCache>,
+    pub current_block: Option<CurrentBlock>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CurrentBlock {
+    pub block_hash: BlockHash,
+    pub block_header: BlockHeader,
+    pub chain_id: ChainId,
 }
 
 impl PrecheckerState {
@@ -66,6 +73,16 @@ pub enum OperationDecodedContents {
     Proto010(tezos_messages::protocol::proto_010::operation::Operation),
 }
 
+impl OperationDecodedContents {
+    pub(super) fn endorsement_level(&self) -> Option<Level> {
+        match self {
+            OperationDecodedContents::Proto010(operation) => {
+                operation.endorsement_level()
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
     Init {
@@ -85,11 +102,13 @@ pub enum PrecheckerOperationState {
         operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
+        level: Level,
     },
     BlockApplied {
         operation: Operation,
         operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
+        level: Level,
     },
     PendingEndorsingRights {
         operation: Operation,
@@ -213,10 +232,10 @@ impl OperationDecodedContents {
             _ => false,
         }
     }
-}
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AppliedBlockCache {
-    pub chain_id: ChainId,
-    pub block_header: BlockHeader,
+    pub(super) fn as_json(&self) -> String {
+        match self {
+            OperationDecodedContents::Proto010(operation) => operation.as_json(),
+        }
+    }
 }

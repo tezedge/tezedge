@@ -3,7 +3,7 @@
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
+use tezos_messages::p2p::encoding::{block_header::{BlockHeader, Level}, operation::Operation};
 
 use crate::{rights::EndorsingRights, EnablingCondition, State};
 
@@ -105,6 +105,7 @@ pub struct PrecheckerOperationDecodedAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerWaitForBlockApplicationAction {
     pub key: Key,
+    pub level: Level,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

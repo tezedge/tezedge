@@ -3,10 +3,11 @@
 
 use std::time::Instant;
 
-use crypto::hash::ChainId;
+use crypto::hash::{BlockHash, ChainId};
 use slog::{debug, trace, FnValue, Logger};
 use tezos_messages::{
-    base::signature_public_key::SignatureWatermark, p2p::binary_message::BinaryWrite,
+    base::signature_public_key::SignatureWatermark,
+    p2p::{binary_message::BinaryWrite, encoding::block_header::Level},
 };
 
 use crate::rights::{Delegate, EndorsingRights};
@@ -17,6 +18,8 @@ pub enum EndorsementValidationError {
     InvalidEndorsementWrapper,
     #[error("Wrong endorsement predecessor")]
     WrongEndorsementPredecessor,
+    #[error("Invalid endorsement level")]
+    InvalidLevel,
     #[error("Non-endorement operation")]
     InvalidContents,
     #[error("Unwrapped endorsement is not supported")]
@@ -72,11 +75,41 @@ impl Refused {
     }
 }
 
+pub(super) trait OperationProtocolData {
+    fn endorsement_level(&self) -> Option<Level>;
+    fn as_json(&self) -> String;
+}
+
+impl OperationProtocolData for tezos_messages::protocol::proto_010::operation::Operation {
+    fn endorsement_level(&self) -> Option<Level> {
+        use tezos_messages::protocol::proto_010::operation::*;
+        if self.contents.len() != 1 {
+            return None;
+        }
+        match &self.contents[0] {
+            Contents::Endorsement(EndorsementOperation { level }) => Some(*level),
+            Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, .. }) => {
+                match endorsement.operations {
+                    InlinedEndorsementContents::Endorsement(InlinedEndorsementVariant {
+                        level,
+                    }) => Some(level),
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn as_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or("<cannot convert to json>".to_string())
+    }
+}
+
 pub(super) trait EndorsementValidator {
     fn validate_endorsement(
         &self,
         binary_signed_operation: &[u8],
         chain_id: &ChainId,
+        block_hash: &BlockHash,
         rights: &EndorsingRights,
         log: &Logger,
     ) -> Result<Applied, Refused>;
@@ -87,6 +120,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
         &self,
         _binary_signed_operation: &[u8],
         chain_id: &ChainId,
+        block_hash: &BlockHash,
         rights: &EndorsingRights,
         log: &Logger,
     ) -> Result<Applied, Refused> {
@@ -94,11 +128,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
 
         let start = Instant::now();
 
-        let protocol_data = match serde_json::to_string(self) {
-            Ok(v) => v,
-            Err(err) => return Err(Refused::new("{}", err)),
-        };
-        let refused = |error| Err(Refused::new(&protocol_data, error));
+        let refused = |error| Err(Refused::new(&self.as_json(), error));
 
         let contents = if self.contents.len() == 1 {
             &self.contents[0]
@@ -111,8 +141,14 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                 refused(EndorsementValidationError::UnwrappedEndorsement)
             }
             Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
-                if self.signature.as_ref().iter().any(|b| *b != 0) || self.branch != endorsement.branch {
+                if self.signature.as_ref().iter().any(|b| *b != 0)
+                    || self.branch != endorsement.branch
+                {
                     return refused(EndorsementValidationError::InvalidEndorsementWrapper);
+                }
+
+                if &endorsement.branch != block_hash {
+                    return refused(EndorsementValidationError::WrongEndorsementPredecessor);
                 }
 
                 let slot = *slot as usize;
@@ -154,7 +190,9 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
 
                 debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying));
 
-                Ok(Applied { protocol_data })
+                Ok(Applied {
+                    protocol_data: self.as_json(),
+                })
             }
             _ => refused(EndorsementValidationError::InvalidContents),
         }
