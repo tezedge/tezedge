@@ -13,6 +13,10 @@ use crate::rights::{Delegate, EndorsingRights};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum EndorsementValidationError {
+    #[error("Invalid endorsement wrapper")]
+    InvalidEndorsementWrapper,
+    #[error("Wrong endorsement predecessor")]
+    WrongEndorsementPredecessor,
     #[error("Non-endorement operation")]
     InvalidContents,
     #[error("Unwrapped endorsement is not supported")]
@@ -107,6 +111,10 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                 refused(EndorsementValidationError::UnwrappedEndorsement)
             }
             Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
+                if self.signature.as_ref().iter().any(|b| *b != 0) || self.branch != endorsement.branch {
+                    return refused(EndorsementValidationError::InvalidEndorsementWrapper);
+                }
+
                 let slot = *slot as usize;
                 let delegate = if slot < rights.slot_to_delegate.len() {
                     &rights.slot_to_delegate[slot]
