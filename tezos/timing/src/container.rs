@@ -9,7 +9,7 @@ use std::{convert::TryInto, ops::Deref};
 const INLINED_STRING_THRESHOLD: usize = 512;
 const INLINED_HASH_LENGTH: usize = 32;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum InlinedHash {
     Inlined { array: [u8; INLINED_HASH_LENGTH] },
     Heap(Box<[u8]>),
@@ -38,11 +38,11 @@ impl Deref for InlinedHash {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InlinedContextHash(InlinedHash);
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InlinedOperationHash(InlinedHash);
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InlinedBlockHash(InlinedHash);
 
 macro_rules! inlined_hash_impl {
