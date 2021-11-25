@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 
 use crypto::{
+    base58::FromBase58CheckError,
     blake2b::Blake2bError,
     hash::{BlockHash, ChainId, FromBytesError, OperationHash, Signature},
 };
@@ -22,8 +23,23 @@ use crate::rights::{Delegate, EndorsingRights, EndorsingRightsError};
 use super::{EndorsementValidationError, OperationProtocolData};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+#[serde(into = "String", try_from = "String")]
 pub struct Key {
     pub operation: OperationHash,
+}
+
+impl From<Key> for String {
+    fn from(source: Key) -> Self {
+        source.operation.to_base58_check()
+    }
+}
+
+impl TryFrom<String> for Key {
+    type Error = FromBase58CheckError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        OperationHash::from_base58_check(&value).map(|operation| Self { operation })
+    }
 }
 
 impl std::fmt::Display for Key {
@@ -213,5 +229,30 @@ impl OperationDecodedContents {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.as_json(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crypto::hash::OperationHash;
+
+    use super::Key;
+
+    #[test]
+    fn can_serialize_hash_map() {
+        let hash_map = HashMap::from([(
+            Key {
+                operation: OperationHash::from_base58_check(
+                    "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
+                )
+                .unwrap(),
+            },
+            true,
+        )]);
+        let json = serde_json::to_string(&hash_map).unwrap();
+        let deserialized: HashMap<_, _> = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, hash_map);
     }
 }
