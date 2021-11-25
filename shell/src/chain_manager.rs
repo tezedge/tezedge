@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{format_err, Error};
+use async_ipc::IpcError;
 use itertools::{Itertools, MinMaxResult};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
@@ -43,7 +44,7 @@ use tezos_messages::p2p::encoding::block_header::display_fitness;
 use tezos_messages::p2p::encoding::limits::HISTORY_MAX_SIZE;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
-use tezos_protocol_ipc_client::ProtocolRunnerApi;
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConnection};
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::mempool::mempool_download_state::{
@@ -2197,20 +2198,33 @@ fn spawn_mempool_prevalidation_thread(
         std::thread::Builder::new()
             .name(thread_name)
             .spawn(move || {
+                let mut reused_connection = None;
                 while run.load(Ordering::Acquire) {
-                    // let's handle event, if any
-                    if let Ok(event) = event_receiver.recv() {
-                        match event {
-                            MempoolPrevalidationEvent::SendOperationToMempool(msg) => {
-                                if let Err(e) = handle_mempool_operation_prevalidation(msg, &current_mempool_state, &tezos_protocol_api, &block_storage, &block_meta_storage) {
-                                    warn!(log, "Failed to handle mempool operation prevalidation"; "reason" => format!("{}", e));
+                    if let Some(connection) = &mut reused_connection {
+                        // let's handle event, if any
+                        if let Ok(event) = event_receiver.recv() {
+                            match event {
+                                MempoolPrevalidationEvent::SendOperationToMempool(msg) => {
+                                    if let Err(e) = handle_mempool_operation_prevalidation(msg, &current_mempool_state, &tezos_protocol_api, connection, &block_storage, &block_meta_storage) {
+                                        warn!(log, "Failed to handle mempool operation prevalidation"; "reason" => format!("{}", e));
+
+                                        if let Some(_ipc_error) = e.downcast_ref::<IpcError>() {
+                                            // Failed because of an IPC error, so lets discard the connection
+                                            reused_connection = None;
+                                        }
+                                    }
+                                }
+                                MempoolPrevalidationEvent::ShuttingDown => {
+                                    // just finish the loop
+                                    info!(log, "Mempool prevalidation thread worker received shutting down event");
+                                    break;
                                 }
                             }
-                            MempoolPrevalidationEvent::ShuttingDown => {
-                                // just finish the loop
-                                info!(log, "Mempool prevalidation thread worker received shutting down event");
-                                break;
-                            }
+                        }
+                    } else {
+                        match tezos_protocol_api.readable_connection_sync() {
+                            Ok(new_connection) => reused_connection = Some(new_connection),
+                            Err(e) => warn!(log, "Failed to obtain a new connection to the protocol runner in the mempool prevalidation thread"; "reason" => format!("{}", e)),
                         }
                     }
                 }
@@ -2226,6 +2240,7 @@ fn handle_mempool_operation_prevalidation(
     msg: SendOperationToMempoolRequest,
     current_mempool_state: &CurrentMempoolStateStorageRef,
     tezos_protocol_api: &Arc<ProtocolRunnerApi>,
+    connection: &mut ProtocolRunnerConnection,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
 ) -> Result<(), Error> {
@@ -2236,8 +2251,6 @@ fn handle_mempool_operation_prevalidation(
         mempool_prevalidator,
     } = msg;
 
-    let mut connection = tezos_protocol_api.readable_connection_sync()?;
-
     // do prevalidation before add the operation to mempool
     let result = tokio::task::block_in_place(|| {
         tezos_protocol_api
@@ -2247,7 +2260,7 @@ fn handle_mempool_operation_prevalidation(
                 &operation_hash,
                 operation.operation(),
                 &current_mempool_state,
-                &mut connection,
+                connection,
                 block_storage,
                 block_meta_storage,
             ))
