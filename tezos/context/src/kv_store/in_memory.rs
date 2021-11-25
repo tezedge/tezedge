@@ -12,9 +12,12 @@ use std::{
     thread::JoinHandle,
 };
 
+#[cfg(test)]
+use crate::serialize::persistent::AbsoluteOffset;
+
 use crossbeam_channel::Sender;
 use crypto::hash::ContextHash;
-use tezos_timing::RepositoryMemoryUsage;
+use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
 use crate::{
     gc::{
@@ -25,11 +28,14 @@ use crate::{
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
-        storage::DirEntryId,
+        storage::{DirEntryId, Storage},
         string_interner::{StringId, StringInterner},
+        working_tree::{PostCommitData, WorkingTree},
+        Object, ObjectReference,
     },
     Map,
 };
+use crate::{persistent::get_commit_hash, serialize::in_memory};
 
 use tezos_spsc::Consumer;
 
@@ -59,14 +65,24 @@ impl HashValueStore {
         }
     }
 
-    pub fn get_memory_usage(&self) -> RepositoryMemoryUsage {
+    pub fn get_memory_usage(
+        &self,
+        strings_total_bytes: usize,
+        shapes_total_bytes: usize,
+        commit_index_total_bytes: usize,
+        nshapes: usize,
+    ) -> RepositoryMemoryUsage {
         let values_bytes = self.values_bytes;
         let values_capacity = self.values.capacity();
         let hashes_capacity = self.hashes.capacity();
+
         let total_bytes = values_bytes
             .saturating_add(values_capacity * size_of::<Option<Arc<[u8]>>>())
             .saturating_add(values_capacity * 16) // Each `Arc` has 16 extra bytes for the counters
-            .saturating_add(hashes_capacity * size_of::<ObjectHash>());
+            .saturating_add(hashes_capacity * size_of::<ObjectHash>())
+            .saturating_add(strings_total_bytes)
+            .saturating_add(shapes_total_bytes)
+            .saturating_add(commit_index_total_bytes);
 
         RepositoryMemoryUsage {
             values_bytes,
@@ -77,7 +93,10 @@ impl HashValueStore {
             total_bytes,
             npending_free_ids: self.free_ids.as_ref().map(|c| c.len()).unwrap_or(0),
             gc_npending_free_ids: GC_PENDING_HASHIDS.load(Ordering::Acquire),
-            nshapes: 0,
+            nshapes,
+            strings_total_bytes,
+            shapes_total_bytes,
+            commit_index_total_bytes,
         }
     }
 
@@ -185,43 +204,41 @@ impl Persistable for InMemory {
 }
 
 impl KeyValueStoreBackend for InMemory {
-    fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
-        self.write_batch(batch)
-    }
-
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
         self.contains(hash_id)
     }
 
-    fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError> {
-        self.put_context_hash_impl(hash_id)
+    fn put_context_hash(&mut self, object_ref: ObjectReference) -> Result<(), DBError> {
+        self.put_context_hash_impl(object_ref.hash_id())
     }
 
-    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError> {
-        Ok(self.get_context_hash_impl(context_hash))
+    fn get_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<ObjectReference>, DBError> {
+        Ok(self.get_context_hash_impl(context_hash).map(Into::into))
     }
 
-    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<ObjectHash>>, DBError> {
-        Ok(self.get_hash(hash_id)?.map(Cow::Borrowed))
-    }
-
-    fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
-        Ok(self.get_value(hash_id)?.map(Cow::Borrowed))
+    fn get_hash(&self, object_ref: ObjectReference) -> Result<Cow<ObjectHash>, DBError> {
+        self.get_hash(object_ref.hash_id()).map(Cow::Borrowed)
     }
 
     fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, DBError> {
         self.get_vacant_entry_hash()
     }
 
-    fn clear_objects(&mut self) -> Result<(), DBError> {
-        // `InMemory` has its own garbage collection
-        Ok(())
-    }
-
     fn memory_usage(&self) -> RepositoryMemoryUsage {
-        let mut mem = self.hashes.get_memory_usage();
-        mem.nshapes = self.shapes.nshapes();
-        mem
+        let strings_total_bytes = self.string_interner.memory_usage().total_bytes;
+        let shapes_total_bytes = self.shapes.total_bytes();
+        let commit_index_total_bytes = self.context_hashes.capacity()
+            * (std::mem::size_of::<HashId>() + std::mem::size_of::<u64>());
+
+        self.hashes.get_memory_usage(
+            strings_total_bytes,
+            shapes_total_bytes,
+            commit_index_total_bytes,
+            self.shapes.nshapes(),
+        )
     }
 
     fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError> {
@@ -242,12 +259,89 @@ impl KeyValueStoreBackend for InMemory {
         self.string_interner.extend_from(string_interner);
     }
 
-    fn synchronize_strings_into(&self, string_interner: &mut StringInterner) {
-        string_interner.extend_from(&self.string_interner);
+    fn get_str(&self, string_id: StringId) -> Option<&str> {
+        self.string_interner.get_str(string_id).ok()
     }
 
-    fn get_str(&self, string_id: StringId) -> Option<&str> {
-        self.string_interner.get(string_id)
+    fn get_object(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<Object, DBError> {
+        let object_bytes = self.get_value(object_ref.hash_id())?.unwrap_or(&[]);
+        in_memory::deserialize_object(object_bytes, storage, strings, self).map_err(Into::into)
+    }
+
+    fn get_object_bytes<'a>(
+        &self,
+        object_ref: ObjectReference,
+        buffer: &'a mut Vec<u8>,
+    ) -> Result<&'a [u8], DBError> {
+        let slice = self.get_value(object_ref.hash_id())?.unwrap_or(&[]);
+
+        buffer.clear();
+        buffer.extend_from_slice(slice);
+
+        Ok(buffer)
+    }
+
+    fn commit(
+        &mut self,
+        working_tree: &WorkingTree,
+        parent_commit_ref: Option<ObjectReference>,
+        author: String,
+        message: String,
+        date: u64,
+    ) -> Result<(ContextHash, Box<SerializeStats>), DBError> {
+        let PostCommitData {
+            commit_ref,
+            batch,
+            reused,
+            serialize_stats,
+            ..
+        } = working_tree
+            .prepare_commit(
+                date,
+                author,
+                message,
+                parent_commit_ref,
+                self,
+                Some(in_memory::serialize_object),
+                None,
+                true,
+            )
+            .map_err(Box::new)?;
+
+        self.write_batch(batch)?;
+        self.put_context_hash(commit_ref)?;
+        self.block_applied(reused);
+
+        let commit_hash = get_commit_hash(commit_ref, self).map_err(Box::new)?;
+        Ok((commit_hash, serialize_stats))
+    }
+
+    fn get_hash_id(&self, object_ref: ObjectReference) -> Result<HashId, DBError> {
+        object_ref.hash_id_opt().ok_or(DBError::HashIdFailed)
+    }
+
+    fn take_strings_on_reload(&mut self) -> Option<StringInterner> {
+        None
+    }
+
+    fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
+        // Unused HashId are garbage collected
+        Ok(hash_id)
+    }
+
+    #[cfg(test)]
+    fn synchronize_data(
+        &mut self,
+        batch: &[(HashId, Arc<[u8]>)],
+        _output: &[u8],
+    ) -> Result<Option<AbsoluteOffset>, DBError> {
+        self.write_batch(batch.to_vec())?;
+        Ok(None)
     }
 }
 
@@ -305,8 +399,12 @@ impl InMemory {
         self.hashes.get_vacant_object_hash().map_err(Into::into)
     }
 
-    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&ObjectHash>, DBError> {
-        self.hashes.get_hash(hash_id).map_err(Into::into)
+    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<&ObjectHash, DBError> {
+        self.hashes
+            .get_hash(hash_id)?
+            .ok_or_else(|| DBError::HashNotFound {
+                object_ref: hash_id.into(),
+            })
     }
 
     pub(crate) fn get_value(&self, hash_id: HashId) -> Result<Option<&[u8]>, DBError> {
@@ -367,7 +465,7 @@ impl InMemory {
             .hashes
             .get_hash(commit_hash_id)?
             .ok_or(DBError::MissingObject {
-                hash_id: commit_hash_id,
+                object_ref: commit_hash_id.into(),
             })?;
 
         let mut hasher = DefaultHasher::new();
@@ -380,12 +478,6 @@ impl InMemory {
         };
 
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn put_object_hash(&mut self, entry_hash: ObjectHash) -> HashId {
-        let vacant = self.get_vacant_entry_hash().unwrap();
-        vacant.write_with(|entry| *entry = entry_hash)
     }
 }
 

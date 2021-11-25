@@ -11,7 +11,7 @@ use std::{
 
 use crossbeam_channel::Receiver;
 
-use crate::{kv_store::HashId, working_tree::serializer::iter_hash_ids};
+use crate::{kv_store::HashId, serialize::in_memory::iter_hash_ids};
 
 use tezos_spsc::Producer;
 
@@ -135,7 +135,7 @@ impl GCThread {
             (&unused[..], &[][..])
         };
 
-        if let Err(e) = self.free_ids.push_slice(&to_send) {
+        if let Err(e) = self.free_ids.push_slice(to_send) {
             eprintln!("GC: Fail to send free ids {:?}", e);
             self.pending.extend_from_slice(&unused);
             GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
@@ -162,7 +162,7 @@ impl GCThread {
         let start = self.pending.len() - n_to_send;
         let to_send = &self.pending[start..];
 
-        if let Err(e) = self.free_ids.push_slice(&to_send) {
+        if let Err(e) = self.free_ids.push_slice(to_send) {
             eprintln!("GC: Fail to send free ids {:?}", e);
             return;
         }

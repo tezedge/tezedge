@@ -3,12 +3,12 @@
 
 //! This module implements the Tezos context API.
 
+use std::rc::Rc;
 use std::{
     cell::RefCell,
     convert::TryInto,
     sync::{Arc, RwLock},
 };
-use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
@@ -18,13 +18,13 @@ use tezos_timing::{BlockMemoryUsage, ContextMemoryUsage};
 use crate::{
     hash::ObjectHash,
     kv_store::HashId,
-    persistent::DBError,
+    persistent::{get_commit_hash, DBError},
     timings::send_statistics,
     working_tree::{
-        serializer::deserialize_object,
         storage::{BlobId, DirEntryId, DirectoryId, Storage},
+        string_interner::StringInterner,
         working_tree::{MerkleError, PostCommitData},
-        Commit, Object,
+        Commit, Object, ObjectReference,
     },
     ContextKeyValueStore,
 };
@@ -43,6 +43,44 @@ use crate::{
 // because it is not used on Rust, but we need a type to represent it.
 pub struct PatchContextFunction {}
 
+struct TezedgeIndexWithDeallocation<'a> {
+    index: &'a TezedgeIndex,
+}
+
+impl std::ops::Deref for TezedgeIndexWithDeallocation<'_> {
+    type Target = TezedgeIndex;
+
+    fn deref(&self) -> &Self::Target {
+        self.index
+    }
+}
+
+impl Drop for TezedgeIndexWithDeallocation<'_> {
+    fn drop(&mut self) {
+        let mut storage = self.storage.borrow_mut();
+        storage.deallocate();
+    }
+}
+
+struct TezedgeContextWithDeallocation<'a> {
+    ctx: &'a TezedgeContext,
+}
+
+impl std::ops::Deref for TezedgeContextWithDeallocation<'_> {
+    type Target = TezedgeContext;
+
+    fn deref(&self) -> &Self::Target {
+        self.ctx
+    }
+}
+
+impl Drop for TezedgeContextWithDeallocation<'_> {
+    fn drop(&mut self) {
+        let mut storage = self.index.storage.borrow_mut();
+        storage.deallocate();
+    }
+}
+
 /// The index is how we interact with the actual storage used to store the
 /// context data. All reading and writing to the storage is done through the index.
 #[derive(Clone)]
@@ -57,6 +95,11 @@ pub struct TezedgeIndex {
     /// This is where all directories/blobs/strings are allocated.
     /// The `WorkingTree` only has access to ids which refer to data inside `storage`.
     pub storage: Rc<RefCell<Storage>>,
+    /// Container of all the strings.
+    /// This is never deallocated.
+    /// The working tree and repository have `StringId` which refers to
+    /// a data inside `StringInterner`.
+    pub string_interner: Rc<RefCell<StringInterner>>,
 }
 
 // TODO: some of the utility methods here (and in `WorkingTree`) should probably be
@@ -67,22 +110,19 @@ impl TezedgeIndex {
     pub fn new(
         repository: Arc<RwLock<ContextKeyValueStore>>,
         patch_context: Option<BoxRoot<PatchContextFunction>>,
+        string_interner: Option<StringInterner>,
     ) -> Self {
         let patch_context = Rc::new(patch_context);
         Self {
             patch_context,
             repository,
             storage: Default::default(),
+            string_interner: Rc::new(RefCell::new(string_interner.unwrap_or_default())),
         }
     }
 
-    /// Fetches object from the repository associated to this `hash_id`.
-    ///
-    /// This returns the raw owned value (`Vec<u8>`).
-    /// `Self::fetch_object` should be used to avoid allocating a `Vec<u8>`.
-    pub fn fetch_object_bytes(&self, hash_id: HashId) -> Result<Option<Vec<u8>>, DBError> {
-        let repo = self.repository.read()?;
-        Ok(repo.get_value(hash_id)?.map(|v| v.to_vec()))
+    fn with_deallocation(&self) -> TezedgeIndexWithDeallocation {
+        TezedgeIndexWithDeallocation { index: self }
     }
 
     /// Fetches object from the repository and deserialize it into `Self::storage`.
@@ -91,30 +131,22 @@ impl TezedgeIndex {
     /// If the object has not be found, this returns Ok(None).
     pub fn fetch_object(
         &self,
-        hash_id: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Option<Object>, DBError> {
-        let repo = self.repository.read()?;
+        let repository = self.repository.read()?;
 
-        match repo.get_value(hash_id)? {
-            None => Ok(None),
-            Some(object_bytes) => Ok(Some(deserialize_object(
-                object_bytes.as_ref(),
-                storage,
-                &*repo,
-            )?)),
-        }
+        repository
+            .get_object(object_ref, storage, strings)
+            .map(Some)
     }
 
     /// Returns the raw `ObjectHash` associated to this `hash_id`.
     ///
     /// It reads it from the repository.
-    pub fn fetch_hash(&self, hash_id: HashId) -> Result<Option<ObjectHash>, DBError> {
-        Ok(self
-            .repository
-            .read()?
-            .get_hash(hash_id)?
-            .map(|h| h.into_owned()))
+    pub fn fetch_hash(&self, object_ref: ObjectReference) -> Result<ObjectHash, DBError> {
+        Ok(self.repository.read()?.get_hash(object_ref)?.into_owned())
     }
 
     /// Fetches object from the repository and deserialize it into `storage`.
@@ -123,11 +155,12 @@ impl TezedgeIndex {
     /// Use `Self::fetch_object` to get `None` when it has not be found.
     pub fn get_object(
         &self,
-        hash_id: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Object, MerkleError> {
-        match self.fetch_object(hash_id, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id }),
+        match self.fetch_object(object_ref, storage, strings)? {
+            None => Err(MerkleError::ObjectNotFound { object_ref }),
             Some(object) => Ok(object),
         }
     }
@@ -135,10 +168,11 @@ impl TezedgeIndex {
     /// Fetches the commit associated to this `hash` from the repository.
     pub fn fetch_commit(
         &self,
-        hash: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Option<Commit>, DBError> {
-        match self.fetch_object(hash, storage)? {
+        match self.fetch_object(object_ref, storage, strings)? {
             Some(Object::Commit(commit)) => Ok(Some(*commit)),
             Some(Object::Directory(_)) => Err(DBError::FoundUnexpectedStructure {
                 sought: "commit".to_string(),
@@ -157,11 +191,12 @@ impl TezedgeIndex {
     /// Returns an error when the commit was not found.
     pub fn get_commit(
         &self,
-        hash_id: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Commit, MerkleError> {
-        match self.fetch_commit(hash_id, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id }),
+        match self.fetch_commit(object_ref, storage, strings)? {
+            None => Err(MerkleError::ObjectNotFound { object_ref }),
             Some(object) => Ok(object),
         }
     }
@@ -172,10 +207,11 @@ impl TezedgeIndex {
     /// Returns an error when the object is not a directory.
     pub fn fetch_directory(
         &self,
-        hash_id: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Option<DirectoryId>, DBError> {
-        match self.fetch_object(hash_id, storage)? {
+        match self.fetch_object(object_ref, storage, strings)? {
             Some(Object::Directory(dir_id)) => Ok(Some(dir_id)),
             Some(Object::Blob(_)) => Err(DBError::FoundUnexpectedStructure {
                 sought: "dir".to_string(),
@@ -194,19 +230,20 @@ impl TezedgeIndex {
     /// Returns an error when the commit was not found.
     pub fn get_directory(
         &self,
-        hash_id: HashId,
+        object_ref: ObjectReference,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<DirectoryId, MerkleError> {
-        match self.fetch_directory(hash_id, storage)? {
-            None => Err(MerkleError::ObjectNotFound { hash_id }),
+        match self.fetch_directory(object_ref, storage, strings)? {
+            None => Err(MerkleError::ObjectNotFound { object_ref }),
             Some(object) => Ok(object),
         }
     }
 
     /// Checks if the repository contains this `hash_id`.
     pub fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
-        let db = self.repository.read()?;
-        db.contains(hash_id)
+        let repository = self.repository.read()?;
+        repository.contains(hash_id)
     }
 
     /// Returns the `HashId` associated to this `context_hash`.
@@ -215,9 +252,9 @@ impl TezedgeIndex {
     pub fn fetch_context_hash_id(
         &self,
         context_hash: &ContextHash,
-    ) -> Result<Option<HashId>, MerkleError> {
-        let db = self.repository.read()?;
-        Ok(db.get_context_hash(context_hash)?)
+    ) -> Result<Option<ObjectReference>, MerkleError> {
+        let repository = self.repository.read()?;
+        Ok(repository.get_context_hash(context_hash)?)
     }
 
     /// Convert key in array form to string form
@@ -238,6 +275,7 @@ impl TezedgeIndex {
         &self,
         dir_entry_id: DirEntryId,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Object, MerkleError> {
         // get object from `Self::storage` (the working tree)
 
@@ -248,8 +286,9 @@ impl TezedgeIndex {
 
         // get object by hash (from the repository)
 
-        let hash_id = dir_entry.get_hash_id()?;
-        let object = self.get_object(hash_id, storage)?;
+        let object_ref = dir_entry.get_reference();
+
+        let object = self.get_object(object_ref, storage, strings)?;
 
         let dir_entry = storage.get_dir_entry(dir_entry_id)?;
         dir_entry.set_object(&object)?;
@@ -261,28 +300,30 @@ impl TezedgeIndex {
     /// depth - None returns full tree
     pub fn _get_context_tree_by_prefix(
         &self,
-        context_hash: HashId,
+        object_ref: ObjectReference,
         prefix: &ContextKey,
         depth: Option<usize>,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<StringTreeObject, MerkleError> {
         if let Some(0) = depth {
             return Ok(StringTreeObject::Null);
         }
 
         let mut out = StringDirectoryMap::new();
-        let commit = self.get_commit(context_hash, storage)?;
+        let commit = self.get_commit(object_ref, storage, strings)?;
 
-        let root_dir_id = self.get_directory(commit.root_hash, storage)?;
-        let prefixed_dir_id = self.find_or_create_directory(root_dir_id, prefix, storage)?;
+        let root_dir_id = self.get_directory(commit.root_ref, storage, strings)?;
+        let prefixed_dir_id =
+            self.find_or_create_directory(root_dir_id, prefix, storage, strings)?;
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
         let prefixed_dir = storage.dir_to_vec_unsorted(prefixed_dir_id)?;
 
         for (key, child_dir_entry) in prefixed_dir.iter() {
-            let object = self.dir_entry_object(*child_dir_entry, storage)?;
+            let object = self.dir_entry_object(*child_dir_entry, storage, strings)?;
 
-            let key = storage.get_str(*key)?;
+            let key = strings.get_str(*key)?;
 
             // construct full path as Tree key is only one chunk of it
             let fullpath = self.key_to_string(prefix) + delimiter + key;
@@ -291,7 +332,7 @@ impl TezedgeIndex {
 
             out.insert(
                 key_str,
-                self.get_context_recursive(&fullpath, &object, rdepth, storage)?,
+                self.get_context_recursive(&fullpath, &object, rdepth, storage, strings)?,
             );
         }
 
@@ -307,6 +348,7 @@ impl TezedgeIndex {
         object: &Object,
         depth: Option<usize>,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<StringTreeObject, MerkleError> {
         if let Some(0) = depth {
             return Ok(StringTreeObject::Null);
@@ -323,16 +365,16 @@ impl TezedgeIndex {
                 let dir = storage.dir_to_vec_unsorted(*dir_id)?;
 
                 for (key, child_dir_entry) in dir.iter() {
-                    let key = storage.get_str(*key)?;
+                    let key = strings.get_str(*key)?;
                     let fullpath = path.to_owned() + "/" + key;
                     let key_str = key.to_string();
 
-                    let object = self.dir_entry_object(*child_dir_entry, storage)?;
+                    let object = self.dir_entry_object(*child_dir_entry, storage, strings)?;
                     let rdepth = depth.map(|d| d - 1);
 
                     new_tree.insert(
                         key_str,
-                        self.get_context_recursive(&fullpath, &object, rdepth, storage)?,
+                        self.get_context_recursive(&fullpath, &object, rdepth, storage, strings)?,
                     );
                 }
                 Ok(StringTreeObject::Directory(new_tree))
@@ -356,17 +398,18 @@ impl TezedgeIndex {
         root: DirectoryId,
         path: &ContextKey,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<DirectoryId, MerkleError> {
         if path.is_empty() {
             return Ok(root);
         }
 
-        let dir_entry_id = match self.find_dir_entry(root, path, storage)? {
+        let dir_entry_id = match self.find_dir_entry(root, path, storage, strings)? {
             Some(dir_entry_id) => dir_entry_id,
             None => return Ok(DirectoryId::empty()),
         };
 
-        match self.dir_entry_object(dir_entry_id, storage)? {
+        match self.dir_entry_object(dir_entry_id, storage, strings)? {
             Object::Directory(dir_id) => Ok(dir_id),
             Object::Blob(_) => Ok(DirectoryId::empty()),
             Object::Commit(_) => Err(MerkleError::FoundUnexpectedStructure {
@@ -385,6 +428,7 @@ impl TezedgeIndex {
         mut root: DirectoryId,
         path: &ContextKey,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Option<DirEntryId>, MerkleError> {
         if path.is_empty() {
             return Err(MerkleError::KeyEmpty);
@@ -393,7 +437,7 @@ impl TezedgeIndex {
         let last_key_index = path.len() - 1;
 
         for (index, key) in path.iter().enumerate() {
-            let child_dir_entry_id = match storage.dir_find_dir_entry(root, key) {
+            let child_dir_entry_id = match storage.dir_find_dir_entry(root, key, strings) {
                 Some(dir_entry_id) => dir_entry_id,
                 None => return Ok(None), // Path doesn't exist
             };
@@ -403,7 +447,7 @@ impl TezedgeIndex {
                 return Ok(Some(child_dir_entry_id));
             }
 
-            match self.dir_entry_object(child_dir_entry_id, storage)? {
+            match self.dir_entry_object(child_dir_entry_id, storage, strings)? {
                 Object::Directory(dir_id) => {
                     // Go to next key
                     root = dir_id;
@@ -424,15 +468,17 @@ impl TezedgeIndex {
     /// Get value from historical context identified by commit hash.
     pub fn get_history(
         &self,
-        commit_hash: HashId,
+        object_ref: ObjectReference,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
-        let mut storage = (&*self.storage).borrow_mut();
+        let mut storage = self.storage.borrow_mut();
+        let mut strings = self.string_interner.borrow_mut();
 
-        let commit = self.get_commit(commit_hash, &mut storage)?;
-        let dir_id = self.get_directory(commit.root_hash, &mut storage)?;
+        let commit = self.get_commit(object_ref, &mut storage, &mut strings)?;
 
-        let blob_id = self.try_find_blob(dir_id, key, &mut storage)?;
+        let dir_id = self.get_directory(commit.root_ref, &mut storage, &mut strings)?;
+
+        let blob_id = self.try_find_blob(dir_id, key, &mut storage, &mut strings)?;
         let blob = storage.get_blob(blob_id)?;
 
         Ok(blob.to_vec())
@@ -449,8 +495,9 @@ impl TezedgeIndex {
         root: DirectoryId,
         key: &ContextKey,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<BlobId, MerkleError> {
-        let dir_entry_id = match self.find_dir_entry(root, key, storage)? {
+        let dir_entry_id = match self.find_dir_entry(root, key, storage, strings)? {
             Some(dir_entry_id) => dir_entry_id,
             None => {
                 return Err(MerkleError::ValueNotFound {
@@ -460,7 +507,7 @@ impl TezedgeIndex {
         };
 
         // get blob
-        match self.dir_entry_object(dir_entry_id, storage)? {
+        match self.dir_entry_object(dir_entry_id, storage, strings)? {
             Object::Blob(blob) => Ok(blob),
             Object::Directory(_) => Err(MerkleError::ValueIsNotABlob {
                 key: self.key_to_string(key),
@@ -474,14 +521,16 @@ impl TezedgeIndex {
     /// Construct Vec of all context key-values under given prefix
     pub fn get_context_key_values_by_prefix(
         &self,
-        context_hash: HashId,
+        object_ref: ObjectReference,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
-        let mut storage = (&*self.storage).borrow_mut();
+        let mut storage = self.storage.borrow_mut();
+        let mut strings = self.string_interner.borrow_mut();
 
-        let commit = self.get_commit(context_hash, &mut storage)?;
-        let root_dir_id = self.get_directory(commit.root_hash, &mut storage)?;
-        self.get_context_key_values_by_prefix_impl(root_dir_id, prefix, &mut storage)
+        let commit = self.get_commit(object_ref, &mut storage, &mut strings)?;
+
+        let root_dir_id = self.get_directory(commit.root_ref, &mut storage, &mut strings)?;
+        self.get_context_key_values_by_prefix_impl(root_dir_id, prefix, &mut storage, &mut strings)
     }
 
     /// Implementation of `Self::get_context_key_values_by_prefix`
@@ -490,17 +539,18 @@ impl TezedgeIndex {
         root_dir: DirectoryId,
         prefix: &ContextKey,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
-        let prefixed_dir_id = self.find_or_create_directory(root_dir, prefix, storage)?;
+        let prefixed_dir_id = self.find_or_create_directory(root_dir, prefix, storage, strings)?;
         let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
         let prefixed_dir = storage.dir_to_vec_unsorted(prefixed_dir_id)?;
 
         for (key, child_dir_entry) in prefixed_dir.iter() {
-            let object = self.dir_entry_object(*child_dir_entry, storage)?;
+            let object = self.dir_entry_object(*child_dir_entry, storage, strings)?;
 
-            let key = storage.get_str(*key)?;
+            let key = strings.get_str(*key)?;
             // construct full path as Tree key is only one chunk of it
             let fullpath = self.key_to_string(prefix) + delimiter + key;
 
@@ -509,6 +559,7 @@ impl TezedgeIndex {
                 &object,
                 &mut keyvalues,
                 storage,
+                strings,
             )?;
         }
 
@@ -529,6 +580,7 @@ impl TezedgeIndex {
         object: &Object,
         entries: &mut Vec<(ContextKeyOwned, ContextValue)>,
         storage: &mut Storage,
+        strings: &mut StringInterner,
     ) -> Result<(), MerkleError> {
         match object {
             Object::Blob(blob_id) => {
@@ -542,13 +594,13 @@ impl TezedgeIndex {
 
                 dir.iter()
                     .map(|(key, child_dir_entry_id)| {
-                        let key = storage.get_str(*key)?;
+                        let key = strings.get_str(*key)?;
                         let fullpath = path.to_owned() + "/" + key;
 
-                        match self.dir_entry_object(*child_dir_entry_id, storage) {
+                        match self.dir_entry_object(*child_dir_entry_id, storage, strings) {
                             Err(_) => Ok(()),
                             Ok(object) => self.collect_key_values_from_tree_recursively(
-                                &fullpath, &object, entries, storage,
+                                &fullpath, &object, entries, storage, strings,
                             ),
                         }
                     })
@@ -558,11 +610,11 @@ impl TezedgeIndex {
                     })
                     .unwrap_or(Ok(()))
             }
-            Object::Commit(commit) => match self.get_object(commit.root_hash, storage) {
+            Object::Commit(commit) => match self.get_object(commit.root_ref, storage, strings) {
                 Err(err) => Err(err),
-                Ok(object) => {
-                    self.collect_key_values_from_tree_recursively(path, &object, entries, storage)
-                }
+                Ok(object) => self.collect_key_values_from_tree_recursively(
+                    path, &object, entries, storage, strings,
+                ),
             },
         }
     }
@@ -574,35 +626,102 @@ impl TezedgeIndex {
     /// - The repository needs those interned strings when it sends the directory shapes to the
     ///   read only protocol runner.
     fn synchronize_interned_strings_to_repository(&self) -> Result<(), MerkleError> {
-        let storage = self.storage.borrow();
+        let mut strings = self.string_interner.borrow_mut();
         let mut repository = self.repository.write()?;
-        repository.synchronize_strings_from(&storage.strings);
+        repository.synchronize_strings_from(&strings);
+
+        strings.all_strings_to_serialize.clear();
 
         Ok(())
     }
 
-    /// A clone of `Self` but with a clear storage with strings in sync to the `repository` strings.
+    /// A clone of `Self` but with a clear storage.
     fn with_clear_storage(&self) -> Result<Self, MerkleError> {
-        let storage: Rc<RefCell<Storage>> = Default::default();
-
-        {
-            let repository = self.repository.read()?;
-
-            repository.synchronize_strings_into(&mut storage.borrow_mut().strings);
-        }
-
         Ok(Self {
-            storage,
+            storage: Default::default(),
             patch_context: Rc::clone(&self.patch_context),
             repository: Arc::clone(&self.repository),
+            string_interner: Rc::clone(&self.string_interner),
         })
+    }
+
+    fn get_key_from_history_impl(
+        &self,
+        context_hash: &ContextHash,
+        key: &ContextKey,
+    ) -> Result<Option<ContextValue>, ContextError> {
+        let object_ref = {
+            let repository = self.repository.write()?;
+
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
+
+        match self.get_history(object_ref, key) {
+            Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
+            Err(MerkleError::ObjectNotFound { .. }) => Ok(None),
+            Err(err) => Err(ContextError::MerkleStorageError { error: err }),
+            Ok(val) => Ok(Some(val)),
+        }
+    }
+
+    fn get_key_values_by_prefix_impl(
+        &self,
+        context_hash: &ContextHash,
+        prefix: &ContextKey,
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
+        let object_ref = {
+            let repository = self.repository.read()?;
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
+
+        self.get_context_key_values_by_prefix(object_ref, prefix)
+            .map_err(Into::into)
+    }
+
+    fn get_context_tree_by_prefix_impl(
+        &self,
+        context_hash: &ContextHash,
+        prefix: &ContextKey,
+        depth: Option<usize>,
+    ) -> Result<StringTreeObject, ContextError> {
+        let object_ref = {
+            let repository = self.repository.read()?;
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
+
+        let mut storage = self.storage.borrow_mut();
+        let mut strings = self.string_interner.borrow_mut();
+
+        self._get_context_tree_by_prefix(object_ref, prefix, depth, &mut storage, &mut strings)
+            .map_err(ContextError::from)
     }
 }
 
 impl IndexApi<TezedgeContext> for TezedgeIndex {
     /// Checks if `context_hash` exists in the repository.
     fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
-        let hash_id = {
+        let object_ref = {
             let repository = self.repository.read()?;
 
             match repository.get_context_hash(context_hash)? {
@@ -612,16 +731,15 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         };
 
         let mut storage = self.storage.borrow_mut();
+        let mut strings = self.string_interner.borrow_mut();
 
-        if let Some(Object::Commit(_)) = self.fetch_object(hash_id, &mut storage)? {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        Ok(self
+            .get_commit(object_ref, &mut storage, &mut strings)
+            .is_ok())
     }
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<TezedgeContext>, ContextError> {
-        let hash_id = {
+        let object_ref = {
             let repository = self.repository.read()?;
 
             match repository.get_context_hash(context_hash)? {
@@ -636,13 +754,14 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
         let dir_id = {
             let mut storage = index.storage.borrow_mut();
+            let mut strings = index.string_interner.borrow_mut();
 
-            let commit = match self.fetch_commit(hash_id, &mut storage)? {
+            let commit = match self.fetch_commit(object_ref, &mut storage, &mut strings)? {
                 Some(commit) => commit,
                 None => return Ok(None),
             };
 
-            match self.fetch_directory(commit.root_hash, &mut storage)? {
+            match self.fetch_directory(commit.root_ref, &mut storage, &mut strings)? {
                 Some(dir_id) => dir_id,
                 None => return Ok(None),
             }
@@ -652,7 +771,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
         Ok(Some(TezedgeContext::new(
             index,
-            Some(hash_id),
+            Some(object_ref),
             Some(Rc::new(tree)),
         )))
     }
@@ -673,25 +792,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         context_hash: &ContextHash,
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
-        let hash_id = {
-            let repository = self.repository.read()?;
-
-            match repository.get_context_hash(context_hash)? {
-                Some(hash_id) => hash_id,
-                None => {
-                    return Err(ContextError::UnknownContextHashError {
-                        context_hash: context_hash.to_base58_check(),
-                    })
-                }
-            }
-        };
-
-        match self.get_history(hash_id, key) {
-            Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
-            Err(MerkleError::ObjectNotFound { hash_id: _ }) => Ok(None),
-            Err(err) => Err(ContextError::MerkleStorageError { error: err }),
-            Ok(val) => Ok(Some(val)),
-        }
+        let index = self.with_deallocation();
+        index.get_key_from_history_impl(context_hash, key)
     }
 
     fn get_key_values_by_prefix(
@@ -699,20 +801,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         context_hash: &ContextHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
-        let hash_id = {
-            let repository = self.repository.read()?;
-            match repository.get_context_hash(context_hash)? {
-                Some(hash_id) => hash_id,
-                None => {
-                    return Err(ContextError::UnknownContextHashError {
-                        context_hash: context_hash.to_base58_check(),
-                    })
-                }
-            }
-        };
-
-        self.get_context_key_values_by_prefix(hash_id, prefix)
-            .map_err(Into::into)
+        let index = self.with_deallocation();
+        index.get_key_values_by_prefix_impl(context_hash, prefix)
     }
 
     fn get_context_tree_by_prefix(
@@ -721,22 +811,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         prefix: &ContextKey,
         depth: Option<usize>,
     ) -> Result<StringTreeObject, ContextError> {
-        let hash_id = {
-            let repository = self.repository.read()?;
-            match repository.get_context_hash(context_hash)? {
-                Some(hash_id) => hash_id,
-                None => {
-                    return Err(ContextError::UnknownContextHashError {
-                        context_hash: context_hash.to_base58_check(),
-                    })
-                }
-            }
-        };
-
-        let mut storage = self.storage.borrow_mut();
-
-        self._get_context_tree_by_prefix(hash_id, prefix, depth, &mut storage)
-            .map_err(ContextError::from)
+        let index = self.with_deallocation();
+        index.get_context_tree_by_prefix_impl(context_hash, prefix, depth)
     }
 }
 
@@ -746,7 +822,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 pub struct TezedgeContext {
     /// Index used for fetching and saving objects from/to the repository.
     pub index: TezedgeIndex,
-    pub parent_commit_hash: Option<HashId>,
+    pub parent_commit_ref: Option<ObjectReference>,
     // NOTE: tree ids are not being used right now, but were used before to
     // identify specific versions of the tree in the context actions replayer.
     pub tree_id: TreeId,
@@ -821,41 +897,8 @@ impl ShellContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
-        self.index.synchronize_interned_strings_to_repository()?;
-
-        // Objects to be inserted are obtained from the commit call and written here
-        let date: u64 = date.try_into()?;
-        let mut repository = self.index.repository.write()?;
-
-        let PostCommitData {
-            commit_hash_id,
-            batch,
-            reused,
-            serialize_stats,
-        } = self.tree.prepare_commit(
-            date,
-            author,
-            message,
-            self.parent_commit_hash,
-            &mut *repository,
-            true,
-        )?;
-
-        // FIXME: only write objects if there are any, empty commits should not produce anything
-        repository.write_batch(batch)?;
-        repository.put_context_hash(commit_hash_id)?;
-        repository.block_applied(reused)?;
-
-        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
-        repository.clear_objects()?;
-
-        std::mem::drop(repository);
-        send_statistics(BlockMemoryUsage {
-            context: Box::new(self.get_memory_usage()?),
-            serialize: serialize_stats,
-        });
-
-        Ok(commit_hash)
+        let ctx = self.with_deallocation();
+        ctx.commit_impl(author, message, date)
     }
 
     fn hash(
@@ -867,38 +910,43 @@ impl ShellContextApi for TezedgeContext {
         let date: u64 = date.try_into()?;
         let mut repository = self.index.repository.write()?;
 
-        let PostCommitData { commit_hash_id, .. } = self.tree.prepare_commit(
+        let PostCommitData { commit_ref, .. } = self.tree.prepare_commit(
             date,
             author,
             message,
-            self.parent_commit_hash,
+            self.parent_commit_ref,
             &mut *repository,
+            None,
+            None,
             false,
         )?;
 
-        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
-        repository.clear_objects()?;
-        Ok(commit_hash)
+        get_commit_hash(commit_ref, &*repository)
     }
 
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError> {
         let repository = self.index.repository.read()?;
+        let mut buffer = Vec::with_capacity(1000);
 
-        let value = match self.parent_commit_hash {
-            Some(hash_id) => repository.get_value(hash_id)?,
+        let object_ref = match self.parent_commit_ref {
+            Some(obj_ref) => obj_ref,
             None => return Ok(None),
         };
 
-        Ok(value.map(|v| v.to_vec()))
+        repository
+            .get_object_bytes(object_ref, &mut buffer)
+            .map(|bytes| Some(bytes.to_vec()))
+            .map_err(Into::into)
     }
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {
         let repository = self.index.repository.read()?;
-        let storage = (&*self.index.storage).borrow();
+        let storage = self.index.storage.borrow();
+        let strings = self.index.string_interner.borrow();
 
         let usage = ContextMemoryUsage {
             repo: repository.memory_usage(),
-            storage: storage.memory_usage(),
+            storage: storage.memory_usage(&strings),
         };
 
         Ok(usage)
@@ -931,7 +979,7 @@ impl TezedgeContext {
     // NOTE: only used to start from scratch, otherwise checkout should be used
     pub fn new(
         index: TezedgeIndex,
-        parent_commit_hash: Option<HashId>,
+        parent_commit_ref: Option<ObjectReference>,
         tree: Option<Rc<WorkingTree>>,
     ) -> Self {
         let tree = if let Some(tree) = tree {
@@ -943,7 +991,7 @@ impl TezedgeContext {
         let tree_id = tree_id_generator.borrow_mut().next();
         Self {
             index,
-            parent_commit_hash,
+            parent_commit_ref,
             tree_id,
             tree_id_generator,
             tree,
@@ -965,21 +1013,30 @@ impl TezedgeContext {
         }
     }
 
-    fn get_commit_hash(
+    fn with_deallocation(&self) -> TezedgeContextWithDeallocation<'_> {
+        TezedgeContextWithDeallocation { ctx: self }
+    }
+
+    fn commit_impl(
         &self,
-        commit_hash_id: HashId,
-        repo: &ContextKeyValueStore,
+        author: String,
+        message: String,
+        date: i64,
     ) -> Result<ContextHash, ContextError> {
-        let commit_hash = match repo.get_hash(commit_hash_id)? {
-            Some(hash) => hash,
-            None => {
-                return Err(MerkleError::ObjectNotFound {
-                    hash_id: commit_hash_id,
-                }
-                .into())
-            }
+        self.index.synchronize_interned_strings_to_repository()?;
+
+        let (commit_hash, serialize_stats) = {
+            let mut repository = self.index.repository.write()?;
+            let date: u64 = date.try_into()?;
+
+            repository.commit(&self.tree, self.parent_commit_ref, author, message, date)?
         };
-        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
+
+        send_statistics(BlockMemoryUsage {
+            context: Box::new(self.get_memory_usage()?),
+            serialize: serialize_stats,
+        });
+
         Ok(commit_hash)
     }
 }

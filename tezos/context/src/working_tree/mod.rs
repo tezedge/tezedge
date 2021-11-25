@@ -12,15 +12,19 @@
 
 use std::{borrow::Cow, cell::Cell};
 
+use serde::{Deserialize, Serialize};
+
 use crate::hash::{hash_object, HashingError, ObjectHash};
 use crate::{kv_store::HashId, ContextKeyValueStore};
 
+use self::storage::Blob;
+use self::string_interner::StringInterner;
 use self::{
     storage::{BlobId, DirectoryId, Storage},
     working_tree::MerkleError,
 };
+use super::serialize::persistent::AbsoluteOffset;
 
-pub mod serializer;
 pub mod shape;
 pub mod storage;
 pub mod string_interner;
@@ -46,6 +50,8 @@ pub struct DirEntryInner {
     object_hash_id: B32,
     object_available: bool,
     object_id: B61,
+    file_offset_available: bool,
+    file_offset: B63,
 }
 
 /// Wrapper over the children objects of a directory, containing
@@ -57,16 +63,22 @@ pub struct DirEntry {
     pub(crate) inner: Cell<DirEntryInner>,
 }
 
-assert_eq_size!([u8; 12], DirEntry);
+assert_eq_size!([u8; 20], DirEntry);
 
 /// Commit objects are the entry points to different versions of the context tree.
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Commit {
-    pub(crate) parent_commit_hash: Option<HashId>,
-    pub(crate) root_hash: HashId,
+    pub(crate) parent_commit_ref: Option<ObjectReference>,
+    pub(crate) root_ref: ObjectReference,
     pub(crate) time: u64,
     pub(crate) author: String,
     pub(crate) message: String,
+}
+
+impl Commit {
+    pub fn set_root_offset(&mut self, offset: AbsoluteOffset) {
+        self.root_ref.offset.replace(offset);
+    }
 }
 
 /// An object in the context repository
@@ -75,6 +87,41 @@ pub enum Object {
     Directory(DirectoryId),
     Blob(BlobId),
     Commit(Box<Commit>),
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct ObjectReference {
+    hash_id: Option<HashId>,
+    offset: Option<AbsoluteOffset>,
+}
+
+impl From<HashId> for ObjectReference {
+    fn from(hash_id: HashId) -> Self {
+        Self {
+            hash_id: Some(hash_id),
+            offset: None,
+        }
+    }
+}
+
+impl ObjectReference {
+    pub fn new(hash_id: Option<HashId>, offset: Option<AbsoluteOffset>) -> Self {
+        Self { hash_id, offset }
+    }
+
+    pub fn offset(&self) -> AbsoluteOffset {
+        self.offset
+            .expect("ObjectReference::offset called outside of the persistent context")
+    }
+
+    pub fn hash_id(&self) -> HashId {
+        self.hash_id
+            .expect("ObjectReference::hash_id called outside of the in-memory context")
+    }
+
+    pub fn hash_id_opt(&self) -> Option<HashId> {
+        self.hash_id
+    }
 }
 
 impl DirEntry {
@@ -100,6 +147,39 @@ impl DirEntry {
         HashId::new(id)
     }
 
+    pub fn set_offset(&self, offset: AbsoluteOffset) {
+        let inner = self
+            .inner
+            .get()
+            .with_file_offset(offset.as_u64())
+            .with_file_offset_available(true);
+        self.inner.set(inner);
+    }
+
+    pub fn with_offset(self, offset: AbsoluteOffset) -> Self {
+        let inner = self
+            .inner
+            .get()
+            .with_file_offset(offset.as_u64())
+            .with_file_offset_available(true);
+        self.inner.set(inner);
+        self
+    }
+
+    pub fn get_offset(&self) -> Option<AbsoluteOffset> {
+        let inner = self.inner.get();
+
+        if inner.file_offset_available() {
+            Some(inner.file_offset().into())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_reference(&self) -> ObjectReference {
+        ObjectReference::new(self.hash_id(), self.get_offset())
+    }
+
     /// Returns the object of this `DirEntry`.
     ///
     /// It returns `None` when the object has not been fetched from the repository.
@@ -120,20 +200,59 @@ impl DirEntry {
         }
     }
 
-    /// Returns the `ObjectHash` of this dir_entry, computing it necessary.
+    /// Returns the `ObjectHash` of this dir_entry, computing it if necessary.
     ///
     /// If this dir_entry is an inlined blob, this will return an error.
     pub fn object_hash<'a>(
         &self,
         store: &'a mut ContextKeyValueStore,
         storage: &Storage,
+        strings: &StringInterner,
     ) -> Result<Cow<'a, ObjectHash>, HashingError> {
-        let hash_id = self
-            .object_hash_id(store, storage)?
+        let _ = self
+            .object_hash_id(store, storage, strings)?
             .ok_or(HashingError::HashIdEmpty)?;
-        store
-            .get_hash(hash_id)?
-            .ok_or(HashingError::HashIdNotFound { hash_id })
+        store.get_hash(self.get_reference()).map_err(Into::into)
+    }
+
+    /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
+    ///
+    /// If this dir_entry is an inlined blob, this will return `None`.
+    pub fn object_hash_id_impl(
+        &self,
+        store: &mut ContextKeyValueStore,
+        storage: &Storage,
+        strings: &StringInterner,
+    ) -> Result<Option<HashId>, HashingError> {
+        match self.hash_id() {
+            Some(hash_id) => Ok(Some(hash_id)),
+            None => {
+                match self.get_object() {
+                    Some(Object::Blob(blob_id)) if blob_id.is_inline() => return Ok(None),
+                    _ => {}
+                }
+
+                let hash_id = if let Some(hash_id) = self
+                    .get_offset()
+                    .as_ref()
+                    .and_then(|off| storage.offsets_to_hash_id.get(off))
+                {
+                    Some(*hash_id)
+                } else if self.get_object().is_none() {
+                    Some(store.get_hash_id(self.get_reference())?)
+                } else {
+                    hash_object(
+                        self.get_object()
+                            .as_ref()
+                            .ok_or(HashingError::MissingObject)?,
+                        store,
+                        storage,
+                        strings,
+                    )?
+                };
+                Ok(hash_id)
+            }
+        }
     }
 
     /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
@@ -143,25 +262,26 @@ impl DirEntry {
         &self,
         store: &mut ContextKeyValueStore,
         storage: &Storage,
+        strings: &StringInterner,
     ) -> Result<Option<HashId>, HashingError> {
-        match self.hash_id() {
-            Some(hash_id) => Ok(Some(hash_id)),
-            None => {
-                let hash_id = hash_object(
-                    self.get_object()
-                        .as_ref()
-                        .ok_or(HashingError::MissingObject)?,
-                    store,
-                    storage,
-                )?;
-                if let Some(hash_id) = hash_id {
-                    let mut inner = self.inner.get();
-                    inner.set_object_hash_id(hash_id.as_u32());
-                    self.inner.set(inner);
-                };
-                Ok(hash_id)
-            }
-        }
+        let hash_id = match self.object_hash_id_impl(store, storage, strings)? {
+            Some(hash_id) => hash_id,
+            None => return Ok(None),
+        };
+
+        let hash_id = store.make_hash_id_ready_for_commit(hash_id)?;
+
+        let mut inner = self.inner.get();
+        inner.set_object_hash_id(hash_id.as_u32());
+        self.inner.set(inner);
+        Ok(Some(hash_id))
+    }
+
+    pub fn get_inlined_blob<'a>(&self, storage: &'a Storage) -> Option<Blob<'a>> {
+        self.get_object().and_then(|object| match object {
+            Object::Blob(blob_id) if blob_id.is_inline() => storage.get_blob(blob_id).ok(),
+            _ => None,
+        })
     }
 
     /// Constructs a `DirEntry`s wrapping an object that is new, and has not been saved
