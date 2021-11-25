@@ -237,6 +237,9 @@ pub struct ChainManager {
     /// Protocol runner pool dedicated to prevalidation
     tezos_protocol_api: Arc<ProtocolRunnerApi>,
 
+    /// Reusable connection to the protocol runner
+    reused_protocol_runner_connection: Option<ProtocolRunnerConnection>,
+
     /// Used just for very first initialization of ChainManager, because ChainManager subscribes to NetworkChannel in [`pre_start`], but this initialization is asynchronous,
     /// so there is possiblity, that PeerManager could open p2p socket before ChainManager is subscribed to p2p messages, this could lead to dismissed p2p messages or PeerBootstrapped messages,
     ///
@@ -393,7 +396,7 @@ impl ChainManager {
             current_mempool_state,
             remote_current_head_state,
             p2p_reader_sender,
-            tezos_protocol_api,
+            reused_protocol_runner_connection,
             ..
         } = self;
 
@@ -623,14 +626,21 @@ impl ChainManager {
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
-                                    let mut connection =
-                                        tezos_protocol_api.readable_connection_sync()?;
+                                    if reused_protocol_runner_connection.is_none() {
+                                        self.reused_protocol_runner_connection = Some(
+                                            self.tezos_protocol_api.readable_connection_sync()?,
+                                        );
+                                    }
+
+                                    // Was just assigned, unwrap() cannot fail
+                                    let connection =
+                                        self.reused_protocol_runner_connection.as_mut().unwrap();
 
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
                                         message,
                                         &current_head_state,
-                                        &mut connection,
+                                        connection,
                                     )? {
                                         BlockAcceptanceResult::AcceptBlock(
                                             same_as_current_head,
@@ -1606,6 +1616,7 @@ impl
             mempool_prevalidator: None,
             mempool_prevalidator_factory,
             tezos_protocol_api,
+            reused_protocol_runner_connection: None,
             first_initialization_done_result_callback,
             is_already_scheduled_ping_for_mempool_downloading: false,
         }
