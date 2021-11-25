@@ -45,6 +45,10 @@ pub trait HashTrait: Into<Hash> + AsRef<Hash> {
 
     /// Tries to create this hash from the `bytes`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError>;
+
+    fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError>;
+
+    fn to_b58check(&self) -> String;
 }
 
 /// Error creating hash from bytes
@@ -70,10 +74,6 @@ macro_rules! define_hash {
         pub struct $name(pub Hash);
 
         impl $name {
-            pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-                HashType::$name.b58check_to_hash(data).map(Self)
-            }
-
             fn from_bytes(data: &[u8]) -> Result<Self, FromBytesError> {
                 if data.len() == HashType::$name.size() {
                     Ok($name(data.into()))
@@ -90,13 +90,12 @@ macro_rules! define_hash {
                 }
             }
 
+            pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
+                Self::from_b58check(data)
+            }
+
             pub fn to_base58_check(&self) -> String {
-                // TODO: Fixing TE-373 will allow to get rid of this `unreachable`
-                HashType::$name
-                    .hash_to_b58check(&self.0)
-                    .unwrap_or_else(|_| {
-                        unreachable!("Typed hash should always be representable in base58")
-                    })
+                self.to_b58check()
             }
         }
 
@@ -133,6 +132,19 @@ macro_rules! define_hash {
 
             fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
                 $name::try_from(bytes)
+            }
+
+            fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError> {
+                HashType::$name.b58check_to_hash(data).map(Self)
+            }
+
+            fn to_b58check(&self) -> String {
+                // TODO: Fixing TE-373 will allow to get rid of this `unreachable`
+                HashType::$name
+                    .hash_to_b58check(&self.0)
+                    .unwrap_or_else(|_| {
+                        unreachable!("Typed hash should always be representable in base58")
+                    })
             }
         }
 

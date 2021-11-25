@@ -147,7 +147,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                     return refused(EndorsementValidationError::InvalidEndorsementWrapper);
                 }
 
-                if &endorsement.branch != block_hash {
+                if &endorsement.branch.0 != block_hash {
                     return refused(EndorsementValidationError::WrongEndorsementPredecessor);
                 }
 
@@ -158,7 +158,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                     return refused(EndorsementValidationError::InvalidSlot);
                 };
 
-                let signature = &endorsement.signature;
+                let signature = &endorsement.signature.0;
                 let mut encoded = endorsement.branch.as_ref().to_vec();
                 let binary_endorsement = match endorsement.operations.as_bytes() {
                     Ok(bytes) => bytes,
@@ -188,7 +188,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
 
                 let done = Instant::now();
 
-                debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying));
+                debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying), "json" => self.as_json());
 
                 Ok(Applied {
                     protocol_data: self.as_json(),

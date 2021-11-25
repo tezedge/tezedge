@@ -17,6 +17,8 @@ use crate::{
     p2p::binary_message::BinaryRead,
 };
 
+pub mod hash;
+
 pub mod proto_001;
 pub mod proto_002;
 pub mod proto_003;
