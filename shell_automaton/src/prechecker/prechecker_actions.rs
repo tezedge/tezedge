@@ -3,11 +3,17 @@
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
-use tezos_messages::p2p::encoding::{block_header::{BlockHeader, Level}, operation::Operation};
+use tezos_messages::p2p::encoding::{
+    block_header::{BlockHeader, Level},
+    operation::Operation,
+};
 
 use crate::{rights::EndorsingRights, EnablingCondition, State};
 
-use super::{EndorsementValidationError, Key, OperationDecodedContents, PrecheckerError, PrecheckerResponseError};
+use super::{
+    EndorsementValidationError, Key, OperationDecodedContents, PrecheckerError,
+    PrecheckerResponseError,
+};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecheckOperationRequestAction {
@@ -54,7 +60,11 @@ impl PrecheckerPrecheckOperationResponseAction {
         }
     }
 
-    pub(super) fn reject(operation_hash: &OperationHash, protocol_data: String, error: String) -> Self {
+    pub(super) fn reject(
+        operation_hash: &OperationHash,
+        protocol_data: String,
+        error: String,
+    ) -> Self {
         let errored = Errored {
             hash: operation_hash.clone(),
             is_endorsement: Some(true),

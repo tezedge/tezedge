@@ -7,6 +7,7 @@ use crypto::{
     blake2b::Blake2bError,
     hash::{BlockHash, ChainId, FromBytesError, OperationHash, Signature},
 };
+use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::p2p::{
     binary_message::BinaryRead,
@@ -33,7 +34,7 @@ impl std::fmt::Display for Key {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PrecheckerState {
-    pub operations: HashMap<Key, PrecheckerOperationState>,
+    pub operations: HashMap<Key, PrecheckerOperation>,
     pub current_block: Option<CurrentBlock>,
 }
 
@@ -45,10 +46,10 @@ pub struct CurrentBlock {
 }
 
 impl PrecheckerState {
-    pub(super) fn non_terminals(&self) -> impl Iterator<Item = (&Key, &PrecheckerOperationState)> {
+    pub(super) fn non_terminals(&self) -> impl Iterator<Item = (&Key, &PrecheckerOperation)> {
         self.operations
             .iter()
-            .filter(|(_, state)| !state.is_terminal())
+            .filter(|(_, state)| !state.state.is_terminal())
     }
 }
 
@@ -76,54 +77,42 @@ pub enum OperationDecodedContents {
 impl OperationDecodedContents {
     pub(super) fn endorsement_level(&self) -> Option<Level> {
         match self {
-            OperationDecodedContents::Proto010(operation) => {
-                operation.endorsement_level()
-            },
+            OperationDecodedContents::Proto010(operation) => operation.endorsement_level(),
         }
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrecheckerOperation {
+    pub start: ActionId,
+    pub operation: Operation,
+    pub operation_binary_encoding: Vec<u8>,
+    pub state: PrecheckerOperationState,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
-    Init {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
-    },
-    PendingContentDecoding {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
-    },
+    Init,
+    PendingContentDecoding,
     DecodedContentReady {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     PendingBlockApplication {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         level: Level,
     },
     BlockApplied {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         level: Level,
     },
     PendingEndorsingRights {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
     },
     EndorsingRightsReady {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights: EndorsingRights,
     },
     PendingOperationPrechecking {
-        operation: Operation,
-        operation_binary_encoding: Vec<u8>,
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights: EndorsingRights,
     },
@@ -131,16 +120,23 @@ pub enum PrecheckerOperationState {
         protocol_data: String,
     },
     Refused {
-        // TODO remove when all EC types are supported
-        operation: Operation,
         protocol_data: String,
         error: EndorsementValidationError,
     },
     ProtocolNeeded,
     Error {
-        operation: Option<Operation>,
         error: PrecheckerError,
     },
+}
+
+impl PrecheckerOperation {
+    pub(super) fn block_hash(&self) -> &BlockHash {
+        self.operation.branch()
+    }
+
+    pub(super) fn operation(&self) -> &Operation {
+        &self.operation
+    }
 }
 
 impl PrecheckerOperationState {
@@ -151,26 +147,6 @@ impl PrecheckerOperationState {
             | Self::ProtocolNeeded
             | Self::Error { .. } => true,
             _ => false,
-        }
-    }
-
-    pub(super) fn block_hash(&self) -> Option<&BlockHash> {
-        self.operation().map(Operation::branch)
-    }
-
-    pub(super) fn operation(&self) -> Option<&Operation> {
-        match self {
-            PrecheckerOperationState::Init { operation, .. }
-            | PrecheckerOperationState::PendingContentDecoding { operation, .. }
-            | PrecheckerOperationState::DecodedContentReady { operation, .. }
-            | PrecheckerOperationState::PendingBlockApplication { operation, .. }
-            | PrecheckerOperationState::BlockApplied { operation, .. }
-            | PrecheckerOperationState::PendingEndorsingRights { operation, .. }
-            | PrecheckerOperationState::EndorsingRightsReady { operation, .. }
-            | PrecheckerOperationState::PendingOperationPrechecking { operation, .. } => {
-                Some(operation)
-            }
-            _ => None,
         }
     }
 }

@@ -25,7 +25,7 @@ use super::{
     PrecheckerCacheAppliedBlockAction, PrecheckerDecodeOperationAction,
     PrecheckerEndorsementValidationAppliedAction, PrecheckerEndorsingRightsReadyAction,
     PrecheckerError, PrecheckerErrorAction, PrecheckerGetEndorsingRightsAction,
-    PrecheckerOperationDecodedAction, PrecheckerOperationState,
+    PrecheckerOperation, PrecheckerOperationDecodedAction, PrecheckerOperationState,
     PrecheckerPrecheckOperationInitAction, PrecheckerPrecheckOperationRequestAction,
     PrecheckerPrecheckOperationResponseAction, PrecheckerProtocolNeededAction,
     PrecheckerValidateEndorsementAction, PrecheckerWaitForBlockApplicationAction,
@@ -71,8 +71,10 @@ where
                 .operations
                 .iter()
                 .filter_map(|(key, state)| {
-                    if let PrecheckerOperationState::PendingBlockApplication { level, .. } = state {
-                        if *level == block.level() {
+                    if let PrecheckerOperationState::PendingBlockApplication { level, .. } =
+                        state.state
+                    {
+                        if level == block.level() {
                             Some(key)
                         } else {
                             None
@@ -93,11 +95,12 @@ where
             block_hash,
             ..
         }) => {
-            for (key, state) in prechecker_state.non_terminals() {
-                state.block_hash().map(|bh| if bh != block_hash {
-                    debug!(log, "Prevalidation operation still unprocessed";
-                           "operation" => key.operation.to_string(), "state" => state.as_ref(), "block_hash" => bh.to_string());
-                });
+            for (key, state) in prechecker_state
+                .non_terminals()
+                .filter(|(_, state)| state.operation.branch() != block_hash)
+            {
+                debug!(log, "Prevalidation operation still unprocessed";
+                           "operation" => key.operation.to_string(), "state" => state.state.as_ref(), "block_hash" => state.block_hash().to_string());
             }
         }
 
@@ -136,7 +139,7 @@ where
             key,
             ..
         }) => {
-            match prechecker_state_operations.get(key) {
+            match prechecker_state_operations.get(key).map(|op| &op.state) {
                 Some(PrecheckerOperationState::Init { .. }) => {
                     store.dispatch(PrecheckerDecodeOperationAction { key: key.clone() });
                 }
@@ -155,8 +158,9 @@ where
             };
         }
         Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key }) => {
-            if let Some(PrecheckerOperationState::PendingContentDecoding {
+            if let Some(PrecheckerOperation {
                 operation_binary_encoding,
+                state: PrecheckerOperationState::PendingContentDecoding,
                 ..
             }) = prechecker_state_operations.get(key)
             {
@@ -181,7 +185,7 @@ where
             if let Some(PrecheckerOperationState::DecodedContentReady {
                 operation_decoded_contents,
                 ..
-            }) = prechecker_state_operations.get(key)
+            }) = prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 if let Some(level) = operation_decoded_contents.endorsement_level() {
                     if let Some(current_level) = prechecker_state
@@ -211,7 +215,7 @@ where
             level,
         }) => {
             if let Some(PrecheckerOperationState::PendingBlockApplication { .. }) =
-                prechecker_state_operations.get(key)
+                prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 if prechecker_state
                     .current_block
@@ -225,7 +229,7 @@ where
         }
         Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
             if let Some(PrecheckerOperationState::BlockApplied { .. }) =
-                prechecker_state_operations.get(key)
+                prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
             }
@@ -235,7 +239,7 @@ where
             if let Some(PrecheckerOperationState::PendingEndorsingRights {
                 operation_decoded_contents,
                 ..
-            }) = prechecker_state_operations.get(key)
+            }) = prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 if let Some(current_block_hash) = prechecker_state
                     .current_block
@@ -266,7 +270,7 @@ where
                     if let PrecheckerOperationState::PendingEndorsingRights {
                         operation_decoded_contents,
                         ..
-                    } = state
+                    } = &state.state
                     {
                         if operation_decoded_contents
                             .endorsement_level()
@@ -301,10 +305,8 @@ where
             for key in prechecker_state_operations
                 .iter()
                 .filter_map(|(key, state)| {
-                    if let PrecheckerOperationState::PendingEndorsingRights { operation, .. } =
-                        state
-                    {
-                        if operation.branch() == current_block_hash {
+                    if let PrecheckerOperationState::PendingEndorsingRights { .. } = state.state {
+                        if state.operation.branch() == current_block_hash {
                             Some(key)
                         } else {
                             None
@@ -324,16 +326,19 @@ where
             ..
         }) => {
             if let Some(PrecheckerOperationState::EndorsingRightsReady { .. }) =
-                prechecker_state_operations.get(key)
+                prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 store.dispatch(PrecheckerValidateEndorsementAction { key: key.clone() });
             }
         }
         Action::PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction { key }) => {
-            if let Some(PrecheckerOperationState::PendingOperationPrechecking {
+            if let Some(PrecheckerOperation {
                 operation_binary_encoding,
-                operation_decoded_contents,
-                endorsing_rights,
+                state:
+                    PrecheckerOperationState::PendingOperationPrechecking {
+                        operation_decoded_contents,
+                        endorsing_rights,
+                    },
                 ..
             }) = prechecker_state_operations.get(key)
             {
@@ -380,7 +385,7 @@ where
             PrecheckerEndorsementValidationAppliedAction { key, protocol_data },
         ) => {
             if let Some(PrecheckerOperationState::Applied { .. }) =
-                prechecker_state_operations.get(key)
+                prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 store.dispatch(PrecheckerPrecheckOperationResponseAction::valid(
                     &key.operation,
@@ -391,10 +396,14 @@ where
         Action::PrecheckerEndorsementValidationRefused(
             PrecheckerEndorsementValidationRefusedAction { key, .. },
         ) => {
-            if let Some(PrecheckerOperationState::Refused {
-                protocol_data,
-                error,
+            if let Some(PrecheckerOperation {
+                state:
+                    PrecheckerOperationState::Refused {
+                        protocol_data,
+                        error,
+                    },
                 operation,
+                ..
             }) = prechecker_state_operations.get(key)
             {
                 match error {
@@ -416,7 +425,7 @@ where
         }
         Action::PrecheckerError(PrecheckerErrorAction { key, error }) => {
             if let Some(PrecheckerOperationState::Error { .. }) =
-                prechecker_state_operations.get(key)
+                prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 match error {
                     PrecheckerError::EndorsingRights(err) => {
