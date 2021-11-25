@@ -172,31 +172,29 @@ impl TreeWalkerLevel {
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
                 let storage = root.index.storage.borrow();
+                let strings = root.index.string_interner.borrow();
 
-                let dir_len = match storage.dir_len(*dir_id) {
-                    Ok(dir_len) => dir_len,
+                let dir = match storage.dir_to_vec_sorted(*dir_id, &strings) {
+                    Ok(dir) => dir,
                     Err(e) => {
-                        eprintln!("TreeWalkerLevel tree_len error='{:?}' key='{:?}", e, key);
-                        0
+                        eprintln!("TreeWalkerLevel `dir_to_vec_sorted` error='{:?}'", e);
+                        Vec::new()
                     }
                 };
 
-                let mut dir_vec = Vec::with_capacity(dir_len);
-
-                storage
-                    .dir_iterate_unsorted(*dir_id, |&(key_id, dir_entry_id)| {
-                        let key = match storage.get_str(key_id) {
-                            Ok(key) => key.to_string(),
-                            Err(e) => {
-                                // TODO: Handle this error in a better way
-                                eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
-                                return Ok(());
-                            }
-                        };
-                        dir_vec.push((key, dir_entry_id));
-                        Ok(())
+                let dir_vec: Vec<(String, DirEntryId)> = dir
+                    .into_iter()
+                    .map(|(key_id, dir_entry_id)| {
+                        (
+                            strings
+                                .get_str(key_id)
+                                .map(|s| s.to_string())
+                                // Never fail, the error would have been caught above with `dir_to_vec_sorted`.
+                                .unwrap_or_default(),
+                            dir_entry_id,
+                        )
                     })
-                    .ok();
+                    .collect();
 
                 Some(dir_vec.into_iter())
             } else {
