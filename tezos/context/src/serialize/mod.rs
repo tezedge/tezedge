@@ -27,10 +27,10 @@ use self::persistent::AbsoluteOffset;
 pub mod in_memory;
 pub mod persistent;
 
-const COMPACT_HASH_ID_BIT: u32 = 1 << 23;
+const COMPACT_HASH_ID_BIT: u64 = 1 << 31;
 
-const FULL_31_BITS: u32 = 0x7FFFFFFF;
-const FULL_23_BITS: u32 = 0x7FFFFF;
+const FULL_47_BITS: u64 = 0x7FFFFFFFFFFF;
+const FULL_31_BITS: u64 = 0x7FFFFFFF;
 
 pub type SerializeObjectSignature = fn(
     &Object,                       // object
@@ -278,53 +278,61 @@ pub fn deserialize_hash_id(data: &[u8]) -> Result<(Option<HashId>, usize), Deser
     let byte_hash_id = data.get(0).copied().ok_or(UnexpectedEOF)?;
 
     if byte_hash_id & 1 << 7 != 0 {
-        // The HashId is in 3 bytes
-        let hash_id = data.get(0..3).ok_or(UnexpectedEOF)?;
+        // The HashId is in 4 bytes
+        let hash_id = data.get(0..4).ok_or(UnexpectedEOF)?;
 
-        let hash_id: u32 = (hash_id[0] as u32) << 16 | (hash_id[1] as u32) << 8 | hash_id[2] as u32;
+        let hash_id = u32::from_be_bytes(hash_id.try_into()?);
+        let hash_id = hash_id as u64;
 
         // Clear `COMPACT_HASH_ID_BIT`
         let hash_id = hash_id & (COMPACT_HASH_ID_BIT - 1);
         let hash_id = HashId::new(hash_id);
 
-        Ok((hash_id, 3))
+        Ok((hash_id, 4))
     } else {
-        // The HashId is in 4 bytes
-        let hash_id = data.get(0..4).ok_or(UnexpectedEOF)?;
-        let hash_id = u32::from_be_bytes(hash_id.try_into()?);
+        // The HashId is in 6 bytes
+        let hash_id = data.get(0..6).ok_or(UnexpectedEOF)?;
+
+        let hash_id = (hash_id[0] as u64) << 40
+            | (hash_id[1] as u64) << 32
+            | (hash_id[2] as u64) << 24
+            | (hash_id[3] as u64) << 16
+            | (hash_id[4] as u64) << 8
+            | (hash_id[5] as u64);
+
         let hash_id = HashId::new(hash_id);
 
-        Ok((hash_id, 4))
+        Ok((hash_id, 6))
     }
 }
 
 pub fn serialize_hash_id(
-    hash_id: u32,
+    hash_id: u64,
     output: &mut Vec<u8>,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError> {
     stats.highest_hash_id = stats.highest_hash_id.max(hash_id);
 
-    if hash_id & FULL_23_BITS == hash_id {
-        // The HashId fits in 23 bits
+    if hash_id & FULL_31_BITS == hash_id {
+        // The HashId fits in 31 bits
 
-        // Set `COMPACT_HASH_ID_BIT` so the deserializer knows the `HashId` is in 3 bytes
-        let hash_id: u32 = hash_id | COMPACT_HASH_ID_BIT;
-        let hash_id: [u8; 4] = hash_id.to_be_bytes();
+        // Set `COMPACT_HASH_ID_BIT` so the deserializer knows the `HashId` is in 4 bytes
+        let hash_id: u64 = hash_id | COMPACT_HASH_ID_BIT;
+        let hash_id: [u8; 8] = hash_id.to_be_bytes();
 
-        output.write_all(&hash_id[1..])?;
-        stats.hash_ids_length = stats.hash_ids_length.saturating_add(3);
+        output.write_all(&hash_id[4..])?;
+        stats.hash_ids_length = stats.hash_ids_length.saturating_add(4);
 
         Ok(())
-    } else if hash_id & FULL_31_BITS == hash_id {
-        // HashId fits in 31 bits
+    } else if hash_id & FULL_47_BITS == hash_id {
+        // HashId fits in 47 bits
 
-        output.write_all(&hash_id.to_be_bytes())?;
-        stats.hash_ids_length = stats.hash_ids_length.saturating_add(3);
+        output.write_all(&hash_id.to_be_bytes()[2..])?;
+        stats.hash_ids_length = stats.hash_ids_length.saturating_add(6);
 
         Ok(())
     } else {
-        // The HashId must not be 32 bits because we use the
+        // The HashId must not be 48 bits because we use the
         // MSB to determine if the HashId is compact or not
         Err(SerializationError::HashIdTooBig)
     }

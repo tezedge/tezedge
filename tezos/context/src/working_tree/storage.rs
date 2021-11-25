@@ -375,7 +375,7 @@ pub struct InodeId(u32);
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct PointerToInodeInner {
-    hash_id: B32,
+    hash_id: B48,
     is_commited: bool,
     inode_id: B31,
     offset: B64,
@@ -391,7 +391,7 @@ impl PointerToInode {
         Self {
             inner: Cell::new(
                 PointerToInodeInner::new()
-                    .with_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
+                    .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(false)
                     .with_inode_id(inode_id.0)
                     .with_offset(0),
@@ -407,7 +407,7 @@ impl PointerToInode {
         Self {
             inner: Cell::new(
                 PointerToInodeInner::new()
-                    .with_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0))
+                    .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(true)
                     .with_inode_id(inode_id.0)
                     .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0)), //.with_offset(0),
@@ -439,7 +439,7 @@ impl PointerToInode {
 
     pub fn set_hash_id(&self, hash_id: Option<HashId>) {
         let mut inner = self.inner.get();
-        inner.set_hash_id(hash_id.map(|h| h.as_u32()).unwrap_or(0));
+        inner.set_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0));
 
         self.inner.set(inner);
     }
@@ -462,7 +462,7 @@ impl PointerToInode {
     }
 }
 
-assert_eq_size!([u8; 17], Option<PointerToInode>);
+assert_eq_size!([u8; 19], Option<PointerToInode>);
 
 /// Inode representation used for hashing directories with > DIRECTORY_INODE_THRESHOLD entries.
 #[allow(clippy::large_enum_variant)]
@@ -481,7 +481,7 @@ pub enum Inode {
     },
 }
 
-assert_eq_size!([u8; 560], Inode);
+assert_eq_size!([u8; 624], Inode);
 
 /// A range inside `Storage::temp_dir`
 type TempDirRange = Range<usize>;

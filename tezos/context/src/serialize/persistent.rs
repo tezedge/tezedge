@@ -198,7 +198,7 @@ fn serialize_shaped_directory(
     // Replaced by ObjectHeader
     output.write_all(&[0, 0])?;
 
-    serialize_hash_id(object_hash_id.as_u32(), output, stats)?;
+    serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
 
     let shape_id = shape_id.as_u32();
     output.write_all(&shape_id.to_le_bytes())?;
@@ -349,7 +349,7 @@ fn serialize_directory(
     // Replaced by ObjectHeader
     output.write_all(&[0, 0])?;
 
-    serialize_hash_id(object_hash_id.as_u32(), output, stats)?;
+    serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
 
     for (key_id, dir_entry_id) in dir {
         let key = strings.get_str(*key_id)?;
@@ -471,7 +471,7 @@ pub fn serialize_object(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u32(), output, stats)?;
+            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
             output.write_all(blob.as_ref())?;
 
             write_object_header(output, start, ObjectTag::Blob);
@@ -482,7 +482,7 @@ pub fn serialize_object(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u32(), output, stats)?;
+            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
 
             let author_length = match commit.author.len() {
                 length if length <= 0xFF => ObjectLength::OneByte,
@@ -509,11 +509,11 @@ pub fn serialize_object(
             output.write_all(&header)?;
 
             if let Some(parent) = commit.parent_commit_ref {
-                serialize_hash_id(parent.hash_id().as_u32(), output, stats)?;
+                serialize_hash_id(parent.hash_id().as_u64(), output, stats)?;
                 serialize_offset(output, parent_relative_offset, parent_offset_length, stats)?;
             };
 
-            let root_hash_id = commit.root_ref.hash_id().as_u32();
+            let root_hash_id = commit.root_ref.hash_id().as_u64();
 
             serialize_hash_id(root_hash_id, output, stats)?;
             serialize_offset(output, root_relative_offset, root_offset_length, stats)?;
@@ -670,7 +670,7 @@ fn serialize_inode(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u32(), output, stats)?;
+            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
 
             output.write_all(&depth.to_le_bytes())?;
             output.write_all(&nchildren.to_le_bytes())?;
@@ -1482,7 +1482,7 @@ mod tests {
             let inode_value = Inode::Directory(DirectoryId::empty());
             let inode_value_id = storage.add_inode(inode_value).unwrap();
 
-            let hash_id = HashId::new((index + 1) as u32).unwrap();
+            let hash_id = HashId::new((index + 1) as u64).unwrap();
 
             let offset = serialize_inode(
                 inode_value_id,
@@ -1672,6 +1672,40 @@ mod tests {
         } else {
             panic!();
         }
+    }
+
+    #[test]
+    fn test_hash_id() {
+        let mut output = Vec::with_capacity(10);
+        let mut stats = Default::default();
+
+        let number = 10101;
+
+        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+        assert_eq!(output.len(), 4);
+        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(size, 4);
+
+        output.clear();
+
+        let number = (u32::MAX as u64) + 10;
+
+        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+        assert_eq!(output.len(), 6);
+        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(size, 6);
+
+        output.clear();
+
+        let number = u32::MAX as u64;
+
+        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+        assert_eq!(output.len(), 6);
+        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(size, 6);
     }
 
     #[test]

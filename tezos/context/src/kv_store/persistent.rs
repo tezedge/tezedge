@@ -315,16 +315,16 @@ fn deserialize_hashes(
     let mut offset = commit_index_file.start();
     let end = commit_index_file.offset().as_u64();
 
-    let mut hash_id_bytes = [0u8; 4];
+    let mut hash_id_bytes = [0u8; 8];
     let mut hash_offset_bytes = [0u8; 8];
     let mut commit_hash: ObjectHash = Default::default();
 
     while offset < end {
         // commit index file is a sequence of entries that look like:
-        // [hash_id u32 ne bytes | offset u64 ne bytes | hash <HASH_LEN> bytes]
-        commit_index_file.read_exact_at(&mut hash_id_bytes, offset.into())?;
-        offset += hash_id_bytes.len() as u64;
-        let hash_id = u32::from_le_bytes(hash_id_bytes);
+        // [hash_id 6 le bytes | offset u64 le bytes | hash <HASH_LEN> bytes]
+        commit_index_file.read_exact_at(&mut hash_id_bytes[..6], offset.into())?;
+        offset += (hash_id_bytes[..6]).len() as u64;
+        let hash_id = u64::from_le_bytes(hash_id_bytes);
 
         commit_index_file.read_exact_at(&mut hash_offset_bytes, offset.into())?;
         offset += hash_offset_bytes.len() as u64;
@@ -353,9 +353,9 @@ fn serialize_context_hash(
     let mut output = Vec::<u8>::with_capacity(100);
 
     let offset: u64 = offset.as_u64();
-    let hash_id: u32 = hash_id.as_u32();
+    let hash_id: u64 = hash_id.as_u64();
 
-    output.write_all(&hash_id.to_le_bytes())?;
+    output.write_all(&hash_id.to_le_bytes()[..6])?;
     output.write_all(&offset.to_le_bytes())?;
     output.write_all(hash)?;
 
@@ -557,5 +557,55 @@ impl KeyValueStoreBackend for Persistent {
         self.commit_to_disk(output)?;
         self.hashes.in_memory.set_is_commiting();
         Ok(Some(self.data_file.offset()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Make sure that the commit index is correctly serialized & deserialized
+    #[test]
+    fn test_commit_index() {
+        let hashes_file = File::try_new("test_commit_index", FileType::Hashes).unwrap();
+        let mut commit_index_file =
+            File::try_new("test_commit_index", FileType::CommitIndex).unwrap();
+
+        let bytes =
+            serialize_context_hash(HashId::new(101).unwrap(), 102.into(), &vec![3; 32]).unwrap();
+        commit_index_file.append(bytes).unwrap();
+
+        let bytes = serialize_context_hash(
+            HashId::new(u32::MAX as u64).unwrap(),
+            103.into(),
+            &vec![4; 32],
+        )
+        .unwrap();
+        commit_index_file.append(bytes).unwrap();
+
+        let bytes = serialize_context_hash(
+            HashId::new(u32::MAX as u64 + 10).unwrap(),
+            104.into(),
+            &vec![5; 32],
+        )
+        .unwrap();
+        commit_index_file.append(bytes).unwrap();
+
+        let res = deserialize_hashes(hashes_file, &commit_index_file).unwrap();
+
+        let mut values: Vec<_> = res.1.values().collect();
+        values.sort_by_key(|k| k.offset().as_u64());
+
+        assert_eq!(
+            &values,
+            &[
+                &ObjectReference::new(HashId::new(101), Some(102.into())),
+                &ObjectReference::new(HashId::new(u32::MAX as u64), Some(103.into())),
+                &ObjectReference::new(HashId::new(u32::MAX as u64 + 10), Some(104.into())),
+            ]
+        );
+
+        std::fs::remove_file("test_commit_index/hashes.db").ok();
+        std::fs::remove_file("test_commit_index/commit_index.db").ok();
     }
 }

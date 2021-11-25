@@ -69,7 +69,7 @@ fn serialize_shaped_directory(
     for (_, dir_entry_id) in dir {
         let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
 
-        let hash_id: u32 = dir_entry.hash_id().map(|h| h.as_u32()).unwrap_or(0);
+        let hash_id: u64 = dir_entry.hash_id().map(|h| h.as_u64()).unwrap_or(0);
         let kind = dir_entry.dir_entry_kind();
 
         let blob_inline = dir_entry.get_inlined_blob(storage);
@@ -124,7 +124,7 @@ fn serialize_directory(
 
         let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
 
-        let hash_id: u32 = dir_entry.hash_id().map(|h| h.as_u32()).unwrap_or(0);
+        let hash_id: u64 = dir_entry.hash_id().map(|h| h.as_u64()).unwrap_or(0);
         let kind = dir_entry.dir_entry_kind();
 
         let blob_inline = dir_entry.get_inlined_blob(storage);
@@ -235,11 +235,11 @@ pub fn serialize_object(
             let parent_hash_id = commit
                 .parent_commit_ref
                 .and_then(|p| p.hash_id_opt())
-                .map(|h| h.as_u32())
+                .map(|h| h.as_u64())
                 .unwrap_or(0);
             serialize_hash_id(parent_hash_id, output, stats)?;
 
-            let root_hash_id = commit.root_ref.hash_id().as_u32();
+            let root_hash_id = commit.root_ref.hash_id().as_u64();
             serialize_hash_id(root_hash_id, output, stats)?;
 
             output.write_all(&commit.time.to_ne_bytes())?;
@@ -304,7 +304,7 @@ fn serialize_inode(
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
-                let hash_id = hash_id.as_u32();
+                let hash_id = hash_id.as_u64();
 
                 serialize_hash_id(hash_id, output, stats)?;
             }
@@ -856,7 +856,7 @@ mod tests {
         }
 
         let iter = iter_hash_ids(&data);
-        assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[3, 1, 2]);
+        assert_eq!(iter.map(|h| h.as_u64()).collect::<Vec<_>>(), &[3, 1, 2]);
 
         // Test Object::Directory (Shaped)
 
@@ -913,7 +913,7 @@ mod tests {
         }
 
         let iter = iter_hash_ids(&data);
-        assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[3, 1, 2]);
+        assert_eq!(iter.map(|h| h.as_u64()).collect::<Vec<_>>(), &[3, 1, 2]);
 
         // Test Object::Blob
 
@@ -976,7 +976,7 @@ mod tests {
         }
 
         let iter = iter_hash_ids(&data);
-        assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[12345]);
+        assert_eq!(iter.map(|h| h.as_u64()).collect::<Vec<_>>(), &[12345]);
 
         // Test Inode::Directory
 
@@ -986,7 +986,7 @@ mod tests {
             let inode_value = Inode::Directory(DirectoryId::empty());
             let inode_value_id = storage.add_inode(inode_value).unwrap();
 
-            let hash_id = HashId::new((index + 1) as u32).unwrap();
+            let hash_id = HashId::new((index + 1) as u64).unwrap();
 
             repo.write_batch(vec![(hash_id, Arc::new(ObjectHeader::new().into_bytes()))])
                 .unwrap();
@@ -1036,7 +1036,7 @@ mod tests {
             for (index, pointer) in pointers.iter().enumerate() {
                 let pointer = pointer.as_ref().unwrap();
                 let hash_id = pointer.hash_id().unwrap();
-                assert_eq!(hash_id.as_u32() as usize, index + 1);
+                assert_eq!(hash_id.as_u64() as usize, index + 1);
 
                 let inode = storage.get_inode(pointer.inode_id()).unwrap();
                 match inode {
@@ -1050,7 +1050,7 @@ mod tests {
 
         let iter = iter_hash_ids(&batch[0].1);
         assert_eq!(
-            iter.map(|h| h.as_u32()).collect::<Vec<_>>(),
+            iter.map(|h| h.as_u64()).collect::<Vec<_>>(),
             (1..33).collect::<Vec<_>>()
         );
 
@@ -1111,7 +1111,7 @@ mod tests {
         }
 
         let iter = iter_hash_ids(&batch[0].1);
-        assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[3, 1, 2]);
+        assert_eq!(iter.map(|h| h.as_u64()).collect::<Vec<_>>(), &[3, 1, 2]);
     }
 
     #[test]

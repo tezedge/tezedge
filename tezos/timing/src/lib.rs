@@ -122,7 +122,7 @@ pub struct SerializeStats {
     pub blobs_length: usize,
     pub hash_ids_length: usize,
     pub keys_length: usize,
-    pub highest_hash_id: u32,
+    pub highest_hash_id: u64,
     pub ndirectories: usize,
     pub nblobs: usize,
     pub nblobs_inlined: usize,
