@@ -3613,8 +3613,10 @@ dependencies = [
  "ipc",
  "lazy_static",
  "leb128",
+ "libc",
  "modular-bitfield",
  "ocaml-interop",
+ "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
  "slog",
@@ -3819,6 +3821,7 @@ dependencies = [
 name = "tezos_timing"
 version = "1.11.0"
 dependencies = [
+ "crypto",
  "rusqlite",
  "serde 1.0.130",
  "static_assertions",

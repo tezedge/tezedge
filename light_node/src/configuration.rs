@@ -100,7 +100,7 @@ impl Storage {
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context_api::INMEM;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context_api::ONDISK;
 
     const DEFAULT_MAINDB: &'static str = "rocksdb";
 
@@ -553,7 +553,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the TezEdge context storage backend - supported backends: 'inmem'"))
+            .help("Choose the TezEdge context storage backend - supported backends: 'inmem', 'ondisk'"))
         // TODO - TE-261: right now this is obsolete, either reintegrate with the timings database or remove
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
@@ -1091,6 +1091,14 @@ impl Environment {
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                        SupportedContextKeyValueStore::OnDisk => {
+                            ContextKvStoreConfiguration::OnDisk(
+                                get_final_path(&tezos_data_dir, "context".into())
+                                    .into_os_string()
+                                    .into_string()
+                                    .unwrap(),
+                            )
+                        }
                     })
                     .unwrap_or_else(|e| {
                         panic!(

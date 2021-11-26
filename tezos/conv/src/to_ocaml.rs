@@ -108,6 +108,7 @@ impl_to_ocaml_variant! {
     ContextKvStoreConfiguration => OCamlContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::OnDisk(path: String),
     }
 }
 

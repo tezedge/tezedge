@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ObjectHash;
 
+pub mod hashes;
 pub mod in_memory;
 pub mod index_map;
+pub mod persistent;
 pub mod readonly_ipc;
 
 pub const INMEM: &str = "inmem";
@@ -44,8 +46,9 @@ impl TryFrom<usize> for HashId {
     }
 }
 
-const SHIFT: usize = (std::mem::size_of::<u32>() * 8) - 1;
-const READONLY: u32 = 1 << SHIFT;
+const SHIFT: usize = (std::mem::size_of::<HashId>() * 8) - 1;
+/// Bit set when the HashId hasn't been commited
+const IN_WORKING_TREE: u32 = 1 << SHIFT;
 
 impl HashId {
     pub fn new(value: u32) -> Option<Self> {
@@ -56,19 +59,19 @@ impl HashId {
         self.0.get()
     }
 
-    fn set_readonly_runner(&mut self) -> Result<(), HashIdError> {
+    pub fn set_in_working_tree(&mut self) -> Result<(), HashIdError> {
         let hash_id = self.0.get();
 
-        self.0 = NonZeroU32::new(hash_id | READONLY).ok_or(HashIdError)?;
+        self.0 = NonZeroU32::new(hash_id | IN_WORKING_TREE).ok_or(HashIdError)?;
 
         Ok(())
     }
 
-    fn get_readonly_id(self) -> Result<Option<HashId>, HashIdError> {
+    pub fn get_in_working_tree(self) -> Result<Option<HashId>, HashIdError> {
         let hash_id = self.0.get();
-        if hash_id & READONLY != 0 {
+        if hash_id & IN_WORKING_TREE != 0 {
             Ok(Some(HashId(
-                NonZeroU32::new(hash_id & !READONLY).ok_or(HashIdError)?,
+                NonZeroU32::new(hash_id & !IN_WORKING_TREE).ok_or(HashIdError)?,
             )))
         } else {
             Ok(None)
@@ -82,18 +85,25 @@ pub struct VacantObjectHash<'a> {
 }
 
 impl<'a> VacantObjectHash<'a> {
+    pub fn new(entry: &'a mut ObjectHash, hash_id: HashId) -> Self {
+        Self {
+            entry: Some(entry),
+            hash_id,
+        }
+    }
+
     pub(crate) fn write_with<F>(self, fun: F) -> HashId
     where
         F: FnOnce(&mut ObjectHash),
     {
         if let Some(entry) = self.entry {
-            fun(entry)
+            fun(entry);
         };
         self.hash_id
     }
 
     pub(crate) fn set_readonly_runner(mut self) -> Result<Self, HashIdError> {
-        self.hash_id.set_readonly_runner()?;
+        self.hash_id.set_in_working_tree()?;
         Ok(self)
     }
 }

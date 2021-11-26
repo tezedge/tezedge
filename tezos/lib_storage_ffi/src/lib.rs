@@ -372,8 +372,11 @@ fn test_context_inodes(
     let mut tezedge_ctxt = context::checkout(cr, &tezedge_index, tezedge_genesis_hash).unwrap();
     let mut irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
 
-    let tezedge_commit_hash_init = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-    let irmin_commit_hash_init = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let commit_string = Some("commit".to_string());
+
+    let tezedge_commit_hash_init =
+        context::hash(cr, time as i64, commit_string.clone(), &tezedge_ctxt);
+    let irmin_commit_hash_init = context::hash(cr, time as i64, commit_string.clone(), &irmin_ctxt);
 
     for index in 0..2_000 {
         let key = key!(format!("root/{}", index));
@@ -381,8 +384,9 @@ fn test_context_inodes(
         tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key, "".as_bytes());
         irmin_ctxt = context::add(cr, &irmin_ctxt, &key, "".as_bytes());
 
-        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+        let tezedge_commit_hash =
+            context::hash(cr, time as i64, commit_string.clone(), &tezedge_ctxt);
+        let irmin_commit_hash = context::hash(cr, time as i64, commit_string.clone(), &irmin_ctxt);
 
         assert_eq!(irmin_commit_hash, tezedge_commit_hash);
     }
@@ -393,14 +397,16 @@ fn test_context_inodes(
         tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key);
         irmin_ctxt = context::remove(cr, &irmin_ctxt, &key);
 
-        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+        let tezedge_commit_hash =
+            context::hash(cr, time as i64, commit_string.clone(), &tezedge_ctxt);
+        let irmin_commit_hash = context::hash(cr, time as i64, commit_string.clone(), &irmin_ctxt);
 
         assert_eq!(irmin_commit_hash, tezedge_commit_hash);
     }
 
-    let tezedge_commit_hash_end = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-    let irmin_commit_hash_end = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let tezedge_commit_hash_end =
+        context::hash(cr, time as i64, commit_string.clone(), &tezedge_ctxt);
+    let irmin_commit_hash_end = context::hash(cr, time as i64, commit_string.clone(), &irmin_ctxt);
     assert_eq!(irmin_commit_hash_end, tezedge_commit_hash_end);
 
     assert_eq!(irmin_commit_hash_init, irmin_commit_hash_end);
