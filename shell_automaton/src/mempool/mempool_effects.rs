@@ -5,12 +5,12 @@ use redux_rs::Store;
 use slog::error;
 use std::sync::Arc;
 
-use tezos_messages::{p2p::encoding::{
+use tezos_messages::p2p::encoding::{
     current_head::CurrentHeadMessage,
     mempool::Mempool,
     operation::{GetOperationsMessage, OperationMessage},
     peer::{PeerMessage, PeerMessageResponse},
-}, protocol::proto_001::operation};
+};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
@@ -267,9 +267,9 @@ pub fn mempool_effects<S>(
                     .ops
                     .iter()
                     .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                        !peer.seen_operations.contains(&hash.0) && head_hash.eq(op.branch())
                     })
-                    .map(|(hash, _)| hash)
+                    .map(|(hash, _)| &hash.0)
                     .cloned()
                     .collect::<Vec<_>>();
                 let pending = store
@@ -278,9 +278,9 @@ pub fn mempool_effects<S>(
                     .pending_operations
                     .iter()
                     .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                        !peer.seen_operations.contains(&hash.0) && head_hash.eq(op.branch())
                     })
-                    .map(|(hash, _)| hash)
+                    .map(|(hash, _)| &hash.0)
                     .cloned()
                     .collect::<Vec<_>>();
                 let message = CurrentHeadMessage::new(

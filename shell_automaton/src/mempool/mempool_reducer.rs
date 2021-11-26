@@ -30,16 +30,16 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 for v in &result.result.applied {
                     mempool_state.wait_prevalidator_operations.remove(&v.hash);
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
-                        mempool_state
+                       mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                            .insert(v.hash.clone().into(), rpc_id);
                     }
                 }
                 for v in &result.result.refused {
@@ -48,13 +48,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state.validated_operations.refused.push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                            .insert(v.hash.clone().into(), rpc_id);
                     }
                 }
                 for v in &result.result.branch_refused {
@@ -63,7 +63,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state
                             .validated_operations
                             .branch_refused
@@ -72,7 +72,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                            .insert(v.hash.clone().into(), rpc_id);
                     }
                 }
                 for v in &result.result.branch_delayed {
@@ -81,7 +81,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state
                             .validated_operations
                             .branch_delayed
@@ -90,7 +90,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                            .insert(v.hash.clone().into(), rpc_id);
                     }
                 }
             }
@@ -160,7 +160,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             mempool_state
                 .pending_operations
-                .insert(operation_hash, operation.clone());
+                .insert(operation_hash.into(), operation.clone());
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation,
@@ -169,10 +169,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }) => {
             mempool_state
                 .injecting_rpc_ids
-                .insert(operation_hash.clone(), rpc_id.clone());
+                .insert(operation_hash.clone().into(), rpc_id.clone());
             mempool_state
                 .pending_operations
-                .insert(operation_hash.clone(), operation.clone());
+                .insert(operation_hash.clone().into(), operation.clone());
         }
         Action::PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction { response }) => {
             match response {
@@ -181,13 +181,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(applied.hash.clone(), op);
+                            .insert(applied.hash.clone().into(), op);
                         mempool_state.validated_operations.applied.push(applied.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&applied.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(applied.hash.clone(), rpc_id);
+                            .insert(applied.hash.clone().into(), rpc_id);
                     }
                 }
                 PrecheckerPrecheckOperationResponse::Refused(errored) => {
@@ -195,13 +195,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(errored.hash.clone(), op);
+                            .insert(errored.hash.clone().into(), op);
                         mempool_state.validated_operations.refused.push(errored.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
                         mempool_state
                             .injected_rpc_ids
-                            .insert(errored.hash.clone(), rpc_id);
+                            .insert(errored.hash.clone().into(), rpc_id);
                     }
                 }
                 _ => (),

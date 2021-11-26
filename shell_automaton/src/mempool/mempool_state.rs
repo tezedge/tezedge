@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
+use crypto::hash::{BlockHash, ChainId, HashBase58, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
@@ -25,24 +25,24 @@ pub struct MempoolState {
     //
     pub(super) requesting_prevalidator_for: Option<BlockHash>,
     // performing rpc
-    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injecting_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
     // performed rpc
-    pub(super) injected_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injected_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
     // the current head applied
     pub local_head_state: Option<(HeadState, BlockHash)>,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks, sent to protocol validator
-    pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
-    pub(super) wait_prevalidator_operations: HashMap<OperationHash, Operation>,
+    pub(super) wait_prevalidator_operations: HashMap<HashBase58<OperationHash>, Operation>,
     pub validated_operations: ValidatedOperations,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
-    pub ops: HashMap<OperationHash, Operation>,
-    pub refused_ops: HashMap<OperationHash, Operation>,
+    pub ops: HashMap<HashBase58<OperationHash>, Operation>,
+    pub refused_ops: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,

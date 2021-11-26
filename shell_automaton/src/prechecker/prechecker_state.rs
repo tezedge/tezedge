@@ -149,10 +149,6 @@ impl PrecheckerOperation {
     pub(super) fn block_hash(&self) -> &BlockHash {
         self.operation.branch()
     }
-
-    pub(super) fn operation(&self) -> &Operation {
-        &self.operation
-    }
 }
 
 impl PrecheckerOperationState {

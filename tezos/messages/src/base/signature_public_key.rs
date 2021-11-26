@@ -9,8 +9,6 @@ use std::{
     str::FromStr,
 };
 
-use serde::{Deserialize, Serialize};
-
 use crypto::{
     blake2b,
     hash::{
@@ -41,7 +39,7 @@ pub enum SignatureWatermark {
 }
 
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader, BinWriter)]
+#[derive(Clone, PartialEq, Eq, Hash, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),
@@ -192,8 +190,44 @@ impl SignaturePublicKey {
     }
 }
 
+impl serde::Serialize for SignaturePublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string_representation())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SignaturePublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct SignatureVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SignatureVisitor {
+            type Value = SignaturePublicKey;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("base58 encoded data")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Self::Value::from_b58_hash(v)
+                    .map_err(|e| E::custom(format!("cannot convert from base58: {}", e)))
+            }
+        }
+
+        deserializer.deserialize_string(SignatureVisitor)
+    }
+}
+
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader)]
+#[derive(Clone, PartialEq, Eq, Hash, HasEncoding, NomReader)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),
@@ -302,6 +336,42 @@ impl TryFrom<SignaturePublicKey> for SignaturePublicKeyHash {
             }
             SignaturePublicKey::P256(key) => SignaturePublicKeyHash::P256(key.try_into()?),
         })
+    }
+}
+
+impl serde::Serialize for SignaturePublicKeyHash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string_representation())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SignaturePublicKeyHash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct SignatureVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SignatureVisitor {
+            type Value = SignaturePublicKeyHash;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("base58 encoded data")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Self::Value::from_b58_hash(v)
+                    .map_err(|e| E::custom(format!("cannot convert from base58: {}", e)))
+            }
+        }
+
+        deserializer.deserialize_string(SignatureVisitor)
     }
 }
 

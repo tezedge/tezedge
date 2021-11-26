@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, convert::TryInto, num::TryFromIntError, time::Instant};
 
-use crypto::blake2b::{self, Blake2bError};
+use crypto::{blake2b::{self, Blake2bError}, hash::HashBase58};
 use slog::{debug, error};
 use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::base::{
@@ -91,13 +91,11 @@ where
             if let Some(EndorsingRightsRequest::PendingBlockHeader { .. }) =
                 endorsing_rights_state.get(key)
             {
-                store.dispatch(kv_block_header::StorageBlockHeaderGetAction {
-                    key: key.current_block_hash.clone(),
-                });
+                store.dispatch(kv_block_header::StorageBlockHeaderGetAction::new(key.current_block_hash.clone()));
             }
         }
         Action::StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction {
-            key,
+            key: HashBase58(key),
             value,
         }) => {
             for key in endorsing_rights_state
@@ -119,7 +117,7 @@ where
             }
         }
         Action::StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction {
-            key,
+            key: HashBase58(key),
             error,
         }) => {
             for key in endorsing_rights_state
@@ -158,14 +156,12 @@ where
                 endorsing_rights_state.get(key)
             {
                 store.dispatch(
-                    kv_block_additional_data::StorageBlockAdditionalDataGetAction {
-                        key: key.current_block_hash.clone(),
-                    },
+                    kv_block_additional_data::StorageBlockAdditionalDataGetAction::new(key.current_block_hash.clone()),
                 );
             }
         }
         Action::StorageBlockAdditionalDataOk(
-            kv_block_additional_data::StorageBlockAdditionalDataOkAction { key, value },
+            kv_block_additional_data::StorageBlockAdditionalDataOkAction { key: HashBase58(key), value },
         ) => {
             let rights_keys: Vec<_> = endorsing_rights_state
                 .iter()
@@ -186,7 +182,7 @@ where
             }
         }
         Action::StorageBlockAdditionalDataError(
-            kv_block_additional_data::StorageBlockAdditionalDataErrorAction { key, error },
+            kv_block_additional_data::StorageBlockAdditionalDataErrorAction { key: HashBase58(key), error },
         ) => {
             for key in endorsing_rights_state
                 .iter()
@@ -227,10 +223,10 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = data_proto_hash.clone();
-                store.dispatch(kv_constants::StorageConstantsGetAction { key });
+                store.dispatch(kv_constants::StorageConstantsGetAction::new(key));
             }
         }
-        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction { key, value }) => {
+        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction { key: HashBase58(key), value }) => {
             for key in endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -267,7 +263,7 @@ where
                 }
             }
         }
-        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction { key, error }) => {
+        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction { key: HashBase58(key), error }) => {
             let rights_keys: Vec<_> = endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -314,10 +310,10 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = data_proto_hash.clone();
-                store.dispatch(kv_cycle_eras::StorageCycleErasGetAction { key });
+                store.dispatch(kv_cycle_eras::StorageCycleErasGetAction::new(key));
             }
         }
-        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key, value }) => {
+        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key: HashBase58(key), value }) => {
             for key in endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -345,7 +341,7 @@ where
             }
         }
         Action::StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction {
-            key,
+            key: HashBase58(key),
             error,
         }) => {
             for key in endorsing_rights_state
@@ -430,7 +426,7 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = *data_cycle;
-                store.dispatch(kv_cycle_meta::StorageCycleMetaGetAction { key });
+                store.dispatch(kv_cycle_meta::StorageCycleMetaGetAction { key: key.into() });
             }
         }
         Action::StorageCycleMetaOk(kv_cycle_meta::StorageCycleMetaOkAction { key, value }) => {
@@ -441,7 +437,7 @@ where
                         cycle: data_cycle, ..
                     } = request
                     {
-                        if data_cycle == key {
+                        if data_cycle == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -470,7 +466,7 @@ where
                         cycle: data_cycle, ..
                     } = request
                     {
-                        if data_cycle == key {
+                        if data_cycle == &key.0 {
                             Some(rights_key)
                         } else {
                             None

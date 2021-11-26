@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::HashTrait;
+use crypto::hash::{HashBase58, HashTrait};
 use nom::{
     bitvec::{bitvec, order::Msb0, view::BitView},
     branch::*,
@@ -259,6 +259,15 @@ hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 hash_nom_reader!(Signature);
+
+impl<H> NomReader for HashBase58<H>
+where
+    H: NomReader,
+{
+    fn nom_read(bytes: &[u8]) -> NomResult<Self> {
+        nom::combinator::map(H::nom_read, Self)(bytes)
+    }
+}
 
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {
