@@ -28,6 +28,12 @@ pub enum Event {
     /// Event for P2p peer, which wasn't found in `MioService`. Should
     /// be impossible!
     P2pPeerUnknown(P2pPeerUnknownEvent),
+
+    /// Event for Websocket client
+    WebsocketServer(WebsocketServerEvent),
+
+    /// Event for websocket client.
+    WebsocketClient(WebsocketClientEvent),
 }
 
 impl EnablingCondition<State> for Event {
@@ -37,6 +43,8 @@ impl EnablingCondition<State> for Event {
             Self::P2pServer(e) => e.is_enabled(state),
             Self::P2pPeer(e) => e.is_enabled(state),
             Self::P2pPeerUnknown(e) => e.is_enabled(state),
+            Self::WebsocketServer(e) => e.is_enabled(state),
+            Self::WebsocketClient(e) => e.is_enabled(state),
         }
     }
 }
@@ -123,6 +131,29 @@ pub struct P2pPeerUnknownEvent {
 }
 
 impl EnablingCondition<State> for P2pPeerUnknownEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebsocketClientEvent {
+    // TODO: maybe we should rename this? as ws will be using it as well
+    pub token: PeerToken,
+
+    pub address: SocketAddr,
+}
+
+impl EnablingCondition<State> for WebsocketClientEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebsocketServerEvent;
+
+impl EnablingCondition<State> for WebsocketServerEvent {
     fn is_enabled(&self, _: &State) -> bool {
         true
     }

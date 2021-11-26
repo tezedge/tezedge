@@ -105,6 +105,9 @@ impl ShellAutomatonManager {
         if !p2p_config.disable_bootstrap_lookup {
             bootstrap_addresses.extend(p2p_config.bootstrap_lookup_addresses.iter().cloned());
         };
+        
+        // TODO: get this addr from the config, only hardcode for testing purposes
+        let websocket_address = SocketAddr::from_str("0.0.0.0:4444").unwrap();
 
         // override port passed listener address
         let mut listener_addr = p2p_config.listener_address;
@@ -118,6 +121,7 @@ impl ShellAutomatonManager {
 
         let mio_service = MioServiceDefault::new(
             listener_addr,
+            websocket_address,
             // Buffer size for reading. Chunk size is 2 bytes (u16) and that is
             // the max number of bytes that we will want to read from kernel at
             // any given point.

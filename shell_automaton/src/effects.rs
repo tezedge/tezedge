@@ -33,6 +33,8 @@ use crate::storage::state_snapshot::create::{
     storage_state_snapshot_create_effects, StorageStateSnapshotCreateInitAction,
 };
 
+use crate::websocket::connection::websocket_connection_incoming_accept_effects;
+
 use crate::rpc::rpc_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -100,6 +102,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     storage_request_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
+
+    websocket_connection_incoming_accept_effects(store, action);
 
     actors_effects(store, action);
     rpc_effects(store, action);

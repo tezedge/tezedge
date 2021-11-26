@@ -54,6 +54,8 @@ pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};
 
+pub mod websocket;
+
 pub type Port = u16;
 
 pub type Store<Service> = redux_rs::Store<State, Service, Action>;
@@ -94,6 +96,16 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
             eprintln!("P2p: failed to start server. Error: {:?}", err);
         }
 
+        // TODO: (probably same as obove) create action for it.
+        if let Err(err) = self
+            .store
+            .service
+            .mio()
+            .websocket_connection_incoming_listen_start()
+        {
+            eprintln!("Websocket: failed to start server. Error: {:?}", err);
+        }
+
         for (address, port) in peers_dns_lookup_addrs.into_iter() {
             self.store
                 .dispatch(PeersDnsLookupInitAction { address, port });
@@ -126,6 +138,8 @@ where
             match self.store.service().mio().transform_event(event) {
                 Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event),
                 Event::P2pPeer(p2p_peer_event) => self.store.dispatch(p2p_peer_event),
+                Event::WebsocketServer(websocket_server_event) => self.store.dispatch(websocket_server_event),
+                Event::WebsocketClient(websocket_client_event) => self.store.dispatch(websocket_client_event),
                 Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event),
                 _ => false,
             };

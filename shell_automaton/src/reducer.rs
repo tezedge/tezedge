@@ -30,6 +30,7 @@ use crate::peers::remove::peers_remove_reducer;
 
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
+use crate::websocket::connection::websocket_connection_incoming_accept_reducer;
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
     state.set_last_action(action);
@@ -74,6 +75,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_graylist_reducer,
         storage_request_reducer,
         storage_state_snapshot_create_reducer,
+        websocket_connection_incoming_accept_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer

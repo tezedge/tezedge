@@ -151,4 +151,20 @@ impl MioService for MioServiceMocked {
             ConnectedState::OutgoingConnected => Some(peer_ref),
         }
     }
+
+    fn websocket_connection_incoming_listen_start(&mut self) -> io::Result<()> {
+        todo!()
+    }
+
+    fn websocket_connection_incoming_listen_stop(&mut self) {
+        todo!()
+    }
+
+    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError> {
+        todo!()
+    }
+
+    fn websocket_disconnect(&mut self, token: PeerToken) {
+        todo!()
+    }
 }

@@ -44,6 +44,7 @@ pub struct State {
 
     pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
+    pub websocket_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
 
     pub paused_loops: PausedLoopsState,
@@ -61,6 +62,7 @@ impl State {
             config,
             peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
+            websocket_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
 
             paused_loops: PausedLoopsState::new(),

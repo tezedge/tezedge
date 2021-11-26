@@ -6,7 +6,7 @@ use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
-use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
+use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent, WebsocketServerEvent, WebsocketClientEvent};
 use crate::State;
 
 use crate::paused_loops::{
@@ -62,6 +62,11 @@ use crate::storage::request::{
 use crate::storage::state_snapshot::create::{
     StorageStateSnapshotCreateErrorAction, StorageStateSnapshotCreateInitAction,
     StorageStateSnapshotCreatePendingAction, StorageStateSnapshotCreateSuccessAction,
+};
+
+use crate::websocket::connection::{
+    WebSocketConnectionIncomingAcceptSuccessAction, WebSocketConnectionIncomingAcceptAction,
+    WebSocketConnectionIncomingAcceptErrorAction
 };
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -165,6 +170,8 @@ pub enum Action {
     MioWaitForEvents(MioWaitForEventsAction),
     MioTimeoutEvent(MioTimeoutEvent),
     P2pServerEvent(P2pServerEvent),
+    WebsocketServerEvent(WebsocketServerEvent),
+    WebsocketClient(WebsocketClientEvent),
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),
 
@@ -246,6 +253,11 @@ pub enum Action {
     StorageStateSnapshotCreatePending(StorageStateSnapshotCreatePendingAction),
     StorageStateSnapshotCreateError(StorageStateSnapshotCreateErrorAction),
     StorageStateSnapshotCreateSuccess(StorageStateSnapshotCreateSuccessAction),
+
+    // Websocket actions
+    WebSocketConnectionIncomingAcceptSuccess(WebSocketConnectionIncomingAcceptSuccessAction),
+    WebSocketConnectionIncomingAccept(WebSocketConnectionIncomingAcceptAction),
+    WebSocketConnectionIncomingAcceptError(WebSocketConnectionIncomingAcceptErrorAction),
 }
 
 impl Action {

@@ -4,12 +4,14 @@
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
+use tungstenite::HandshakeError;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use tungstenite::protocol::{WebSocket, Message};
 
-use crate::event::{Event, P2pPeerEvent, P2pPeerUnknownEvent, P2pServerEvent, WakeupEvent};
+use crate::event::{Event, P2pPeerEvent, P2pPeerUnknownEvent, P2pServerEvent, WakeupEvent, WebsocketClientEvent, WebsocketServerEvent};
 use crate::io_error_kind::IOErrorKind;
 use crate::peer::PeerToken;
 
@@ -22,6 +24,12 @@ pub const MIO_SERVER_TOKEN: mio::Token = mio::Token(usize::MAX);
 
 /// Event with this token will be issued, when `mio::Waker::wake` is called.
 pub const MIO_WAKE_TOKEN: mio::Token = mio::Token(usize::MAX - 1);
+
+/// WS token bounds
+pub const MIO_WEBSOCKET_SERVER_TOKEN: mio::Token = mio::Token(usize::MAX - 2);
+
+pub const WEBSOCKET_EVENT_TOKEN_MIN: mio::Token = mio::Token(10_000);
+pub const WEBSOCKET_EVENT_TOKEN_MAX: mio::Token = mio::Token(19_999);
 
 pub type MioPeerDefault = MioPeer<TcpStream>;
 
@@ -43,6 +51,12 @@ pub trait MioService {
     fn peer_disconnect(&mut self, token: PeerToken);
 
     fn peer_get(&mut self, token: PeerToken) -> Option<MioPeerRefMut<Self::PeerStream>>;
+
+    // TODO: websocket stuff
+    fn websocket_connection_incoming_listen_start(&mut self) -> io::Result<()>;
+    fn websocket_connection_incoming_listen_stop(&mut self);
+    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError>;
+    fn websocket_disconnect(&mut self, token: PeerToken);
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -96,6 +110,26 @@ impl<Stream: Clone> Clone for MioPeer<Stream> {
     }
 }
 
+pub struct MioWsClient<W> {
+    pub address: SocketAddr,
+    pub websocket: W,
+}
+
+impl<W> MioWsClient<W> {
+    pub fn new(address: SocketAddr, websocket: W) -> Self {
+        Self { address, websocket }
+    }
+}
+
+impl<W: Clone> Clone for MioWsClient<W> {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address,
+            websocket: self.websocket.clone()
+        }
+    }
+}
+
 pub struct MioPeerRefMut<'a, Stream> {
     /// Pre-allocated buffer that will be used as a temporary container
     /// for doing read syscall.
@@ -133,6 +167,7 @@ impl<'a, S: Write> MioPeerRefMut<'a, S> {
 
 pub struct MioServiceDefault {
     listen_addr: SocketAddr,
+    websocket_addr: SocketAddr,
 
     /// Backlog size for incoming connections.
     ///
@@ -148,14 +183,16 @@ pub struct MioServiceDefault {
     poll: mio::Poll,
     waker: Arc<mio::Waker>,
     server: Option<TcpListener>,
+    websocket_server: Option<TcpListener>,
 
     peers: Slab<MioPeer<TcpStream>>,
+    websocket_clients: Slab<MioWsClient<WebSocket<TcpStream>>>,
 }
 
 impl MioServiceDefault {
     const DEFAULT_BACKLOG_SIZE: u32 = 255;
 
-    pub fn new(listen_addr: SocketAddr, buffer_size: usize) -> Self {
+    pub fn new(listen_addr: SocketAddr, websocket_addr: SocketAddr, buffer_size: usize) -> Self {
         let poll = mio::Poll::new().expect("failed to create mio::Poll");
         let waker = Arc::new(
             mio::Waker::new(poll.registry(), MIO_WAKE_TOKEN).expect("failed to create mio::Waker"),
@@ -163,12 +200,15 @@ impl MioServiceDefault {
 
         Self {
             listen_addr,
+            websocket_addr,
             backlog_size: Self::DEFAULT_BACKLOG_SIZE,
             buffer: vec![0; buffer_size],
             poll,
             waker,
             server: None,
+            websocket_server: None,
             peers: Slab::new(),
+            websocket_clients: Slab::new(),
         }
     }
 
@@ -197,20 +237,30 @@ impl MioService for MioServiceDefault {
             WakeupEvent {}.into()
         } else if event.token() == MIO_SERVER_TOKEN {
             P2pServerEvent {}.into()
+        } else if event.token() == MIO_WEBSOCKET_SERVER_TOKEN {
+            WebsocketServerEvent {}.into()
         } else {
             let is_closed = event.is_error() || event.is_read_closed() || event.is_write_closed();
             let peer_token = PeerToken::new_unchecked(event.token().0);
 
             match self.peer_get(peer_token) {
-                Some(peer) => P2pPeerEvent {
-                    token: peer_token,
-                    address: peer.address,
-
-                    is_readable: event.is_readable(),
-                    is_writable: event.is_writable(),
-                    is_closed,
+                Some(peer) => {
+                    if event.token() > WEBSOCKET_EVENT_TOKEN_MIN && event.token() <= WEBSOCKET_EVENT_TOKEN_MAX {
+                        WebsocketClientEvent {
+                            token: peer_token,
+                            address: peer.address,
+                        }.into()
+                    } else {
+                        P2pPeerEvent {
+                            token: peer_token,
+                            address: peer.address,
+        
+                            is_readable: event.is_readable(),
+                            is_writable: event.is_writable(),
+                            is_closed,
+                        }.into()
+                    }
                 }
-                .into(),
                 None => P2pPeerUnknownEvent {
                     token: peer_token,
 
@@ -325,6 +375,90 @@ impl MioService for MioServiceDefault {
         match self.peers.get_mut(token.index()) {
             Some(peer) => Some(MioPeerRefMut::new(buffer, peer.address, &mut peer.stream)),
             None => None,
+        }
+    }
+
+    // Note: I think these should be merged with the peer_.. variant with some tweaks
+    fn websocket_connection_incoming_listen_start(&mut self) -> io::Result<()> {
+        if self.websocket_server.is_none() {
+            let socket = match self.listen_addr.ip() {
+                IpAddr::V4(_) => TcpSocket::new_v4()?,
+                IpAddr::V6(_) => TcpSocket::new_v6()?,
+            };
+
+            // read more details about why not on windows in mio docs
+            // for [mio::TcpListener::bind].
+            #[cfg(not(windows))]
+            socket.set_reuseaddr(true)?;
+
+            socket.bind(self.websocket_addr)?;
+
+            let mut server = socket.listen(self.backlog_size)?;
+
+            self.poll.registry().register(
+                &mut server,
+                MIO_WEBSOCKET_SERVER_TOKEN,
+                mio::Interest::READABLE,
+            )?;
+
+            self.websocket_server = Some(server);
+        }
+        Ok(())
+    }
+
+    fn websocket_connection_incoming_listen_stop(&mut self) {
+        drop(self.websocket_server.take());
+    }
+
+    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError> {
+        let server = &mut self.websocket_server;
+        let poll = &mut self.poll;
+        let websocket_clients = &mut self.websocket_clients;
+
+        if let Some(server) = server.as_mut() {
+            let (mut stream, address) = server
+                .accept()
+                .map_err(PeerConnectionIncomingAcceptError::accept_error)?;
+
+            let websocket_client_entry = websocket_clients.vacant_entry();
+            let token = mio::Token(websocket_client_entry.key() + WEBSOCKET_EVENT_TOKEN_MIN.0);
+
+            poll.registry()
+                .register(
+                    &mut stream,
+                    token,
+                    mio::Interest::READABLE | mio::Interest::WRITABLE,
+                )
+                .map_err(PeerConnectionIncomingAcceptError::poll_register_error)?;
+
+            // TODO: deal with this unwrap later
+            // let websocket = tungstenite::accept(stream).unwrap();
+            // TODO: move this to a separate fuinction with separate actions as Would block is needed to be handled on the websocket not on the stream
+            let websocket = match tungstenite::accept(stream) {
+                Ok(ws) => ws,
+                Err(e) => {
+                    match e {
+                        HandshakeError::Interrupted(_) => return Err(PeerConnectionIncomingAcceptError::WouldBlock),
+                        // TODO: create errors specifically for the Ws
+                        _ => return Err(PeerConnectionIncomingAcceptError::ServerNotListening)
+                    }
+                }
+            };
+
+            let client = MioWsClient::new(address, websocket);
+            websocket_client_entry.insert(client);
+
+            Ok((PeerToken::new_unchecked(token.0), address))
+        } else {
+            Err(PeerConnectionIncomingAcceptError::ServerNotListening)
+        }
+    }
+
+    fn websocket_disconnect(&mut self, token: PeerToken) {
+        let index = token.index();
+        if self.websocket_clients.contains(index) {
+            let mut client = self.websocket_clients.remove(index);
+            let _ = self.poll.registry().deregister(client.websocket.get_mut());
         }
     }
 }
