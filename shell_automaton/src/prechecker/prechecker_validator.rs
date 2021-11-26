@@ -3,7 +3,10 @@
 
 use std::time::Instant;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::{
+    hash::{BlockHash, ChainId},
+    CryptoError,
+};
 use slog::{debug, trace, FnValue, Logger};
 use tezos_messages::{
     base::signature_public_key::SignatureWatermark,
@@ -183,6 +186,9 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
                 ) {
                     Ok(true) => (),
                     Ok(_) => return refused(EndorsementValidationError::InlinedSignatureMismatch),
+                    Err(CryptoError::Unsupported(_)) => {
+                        return refused(EndorsementValidationError::UnsupportedPublicKey)
+                    }
                     Err(_) => return refused(EndorsementValidationError::SignatureError),
                 }
 

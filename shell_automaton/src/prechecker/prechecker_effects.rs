@@ -52,7 +52,7 @@ where
                 }
             };
 
-            debug!(log, "New block applied"; "block_hash" => block_hash.to_string());
+            debug!(log, "New block applied"; "block_hash" => block_hash.to_base58_check());
 
             store.dispatch(PrecheckerCacheAppliedBlockAction {
                 block_hash: block_hash.clone(),
@@ -95,12 +95,22 @@ where
             block_hash,
             ..
         }) => {
-            for (key, state) in prechecker_state
+            for (key, op) in prechecker_state
                 .non_terminals()
                 .filter(|(_, state)| state.operation.branch() != block_hash)
             {
-                debug!(log, "Prevalidation operation still unprocessed";
-                           "operation" => key.operation.to_string(), "state" => state.state.as_ref(), "block_hash" => state.block_hash().to_string());
+                debug!(log, "Prevalidator operation still unprocessed";
+                           "operation" => key.operation.to_base58_check(), "state" => op.state.as_ref(), "block_hash" => op.block_hash().to_base58_check());
+            }
+
+            for (key, op) in prechecker_state_operations {
+                match &op.state {
+                    PrecheckerOperationState::Refused { error, .. } => {
+                        debug!(log, "Prevalidator refused operation";
+                           "operation" => key.operation.to_base58_check(), "error" => error.to_string(), "block_hash" => op.block_hash().to_base58_check())
+                    }
+                    _ => (),
+                }
             }
         }
 
@@ -371,6 +381,10 @@ where
                         })
                     }
                     Err(Refused {
+                        error: EndorsementValidationError::UnsupportedPublicKey,
+                        ..
+                    }) => store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() }),
+                    Err(Refused {
                         protocol_data,
                         error,
                     }) => store.dispatch(PrecheckerEndorsementValidationRefusedAction {
@@ -406,21 +420,12 @@ where
                 ..
             }) = prechecker_state_operations.get(key)
             {
-                match error {
-                    EndorsementValidationError::UnsupportedPublicKey => {
-                        let action =
-                            PrecheckerPrecheckOperationResponseAction::prevalidate(operation);
-                        store.dispatch(action);
-                    }
-                    _ => {
-                        let action = PrecheckerPrecheckOperationResponseAction::reject(
-                            &key.operation,
-                            protocol_data.clone(),
-                            serde_json::to_string(error).unwrap_or("<unserialized>".to_string()),
-                        );
-                        store.dispatch(action);
-                    }
-                }
+                let action = PrecheckerPrecheckOperationResponseAction::reject(
+                    &key.operation,
+                    protocol_data.clone(),
+                    serde_json::to_string(error).unwrap_or("<unserialized>".to_string()),
+                );
+                store.dispatch(action);
             }
         }
         Action::PrecheckerError(PrecheckerErrorAction { key, error }) => {

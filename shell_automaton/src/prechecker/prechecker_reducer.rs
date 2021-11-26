@@ -204,9 +204,16 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingContentDecoding { .. } = &state.state {
-                        debug!(log, ">>> Prechecking cannot be performed"; "operation" => key.operation.to_string(), "duration" => format!("{:?}", action.id.duration_since(state.start)));
-                        state.state = PrecheckerOperationState::ProtocolNeeded;
+                    match &state.state {
+                        PrecheckerOperationState::PendingContentDecoding { .. } => {
+                            debug!(log, ">>> Prechecking cannot be performed (not an endorsement)"; "operation" => key.operation.to_string(), "duration" => format!("{:?}", action.id.duration_since(state.start)));
+                            state.state = PrecheckerOperationState::ProtocolNeeded;
+                        }
+                        PrecheckerOperationState::PendingOperationPrechecking { .. } => {
+                            debug!(log, ">>> Prechecking cannot be performed (unsupported ECDSA)"; "operation" => key.operation.to_string(), "duration" => format!("{:?}", action.id.duration_since(state.start)));
+                            state.state = PrecheckerOperationState::ProtocolNeeded;
+                        }
+                        _ => (),
                     }
                 });
         }
