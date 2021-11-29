@@ -15,6 +15,7 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] [docker-compose.debug.yml](docker-compose.debug.yml)
 - [ ] [docker-compose.storage.irmin.yml](docker-compose.storage.irmin.yml)
 - [ ] [docker-compose.storage.memory.yml](docker-compose.storage.memory.yml)
+- [ ] [docker-compose.storage.persistent.yml](docker-compose.storage.persistent.yml)
 - [ ] [docker-compose.yml](docker-compose.yml)
 - [ ] [apps/node_monitoring/docker-compose.deploy.mainnet.latest-release.yml](apps/node_monitoring/docker-compose.deploy.mainnet.latest-release.yml)
 - [ ] [apps/node_monitoring/docker-compose.deploy.mainnet.latest.yml](apps/node_monitoring/docker-compose.deploy.mainnet.latest.yml)

@@ -385,18 +385,25 @@ e.g.:
 TEZOS_CONTEXT_STORAGE=irmin NODE_HOSTNAME_OR_IP=123.123.123.123 docker-compose -f docker-compose.debug.yml up
 ```
 
-#### Mainnet - light-node with irmin context + light-node with memory context + tezedge-explorer
+#### Mainnet - light-node with irmin context + light-node with memory context + light-node with persistent context + tezedge-explorer
 
 This runs two explorers:
 - http://localhost:8181 - with Irmin storage
 - http://localhost:8282 - with Memory storage
+- http://localhost:8383 - with Persistent storage
 
 ```
+# Irmin context
 docker-compose -f docker-compose.storage.irmin.yml pull
 docker-compose -f docker-compose.storage.irmin.yml up
 
+# TezEdge in-memory context
 docker-compose -f docker-compose.storage.memory.yml pull
 docker-compose -f docker-compose.storage.memory.yml up
+
+# TezEdge persistent context
+docker-compose -f docker-compose.storage.persistent.yml pull
+docker-compose -f docker-compose.storage.persistent.yml up
 ```
 
 *(optional) Environment configuration:*
