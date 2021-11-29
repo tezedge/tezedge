@@ -1397,6 +1397,15 @@ impl ChainManager {
         {
             let mut is_bootstrapped = self.current_bootstrap_state.is_bootstrapped();
 
+            let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
+                ChainId::clone(&chain_id),
+                BlockHeader::clone(&block.header),
+                is_bootstrapped,
+            );
+            if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
+                warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
+            }
+
             if is_bootstrapped {
                 info!(log, "New current head";
                            "block_header_hash" => new_head.block_hash().to_base58_check(),
@@ -1959,14 +1968,6 @@ impl Receive<ProcessValidatedBlock> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ProcessValidatedBlock, _: Sender) {
-        let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
-            ChainId::clone(&msg.chain_id),
-            BlockHeader::clone(&msg.block.header),
-            self.current_bootstrap_state.is_bootstrapped(),
-        );
-        if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
-            warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
-        }
         match self.process_applied_block(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
