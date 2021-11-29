@@ -312,7 +312,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.10.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.11.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
@@ -385,18 +385,25 @@ e.g.:
 TEZOS_CONTEXT_STORAGE=irmin NODE_HOSTNAME_OR_IP=123.123.123.123 docker-compose -f docker-compose.debug.yml up
 ```
 
-#### Mainnet - light-node with irmin context + light-node with memory context + tezedge-explorer
+#### Mainnet - light-node with irmin context + light-node with memory context + light-node with persistent context + tezedge-explorer
 
 This runs two explorers:
 - http://localhost:8181 - with Irmin storage
 - http://localhost:8282 - with Memory storage
+- http://localhost:8383 - with Persistent storage
 
 ```
+# Irmin context
 docker-compose -f docker-compose.storage.irmin.yml pull
 docker-compose -f docker-compose.storage.irmin.yml up
 
+# TezEdge in-memory context
 docker-compose -f docker-compose.storage.memory.yml pull
 docker-compose -f docker-compose.storage.memory.yml up
+
+# TezEdge persistent context
+docker-compose -f docker-compose.storage.persistent.yml pull
+docker-compose -f docker-compose.storage.persistent.yml up
 ```
 
 *(optional) Environment configuration:*
