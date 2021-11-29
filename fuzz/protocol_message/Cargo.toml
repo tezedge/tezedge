@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_protocol_message"
-version = "1.11.0"
+version = "1.12.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 publish = false
