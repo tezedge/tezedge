@@ -49,6 +49,8 @@ pub enum IndexInitializationError {
         #[from]
         reason: LockDatabaseError,
     },
+    #[error("Sizes of the files do not match values in `sizes.db`")]
+    InvalidSizesOfFiles,
 }
 
 pub fn initialize_tezedge_index(
