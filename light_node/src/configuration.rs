@@ -388,7 +388,7 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("disable-peer-graylist")
             .long("disable-peer-graylist")
             .global(true)
-            .help("Disable peer blacklisting"))
+            .help("Disable peer graylisting"))
         .arg(Arg::with_name("mempool-downloaded-operation-max-ttl-in-secs")
             .long("mempool-downloaded-operation-max-ttl-in-secs")
             .takes_value(true)
