@@ -184,7 +184,6 @@ impl BootstrapState {
                        "reason" => reason,
                        "peer_ip" => peer_id.address.to_string());
 
-            self.clean_peer_data(&peer_id.address);
             disconnect_peer(&peer_id, &self.data_requester);
         }
     }
@@ -213,7 +212,7 @@ impl BootstrapState {
         let mut rng = rand::thread_rng();
         let data_requester = &*self.data_requester;
 
-        self.peers.retain(|_, peer_state| {
+        for (_, peer_state) in self.peers.iter_mut() {
             // clear peer state
             peer_state.empty_bootstrap_state = Some(Instant::now());
             peer_state.is_bootstrapped = false;
@@ -234,8 +233,7 @@ impl BootstrapState {
                             "peer_id" => peer_state.peer_id.public_key_hash.to_base58_check(), "peer_ip" => peer_state.peer_id.address.to_string());
                 disconnect_peer(&peer_state.peer_id, data_requester);
             }
-            retain_peer
-        });
+        }
     }
 
     pub fn blocks_scheduled_count(&self) -> usize {
