@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use derive_more::From;
-use redux_rs::ActionId;
 use serde::{Deserialize, Serialize};
 
 use crypto::{crypto_box::PublicKey, hash::CryptoboxPublicKeyHash};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::Port;
+use crate::{ActionId, Port};
 
 use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnecting;

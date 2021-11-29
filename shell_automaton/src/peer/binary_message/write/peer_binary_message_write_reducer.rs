@@ -3,19 +3,17 @@
 
 use std::cmp;
 
-use redux_rs::ActionWithId;
-
 use crate::peer::chunk::write::{PeerChunkWrite, PeerChunkWriteState};
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::PeerBinaryMessageWriteState;
 
 const MAX_UNENCRYPTED_CHUNK_SIZE: usize =
     tezos_messages::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
 
-pub fn peer_binary_message_write_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_binary_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerBinaryMessageWriteSetContent(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {

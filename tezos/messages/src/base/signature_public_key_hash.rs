@@ -15,6 +15,8 @@ use crypto::hash::FromBytesError;
 use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
+
 #[derive(Debug, Error, PartialEq)]
 pub enum ConversionError {
     #[error("Conversion from invalid public key")]
@@ -61,7 +63,7 @@ impl From<Blake2bError> for ConversionError {
 }
 
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),

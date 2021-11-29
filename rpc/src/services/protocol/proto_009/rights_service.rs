@@ -9,7 +9,7 @@ use itertools::Itertools;
 
 use crate::services::dev_services::contract_id_to_contract_address_for_index;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_009::rights::{BakingRights, EndorsingRight};
 
 use storage::cycle_storage::CycleData;

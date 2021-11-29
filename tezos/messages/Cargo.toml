@@ -1,6 +1,6 @@
 [package]
 name = "tezos_messages"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -37,6 +37,10 @@ harness = false
 
 [[bench]]
 name = "encoders_benchmark"
+harness = false
+
+[[bench]]
+name = "operation_benchmark"
 harness = false
 
 [dev-dependencies]

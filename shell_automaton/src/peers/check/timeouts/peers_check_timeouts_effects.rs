@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::Store;
-
 use crate::peer::connection::incoming::{
     PeerConnectionIncomingError, PeerConnectionIncomingErrorAction,
 };
@@ -13,7 +11,7 @@ use crate::peer::connection::PeerConnectionStatePhase;
 use crate::peer::handshaking::{PeerHandshakingError, PeerHandshakingErrorAction};
 use crate::peer::{Peer, PeerStatus};
 use crate::peers::graylist::PeersGraylistIpRemoveAction;
-use crate::{Action, ActionWithId, Service, State};
+use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
     PeerTimeout, PeersCheckTimeoutsCleanupAction, PeersCheckTimeoutsInitAction,
@@ -46,10 +44,8 @@ fn check_timeout(
     })
 }
 
-pub fn peers_check_timeouts_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peers_check_timeouts_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     let state = store.state.get();
@@ -98,13 +94,10 @@ pub fn peers_check_timeouts_effects<S>(
                 })
                 .collect();
 
-            store.dispatch(
-                PeersCheckTimeoutsSuccessAction {
-                    peer_timeouts,
-                    graylist_timeouts,
-                }
-                .into(),
-            );
+            store.dispatch(PeersCheckTimeoutsSuccessAction {
+                peer_timeouts,
+                graylist_timeouts,
+            });
         }
         Action::PeersCheckTimeoutsSuccess(_) => {
             match &state.peers.check_timeouts {
@@ -119,43 +112,34 @@ pub fn peers_check_timeouts_effects<S>(
                         match timeout {
                             PeerTimeout::Connecting(connecting) => match connecting {
                                 PeerConnectionStatePhase::Incoming(incoming) => {
-                                    store.dispatch(
-                                        PeerConnectionIncomingErrorAction {
-                                            address,
-                                            error: PeerConnectionIncomingError::Timeout(incoming),
-                                        }
-                                        .into(),
-                                    );
+                                    store.dispatch(PeerConnectionIncomingErrorAction {
+                                        address,
+                                        error: PeerConnectionIncomingError::Timeout(incoming),
+                                    });
                                 }
                                 PeerConnectionStatePhase::Outgoing(outgoing) => {
-                                    store.dispatch(
-                                        PeerConnectionOutgoingErrorAction {
-                                            address,
-                                            error: PeerConnectionOutgoingError::Timeout(outgoing),
-                                        }
-                                        .into(),
-                                    );
+                                    store.dispatch(PeerConnectionOutgoingErrorAction {
+                                        address,
+                                        error: PeerConnectionOutgoingError::Timeout(outgoing),
+                                    });
                                 }
                             },
                             PeerTimeout::Handshaking(timeout) => {
-                                store.dispatch(
-                                    PeerHandshakingErrorAction {
-                                        address,
-                                        error: PeerHandshakingError::Timeout(timeout),
-                                    }
-                                    .into(),
-                                );
+                                store.dispatch(PeerHandshakingErrorAction {
+                                    address,
+                                    error: PeerHandshakingError::Timeout(timeout),
+                                });
                             }
                         }
                     }
 
                     for ip in graylist_timeouts {
-                        store.dispatch(PeersGraylistIpRemoveAction { ip: ip.clone() }.into());
+                        store.dispatch(PeersGraylistIpRemoveAction { ip: ip.clone() });
                     }
                 }
                 _ => return,
             }
-            store.dispatch(PeersCheckTimeoutsCleanupAction {}.into());
+            store.dispatch(PeersCheckTimeoutsCleanupAction {});
         }
         _ => match &state.peers.check_timeouts {
             PeersCheckTimeoutsState::Idle { time } => {
@@ -163,7 +147,7 @@ pub fn peers_check_timeouts_effects<S>(
                     state.config.check_timeouts_interval.as_nanos() as u64;
 
                 if current_time - time >= check_timeouts_interval {
-                    store.dispatch(PeersCheckTimeoutsInitAction {}.into())
+                    store.dispatch(PeersCheckTimeoutsInitAction {});
                 }
             }
             _ => {}

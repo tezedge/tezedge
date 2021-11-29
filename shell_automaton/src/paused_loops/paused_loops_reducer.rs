@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::{Action, ActionWithId, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::PausedLoopCurrent;
 
-pub fn paused_loops_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn paused_loops_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PausedLoopsAdd(action) => {
             state.paused_loops.add(action.data.clone());

@@ -4,19 +4,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::service::storage_service::StorageError;
-use crate::ActionId;
-use crate::State;
+use crate::{ActionId, EnablingCondition, State};
 
 use super::StorageStateSnapshotCreateState;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateInitAction {}
 
-impl StorageStateSnapshotCreateInitAction {
-    // TODO: move inside a trait that every action needs to implement and must
-    // be checked on every dispatch call in redux_rs, before reducer is called,
-    // to make sure that if action is not enabled, we don't dispatch it.
-    pub fn enabling_condition(state: &State) -> bool {
+impl EnablingCondition<State> for StorageStateSnapshotCreateInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
         if let Some(interval) = state.config.record_state_snapshots_with_interval {
             match &state.storage.state_snapshot.create {
                 // We haven't saved any snapshots so we should create one.
@@ -42,13 +38,31 @@ pub struct StorageStateSnapshotCreatePendingAction {
     pub applied_actions_count: u64,
 }
 
+impl EnablingCondition<State> for StorageStateSnapshotCreatePendingAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateErrorAction {
     pub action_id: ActionId,
     pub error: StorageError,
 }
 
+impl EnablingCondition<State> for StorageStateSnapshotCreateErrorAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageStateSnapshotCreateSuccessAction {
     pub action_id: ActionId,
+}
+
+impl EnablingCondition<State> for StorageStateSnapshotCreateSuccessAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }

@@ -103,6 +103,7 @@ impl From<TezedgeContext> for TezedgeContextFFI {
 /// Array where we store the context keys from ocaml.
 ///
 /// This avoid the cost to allocate a Vec<_> on each ffi call.
+#[allow(clippy::large_enum_variant)]
 enum KeysArray<'a> {
     Inlined {
         length: usize,
@@ -111,7 +112,7 @@ enum KeysArray<'a> {
     Heap(Vec<&'a str>),
 }
 
-const KEYS_ARRAY_LENGTH: usize = 128;
+const KEYS_ARRAY_LENGTH: usize = 32;
 
 impl<'a> KeysArray<'a> {
     fn new() -> Self {
@@ -147,7 +148,7 @@ impl<'a> std::ops::Deref for KeysArray<'a> {
     fn deref(&self) -> &Self::Target {
         match self {
             KeysArray::Inlined { length, array } => &array[..*length],
-            KeysArray::Heap(heap) => &heap,
+            KeysArray::Heap(heap) => heap,
         }
     }
 }
@@ -191,7 +192,7 @@ pub fn get_context_index() -> Result<Option<TezedgeIndex>, TezedgeIndexError> {
         .read()
         .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .as_ref()
-        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None)))
+        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None, None)))
 }
 
 ocaml_export! {

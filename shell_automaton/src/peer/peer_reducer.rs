@@ -1,9 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::chunk::read::PeerChunkReadPartAction;
 use super::chunk::write::PeerChunkWritePartAction;
@@ -12,7 +10,7 @@ use super::{
     PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
 };
 
-pub fn peer_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerTryReadLoopStart(PeerTryReadLoopStartAction { address }) => {
             if let Some(peer) = state.peers.get_mut(address) {

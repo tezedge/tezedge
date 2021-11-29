@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
 use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::peer::binary_message::write::{
@@ -10,14 +9,12 @@ use crate::peer::binary_message::write::{
 use crate::peer::message::write::{PeerMessageWriteErrorAction, PeerMessageWriteSuccessAction};
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::Service;
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
 use super::{PeerMessageWriteInitAction, PeerMessageWriteNextAction};
 
-pub fn peer_message_write_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peer_message_write_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -33,13 +30,10 @@ pub fn peer_message_write_effects<S>(
             if let PeerBinaryMessageWriteState::Init { .. } = &peer.message_write.current {
                 if let Some(front_msg) = peer.message_write.queue.front() {
                     let message = front_msg.clone();
-                    store.dispatch(
-                        PeerMessageWriteInitAction {
-                            address: action.address,
-                            message,
-                        }
-                        .into(),
-                    );
+                    store.dispatch(PeerMessageWriteInitAction {
+                        address: action.address,
+                        message,
+                    });
                 }
             }
         }
@@ -54,21 +48,17 @@ pub fn peer_message_write_effects<S>(
 
             if let PeerBinaryMessageWriteState::Init { .. } = &peer.message_write.current {
                 match action.message.as_bytes() {
-                    Ok(bytes) => store.dispatch(
-                        PeerBinaryMessageWriteSetContentAction {
+                    Ok(bytes) => {
+                        store.dispatch(PeerBinaryMessageWriteSetContentAction {
                             address: action.address,
                             message: bytes,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     Err(err) => {
-                        store.dispatch(
-                            PeerMessageWriteErrorAction {
-                                address: action.address,
-                                error: err.into(),
-                            }
-                            .into(),
-                        );
+                        store.dispatch(PeerMessageWriteErrorAction {
+                            address: action.address,
+                            error: err.into(),
+                        });
                     }
                 }
             }
@@ -83,29 +73,20 @@ pub fn peer_message_write_effects<S>(
             };
 
             if let PeerBinaryMessageWriteState::Ready { .. } = &peer.message_write.current {
-                store.dispatch(
-                    PeerMessageWriteSuccessAction {
-                        address: action.address,
-                    }
-                    .into(),
-                );
+                store.dispatch(PeerMessageWriteSuccessAction {
+                    address: action.address,
+                });
             }
         }
         Action::PeerMessageWriteSuccess(action) => {
-            store.dispatch(
-                PeerMessageWriteNextAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+            store.dispatch(PeerMessageWriteNextAction {
+                address: action.address,
+            });
         }
         Action::PeerMessageWriteError(action) => {
-            store.dispatch(
-                PeersGraylistAddressAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+            store.dispatch(PeersGraylistAddressAction {
+                address: action.address,
+            });
         }
         _ => {}
     }

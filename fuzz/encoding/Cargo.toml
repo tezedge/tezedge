@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_encoding"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 publish = false

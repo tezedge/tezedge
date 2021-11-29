@@ -4,20 +4,35 @@
 //! This crate provides functions for manipulation with 'public key'.
 //! Tezos uses this kinds: edpk(ed25519), sppk(secp256k1), p2pk(p256)
 
-use std::convert::TryInto;
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{PublicKeyEd25519, PublicKeyP256, PublicKeySecp256k1};
+use crypto::hash::{
+    ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, PublicKeyEd25519, PublicKeyP256,
+    PublicKeySecp256k1,
+};
 
 use crate::base::ConversionError;
 
+use super::SignatureCurve;
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
+
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),
     P256(PublicKeyP256),
+}
+
+impl std::fmt::Debug for SignaturePublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string_representation())
+    }
 }
 
 impl SignaturePublicKey {
@@ -49,30 +64,39 @@ impl SignaturePublicKey {
     }
 
     #[inline]
-    pub fn from_hex_hash_and_curve(
-        hash: &str,
-        curve: &str,
-    ) -> Result<SignaturePublicKey, ConversionError> {
-        if hash.len() == 66 || hash.len() == 64 {
-            let hash = hex::decode(hash)?;
+    pub fn from_hash_and_curve(
+        hash: &[u8],
+        curve: SignatureCurve,
+    ) -> Result<Self, ConversionError> {
+        if hash.len() == 32 || hash.len() == 33 {
             let public_hash_key = match curve {
-                "ed25519" => SignaturePublicKey::Ed25519(hash.try_into()?),
-                "secp256k1" => SignaturePublicKey::Secp256k1(hash.try_into()?),
-                "p256" => SignaturePublicKey::P256(hash.try_into()?),
-                _ => {
-                    return Err(ConversionError::InvalidCurveTag {
-                        curve_tag: curve.to_string(),
-                    })
-                }
+                SignatureCurve::Ed25519 => Self::Ed25519(hash.try_into()?),
+                SignatureCurve::Secp256k1 => Self::Secp256k1(hash.try_into()?),
+                SignatureCurve::P256 => Self::P256(hash.try_into()?),
             };
             Ok(public_hash_key)
+        } else {
+            Err(ConversionError::InvalidHash {
+                hash: hex::encode(hash).to_string(),
+            })
+        }
+    }
+
+    #[inline]
+    pub fn from_hex_hash_and_curve(hash: &str, curve: &str) -> Result<Self, ConversionError> {
+        if hash.len() == 64 || hash.len() == 66 {
+            Self::from_hash_and_curve(
+                &hex::decode(hash)?,
+                SignatureCurve::from_str(curve).map_err(|_| ConversionError::InvalidCurveTag {
+                    curve_tag: curve.to_string(),
+                })?,
+            )
         } else {
             Err(ConversionError::InvalidHash {
                 hash: hash.to_string(),
             })
         }
     }
-    //
 
     /// convert public key byte string to contract id, e.g. data from context can be in this format
     ///
@@ -85,12 +109,12 @@ impl SignaturePublicKey {
     #[inline]
     pub fn from_tagged_bytes(pk: Vec<u8>) -> Result<SignaturePublicKey, ConversionError> {
         if pk.len() == 33 || pk.len() == 34 {
-            let tag = pk[1];
-
+            let tag = pk[0];
+            let bytes = &pk[1..];
             match tag {
-                0 => Self::from_hex_hash_and_curve(&hex::encode(&pk[2..]), "ed25519"),
-                1 => Self::from_hex_hash_and_curve(&hex::encode(&pk[2..]), "secp256k1"),
-                2 => Self::from_hex_hash_and_curve(&hex::encode(&pk[2..]), "p256"),
+                0 => Self::from_hash_and_curve(bytes, SignatureCurve::Ed25519),
+                1 => Self::from_hash_and_curve(bytes, SignatureCurve::Secp256k1),
+                2 => Self::from_hash_and_curve(bytes, SignatureCurve::P256),
                 _ => Err(ConversionError::InvalidPublicKey),
             }
         } else {
@@ -99,13 +123,130 @@ impl SignaturePublicKey {
     }
 }
 
+/// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader)]
+pub enum SignaturePublicKeyHash {
+    Ed25519(ContractTz1Hash),
+    Secp256k1(ContractTz2Hash),
+    P256(ContractTz3Hash),
+}
+
+impl std::fmt::Debug for SignaturePublicKeyHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string_representation())
+    }
+}
+
+impl SignaturePublicKeyHash {
+    #[inline]
+    pub fn to_string_representation(&self) -> String {
+        match self {
+            SignaturePublicKeyHash::Ed25519(h) => h.to_base58_check(),
+            SignaturePublicKeyHash::Secp256k1(h) => h.to_base58_check(),
+            SignaturePublicKeyHash::P256(h) => h.to_base58_check(),
+        }
+    }
+
+    #[inline]
+    fn from_hash_and_curve(hash: &[u8], curve: SignatureCurve) -> Result<Self, ConversionError> {
+        if hash.len() == 20 {
+            let public_hash_key = match curve {
+                SignatureCurve::Ed25519 => Self::Ed25519(hash.try_into()?),
+                SignatureCurve::Secp256k1 => Self::Secp256k1(hash.try_into()?),
+                SignatureCurve::P256 => Self::P256(hash.try_into()?),
+            };
+            Ok(public_hash_key)
+        } else {
+            Err(ConversionError::InvalidHash {
+                hash: hex::encode(hash).to_string(),
+            })
+        }
+    }
+
+    #[inline]
+    pub fn from_hex_hash_and_curve(hash: &str, curve: &str) -> Result<Self, ConversionError> {
+        if hash.len() == 40 {
+            Self::from_hash_and_curve(
+                &hex::decode(hash)?,
+                SignatureCurve::from_str(curve).map_err(|_| ConversionError::InvalidCurveTag {
+                    curve_tag: curve.to_string(),
+                })?,
+            )
+        } else {
+            Err(ConversionError::InvalidHash {
+                hash: hash.to_string(),
+            })
+        }
+    }
+
+    #[inline]
+    pub fn from_b58_hash(b58_hash: &str) -> Result<SignaturePublicKeyHash, ConversionError> {
+        if b58_hash.len() > 3 {
+            match &b58_hash[0..3] {
+                "tz1" => Ok(SignaturePublicKeyHash::Ed25519(
+                    ContractTz1Hash::from_base58_check(b58_hash)?,
+                )),
+                "tz2" => Ok(SignaturePublicKeyHash::Secp256k1(
+                    ContractTz2Hash::from_base58_check(b58_hash)?,
+                )),
+                "tz3" => Ok(SignaturePublicKeyHash::P256(
+                    ContractTz3Hash::from_base58_check(b58_hash)?,
+                )),
+                _ => Err(ConversionError::InvalidCurveTag {
+                    curve_tag: String::from(&b58_hash[0..3]),
+                }),
+            }
+        } else {
+            Err(ConversionError::InvalidHash {
+                hash: b58_hash.to_string(),
+            })
+        }
+    }
+
+    /// convert public key byte string to contract id, e.g. data from context can be in this format
+    ///
+    /// 1 byte tag and - 32 bytes for ed25519 (tz1)
+    ///                 - 33 bytes for secp256k1 (tz2) and p256 (tz3)
+    ///
+    /// # Arguments
+    ///
+    /// * `pk` - public key in byte string format
+    #[inline]
+    pub fn from_tagged_bytes(pk: Vec<u8>) -> Result<SignaturePublicKeyHash, ConversionError> {
+        SignaturePublicKey::from_tagged_bytes(pk)?
+            .try_into()
+            .map_err(|err| match err {
+                crypto::hash::TryFromPKError::Digest(err) => err.into(),
+                crypto::hash::TryFromPKError::Size(err) => err.into(),
+            })
+    }
+}
+
+impl TryFrom<SignaturePublicKey> for SignaturePublicKeyHash {
+    type Error = crypto::hash::TryFromPKError;
+
+    fn try_from(source: SignaturePublicKey) -> Result<Self, Self::Error> {
+        Ok(match source {
+            SignaturePublicKey::Ed25519(key) => SignaturePublicKeyHash::Ed25519(key.try_into()?),
+            SignaturePublicKey::Secp256k1(key) => {
+                SignaturePublicKeyHash::Secp256k1(key.try_into()?)
+            }
+            SignaturePublicKey::P256(key) => SignaturePublicKeyHash::P256(key.try_into()?),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use crypto::hash::{PublicKeyEd25519, PublicKeyP256, PublicKeySecp256k1};
 
-    use crate::base::signature_public_key::SignaturePublicKey;
+    use crate::base::ConversionError;
 
-    //tz1TEZtYnuLiZLdA6c7JysAUJcHMrogu4Cpr - edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP
+    use super::{SignaturePublicKey, SignaturePublicKeyHash};
+
+    //tz1gk3TDbU7cJuiBRMhwQXVvgDnjsxuWhcEA - edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP
     //tz2TSvNTh2epDMhZHrw73nV9piBX7kLZ9K9m - sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN
     //tz3bEQoFCZEEfZMskefZ8q8e4eiHH1pssRax - p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW
 
@@ -149,10 +290,22 @@ mod tests {
 
     #[test]
     fn test_from_hex_hash_and_curve() -> Result<(), anyhow::Error> {
+        println!(
+            "{}",
+            hex::encode(
+                PublicKeyEd25519::from_base58_check(
+                    "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP"
+                )
+                .unwrap()
+                .as_ref()
+            )
+        );
+
         let result = SignaturePublicKey::from_hex_hash_and_curve(
             &"b59a30aa9fa3ce235411eacd0050428d72cc4d4ccc6c534c27ce80cef7aa4871",
             &"ed25519",
-        )?;
+        )
+        .unwrap();
         assert_eq!(
             result.to_string_representation().as_str(),
             "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP"
@@ -161,7 +314,8 @@ mod tests {
         let result = SignaturePublicKey::from_hex_hash_and_curve(
             &"0345da8c775e6fa0063983ca599481a832a7b99bcf6721fc00f1e1737acfedf8c5",
             &"secp256k1",
-        )?;
+        )
+        .unwrap();
         assert_eq!(
             result.to_string_representation().as_str(),
             "sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN"
@@ -170,7 +324,8 @@ mod tests {
         let result = SignaturePublicKey::from_hex_hash_and_curve(
             &"02de449ce8ebe181fa51fc76e723bdd315500bb2bd429fcc8da60a714fb0bc44e4",
             &"p256",
-        )?;
+        )
+        .unwrap();
         assert_eq!(
             result.to_string_representation().as_str(),
             "p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW"
@@ -186,5 +341,152 @@ mod tests {
             | SignaturePublicKey::P256(PublicKeyP256(hash))
             | SignaturePublicKey::Secp256k1(PublicKeySecp256k1(hash)) => hash,
         })
+    }
+
+    #[test]
+    fn test_ed25519_from_bytes() -> Result<(), anyhow::Error> {
+        let valid_pk = vec![
+            0, 3, 65, 14, 206, 174, 244, 127, 36, 48, 150, 156, 243, 27, 213, 139, 41, 30, 231,
+            173, 127, 97, 192, 177, 142, 31, 107, 197, 219, 246, 111, 155, 121,
+        ];
+        let short_pk = vec![
+            0, 3, 65, 14, 206, 174, 244, 127, 36, 48, 150, 156, 243, 27, 213, 139, 41, 30, 231,
+            173, 127, 97, 192, 177, 142, 31, 107, 197, 219,
+        ];
+        let wrong_tag_pk = vec![
+            4, 3, 65, 14, 206, 174, 244, 127, 36, 48, 150, 156, 243, 27, 213, 139, 41, 30, 231,
+            173, 127, 97, 192, 177, 142, 31, 107, 197, 219, 246, 111, 155, 121,
+        ];
+
+        let decoded = SignaturePublicKeyHash::from_tagged_bytes(valid_pk).unwrap();
+        let decoded = match decoded {
+            SignaturePublicKeyHash::Ed25519(hash) => Some(hash),
+            _ => None,
+        };
+        assert!(decoded.is_some());
+
+        let decoded = decoded.map(|h| h.to_base58_check()).unwrap();
+        assert_eq!("tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", decoded);
+
+        let result = SignaturePublicKeyHash::from_tagged_bytes(short_pk);
+        assert_eq!(result, Err(ConversionError::InvalidPublicKey));
+
+        let result = SignaturePublicKeyHash::from_tagged_bytes(wrong_tag_pk);
+        assert_eq!(result, Err(ConversionError::InvalidPublicKey));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ed25519_from_b58_hash() -> Result<(), anyhow::Error> {
+        let decoded =
+            SignaturePublicKeyHash::from_b58_hash("tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17")?;
+        let decoded = match decoded {
+            SignaturePublicKeyHash::Ed25519(hash) => Some(hash),
+            _ => None,
+        };
+        assert!(decoded.is_some());
+
+        let expected_valid_pk = hex::decode("2cca28ab019ae2d8c26f4ce4924cad67a2dc6618")?;
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded.as_ref(), &expected_valid_pk);
+        Ok(())
+    }
+
+    #[test]
+    fn test_try_from_pk() -> Result<(), anyhow::Error> {
+        let pk_ed25519 = SignaturePublicKey::from_b58_hash(
+            "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP",
+        )?;
+        let pkh_ed25519 =
+            SignaturePublicKeyHash::from_b58_hash("tz1gk3TDbU7cJuiBRMhwQXVvgDnjsxuWhcEA")?;
+        assert_eq!(SignaturePublicKeyHash::try_from(pk_ed25519)?, pkh_ed25519);
+
+        let pk_secp256k1 = SignaturePublicKey::from_b58_hash(
+            "sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN",
+        )?;
+        let pkh_secp256k1 =
+            SignaturePublicKeyHash::from_b58_hash("tz2TSvNTh2epDMhZHrw73nV9piBX7kLZ9K9m")?;
+        assert_eq!(
+            SignaturePublicKeyHash::try_from(pk_secp256k1)?,
+            pkh_secp256k1
+        );
+
+        let pk_p256 = SignaturePublicKey::from_b58_hash(
+            "p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW",
+        )?;
+        let pkh_p256 =
+            SignaturePublicKeyHash::from_b58_hash("tz3bEQoFCZEEfZMskefZ8q8e4eiHH1pssRax")?;
+        assert_eq!(SignaturePublicKeyHash::try_from(pk_p256)?, pkh_p256);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_hash_from_hex_hash_and_curve() -> Result<(), anyhow::Error> {
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
+            &"ed25519",
+        )
+        .unwrap();
+        assert_eq!(
+            result.to_string_representation().as_str(),
+            "tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"
+        );
+
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"20262e6195b91181f1713c4237c8195096b8adc9",
+            &"secp256k1",
+        )
+        .unwrap();
+        assert_eq!(
+            result.to_string_representation().as_str(),
+            "tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj"
+        );
+
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"6fde46af0356a0476dae4e4600172dc9309b3aa4",
+            &"p256",
+        )
+        .unwrap();
+        assert_eq!(
+            result.to_string_representation().as_str(),
+            "tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5"
+        );
+
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
+            &"invalidcurvetag",
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ConversionError::InvalidCurveTag {
+                curve_tag: "invalidcurvetag".to_string()
+            }
+        );
+
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"2cca28a6f4ce4924cad67a2dc6618",
+            &"ed25519",
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ConversionError::InvalidHash {
+                hash: "2cca28a6f4ce4924cad67a2dc6618".to_string()
+            }
+        );
+
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
+            &"56a0476dae4e4600172dc9309b3aa4",
+            &"p256",
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ConversionError::InvalidHash {
+                hash: "56a0476dae4e4600172dc9309b3aa4".to_string()
+            }
+        );
+
+        Ok(())
     }
 }

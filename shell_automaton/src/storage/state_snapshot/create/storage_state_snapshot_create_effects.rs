@@ -1,19 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
-use crate::action::Action;
-use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
-use crate::service::Service;
-use crate::{State, StorageService};
+use crate::service::storage_service::{StorageRequest, StorageRequestPayload, StorageService};
+use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{StorageStateSnapshotCreateInitAction, StorageStateSnapshotCreatePendingAction};
 
-pub fn storage_state_snapshot_create_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn storage_state_snapshot_create_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -27,13 +21,11 @@ pub fn storage_state_snapshot_create_effects<S>(
                 action_id: store.state().last_action.id(),
                 applied_actions_count: store.state().applied_actions_count,
             };
-            store.dispatch(action.into());
+            store.dispatch(action);
         }
         Action::StorageStateSnapshotCreateError(_)
         | Action::StorageStateSnapshotCreateSuccess(_) => {
-            if StorageStateSnapshotCreateInitAction::enabling_condition(store.state()) {
-                store.dispatch(StorageStateSnapshotCreateInitAction {}.into());
-            }
+            store.dispatch(StorageStateSnapshotCreateInitAction {});
         }
         _ => {}
     }

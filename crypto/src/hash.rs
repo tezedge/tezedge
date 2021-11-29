@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
-    blake2b::Blake2bError,
+    blake2b::{self, Blake2bError},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -28,6 +28,7 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
+    pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
 }
 
 pub type Hash = Vec<u8>;
@@ -132,9 +133,9 @@ macro_rules! define_hash {
             }
         }
 
-        impl std::convert::Into<Hash> for $name {
-            fn into(self) -> Hash {
-                self.0
+        impl std::convert::From<$name> for Hash {
+            fn from(typed_hash: $name) -> Self {
+                typed_hash.0
             }
         }
 
@@ -178,6 +179,7 @@ define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
+define_hash!(Signature);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -216,6 +218,8 @@ pub enum HashType {
     PublicKeySecp256k1,
     // "\003\178\139\127" (* p2pk(55) *)
     PublicKeyP256,
+    // "\004\130\043" (* sig(96) *)
+    Signature,
 }
 
 impl HashType {
@@ -240,6 +244,7 @@ impl HashType {
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
+            HashType::Signature => &GENERIC_SIGNATURE_HASH,
         }
     }
 
@@ -262,6 +267,7 @@ impl HashType {
             | HashType::ContractTz2Hash
             | HashType::ContractTz3Hash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
+            HashType::Signature => 64,
         }
     }
 
@@ -304,6 +310,44 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake
     let result = crate::blake2b::digest_256(&block_hash.0)?;
     Ok(ChainId::from_bytes(&result[0..HashType::ChainId.size()])
         .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
+}
+
+#[derive(Debug, Error)]
+pub enum TryFromPKError {
+    #[error("Error calculating digest")]
+    Digest(#[from] Blake2bError),
+    #[error("Invalid hash size")]
+    Size(#[from] FromBytesError),
+}
+
+impl TryFrom<PublicKeyEd25519> for ContractTz1Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeyEd25519) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
+}
+
+impl TryFrom<PublicKeySecp256k1> for ContractTz2Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeySecp256k1) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
+}
+
+impl TryFrom<PublicKeyP256> for ContractTz3Hash {
+    type Error = TryFromPKError;
+
+    fn try_from(source: PublicKeyP256) -> Result<Self, Self::Error> {
+        let hash = blake2b::digest_160(&source.0)?;
+        let typed_hash = Self::from_bytes(&hash)?;
+        Ok(typed_hash)
+    }
 }
 
 #[cfg(test)]
@@ -620,6 +664,20 @@ mod tests {
                 actual: _
             })
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn test_b85_to_signature_hash() -> Result<(), anyhow::Error> {
+        let encoded = "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ";
+        let decoded = hex::encode(HashType::Signature.b58check_to_hash(encoded)?);
+        let expected = "66804fe735e06e97e26da8236b6341b91c625d5e82b3524ec0a88cc982365e70f8a5b9bc65df2ea6d21ee244cc3a96fb33031c394c78b1179ff1b8a44237740c";
+        assert_eq!(expected, decoded);
+
+        assert_eq!(
+            encoded,
+            HashType::Signature.hash_to_b58check(&hex::decode(decoded)?)?
+        );
         Ok(())
     }
 }

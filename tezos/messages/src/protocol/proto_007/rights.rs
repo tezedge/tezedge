@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
+use crate::base::signature_public_key::SignaturePublicKeyHash;
 
 /// Endorsing rights structure, final response look like Vec<EndorsingRight>
 #[derive(Serialize, Debug, Clone)]
@@ -112,7 +112,7 @@ mod tests {
     use assert_json_diff::assert_json_eq;
     use serde_json::json;
 
-    use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
+    use crate::base::signature_public_key::SignaturePublicKeyHash;
     use crate::protocol::proto_007::rights::{BakingRights, EndorsingRight};
     use crate::protocol::ToRpcJsonMap;
 

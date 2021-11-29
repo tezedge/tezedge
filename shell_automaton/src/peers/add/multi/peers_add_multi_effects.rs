@@ -1,19 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
-use crate::service::Service;
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Service, Store};
 
-pub fn peers_add_multi_effects<S: Service>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) {
+pub fn peers_add_multi_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::PeersAddMulti(_) => {
-            store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+            store.dispatch(PeerConnectionOutgoingRandomInitAction {});
         }
         _ => {}
     }

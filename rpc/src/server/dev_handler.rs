@@ -220,10 +220,11 @@ pub async fn context_stats(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let context_name = query.get_str("context_name").unwrap_or("tezedge");
+    let protocol = query.get_str("protocol");
     let db_path = env.context_stats_db_path.as_ref();
 
     result_to_json_response(
-        context::make_context_stats(db_path, context_name),
+        context::make_context_stats(db_path, context_name, protocol),
         env.log(),
     )
 }

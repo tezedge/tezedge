@@ -186,9 +186,9 @@ fn generate_struct_field(field: &FieldEncoding, prefix: TokenStream) -> TokenStr
 fn generate_enum(encoding: &EnumEncoding, prefix: TokenStream) -> TokenStream {
     let mut tags = encoding.tags.iter();
     let first = tags.next().unwrap();
-    let first_generator = generate_variant(encoding.name, &first, prefix.clone());
+    let first_generator = generate_variant(encoding.name, first, prefix.clone());
     let tags_generator = tags.fold(first_generator, |ts, tag| {
-        let tag_generator = generate_variant(encoding.name, &tag, prefix.clone());
+        let tag_generator = generate_variant(encoding.name, tag, prefix.clone());
         quote_spanned! {tag.name.span()=>
             tezos_encoding::generator::Generator::and(#ts, #tag_generator)
         }

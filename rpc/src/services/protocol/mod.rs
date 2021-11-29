@@ -23,7 +23,7 @@ use storage::{
 };
 use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_messages::base::rpc_support::RpcJsonMap;
-use tezos_messages::base::signature_public_key_hash::ConversionError;
+use tezos_messages::base::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
 use crate::helpers::RpcServiceError;

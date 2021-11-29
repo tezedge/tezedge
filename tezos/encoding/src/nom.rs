@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use bit_vec::BitVec;
 use crypto::hash::HashTrait;
 use nom::{
+    bitvec::{bitvec, order::Msb0, view::BitView},
     branch::*,
     bytes::complete::*,
     combinator::*,
@@ -13,13 +13,10 @@ use nom::{
     sequence::*,
     Err, InputLength, Parser, Slice,
 };
-use num_bigint::{BigInt, Sign};
+use num_bigint::{BigInt, BigUint, Sign};
 pub use tezos_encoding_derive::NomReader;
 
-use crate::{
-    bit_utils::{BitReverse, Bits, BitsError},
-    types::{Mutez, Zarith},
-};
+use crate::types::{Mutez, Zarith};
 
 use self::error::{BoundedEncodingKind, DecodeError, DecodeErrorKind};
 
@@ -154,6 +151,24 @@ pub mod error {
         }
     }
 
+    impl<I> nom::error::ParseError<(I, usize)> for DecodeError<I> {
+        fn from_error_kind(input: (I, usize), kind: ErrorKind) -> Self {
+            Self {
+                input: input.0,
+                kind: DecodeErrorKind::Nom(kind),
+                other: None,
+            }
+        }
+
+        fn append(input: (I, usize), kind: ErrorKind, other: Self) -> Self {
+            Self {
+                input: input.0,
+                kind: DecodeErrorKind::Nom(kind),
+                other: Some(Box::new(other)),
+            }
+        }
+    }
+
     impl<I> FromExternalError<I, Utf8Error> for DecodeError<I> {
         fn from_external_error(input: I, kind: ErrorKind, e: Utf8Error) -> Self {
             Self {
@@ -243,16 +258,19 @@ hash_nom_reader!(CryptoboxPublicKeyHash);
 hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
+hash_nom_reader!(Signature);
 
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {
-        map(zarith, |big_int| big_int.into())(bytes)
+        map(z_bignum, |big_int| big_int.into())(bytes)
     }
 }
 
 impl NomReader for Mutez {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {
-        map(mutez, |big_int| big_int.into())(bytes)
+        map(n_bignum, |big_uint| {
+            BigInt::from_biguint(Sign::Plus, big_uint).into()
+        })(bytes)
     }
 }
 
@@ -277,12 +295,15 @@ pub fn size(input: NomInput) -> NomResult<u32> {
     u32(Endianness::Big)(input)
 }
 
+/// Reads size encoded as 1-byte unsigned.
+#[inline(always)]
+pub fn short_size(input: NomInput) -> NomResult<u8> {
+    u8(input)
+}
+
 /// Reads size encoded as 4-bytes big-endian unsigned, checking that it does not exceed the `max` value.
 #[inline(always)]
-fn bounded_size<'a>(
-    kind: BoundedEncodingKind,
-    max: usize,
-) -> impl FnMut(NomInput) -> NomResult<u32> {
+fn bounded_size(kind: BoundedEncodingKind, max: usize) -> impl FnMut(NomInput) -> NomResult<u32> {
     move |input| {
         let i = <&[u8]>::clone(&input);
         let (input, size) = size(input)?;
@@ -391,6 +412,16 @@ where
     length_value(size, all_consuming(f))
 }
 
+/// Parses short dynamic block by reading 1-byte size and applying the parser `f` to the following sequence of bytes of that size.
+#[inline(always)]
+pub fn short_dynamic<'a, O, F>(f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
+where
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
+    O: Clone,
+{
+    length_value(short_size, all_consuming(f))
+}
+
 /// Parses dynamic block by reading 4-bytes size and applying the parser `f`
 /// to the following sequence of bytes of that size. It also checks that the size
 /// does not exceed the `max` value.
@@ -461,91 +492,52 @@ where
     move |input| parser(input).map_err(|e| e.map(|e| e.add_variant(name)))
 }
 
-fn map_bits_err(input: NomInput, error: BitsError) -> NomError {
-    DecodeError {
-        input,
-        kind: DecodeErrorKind::Bits(error),
-        other: None,
-    }
-}
-
-pub fn zarith(input: NomInput) -> NomResult<BigInt> {
-    let map_err = |e| Err::Error(map_bits_err(<&[u8]>::clone(&input), e));
-
-    let (input, mut first) = u8(input)?;
-    let mut has_next = first.take(7).map_err(map_err)?;
-    let negative = first.take(6).map_err(map_err)?;
-
-    let (input, big_int) = if !has_next {
-        let num = if negative {
-            -(first as i8)
-        } else {
-            first as i8
-        };
-        (input, num_bigint::BigInt::from(num))
-    } else {
-        // In Z encoding bit chunks go from least significant to most significant.
-        // That means that we should collect bits from least to most significant
-        // and then reverse the `BitVec` to get proper BE order.
-
-        let mut bits = BitVec::new();
-        for i in 0..6 {
-            bits.push(first.get(i).map_err(map_err)?);
-        }
-        let mut input = input;
-        while has_next {
-            let i = <&[u8]>::clone(&input);
-            let map_err = |e| Err::Error(map_bits_err(i, e));
-            let (i, byte) = u8(input)?;
-            input = i;
-            for i in 0..7 {
-                bits.push(byte.get(i).map_err(map_err)?);
-            }
-            has_next = byte.get(7).map_err(map_err)?;
-        }
-
-        // `BitVec::to_bytes` considers the rightmost bit as the 7th bit of the
-        // first byte, so it should be padded with zeroes that will become most
-        // significant bits after reverse.
-        let pad = bits.len() % 8;
-        if pad != 0 {
-            bits.append(&mut BitVec::from_elem(8 - pad, false));
-        }
-
-        let sign = if negative { Sign::Minus } else { Sign::Plus };
-        let big_int = num_bigint::BigInt::from_bytes_be(sign, bits.reverse().to_bytes().as_slice());
-        (input, big_int)
-    };
-
-    Ok((input, big_int))
-}
-
-pub fn mutez(mut input: NomInput) -> NomResult<BigInt> {
-    let mut bits = BitVec::new();
+pub fn z_bignum(mut input: NomInput) -> NomResult<BigInt> {
+    let mut bitslice_vec = Vec::new();
     let mut has_next = true;
+    let mut missing_bits = 0;
+    let mut first = true;
+    let mut neg = false;
     while has_next {
-        let i = <&[u8]>::clone(&input);
-        let map_err = |e| Err::Error(map_bits_err(i, e));
-        let (i, byte) = u8(input)?;
-        input = i;
-        for i in 0..7 {
-            bits.push(byte.get(i).map_err(map_err)?);
-        }
-        has_next = byte.get(7).map_err(map_err)?;
+        let (new_input, byte) = take(1_u8)(input)?;
+        input = new_input;
+        let bits = byte.view_bits();
+        has_next = bits[0];
+        let skip_bits = if first {
+            neg = bits[1];
+            2
+        } else {
+            1
+        };
+        first = false;
+        bitslice_vec.push(&bits[skip_bits..]);
+        missing_bits += skip_bits;
     }
-
-    // `BitVec::to_bytes` considers the rightmost bit as the 7th bit of the
-    // first byte, so it should be padded with zeroes that will become most
-    // significant bits after reverse.
-    let pad = bits.len() % 8;
-    if pad != 0 {
-        bits.append(&mut BitVec::from_elem(8 - pad, false));
+    let mut bitvec = bitvec![Msb0, u8; 0; missing_bits % 8];
+    for bitslice in bitslice_vec.into_iter().rev() {
+        bitvec.extend_from_bitslice(bitslice);
     }
+    let sign = if neg { Sign::Minus } else { Sign::Plus };
+    Ok((input, BigInt::from_bytes_be(sign, &bitvec.into_vec())))
+}
 
-    let big_int =
-        num_bigint::BigInt::from_bytes_be(Sign::Plus, bits.reverse().to_bytes().as_slice());
-
-    Ok((input, big_int.into()))
+pub fn n_bignum(mut input: NomInput) -> NomResult<BigUint> {
+    let mut bitslice_vec = Vec::new();
+    let mut has_next = true;
+    let mut missing_bits = 0;
+    while has_next {
+        let (new_input, byte) = take(1_u8)(input)?;
+        input = new_input;
+        let bits = byte.view_bits();
+        has_next = bits[0];
+        bitslice_vec.push(&bits[1..]);
+        missing_bits += 1;
+    }
+    let mut bitvec = bitvec![Msb0, u8; 0; missing_bits % 8];
+    for bitslice in bitslice_vec.into_iter().rev() {
+        bitvec.extend_from_bitslice(bitslice);
+    }
+    Ok((input, BigUint::from_bytes_be(&bitvec.into_vec())))
 }
 
 pub fn hashed<'a, O, F>(mut parser: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, (O, Vec<u8>)>
@@ -684,6 +676,17 @@ mod test {
     }
 
     #[test]
+    fn test_short_dynamic() {
+        let input = &[3, 0x78, 0x78, 0x78, 0xff];
+
+        let res: NomResult<Vec<u8>> = short_dynamic(bytes)(input);
+        assert_eq!(res, Ok((&[0xff_u8][..], vec![0x78_u8; 3])));
+
+        let res: NomResult<u8> = short_dynamic(u8)(input);
+        res.expect_err("Error is expected");
+    }
+
+    #[test]
     fn test_bounded_dynamic() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
 
@@ -717,33 +720,96 @@ mod test {
     }
 
     #[test]
-    fn test_zarith() {
-        let input = hex::decode("9e9ed49d01").unwrap();
-        let res: NomResult<BigInt> = zarith(&input);
-        assert_eq!(res, Ok((&[][..], hex_to_bigint("9da879e"),)));
+    fn test_n_bignum() {
+        let data = [
+            ("0", "00"),
+            ("1", "01"),
+            ("7f", "7f"),
+            ("80", "8001"),
+            ("81", "8101"),
+            ("ff", "ff01"),
+            ("100", "8002"),
+            ("101", "8102"),
+            ("7fff", "ffff01"),
+            ("8000", "808002"),
+            ("8001", "818002"),
+            ("ffff", "ffff03"),
+            ("10000", "808004"),
+            ("10001", "818004"),
+        ];
 
-        let input = hex::decode("41").unwrap();
-        let res: NomResult<BigInt> = zarith(&input);
-        assert_eq!(res, Ok((&[][..], i64_to_bigint(-1),)));
-
-        let input = hex::decode("57").unwrap();
-        let res: NomResult<BigInt> = zarith(&input);
-        assert_eq!(res, Ok((&[][..], i64_to_bigint(-23),)));
+        for (hex, enc) in data {
+            let num = hex_to_biguint(hex);
+            let input = hex::decode(enc).unwrap();
+            let (input, dec) = n_bignum(&input).unwrap();
+            assert!(input.is_empty());
+            assert_eq!(dec, num);
+        }
     }
 
     #[test]
-    fn test_mutez() {
-        let input = hex::decode("9e9ed49d01").unwrap();
-        let res: NomResult<BigInt> = mutez(&input);
-        assert_eq!(res, Ok((&[][..], hex_to_bigint("13b50f1e"),)));
+    fn test_z_bignum() {
+        let data = [
+            ("0", "00"),
+            ("1", "01"),
+            ("7f", "bf01"),
+            ("80", "8002"),
+            ("81", "8102"),
+            ("ff", "bf03"),
+            ("100", "8004"),
+            ("101", "8104"),
+            ("7fff", "bfff03"),
+            ("8000", "808004"),
+            ("8001", "818004"),
+            ("ffff", "bfff07"),
+            ("10000", "808008"),
+            ("10001", "818008"),
+            ("9da879e", "9e9ed49d01"),
+        ];
+
+        for (hex, enc) in data {
+            let num = hex_to_bigint(hex);
+            let input = hex::decode(enc).unwrap();
+            let (input, dec) = z_bignum(&input).unwrap();
+            assert!(input.is_empty());
+            assert_eq!(dec, num);
+        }
     }
 
-    fn i64_to_bigint(n: i64) -> BigInt {
-        num_bigint::BigInt::from_i64(n).unwrap()
+    #[test]
+    fn test_neg_z_bignum() {
+        let data = [
+            ("-0", "00"),
+            ("-1", "41"),
+            ("-7f", "ff01"),
+            ("-80", "c002"),
+            ("-81", "c102"),
+            ("-ff", "ff03"),
+            ("-100", "c004"),
+            ("-101", "c104"),
+            ("-7fff", "ffff03"),
+            ("-8000", "c08004"),
+            ("-8001", "c18004"),
+            ("-ffff", "ffff07"),
+            ("-10000", "c08008"),
+            ("-10001", "c18008"),
+        ];
+
+        for (hex, enc) in data {
+            let num = hex_to_bigint(hex);
+            let input = hex::decode(enc).unwrap();
+            let (input, dec) = z_bignum(&input).unwrap();
+            assert!(input.is_empty());
+            assert_eq!(dec, num);
+        }
     }
 
     fn hex_to_bigint(s: &str) -> BigInt {
         num_bigint::BigInt::from_i64(i64::from_str_radix(s, 16).unwrap()).unwrap()
+    }
+
+    fn hex_to_biguint(s: &str) -> BigUint {
+        num_bigint::BigUint::from_u64(u64::from_str_radix(s, 16).unwrap()).unwrap()
     }
 
     fn limit_error<'a>(input: NomInput<'a>, kind: BoundedEncodingKind) -> Err<NomError<'a>> {

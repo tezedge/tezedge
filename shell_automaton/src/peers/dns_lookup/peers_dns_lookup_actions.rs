@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-use crate::Port;
+use crate::{EnablingCondition, Port, State};
 
 use super::DnsLookupError;
 
@@ -14,9 +14,21 @@ pub struct PeersDnsLookupInitAction {
     pub port: Port,
 }
 
+impl EnablingCondition<State> for PeersDnsLookupInitAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersDnsLookupErrorAction {
     pub error: DnsLookupError,
+}
+
+impl EnablingCondition<State> for PeersDnsLookupErrorAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -24,6 +36,18 @@ pub struct PeersDnsLookupSuccessAction {
     pub addresses: Vec<SocketAddr>,
 }
 
+impl EnablingCondition<State> for PeersDnsLookupSuccessAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
 /// Cleanup dns lookup state.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersDnsLookupCleanupAction;
+
+impl EnablingCondition<State> for PeersDnsLookupCleanupAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}

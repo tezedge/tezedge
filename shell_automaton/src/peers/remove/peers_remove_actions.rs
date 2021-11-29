@@ -1,10 +1,19 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+
+use serde::{Deserialize, Serialize};
+
+use crate::{EnablingCondition, State};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersRemoveAction {
     pub address: SocketAddr,
+}
+
+impl EnablingCondition<State> for PeersRemoveAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
 }

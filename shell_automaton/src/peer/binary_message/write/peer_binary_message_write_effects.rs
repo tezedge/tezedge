@@ -1,25 +1,21 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::peer::chunk::write::{
     PeerChunkWrite, PeerChunkWriteSetContentAction, PeerChunkWriteState,
 };
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus};
 use crate::peers::graylist::PeersGraylistAddressAction;
-use crate::{Action, Service, State};
+use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
     PeerBinaryMessageWriteNextChunkAction, PeerBinaryMessageWriteReadyAction,
     PeerBinaryMessageWriteState,
 };
 
-pub fn peer_binary_message_write_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peer_binary_message_write_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -54,13 +50,10 @@ pub fn peer_binary_message_write_effects<S>(
                         ..
                     } => {
                         let content = chunk_content.clone();
-                        store.dispatch(
-                            PeerChunkWriteSetContentAction {
-                                address: action.address,
-                                content,
-                            }
-                            .into(),
-                        )
+                        store.dispatch(PeerChunkWriteSetContentAction {
+                            address: action.address,
+                            content,
+                        });
                     }
                     _ => {}
                 }
@@ -94,18 +87,16 @@ pub fn peer_binary_message_write_effects<S>(
                                 ..
                             },
                         ..
-                    } => store.dispatch(
-                        PeerBinaryMessageWriteNextChunkAction {
+                    } => {
+                        store.dispatch(PeerBinaryMessageWriteNextChunkAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
-                    PeerBinaryMessageWriteState::Ready { .. } => store.dispatch(
-                        PeerBinaryMessageWriteReadyAction {
+                        });
+                    }
+                    PeerBinaryMessageWriteState::Ready { .. } => {
+                        store.dispatch(PeerBinaryMessageWriteReadyAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
+                        });
+                    }
                     _ => {}
                 };
             }
@@ -133,31 +124,24 @@ pub fn peer_binary_message_write_effects<S>(
                 match binary_message_state {
                     PeerBinaryMessageWriteState::Pending { chunk_content, .. } => {
                         let content = chunk_content.clone();
-                        store.dispatch(
-                            PeerChunkWriteSetContentAction {
-                                address: action.address,
-                                content,
-                            }
-                            .into(),
-                        )
-                    }
-                    PeerBinaryMessageWriteState::Ready { .. } => store.dispatch(
-                        PeerBinaryMessageWriteReadyAction {
+                        store.dispatch(PeerChunkWriteSetContentAction {
                             address: action.address,
-                        }
-                        .into(),
-                    ),
+                            content,
+                        });
+                    }
+                    PeerBinaryMessageWriteState::Ready { .. } => {
+                        store.dispatch(PeerBinaryMessageWriteReadyAction {
+                            address: action.address,
+                        });
+                    }
                     _ => {}
                 };
             }
         }
         Action::PeerBinaryMessageWriteError(action) => {
-            store.dispatch(
-                PeersGraylistAddressAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+            store.dispatch(PeersGraylistAddressAction {
+                address: action.address,
+            });
         }
         _ => {}
     }

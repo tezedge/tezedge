@@ -4,7 +4,6 @@
 use std::collections::VecDeque;
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
-use redux_rs::ActionWithId;
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackMotive};
 
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
@@ -17,11 +16,11 @@ use crate::peer::connection::PeerConnectionState;
 use crate::peer::message::read::PeerMessageReadState;
 use crate::peer::message::write::PeerMessageWriteState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
 use super::{PeerHandshaking, PeerHandshakingStatus};
 
-pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
     let action_time = action.time_as_nanos();
 
     match &action.action {

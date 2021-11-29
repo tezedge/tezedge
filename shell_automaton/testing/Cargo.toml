@@ -1,12 +1,11 @@
 [package]
 name = "shell_automaton_testing"
-version = "1.10.0"
+version = "1.11.0"
 edition = "2018"
 
 [dependencies]
 bytes = "1.0.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
-redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.10.0-1", features = ["serde"] }
 
 shell_automaton = { path = "../" }
 crypto = { path = "../../crypto" }

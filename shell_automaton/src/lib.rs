@@ -4,7 +4,6 @@
 #![feature(deadline_api)]
 
 use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
-use redux_rs::Store;
 
 pub mod io_error_kind;
 
@@ -12,7 +11,10 @@ pub mod event;
 use event::Event;
 
 pub mod action;
-pub use action::{Action, ActionId, ActionKind, ActionWithId};
+pub use action::{
+    Action, ActionId, ActionKind, ActionWithMeta, EnablingCondition, MioTimeoutEvent,
+    MioWaitForEventsAction,
+};
 
 pub mod config;
 pub use config::{Config, Quota};
@@ -50,14 +52,16 @@ pub mod actors;
 
 pub mod service;
 use service::MioService;
-pub use service::{Service, ServiceDefault, StorageService};
+pub use service::{Service, ServiceDefault};
 
 pub type Port = u16;
+
+pub type Store<Service> = redux_rs::Store<State, Service, Action>;
 
 pub struct ShellAutomaton<Serv, Events> {
     /// Container for internal events.
     events: Events,
-    store: Store<State, Serv, Action>,
+    store: Store<Serv>,
 }
 
 impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
@@ -78,8 +82,7 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         P: IntoIterator<Item = (String, Port)>,
     {
         // Persist initial state.
-        self.store
-            .dispatch(StorageStateSnapshotCreateInitAction {}.into());
+        self.store.dispatch(StorageStateSnapshotCreateInitAction {});
 
         // TODO: create action for it.
         if let Err(err) = self
@@ -93,10 +96,10 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
 
         for (address, port) in peers_dns_lookup_addrs.into_iter() {
             self.store
-                .dispatch(PeersDnsLookupInitAction { address, port }.into());
+                .dispatch(PeersDnsLookupInitAction { address, port });
         }
         self.store
-            .dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+            .dispatch(PeerConnectionOutgoingRandomInitAction {});
     }
 }
 
@@ -109,7 +112,7 @@ where
     pub fn make_progress(&mut self) {
         let mio_timeout = self.store.state().mio_timeout();
 
-        self.store.dispatch(Action::MioWaitForEvents);
+        self.store.dispatch(MioWaitForEventsAction {});
         self.store
             .service()
             .mio()
@@ -121,19 +124,19 @@ where
             no_events = false;
 
             match self.store.service().mio().transform_event(event) {
-                Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event.into()),
-                Event::P2pPeer(p2p_peer_event) => self.store.dispatch(p2p_peer_event.into()),
-                Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event.into()),
-                _ => {}
-            }
+                Event::P2pServer(p2p_server_event) => self.store.dispatch(p2p_server_event),
+                Event::P2pPeer(p2p_peer_event) => self.store.dispatch(p2p_peer_event),
+                Event::Wakeup(wakeup_event) => self.store.dispatch(wakeup_event),
+                _ => false,
+            };
         }
 
         if no_events {
-            self.store.dispatch(Action::MioTimeoutEvent);
+            self.store.dispatch(MioTimeoutEvent {});
         }
 
         if !self.store.state().paused_loops.is_empty() {
-            self.store.dispatch(PausedLoopsResumeAllAction {}.into());
+            self.store.dispatch(PausedLoopsResumeAllAction {});
         }
     }
 }

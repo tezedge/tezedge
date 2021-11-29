@@ -1,22 +1,18 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{ActionWithId, Store};
-
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::{MioService, RandomnessService, Service};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, Store};
 
 use super::{
     PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
     PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
 };
 
-pub fn peer_connection_outgoing_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithId<Action>,
-) where
+pub fn peer_connection_outgoing_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
+where
     S: Service,
 {
     match &action.action {
@@ -29,38 +25,33 @@ pub fn peer_connection_outgoing_effects<S>(
             }
 
             if let Some(address) = store.service.randomness().choose_peer(&potential_peers) {
-                store.dispatch(PeerConnectionOutgoingInitAction { address }.into());
+                store.dispatch(PeerConnectionOutgoingInitAction { address });
             }
         }
         Action::PeerConnectionOutgoingInit(action) => {
             let address = action.address;
             let result = store.service().mio().peer_connection_init(address);
-            store.dispatch(match result {
-                Ok(token) => PeerConnectionOutgoingPendingAction { address, token }.into(),
-                Err(error) => PeerConnectionOutgoingErrorAction {
+            match result {
+                Ok(token) => store.dispatch(PeerConnectionOutgoingPendingAction { address, token }),
+                Err(error) => store.dispatch(PeerConnectionOutgoingErrorAction {
                     address,
                     error: error.into(),
-                }
-                .into(),
-            });
+                }),
+            };
         }
         Action::PeerConnectionOutgoingPending(_) => {
             // try to connect to next random peer.
-            store.dispatch(PeerConnectionOutgoingRandomInitAction {}.into());
+            store.dispatch(PeerConnectionOutgoingRandomInitAction {});
         }
-        Action::PeerConnectionOutgoingSuccess(action) => store.dispatch(
-            PeerHandshakingInitAction {
+        Action::PeerConnectionOutgoingSuccess(action) => {
+            store.dispatch(PeerHandshakingInitAction {
                 address: action.address,
-            }
-            .into(),
-        ),
+            });
+        }
         Action::PeerConnectionOutgoingError(action) => {
-            store.dispatch(
-                PeersGraylistAddressAction {
-                    address: action.address,
-                }
-                .into(),
-            );
+            store.dispatch(PeersGraylistAddressAction {
+                address: action.address,
+            });
         }
         _ => {}
     }

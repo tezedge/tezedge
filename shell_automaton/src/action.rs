@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
+use crate::State;
 
 use crate::paused_loops::{
     PausedLoopsAddAction, PausedLoopsResumeAllAction, PausedLoopsResumeNextInitAction,
@@ -63,7 +64,36 @@ use crate::storage::state_snapshot::create::{
     StorageStateSnapshotCreatePendingAction, StorageStateSnapshotCreateSuccessAction,
 };
 
-pub use redux_rs::{ActionId, ActionWithId};
+pub use redux_rs::{ActionId, EnablingCondition};
+
+pub type ActionWithMeta = redux_rs::ActionWithMeta<Action>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct InitAction {}
+
+impl EnablingCondition<State> for InitAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        false
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MioWaitForEventsAction {}
+
+impl EnablingCondition<State> for MioWaitForEventsAction {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MioTimeoutEvent {}
+
+impl EnablingCondition<State> for MioTimeoutEvent {
+    fn is_enabled(&self, _: &State) -> bool {
+        true
+    }
+}
 
 #[derive(
     EnumKind,
@@ -87,7 +117,7 @@ pub use redux_rs::{ActionId, ActionWithId};
 )]
 #[serde(tag = "kind", content = "content")]
 pub enum Action {
-    Init,
+    Init(InitAction),
 
     PausedLoopsAdd(PausedLoopsAddAction),
     PausedLoopsResumeAll(PausedLoopsResumeAllAction),
@@ -132,8 +162,8 @@ pub enum Action {
     PeerDisconnect(PeerDisconnectAction),
     PeerDisconnected(PeerDisconnectedAction),
 
-    MioWaitForEvents,
-    MioTimeoutEvent,
+    MioWaitForEvents(MioWaitForEventsAction),
+    MioTimeoutEvent(MioTimeoutEvent),
     P2pServerEvent(P2pServerEvent),
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),
@@ -251,14 +281,14 @@ impl storage::persistent::Decoder for Action {
     }
 }
 
-impl<'a> From<&'a ActionWithId<Action>> for ActionKind {
-    fn from(action: &'a ActionWithId<Action>) -> ActionKind {
+impl<'a> From<&'a ActionWithMeta> for ActionKind {
+    fn from(action: &'a ActionWithMeta) -> ActionKind {
         action.action.kind()
     }
 }
 
-impl From<ActionWithId<Action>> for ActionKind {
-    fn from(action: ActionWithId<Action>) -> ActionKind {
+impl From<ActionWithMeta> for ActionKind {
+    fn from(action: ActionWithMeta) -> ActionKind {
         action.action.kind()
     }
 }

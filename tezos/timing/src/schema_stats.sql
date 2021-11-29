@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS blocks (
   repo_npending_free_ids INTEGER,
   repo_gc_npending_free_ids INTEGER,
   repo_nshapes INTEGER,
+  repo_strings_total_bytes INTEGER,
+  repo_shapes_total_bytes INTEGER,
+  repo_commit_index_total_bytes INTEGER,
   storage_nodes_length INTEGER,
   storage_nodes_capacity INTEGER,
   storage_trees_length INTEGER,
@@ -47,6 +50,8 @@ CREATE TABLE IF NOT EXISTS blocks (
   serialize_nblobs INTEGER,
   serialize_nblobs_inlined INTEGER,
   serialize_nshapes INTEGER,
+  serialize_ninode_pointers INTEGER,
+  serialize_offset_length INTEGER,
   serialize_total_bytes INTEGER,
   total_bytes INTEGER
 );
@@ -126,6 +131,7 @@ CREATE TABLE IF NOT EXISTS global_query_stats (
   context_name TEXT NOT NULL,
   total_time REAL DEFAULT 0.0,
   queries_count INTEGER DEFAULT 0,
+  protocol TEXT NULL,
 
   one_to_ten_us_count INTEGER DEFAULT 0,
   one_to_ten_us_mean_time REAL DEFAULT 0.0,
@@ -172,5 +178,5 @@ CREATE TABLE IF NOT EXISTS global_query_stats (
   one_hundred_s_max_time REAL DEFAULT 0.0,
   one_hundred_s_total_time REAL DEFAULT 0.0,
 
-  UNIQUE(root, query_name, context_name)
+  UNIQUE(root, query_name, context_name, protocol)
 );

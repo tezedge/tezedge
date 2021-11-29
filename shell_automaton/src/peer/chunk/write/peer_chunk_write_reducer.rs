@@ -1,15 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::ActionWithId;
-
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::chunk::write::PeerChunkWriteState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus};
-use crate::{Action, State};
+use crate::{Action, ActionWithMeta, State};
 
-pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithId<Action>) {
+pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerChunkWriteSetContent(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {

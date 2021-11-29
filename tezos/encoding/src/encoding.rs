@@ -197,6 +197,9 @@ pub enum Encoding {
     Tup(Vec<Encoding>),
     /// Is the collection of fields.
     /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
+    ShortDynamic(Box<Encoding>),
+    /// Is the collection of fields.
+    /// prefixed its length in bytes (1 Byte), encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
     /// Is the collection of fields.
     /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
@@ -256,6 +259,13 @@ impl Encoding {
     #[inline]
     pub fn greedy(encoding: Encoding) -> Encoding {
         Encoding::Greedy(Box::new(encoding))
+    }
+
+    /// Utility function to construct [Encoding::ShortDynamic] without the need
+    /// to manually create new [Box].
+    #[inline]
+    pub fn short_dynamic(encoding: Encoding) -> Encoding {
+        Encoding::Dynamic(Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Dynamic] without the need
@@ -328,6 +338,7 @@ hash_has_encoding!(CryptoboxPublicKeyHash, CRYPTOBOX_PUBLIC_KEY_HASH);
 hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
 hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
+hash_has_encoding!(Signature, SIGNATURE);
 
 /// Indicates that type has it's own ser/de schema, to be used with new derived schema.
 pub trait HasEncodingTest {

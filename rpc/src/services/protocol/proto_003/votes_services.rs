@@ -6,7 +6,7 @@ use crypto::hash::ContextHash;
 use itertools::Itertools;
 
 use storage::num_from_slice;
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_003::votes::VoteListings;
 
 use crate::server::RpcServiceEnvironment;

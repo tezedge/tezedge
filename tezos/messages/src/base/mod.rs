@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::str::FromStr;
+
+use crypto::blake2b::Blake2bError;
 use hex::FromHexError;
 use thiserror::Error;
 
@@ -10,9 +13,16 @@ use crypto::hash::FromBytesError;
 pub mod fitness_comparator;
 pub mod rpc_support;
 pub mod signature_public_key;
-pub mod signature_public_key_hash;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, strum_macros::EnumString)]
+#[strum(serialize_all = "lowercase")]
+pub enum SignatureCurve {
+    Ed25519,
+    Secp256k1,
+    P256,
+}
+
+#[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ConversionError {
     #[error("Conversion from invalid public key")]
     InvalidPublicKey,
@@ -22,6 +32,9 @@ pub enum ConversionError {
 
     #[error("Invalid curve tag: {curve_tag}")]
     InvalidCurveTag { curve_tag: String },
+
+    #[error("Blake2b digest error")]
+    Blake2bError,
 }
 
 impl From<hex::FromHexError> for ConversionError {
@@ -44,6 +57,20 @@ impl From<FromBytesError> for ConversionError {
     fn from(error: FromBytesError) -> Self {
         ConversionError::InvalidHash {
             hash: error.to_string(),
+        }
+    }
+}
+
+impl From<Blake2bError> for ConversionError {
+    fn from(_: Blake2bError) -> Self {
+        ConversionError::Blake2bError
+    }
+}
+
+impl From<<SignatureCurve as FromStr>::Err> for ConversionError {
+    fn from(error: <SignatureCurve as FromStr>::Err) -> Self {
+        Self::InvalidCurveTag {
+            curve_tag: error.to_string(),
         }
     }
 }

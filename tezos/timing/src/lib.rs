@@ -14,6 +14,7 @@ use std::{
 };
 
 use container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString};
+use crypto::hash::BlockHash;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
 use static_assertions::assert_eq_size;
@@ -27,6 +28,89 @@ pub mod container;
 
 pub const FILENAME_DB: &str = "context_stats.db";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Protocol {
+    Genesis,
+    Bootstrap,
+    Alpha1,
+    Alpha2,
+    Alpha3,
+    AthensA,
+    Babylon,
+    Carthage,
+    Delphi,
+    Edo,
+    Florence,
+    Granada,
+}
+
+impl Protocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Protocol::Genesis => "genesis",
+            Protocol::Bootstrap => "bootstrap",
+            Protocol::Alpha1 => "alpha1",
+            Protocol::Alpha2 => "alpha2",
+            Protocol::Alpha3 => "alpha3",
+            Protocol::AthensA => "athens_a",
+            Protocol::Babylon => "babylon",
+            Protocol::Carthage => "carthage",
+            Protocol::Delphi => "delphi",
+            Protocol::Edo => "edo",
+            Protocol::Florence => "florence",
+            Protocol::Granada => "granada",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Protocol> {
+        match s {
+            "genesis" => Some(Protocol::Genesis),
+            "bootstrap" => Some(Protocol::Bootstrap),
+            "alpha1" => Some(Protocol::Alpha1),
+            "alpha2" => Some(Protocol::Alpha2),
+            "alpha3" => Some(Protocol::Alpha3),
+            "athens_a" => Some(Protocol::AthensA),
+            "babylon" => Some(Protocol::Babylon),
+            "carthage" => Some(Protocol::Carthage),
+            "delphi" => Some(Protocol::Delphi),
+            "edo" => Some(Protocol::Edo),
+            "florence" => Some(Protocol::Florence),
+            "granada" => Some(Protocol::Granada),
+            _ => None,
+        }
+    }
+}
+
+pub const STATS_ALL_PROTOCOL: &str = "_all_";
+
+const BLOCK_GENESIS: &str = "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2";
+const BLOCK_BOOTSTRAP: &str = "BLSqrcLvFtqVCx8WSqkVJypW2kAVRM3eEj2BHgBsB6kb24NqYev";
+const BLOCK_ALPHA1: &str = "BMMmnb2LoJQs3PjvhysXAgK2pAjJE71hoqXFCs6u85xUH3KrRqa";
+const BLOCK_ALPHA2: &str = "BLYbRjXpmDUF6VisMLYcmagP7KLbUrwyYqkTA3puiRjs6YPM2gA";
+const BLOCK_ALPHA3: &str = "BLMqRYnvd2KF11awHweGzShLYDfQoPUfDWVnQgmxg53iX6dcE89";
+const BLOCK_ATHENS_A: &str = "BMWyM6dcDsbsDjcD8iUJYa166mEAFpw9yori2ofSPooBmFqv6uC";
+const BLOCK_BABYLON: &str = "BLu2kYLJuELGnxqeX1DCKWsnAy6kM3Qii563Ja9nkPtqy3iSCaf";
+const BLOCK_CARTHAGE: &str = "BLTZgaJ7cohaD1D7sno334wEVU83s2G7FQvpp1SN6EzHdQTVQsM";
+const BLOCK_DELPHI: &str = "BM5fVxrUeoHJ8pLZNzdDwgW656MnWJMciJYGFvTF6ysj9pT4wi6";
+const BLOCK_EDO: &str = "BKpJVfDq5BkSPQpJFiJumZxnWs7GM9zZJjRkScaoqWLSCUDYMdJ";
+const BLOCK_FLORENCE: &str = "BMTcukHJeJpDoABwNVkhqeFM9JcDv29GCqpcgohY2Qcy8kXM9Uw";
+const BLOCK_GRANADA: &str = "BLzEHPYwpqWSDfu28saTkAUxZ7WnPkNxe8Epg5NfixBfQv7KRUN";
+
+const PROTOCOLS: &[(&str, Protocol)] = &[
+    (BLOCK_GENESIS, Protocol::Genesis),     // block 0
+    (BLOCK_BOOTSTRAP, Protocol::Bootstrap), // block 1
+    (BLOCK_ALPHA1, Protocol::Alpha1),       // block 2
+    (BLOCK_ALPHA2, Protocol::Alpha2),       // block 28_083
+    (BLOCK_ALPHA3, Protocol::Alpha3),       // block 204_762
+    (BLOCK_ATHENS_A, Protocol::AthensA),    // block 458_753
+    (BLOCK_BABYLON, Protocol::Babylon),     // block 655_361
+    (BLOCK_CARTHAGE, Protocol::Carthage),   // block 851_969
+    (BLOCK_DELPHI, Protocol::Delphi),       // block 1_212_417
+    (BLOCK_EDO, Protocol::Edo),             // block 1_343_489
+    (BLOCK_FLORENCE, Protocol::Florence),   // block 1_466_368
+    (BLOCK_GRANADA, Protocol::Granada),     // block 1_589_248
+];
+
 #[derive(Debug)]
 pub struct BlockMemoryUsage {
     pub context: Box<ContextMemoryUsage>,
@@ -38,29 +122,41 @@ pub struct SerializeStats {
     pub blobs_length: usize,
     pub hash_ids_length: usize,
     pub keys_length: usize,
-    pub highest_hash_id: u32,
+    pub highest_hash_id: u64,
     pub ndirectories: usize,
     pub nblobs: usize,
     pub nblobs_inlined: usize,
     pub nshapes: usize,
+    pub ninode_pointers: usize,
+    pub offset_length: usize,
     pub total_bytes: usize,
 }
 
 impl SerializeStats {
     pub fn add_directory(
         &mut self,
-        hash_ids_length: usize,
         keys_length: usize,
-        highest_hash_id: u32,
         nblobs_inlined: usize,
         blobs_length: usize,
     ) {
         self.ndirectories += 1;
-        self.hash_ids_length += hash_ids_length;
         self.keys_length += keys_length;
-        self.highest_hash_id = self.highest_hash_id.max(highest_hash_id);
         self.nblobs_inlined += nblobs_inlined;
         self.blobs_length += blobs_length;
+    }
+
+    pub fn add_shape(&mut self, nblobs_inlined: usize, blobs_length: usize) {
+        self.nshapes += 1;
+        self.nblobs_inlined += nblobs_inlined;
+        self.blobs_length += blobs_length;
+    }
+
+    pub fn add_inode_pointers(&mut self) {
+        self.ninode_pointers += 1;
+    }
+
+    pub fn add_offset(&mut self, offset_length: usize) {
+        self.offset_length += offset_length;
     }
 
     pub fn add_blob(&mut self, blob_length: usize) {
@@ -104,7 +200,7 @@ pub struct StringsMemoryUsage {
     pub total_bytes: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[allow(dead_code)]
 pub struct RepositoryMemoryUsage {
     /// Number of bytes for all values Arc<[u8]>
@@ -125,6 +221,12 @@ pub struct RepositoryMemoryUsage {
     pub gc_npending_free_ids: usize,
     /// Number of shapes
     pub nshapes: usize,
+    /// Bytes occupied by all strings in the repository
+    pub strings_total_bytes: usize,
+    /// Bytes occupied by shapes in the repository
+    pub shapes_total_bytes: usize,
+    /// Bytes occupied by commit index in the repository
+    pub commit_index_total_bytes: usize,
 }
 
 #[derive(Debug)]
@@ -357,6 +459,91 @@ impl QueryStats {
     }
 }
 
+#[derive(Default)]
+struct GlobalStatistics {
+    tezedge_global_stats: HashMap<String, QueryStatsWithRange>,
+    irmin_global_stats: HashMap<String, QueryStatsWithRange>,
+    tezedge_commit_stats: RangeStats,
+    irmin_commit_stats: RangeStats,
+    tezedge_checkout_stats: RangeStats,
+    irmin_checkout_stats: RangeStats,
+}
+
+impl GlobalStatistics {
+    fn add_commit_times(&mut self, irmin_time: Option<f64>, tezedge_time: Option<f64>) {
+        self.tezedge_commit_stats.add_time(tezedge_time);
+        self.irmin_commit_stats.add_time(irmin_time);
+    }
+
+    fn add_checkout_times(&mut self, irmin_time: Option<f64>, tezedge_time: Option<f64>) {
+        self.tezedge_checkout_stats.add_time(tezedge_time);
+        self.irmin_checkout_stats.add_time(irmin_time);
+    }
+
+    fn compute_mean(&mut self) {
+        for query in self.tezedge_global_stats.values_mut() {
+            query.compute_mean();
+        }
+        for query in self.irmin_global_stats.values_mut() {
+            query.compute_mean();
+        }
+        self.tezedge_checkout_stats.compute_mean();
+        self.irmin_checkout_stats.compute_mean();
+        self.tezedge_commit_stats.compute_mean();
+        self.irmin_commit_stats.compute_mean();
+    }
+
+    fn update_stats(&mut self, root: &str, query: &Query) {
+        for (global_stats, time) in &mut [
+            (Some(&mut self.tezedge_global_stats), query.tezedge_time),
+            (Some(&mut self.irmin_global_stats), query.irmin_time),
+        ] {
+            let global_stats = match global_stats {
+                Some(global_stats) => global_stats,
+                None => continue,
+            };
+
+            let time = match time {
+                Some(time) => time,
+                None => continue,
+            };
+
+            let entry = match global_stats.get_mut(root) {
+                Some(entry) => entry,
+                None => {
+                    let stats = QueryStatsWithRange {
+                        root: root.to_string(),
+                        ..Default::default()
+                    };
+                    global_stats.insert(root.to_string(), stats);
+                    match global_stats.get_mut(root) {
+                        Some(entry) => entry,
+                        None => {
+                            eprintln!("Fail to get timing entry {:?}", root);
+                            continue;
+                        }
+                    }
+                }
+            };
+
+            let time = *time;
+            let query_stats = match query.query_kind {
+                QueryKind::Mem => &mut entry.mem,
+                QueryKind::MemTree => &mut entry.mem_tree,
+                QueryKind::Find => &mut entry.find,
+                QueryKind::FindTree => &mut entry.find_tree,
+                QueryKind::Add => &mut entry.add,
+                QueryKind::AddTree => &mut entry.add_tree,
+                QueryKind::Remove => &mut entry.remove,
+            };
+
+            entry.queries_count = entry.queries_count.saturating_add(1);
+            entry.total_time += time;
+            query_stats.add_time(time);
+        }
+    }
+}
+
 struct Timing {
     current_block: Option<(HashId, InlinedBlockHash)>,
     current_operation: Option<(HashId, InlinedOperationHash)>,
@@ -369,12 +556,10 @@ struct Timing {
     /// Statistics for the current block
     block_stats: HashMap<String, QueryStats>,
     /// Global statistics
-    tezedge_global_stats: HashMap<String, QueryStatsWithRange>,
-    irmin_global_stats: HashMap<String, QueryStatsWithRange>,
-    tezedge_commit_stats: RangeStats,
-    irmin_commit_stats: RangeStats,
-    tezedge_checkout_stats: RangeStats,
-    irmin_checkout_stats: RangeStats,
+    global: GlobalStatistics,
+    protocol_tables: HashMap<InlinedBlockHash, Protocol>,
+    current_protocol: Option<Protocol>,
+    stats_per_protocol: HashMap<Protocol, GlobalStatistics>,
 }
 
 impl std::fmt::Debug for Timing {
@@ -437,6 +622,17 @@ impl TimingChannel {
     }
 }
 
+fn make_protocol_table() -> HashMap<InlinedBlockHash, Protocol> {
+    let mut table = HashMap::default();
+
+    for (hash, protocol) in PROTOCOLS {
+        let block_hash = BlockHash::from_base58_check(hash).unwrap();
+        table.insert(InlinedBlockHash::from(block_hash.0.as_slice()), *protocol);
+    }
+
+    table
+}
+
 thread_local! {
     /// We put TIMING_CHANNEL in a thread local variable so that
     /// we can access `TimingChannel` mutably.
@@ -493,6 +689,10 @@ fn start_timing(mut consumer: Consumer<TimingMessage>, shared: Arc<TimingChannel
 
     let mut timing = Timing::new();
     let mut transaction = None;
+
+    if let Err(e) = timing.reload_global_stats(&sql) {
+        eprintln!("Fail to reload timing database {:?}", e);
+    }
 
     let mut ntimes_empty = 0;
 
@@ -559,12 +759,10 @@ impl Timing {
             nqueries: 0,
             checkout_time: None,
             block_stats: HashMap::default(),
-            tezedge_global_stats: HashMap::default(),
-            irmin_global_stats: HashMap::default(),
-            tezedge_commit_stats: Default::default(),
-            irmin_commit_stats: RangeStats::default(),
-            tezedge_checkout_stats: Default::default(),
-            irmin_checkout_stats: RangeStats::default(),
+            protocol_tables: make_protocol_table(),
+            current_protocol: None,
+            global: Default::default(),
+            stats_per_protocol: Default::default(),
         }
     }
 
@@ -622,6 +820,9 @@ impl Timing {
               repo_npending_free_ids = :repo_npending_free_ids,
               repo_gc_npending_free_ids = :repo_gc_npending_free_ids,
               repo_nshapes = :repo_nshapes,
+              repo_strings_total_bytes = :repo_strings_total_bytes,
+              repo_shapes_total_bytes = :repo_shapes_total_bytes,
+              repo_commit_index_total_bytes = :repo_commit_index_total_bytes,
               storage_nodes_capacity = :storage_nodes_capacity,
               storage_nodes_length = :storage_nodes_length,
               storage_trees_capacity = :storage_trees_capacity,
@@ -647,6 +848,8 @@ impl Timing {
               serialize_nblobs = :serialize_nblobs,
               serialize_nblobs_inlined = :serialize_nblobs_inlined,
               serialize_nshapes = :serialize_nshapes,
+              serialize_ninode_pointers = :serialize_ninode_pointers,
+              serialize_offset_length = :serialize_offset_length,
               serialize_total_bytes = :serialize_total_bytes,
               total_bytes = :total_bytes
             WHERE
@@ -664,6 +867,9 @@ impl Timing {
             ":repo_npending_free_ids": stats.context.repo.npending_free_ids,
             ":repo_gc_npending_free_ids": stats.context.repo.gc_npending_free_ids,
             ":repo_nshapes": stats.context.repo.nshapes,
+            ":repo_strings_total_bytes": stats.context.repo.strings_total_bytes,
+            ":repo_shapes_total_bytes": stats.context.repo.shapes_total_bytes,
+            ":repo_commit_index_total_bytes": stats.context.repo.commit_index_total_bytes,
             ":storage_nodes_length": stats.context.storage.nodes_len,
             ":storage_nodes_capacity": stats.context.storage.nodes_cap,
             ":storage_trees_length": stats.context.storage.directories_len,
@@ -689,6 +895,8 @@ impl Timing {
             ":serialize_nblobs": stats.serialize.nblobs,
             ":serialize_nblobs_inlined": stats.serialize.nblobs_inlined,
             ":serialize_nshapes": stats.serialize.nshapes,
+            ":serialize_ninode_pointers": stats.serialize.ninode_pointers,
+            ":serialize_offset_length": stats.serialize.offset_length,
             ":serialize_total_bytes": stats.serialize.total_bytes,
             ":total_bytes": stats.context.repo.total_bytes
                 .saturating_add(stats.context.storage.total_bytes)
@@ -744,6 +952,8 @@ impl Timing {
             })?;
         }
 
+        self.set_current_protocol(&block_hash);
+
         Self::set_current(sql, block_hash, &mut self.current_block, "blocks")?;
 
         if let Some(transaction) = transaction.take() {
@@ -759,6 +969,22 @@ impl Timing {
         self.block_stats = HashMap::default();
 
         Ok(())
+    }
+
+    fn set_current_protocol(&mut self, block_hash: &Option<InlinedBlockHash>) {
+        let block_hash = match block_hash {
+            Some(block_hash) => block_hash,
+            None => return,
+        };
+
+        let protocol = match self.protocol_tables.get(&block_hash).copied() {
+            Some(protocol) => protocol,
+            None => return,
+        };
+
+        if Some(protocol) != self.current_protocol {
+            self.current_protocol.replace(protocol);
+        }
     }
 
     fn set_current_operation(
@@ -867,12 +1093,34 @@ impl Timing {
             return Ok(());
         }
 
-        self.tezedge_checkout_stats.add_time(tezedge_time);
-        self.irmin_checkout_stats.add_time(irmin_time);
+        self.global.add_checkout_times(irmin_time, tezedge_time);
+
+        if let Some(protocol_stats) = self.get_stats_protocol_mut() {
+            protocol_stats.add_checkout_times(irmin_time, tezedge_time);
+        };
+
         self.set_current_context(sql, context_hash)?;
         self.checkout_time = Some((irmin_time, tezedge_time));
 
         Ok(())
+    }
+
+    fn get_stats_protocol_mut(&mut self) -> Option<&mut GlobalStatistics> {
+        let protocol = match self.current_protocol {
+            Some(protocol) => protocol,
+            None => return None,
+        };
+
+        Some(self.stats_per_protocol.entry(protocol).or_default())
+    }
+
+    fn get_stats_protocol(&self) -> Option<(Protocol, &GlobalStatistics)> {
+        let protocol = match self.current_protocol {
+            Some(protocol) => protocol,
+            None => return None,
+        };
+
+        Some((protocol, self.stats_per_protocol.get(&protocol)?))
     }
 
     fn insert_commit(
@@ -885,8 +1133,12 @@ impl Timing {
             return Ok(());
         }
 
-        self.tezedge_commit_stats.add_time(tezedge_time);
-        self.irmin_commit_stats.add_time(irmin_time);
+        self.global.add_commit_times(irmin_time, tezedge_time);
+
+        if let Some(protocol_stats) = self.get_stats_protocol_mut() {
+            protocol_stats.add_commit_times(irmin_time, tezedge_time);
+        };
+
         self.sync_global_stats(sql, irmin_time, tezedge_time)?;
         self.sync_block_stats(sql)?;
 
@@ -975,48 +1227,11 @@ impl Timing {
     }
 
     fn add_global_stats(&mut self, root: &str, query: &Query) {
-        for (global_stats, time) in &mut [
-            (&mut self.tezedge_global_stats, query.tezedge_time),
-            (&mut self.irmin_global_stats, query.irmin_time),
-        ] {
-            let time = match time {
-                Some(time) => time,
-                None => continue,
-            };
+        self.global.update_stats(root, query);
 
-            let entry = match global_stats.get_mut(root) {
-                Some(entry) => entry,
-                None => {
-                    let stats = QueryStatsWithRange {
-                        root: root.to_string(),
-                        ..Default::default()
-                    };
-                    global_stats.insert(root.to_string(), stats);
-                    match global_stats.get_mut(root) {
-                        Some(entry) => entry,
-                        None => {
-                            eprintln!("Fail to get timing entry {:?}", root);
-                            continue;
-                        }
-                    }
-                }
-            };
-
-            let time = *time;
-            let query_stats = match query.query_kind {
-                QueryKind::Mem => &mut entry.mem,
-                QueryKind::MemTree => &mut entry.mem_tree,
-                QueryKind::Find => &mut entry.find,
-                QueryKind::FindTree => &mut entry.find_tree,
-                QueryKind::Add => &mut entry.add,
-                QueryKind::AddTree => &mut entry.add_tree,
-                QueryKind::Remove => &mut entry.remove,
-            };
-
-            entry.queries_count = entry.queries_count.saturating_add(1);
-            entry.total_time += time;
-            query_stats.add_time(time);
-        }
+        if let Some(protocol_stats) = self.get_stats_protocol_mut() {
+            protocol_stats.update_stats(root, query);
+        };
     }
 
     fn add_block_stats(&mut self, root: &str, query: &Query) {
@@ -1152,45 +1367,55 @@ impl Timing {
             ":block_id": block_id
         })?;
 
-        for query in self.tezedge_global_stats.values_mut() {
-            query.compute_mean();
-        }
-        for query in self.irmin_global_stats.values_mut() {
-            query.compute_mean();
-        }
-        self.tezedge_checkout_stats.compute_mean();
-        self.irmin_checkout_stats.compute_mean();
-        self.tezedge_commit_stats.compute_mean();
-        self.irmin_commit_stats.compute_mean();
+        self.global.compute_mean();
 
+        if let Some(protocol_stats) = self.get_stats_protocol_mut() {
+            protocol_stats.compute_mean();
+        };
+
+        self.sync_global_stats_impl(sql, &self.global, None)?;
+
+        if let Some((protocol, stats)) = self.get_stats_protocol() {
+            self.sync_global_stats_impl(sql, stats, Some(protocol))?;
+        }
+
+        Ok(())
+    }
+
+    fn sync_global_stats_impl(
+        &self,
+        sql: &Connection,
+        global: &GlobalStatistics,
+        protocol: Option<Protocol>,
+    ) -> Result<(), SQLError> {
         for (global_stats, commits, checkouts, name) in &mut [
             (
-                &self.tezedge_global_stats,
-                &self.tezedge_commit_stats,
-                &self.tezedge_checkout_stats,
+                &global.tezedge_global_stats,
+                &global.tezedge_commit_stats,
+                &global.tezedge_checkout_stats,
                 "tezedge",
             ),
             (
-                &self.irmin_global_stats,
-                &self.irmin_commit_stats,
-                &self.irmin_checkout_stats,
+                &global.irmin_global_stats,
+                &global.irmin_commit_stats,
+                &global.irmin_checkout_stats,
                 "irmin",
             ),
         ] {
-            for (root, query_stats) in global_stats.iter() {
+            for (root, query) in global_stats.iter() {
                 let root = root.as_str();
 
-                self.insert_query_stats(sql, name, root, "mem", &query_stats.mem)?;
-                self.insert_query_stats(sql, name, root, "mem_tree", &query_stats.mem_tree)?;
-                self.insert_query_stats(sql, name, root, "find", &query_stats.find)?;
-                self.insert_query_stats(sql, name, root, "find_tree", &query_stats.find_tree)?;
-                self.insert_query_stats(sql, name, root, "add", &query_stats.add)?;
-                self.insert_query_stats(sql, name, root, "add_tree", &query_stats.add_tree)?;
-                self.insert_query_stats(sql, name, root, "remove", &query_stats.remove)?;
+                self.insert_query_stats(sql, name, root, "mem", &query.mem, protocol)?;
+                self.insert_query_stats(sql, name, root, "mem_tree", &query.mem_tree, protocol)?;
+                self.insert_query_stats(sql, name, root, "find", &query.find, protocol)?;
+                self.insert_query_stats(sql, name, root, "find_tree", &query.find_tree, protocol)?;
+                self.insert_query_stats(sql, name, root, "add", &query.add, protocol)?;
+                self.insert_query_stats(sql, name, root, "add_tree", &query.add_tree, protocol)?;
+                self.insert_query_stats(sql, name, root, "remove", &query.remove, protocol)?;
             }
 
-            self.insert_query_stats(sql, name, "commit", "commit", commits)?;
-            self.insert_query_stats(sql, name, "checkout", "checkout", checkouts)?;
+            self.insert_query_stats(sql, name, "commit", "commit", commits, protocol)?;
+            self.insert_query_stats(sql, name, "checkout", "checkout", checkouts, protocol)?;
         }
 
         Ok(())
@@ -1203,20 +1428,27 @@ impl Timing {
         root: &str,
         query_name: &str,
         range_stats: &RangeStats,
+        protocol: Option<Protocol>,
     ) -> Result<(), SQLError> {
         let mut query = sql.prepare_cached(
             "
         INSERT OR IGNORE INTO global_query_stats
-          (root, query_name, context_name)
+          (root, query_name, context_name, protocol)
         VALUES
-          (:root, :query_name, :context_name)
+          (:root, :query_name, :context_name, :protocol)
             ",
         )?;
+
+        let protocol = protocol
+            .as_ref()
+            .map(|p| p.as_str())
+            .unwrap_or(STATS_ALL_PROTOCOL);
 
         query.execute(named_params! {
             ":root": root,
             ":query_name": query_name,
             ":context_name": context_name,
+            ":protocol": protocol,
         })?;
 
         let mut query = sql.prepare_cached(
@@ -1263,7 +1495,7 @@ impl Timing {
           one_hundred_s_max_time = :one_hundred_s_max_time,
           one_hundred_s_total_time = :one_hundred_s_total_time
         WHERE
-          root = :root AND query_name = :query_name AND context_name = :context_name;
+          root = :root AND query_name = :query_name AND context_name = :context_name AND protocol = :protocol;
         ",
         )?;
 
@@ -1274,6 +1506,7 @@ impl Timing {
                 ":context_name": context_name,
                 ":total_time": &range_stats.total_time,
                 ":queries_count": &range_stats.queries_count,
+                ":protocol": &protocol,
                 ":one_to_ten_us_count": &range_stats.one_to_ten_us.count,
                 ":one_to_ten_us_mean_time": &range_stats.one_to_ten_us.mean_time,
                 ":one_to_ten_us_max_time": &range_stats.one_to_ten_us.max_time,
@@ -1316,6 +1549,169 @@ impl Timing {
         Ok(())
     }
 
+    fn reload_global_stats(&mut self, sql: &Connection) -> Result<(), SQLError> {
+        let mut stmt = sql.prepare(
+            "
+    SELECT
+      query_name,
+      root,
+      one_to_ten_us_count,
+      one_to_ten_us_mean_time,
+      one_to_ten_us_max_time,
+      one_to_ten_us_total_time,
+      ten_to_one_hundred_us_count,
+      ten_to_one_hundred_us_mean_time,
+      ten_to_one_hundred_us_max_time,
+      ten_to_one_hundred_us_total_time,
+      one_hundred_us_to_one_ms_count,
+      one_hundred_us_to_one_ms_mean_time,
+      one_hundred_us_to_one_ms_max_time,
+      one_hundred_us_to_one_ms_total_time,
+      one_to_ten_ms_count,
+      one_to_ten_ms_mean_time,
+      one_to_ten_ms_max_time,
+      one_to_ten_ms_total_time,
+      ten_to_one_hundred_ms_count,
+      ten_to_one_hundred_ms_mean_time,
+      ten_to_one_hundred_ms_max_time,
+      ten_to_one_hundred_ms_total_time,
+      one_hundred_ms_to_one_s_count,
+      one_hundred_ms_to_one_s_mean_time,
+      one_hundred_ms_to_one_s_max_time,
+      one_hundred_ms_to_one_s_total_time,
+      one_to_ten_s_count,
+      one_to_ten_s_mean_time,
+      one_to_ten_s_max_time,
+      one_to_ten_s_total_time,
+      ten_to_one_hundred_s_count,
+      ten_to_one_hundred_s_mean_time,
+      ten_to_one_hundred_s_max_time,
+      ten_to_one_hundred_s_total_time,
+      one_hundred_s_count,
+      one_hundred_s_mean_time,
+      one_hundred_s_max_time,
+      one_hundred_s_total_time,
+      total_time,
+      queries_count,
+      context_name,
+      protocol
+    FROM
+      global_query_stats
+       ",
+        )?;
+
+        let mut rows = stmt.query([])?;
+
+        while let Some(row) = rows.next()? {
+            let context_name: &str = match row.get_ref(40)?.as_str() {
+                Ok(context_name) => context_name,
+                Err(_) => continue,
+            };
+
+            let protocol = row
+                .get_ref(41)?
+                .as_str()
+                .ok()
+                .and_then(|s| Protocol::from_str(s));
+
+            let global_stats = match protocol {
+                Some(protocol) => self.stats_per_protocol.entry(protocol).or_default(),
+                None => &mut self.global,
+            };
+
+            let (global_stats, commit_stats, checkout_stats) = match context_name {
+                "tezedge" => (
+                    &mut global_stats.tezedge_global_stats,
+                    &mut global_stats.tezedge_commit_stats,
+                    &mut global_stats.tezedge_checkout_stats,
+                ),
+                "irmin" => (
+                    &mut global_stats.irmin_global_stats,
+                    &mut global_stats.irmin_commit_stats,
+                    &mut global_stats.irmin_checkout_stats,
+                ),
+                _ => continue,
+            };
+
+            let query_name = match row.get_ref(0)?.as_str() {
+                Ok(name) if !name.is_empty() => name,
+                _ => continue,
+            };
+
+            let root = match row.get_ref(1)?.as_str() {
+                Ok(root) if !root.is_empty() => root,
+                _ => continue,
+            };
+
+            let mut query_stats = match query_name {
+                "commit" => commit_stats,
+                "checkout" => checkout_stats,
+                _ => {
+                    let entry = match global_stats.get_mut(root) {
+                        Some(entry) => entry,
+                        None => {
+                            let mut stats = QueryStatsWithRange::default();
+                            stats.root = root.to_string();
+                            global_stats.insert(root.to_string(), stats);
+                            global_stats.get_mut(root).unwrap()
+                        }
+                    };
+                    match query_name {
+                        "mem" => &mut entry.mem,
+                        "mem_tree" => &mut entry.mem_tree,
+                        "find" => &mut entry.find,
+                        "find_tree" => &mut entry.find_tree,
+                        "add" => &mut entry.add,
+                        "add_tree" => &mut entry.add_tree,
+                        "remove" => &mut entry.remove,
+                        _ => continue,
+                    }
+                }
+            };
+
+            query_stats.one_to_ten_us.count = row.get(2)?;
+            query_stats.one_to_ten_us.mean_time = row.get(3)?;
+            query_stats.one_to_ten_us.max_time = row.get(4)?;
+            query_stats.one_to_ten_us.total_time = row.get(5)?;
+            query_stats.ten_to_one_hundred_us.count = row.get(6)?;
+            query_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
+            query_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
+            query_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
+            query_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
+            query_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
+            query_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
+            query_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
+            query_stats.one_to_ten_ms.count = row.get(14)?;
+            query_stats.one_to_ten_ms.mean_time = row.get(15)?;
+            query_stats.one_to_ten_ms.max_time = row.get(16)?;
+            query_stats.one_to_ten_ms.total_time = row.get(17)?;
+            query_stats.ten_to_one_hundred_ms.count = row.get(18)?;
+            query_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
+            query_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
+            query_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
+            query_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
+            query_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
+            query_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
+            query_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
+            query_stats.one_to_ten_s.count = row.get(26)?;
+            query_stats.one_to_ten_s.mean_time = row.get(27)?;
+            query_stats.one_to_ten_s.max_time = row.get(28)?;
+            query_stats.one_to_ten_s.total_time = row.get(29)?;
+            query_stats.ten_to_one_hundred_s.count = row.get(30)?;
+            query_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
+            query_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
+            query_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
+            query_stats.one_hundred_s.count = row.get(34)?;
+            query_stats.one_hundred_s.mean_time = row.get(35)?;
+            query_stats.one_hundred_s.max_time = row.get(36)?;
+            query_stats.one_hundred_s.total_time = row.get(37)?;
+            query_stats.total_time = row.get(38)?;
+            query_stats.queries_count = row.get(39)?;
+        }
+
+        Ok(())
+    }
+
     fn init_sqlite(db_path: Option<PathBuf>) -> Result<Connection, SQLError> {
         let connection = match db_path {
             Some(mut path) => {
@@ -1325,7 +1721,7 @@ impl Timing {
 
                 path.push(FILENAME_DB);
 
-                std::fs::remove_file(&path).ok();
+                // std::fs::remove_file(&path).ok();
                 Connection::open(&path)?
             }
             None => Connection::open_in_memory()?,

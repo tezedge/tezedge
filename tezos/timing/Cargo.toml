@@ -1,10 +1,11 @@
 [package]
 name = "tezos_timing"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Sebastien Chapuis <sebastien@chapu.is>"]
 edition = "2018"
 
 [dependencies]
+crypto = { path = "../../crypto" }
 serde = { version = "1.0", features = ["derive"] }
 rusqlite = { version = "0.25.1", features = ["bundled"] }
 static_assertions = "1.1"

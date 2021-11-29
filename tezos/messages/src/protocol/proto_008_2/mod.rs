@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 pub mod constants;
 pub mod contract;
+pub mod operation;
 pub mod rights;
 pub mod votes;
 

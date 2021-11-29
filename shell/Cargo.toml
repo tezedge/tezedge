@@ -1,11 +1,12 @@
 [package]
 name = "shell"
-version = "1.10.0"
+version = "1.11.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
+async_ipc = { path = "../async-ipc" }
 chrono = "0.4"
 dns-lookup = "1.0.1"
 thiserror = "1.0"
@@ -44,5 +45,4 @@ tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
-async_ipc = { path = "../async-ipc" }
 tezos_context_api = { path = "../tezos/context-api" }
