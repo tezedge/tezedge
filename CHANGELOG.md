@@ -30,6 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.11.0] - 2021-11-29
+
+### Added
+
+- Persistent on-disk backend for the TezEdge context storage (preview release)
+- Enabling conditions for actions in shell automaton.
+- Drone CI Pipeline with Python tests for Granada
+- Per-protocol context statistics
+
+### Removed
+
+- Drone CI pipeline with Python tests for Edo
+
+### Changed
+
+- When using the TezEdge context storage implementation, the default backend is now the persistent one (was in-memory)
+- More eager cleanup of no-longer used IPC connections between the shell process and the protocol runner process, and more reuse of already existing connections (instead of instantiation a new one each time) when possible.
+
+### Fixed
+
+- Issue that caused the list of peers between the state machine and the actors system to get out of sync, causing the node to lag behind.
+
 ## [1.10.0] - 2021-11-16
 
 ### Changed
@@ -597,7 +619,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/tezedge/tezedge/releases/v1.11.0
 [1.10.0]: https://github.com/tezedge/tezedge/releases/v1.10.0
 [1.9.1]: https://github.com/tezedge/tezedge/releases/v1.9.1
 [1.9.0]: https://github.com/tezedge/tezedge/releases/v1.9.0
