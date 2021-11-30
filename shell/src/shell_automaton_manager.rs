@@ -125,8 +125,12 @@ impl ShellAutomatonManager {
         );
         let (rpc_service, rpc_channel) = RpcServiceDefault::new(mio_service.waker(), 128);
 
-        let storage_service =
-            StorageServiceDefault::init(mio_service.waker(), persistent_storage.clone(), 4096);
+        let storage_service = StorageServiceDefault::init(
+            log.clone(),
+            mio_service.waker(),
+            persistent_storage.clone(),
+            4096,
+        );
 
         let (automaton_sender, automaton_receiver) =
             shell_automaton::service::actors_service::sync_channel(

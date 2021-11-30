@@ -158,7 +158,11 @@ pub struct ActionGraphNode {
 }
 
 impl StorageServiceDefault {
-    fn run_worker(storage: PersistentStorage, mut channel: StorageWorkerResponder) {
+    fn run_worker(
+        log: slog::Logger,
+        storage: PersistentStorage,
+        mut channel: StorageWorkerResponder,
+    ) {
         use StorageRequestPayload::*;
         use StorageResponseError::*;
         use StorageResponseSuccess::*;
@@ -226,6 +230,8 @@ impl StorageServiceDefault {
 
             if req.subscribe {
                 let _ = channel.send(StorageResponse::new(req.id, result));
+            } else if result.is_err() {
+                slog::warn!(&log, "Storage request failed"; "result" => format!("{:?}", result));
             }
 
             // Persist metas every 1 sec.
@@ -243,6 +249,7 @@ impl StorageServiceDefault {
 
     // TODO: remove unwraps
     pub fn init(
+        log: slog::Logger,
         waker: Arc<mio::Waker>,
         persistent_storage: PersistentStorage,
         channel_bound: usize,
@@ -251,7 +258,7 @@ impl StorageServiceDefault {
 
         thread::Builder::new()
             .name("storage-thread".to_owned())
-            .spawn(move || Self::run_worker(persistent_storage, responder))
+            .spawn(move || Self::run_worker(log, persistent_storage, responder))
             .unwrap();
 
         Self {
