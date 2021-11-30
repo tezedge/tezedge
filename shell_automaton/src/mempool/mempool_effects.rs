@@ -26,6 +26,7 @@ use super::{
         MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
+        MempoolCleanupWaitPrevalidatorAction,
     },
     mempool_state::HeadState,
 };
@@ -48,9 +49,10 @@ pub fn mempool_effects<S>(
             match act {
                 ProtocolAction::PrevalidatorForMempoolReady(_) => {
                     let ops = store.state().mempool.wait_prevalidator_operations.clone();
-                    for (_, operation) in ops {
+                    for operation in ops {
                         store.dispatch(MempoolValidateStartAction { operation });
                     }
+                    store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
                 }
                 ProtocolAction::OperationValidated(_) => {
                     store.dispatch(MempoolBroadcastAction {});

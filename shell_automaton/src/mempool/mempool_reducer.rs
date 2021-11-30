@@ -10,7 +10,7 @@ use crate::{Action, ActionWithMeta, State};
 use super::{
     BlockAppliedAction, HeadState, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
-    MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction,
+    MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -27,7 +27,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             ProtocolAction::OperationValidated(result) => {
                 mempool_state.prevalidator = Some(result.prevalidator.clone());
                 for v in &result.result.applied {
-                    mempool_state.wait_prevalidator_operations.remove(&v.hash);
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                         mempool_state
                             .validated_operations
@@ -42,7 +41,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
                 for v in &result.result.refused {
-                    mempool_state.wait_prevalidator_operations.remove(&v.hash);
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                         mempool_state
                             .validated_operations
@@ -57,7 +55,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
                 for v in &result.result.branch_refused {
-                    mempool_state.wait_prevalidator_operations.remove(&v.hash);
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                         mempool_state
                             .validated_operations
@@ -75,7 +72,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
                 for v in &result.result.branch_delayed {
-                    mempool_state.wait_prevalidator_operations.remove(&v.hash);
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                         mempool_state
                             .validated_operations
@@ -177,7 +173,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             operation,
         }) => {
             // TODO(vlad): hash
-            mempool_state.wait_prevalidator_operations.insert(operation.message_typed_hash().unwrap(), operation.clone());
+            mempool_state.wait_prevalidator_operations.push(operation.clone());
+        }
+        Action::MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction {}) => {
+            mempool_state.wait_prevalidator_operations.clear();
         }
         Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
             state.mempool.injected_rpc_ids.clear();
