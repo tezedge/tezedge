@@ -37,7 +37,7 @@ where
     match &action.action {
         Action::WakeupEvent(_) => {
             let quota_restore_duration_millis =
-                store.state.get().config.quota.restore_duration_millis;
+                store.state.get().config.quota.restore_duration_millis as u128;
             let read_addresses = store
                 .state
                 .get()

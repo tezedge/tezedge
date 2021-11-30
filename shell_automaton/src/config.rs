@@ -94,7 +94,7 @@ impl Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Quota {
-    pub restore_duration_millis: u128,
+    pub restore_duration_millis: u64,
     pub read_quota: usize,
     pub write_quota: usize,
 }

@@ -256,28 +256,17 @@ impl Action {
 }
 
 // bincode decoding fails with: "Bincode does not support Deserializer::deserialize_identifier".
-// So use json instead, which works.
-
-// impl BincodeEncoded for Action {
-//     fn decode(bytes: &[u8]) -> Result<Self, storage::persistent::SchemaError> {
-//         // here it errors.
-//         Ok(dbg!(bincode::deserialize(bytes)).unwrap())
-//     }
-
-//     fn encode(&self) -> Result<Vec<u8>, storage::persistent::SchemaError> {
-//         Ok(bincode::serialize::<Self>(self).unwrap())
-//     }
-// }
+// So use messagepack instead, which is smaller but slower.
 
 impl storage::persistent::Encoder for Action {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        serde_json::to_vec(self).map_err(|_| SchemaError::EncodeError)
+        rmp_serde::to_vec(self).map_err(|_| SchemaError::EncodeError)
     }
 }
 
 impl storage::persistent::Decoder for Action {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        serde_json::from_slice(bytes).map_err(|_| SchemaError::DecodeError)
+        rmp_serde::from_slice(bytes).map_err(|_| SchemaError::DecodeError)
     }
 }
 

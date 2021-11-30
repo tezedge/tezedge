@@ -484,8 +484,7 @@ impl BlockApplierThreadSpawner {
 
                 while apply_block_run.load(Ordering::Acquire) {
                     info!(log, "Chain feeding starting");
-                    let result = tokio_runtime.block_on(tezos_protocol_api.writable_connection());
-                    match result {
+                    match tezos_protocol_api.writable_connection_sync() {
                         Ok(mut protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
                             &init_storage_data,
@@ -976,8 +975,9 @@ fn _apply_block(
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result =
-        tokio_runtime.block_on(protocol_controller.apply_block(block_request))?;
+    let apply_block_result = tokio::task::block_in_place(|| {
+        tokio_runtime.block_on(protocol_controller.apply_block(block_request))
+    })?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
 
     if !apply_block_result.cycle_rolls_owner_snapshots.is_empty() {

@@ -18,8 +18,6 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 use crate::Result;
 use std::io::{BufReader, Write};
 
-use std::cmp::max;
-
 use std::option::Option::Some;
 
 use lru_cache::LruCache;
@@ -574,7 +572,7 @@ impl DataStore {
 impl Drop for DataStore {
     fn drop(&mut self) {
         // TODO - TE-721: handle this error
-        self.sync_all(false);
+        let _ = self.sync_all(false);
         self.lock_file.unlock().unwrap();
     }
 }

@@ -191,7 +191,7 @@ impl Drop for EdgeKV {
     fn drop(&mut self) {
         self.dropped.store(true, Ordering::Release);
         // TODO - TE-721: handle this error
-        self.store.sync_all(false);
+        let _ = self.store.sync_all(false);
     }
 }
 

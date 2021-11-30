@@ -243,6 +243,7 @@ impl TezedgeDatabase {
         self.backend.size()
     }
 
+    #[allow(dead_code)]
     fn sync(&self) -> Result<(), Error> {
         self.backend.sync()
     }
