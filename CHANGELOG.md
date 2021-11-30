@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.12.0] - 2021-11-30
+
+### Changed
+
+- Increase Irmin's index log size limit to `2_500_000` to match Octez v11. This should help with freezes during merges by making them happen less often, but increases memory usage a little.
+- Tweak the call to apply a block in chain feeder so that it is less prone to block Tokio's worker threads.
+- MessagePack encoding is now used for action and state snapshot storage instead of JSON.
+
 ## [1.11.0] - 2021-11-29
 
 ### Added
@@ -619,7 +627,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/tezedge/tezedge/releases/v1.12.0
 [1.11.0]: https://github.com/tezedge/tezedge/releases/v1.11.0
 [1.10.0]: https://github.com/tezedge/tezedge/releases/v1.10.0
 [1.9.1]: https://github.com/tezedge/tezedge/releases/v1.9.1

@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.11.0
+    image: tezedge/tezedge:v1.12.0
     environment:
       - TEZOS_CONTEXT=index-log-size=5_000_000
     command: [
