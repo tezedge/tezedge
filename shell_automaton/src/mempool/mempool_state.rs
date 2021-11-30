@@ -35,7 +35,7 @@ pub struct MempoolState {
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<OperationHash, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
-    pub(super) wait_prevalidator_operations: HashMap<OperationHash, Operation>,
+    pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
 }
 
