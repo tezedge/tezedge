@@ -25,7 +25,7 @@ services:
     volumes:
       - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"
     environment:
-      - TEZOS_STORAGE=index-log-size=5_000_000
+      - TEZOS_CONTEXT=index-log-size=5_000_000
     ports:
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
