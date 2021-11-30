@@ -21,6 +21,7 @@ use tezos_protocol_ipc_messages::InitProtocolContextParams;
 use tezos_protocol_ipc_messages::NodeMessage;
 use tezos_protocol_ipc_messages::ProtocolMessage;
 
+#[allow(dead_code)]
 pub fn prepare_empty_dir(dir_name: &str) -> String {
     let path = test_storage_dir_path(dir_name);
     if path.exists() {
@@ -31,6 +32,7 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
     String::from(path.to_str().unwrap())
 }
 
+#[allow(dead_code)]
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
     let path = Path::new(out_dir.as_str()).join(Path::new(dir_name));
@@ -44,6 +46,7 @@ pub fn is_ocaml_log_enabled() -> bool {
         .unwrap()
 }
 
+#[allow(dead_code)]
 pub fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
@@ -69,6 +72,7 @@ macro_rules! expect_response {
     };
 }
 
+#[allow(dead_code)]
 pub fn init_test_protocol_context(
     dir_name: &str,
     tezos_env: TezosEnvironmentConfiguration,
