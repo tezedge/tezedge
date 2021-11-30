@@ -3,15 +3,15 @@
 
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use crypto::hash::OperationHash;
-use tezos_messages::p2p::encoding::operation::Operation;
+use crypto::hash::{BlockHash, OperationHash};
+use tezos_messages::p2p::encoding::{block_header::Level, operation::Operation};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::State;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RpcId(u64);
 
 pub type RpcRecvError = mpsc::error::TryRecvError;
@@ -32,6 +32,10 @@ pub enum RpcResponse {
         operation_hash: OperationHash,
         operation: Operation,
     },
+    GetEndorsingRights {
+        block_hash: BlockHash,
+        level: Option<Level>,
+    }
 }
 
 #[derive(Clone)]
@@ -40,13 +44,9 @@ pub struct RpcShellAutomatonSender {
     mio_waker: Arc<mio::Waker>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("the channel between rpc and shell is overflown")]
 pub struct RpcShellAutomatonChannelSendError;
-
-impl fmt::Display for RpcShellAutomatonChannelSendError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "the channel between rpc and shell is overflown")
-    }
-}
 
 impl RpcShellAutomatonSender {
     pub async fn send(

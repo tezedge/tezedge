@@ -7,6 +7,7 @@ use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
+use crypto::hash::BlockHash;
 use hyper::{Body, Request};
 use slog::warn;
 use std::sync::Arc;
@@ -324,4 +325,20 @@ pub async fn dev_shell_automaton_actions_graph_get(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)
+}
+
+pub async fn dev_shell_automaton_endorsing_rights(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let block_hash = query
+        .get_str("block")
+        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `block`"))?;
+    let block_hash = BlockHash::from_base58_check(&block_hash)?;
+    let level = query.get_str("level").map(str::parse).transpose()?;
+    make_json_response(
+        &dev_services::get_shell_automaton_endorsing_rights(block_hash, level, &env).await?,
+    )
 }

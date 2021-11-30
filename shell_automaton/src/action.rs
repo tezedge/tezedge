@@ -79,7 +79,9 @@ use crate::rights::{
     RightsEndorsingRightsGetProtocolConstantsAction, RightsEndorsingRightsGetProtocolHashAction,
     RightsEndorsingRightsProtocolConstantsReadyAction,
     RightsEndorsingRightsProtocolHashReadyAction, RightsEndorsingRightsReadyAction,
-    RightsGetEndorsingRightsAction,
+    RightsGetEndorsingRightsAction, RightsRpcEndorsingRightsErrorAction,
+    RightsRpcEndorsingRightsGetAction, RightsRpcEndorsingRightsPruneAction,
+    RightsRpcEndorsingRightsReadyAction,
 };
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
@@ -296,6 +298,10 @@ pub enum Action {
     PrecheckerError(PrecheckerErrorAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),
+    RightsRpcEndorsingRightsGet(RightsRpcEndorsingRightsGetAction),
+    RightsRpcEndorsingRightsReady(RightsRpcEndorsingRightsReadyAction),
+    RightsRpcEndorsingRightsError(RightsRpcEndorsingRightsErrorAction),
+    RightsRpcEndorsingRightsPrune(RightsRpcEndorsingRightsPruneAction),
     RightsEndorsingRightsGetBlockHeader(RightsEndorsingRightsGetBlockHeaderAction),
     RightsEndorsingRightsBlockHeaderReady(RightsEndorsingRightsBlockHeaderReadyAction),
     RightsEndorsingRightsGetProtocolHash(RightsEndorsingRightsGetProtocolHashAction),

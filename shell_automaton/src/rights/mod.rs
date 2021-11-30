@@ -20,7 +20,9 @@ use tezos_messages::p2p::encoding::block_header::Level;
 mod utils;
 
 /// Key identifying particular request for endorsing rights.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 #[serde(into = "String", try_from = "String")]
 pub struct EndorsingRightsKey {
     /// Current block hash.

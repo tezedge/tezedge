@@ -36,6 +36,7 @@ use storage::{
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
@@ -698,4 +699,18 @@ pub(crate) async fn get_shell_automaton_actions_graph(
             })
         })
         .collect())
+}
+
+pub(crate) async fn get_shell_automaton_endorsing_rights(
+    block_hash: BlockHash,
+    level: Option<Level>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetEndorsingRights { block_hash, level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
 }

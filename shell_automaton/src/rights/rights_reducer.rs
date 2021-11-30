@@ -15,12 +15,14 @@ use super::{
     RightsEndorsingRightsGetCycleErasAction, RightsEndorsingRightsGetProtocolConstantsAction,
     RightsEndorsingRightsGetProtocolHashAction, RightsEndorsingRightsProtocolConstantsReadyAction,
     RightsEndorsingRightsProtocolHashReadyAction, RightsEndorsingRightsReadyAction,
-    RightsGetEndorsingRightsAction, RightsState,
+    RightsGetEndorsingRightsAction, RightsRpcEndorsingRightsGetAction,
+    RightsRpcEndorsingRightsPruneAction, RightsState,
 };
 
 pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
     let endorsing_rights_state = &mut state.rights.endorsing_rights;
     match &action.action {
+        // Main entry action
         Action::RightsGetEndorsingRights(RightsGetEndorsingRightsAction { key })
             if !endorsing_rights_state.contains_key(key) =>
         {
@@ -29,6 +31,23 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 EndorsingRightsRequest::Init { start: action.id },
             );
         }
+
+        // RPC actions
+        Action::RightsRpcEndorsingRightsGet(RightsRpcEndorsingRightsGetAction { rpc_id, key })
+            if !state.rights.rpc_requests.contains_key(rpc_id) =>
+        {
+            state
+                .rights
+                .rpc_requests
+                .insert(rpc_id.clone(), key.clone());
+        }
+        Action::RightsRpcEndorsingRightsPrune(RightsRpcEndorsingRightsPruneAction { rpc_id })
+            if state.rights.rpc_requests.contains_key(rpc_id) =>
+        {
+            state.rights.rpc_requests.remove(rpc_id);
+        }
+
+        // Auxiliary actions
         Action::RightsEndorsingRightsGetBlockHeader(
             RightsEndorsingRightsGetBlockHeaderAction { key },
         ) => {

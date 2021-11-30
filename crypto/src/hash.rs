@@ -343,7 +343,7 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake
         .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error, serde::Serialize, serde::Deserialize)]
 pub enum TryFromPKError {
     #[error("Error calculating digest")]
     Digest(#[from] Blake2bError),

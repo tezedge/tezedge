@@ -13,13 +13,7 @@ use crate::server::{HResult, MethodHandler, Params, Query, RpcServiceEnvironment
 
 macro_rules! hash_set {
     ( $( $x:expr ),* ) => {
-        {
-            let mut temp_set = HashSet::new();
-            $(
-                temp_set.insert($x);
-            )*
-            temp_set
-        }
+        HashSet::from([$($x),*])
     };
 }
 
@@ -311,6 +305,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/dev/shell/automaton/actions_graph",
         dev_handler::dev_shell_automaton_actions_graph_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/endorsing_rights",
+        dev_handler::dev_shell_automaton_endorsing_rights,
     );
     routes.handle(
         hash_set![Method::GET],
