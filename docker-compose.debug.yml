@@ -32,6 +32,8 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "tezedge-debug-data:/tmp/tezedge"
+    environment:
+      - TEZOS_CONTEXT=index-log-size=2_500_000
 
   explorer:
     image: tezedge/tezedge-explorer:v1.9.1
