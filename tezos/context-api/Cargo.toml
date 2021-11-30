@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context_api"
-version = "1.12.0"
+version = "1.13.0"
 edition = "2018"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 
