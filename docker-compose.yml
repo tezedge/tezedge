@@ -13,6 +13,8 @@ services:
     networks:
       - default
     tty: true
+    environment:
+      - TEZOS_CONTEXT=index-log-size=2_500_000
 
   explorer:
     image: tezedge/tezedge-explorer:v1.9.1

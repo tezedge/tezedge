@@ -32,6 +32,8 @@ services:
 
   tezedge-node:
     image: tezedge/tezedge:latest-frame-pointers-enabled
+    environment:
+      - TEZOS_CONTEXT=index-log-size=2_500_000
     command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log"]
     logging:
       # Produce syslogs instead of terminal logs

@@ -3,6 +3,8 @@ version: "3"
 services:
   tezedge-node:
     image: tezedge/tezedge:v1.11.0
+    environment:
+      - TEZOS_CONTEXT=index-log-size=5_000_000
     command: [
         "--network", "${TEZOS_NETWORK}",
         "--p2p-port=9732",
@@ -26,8 +28,6 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"
-    environment:
-      - TEZOS_CONTEXT=index-log-size=5_000_000
 
   explorer:
     image: tezedge/tezedge-explorer:v1.9.1
