@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
-use ::storage::persistent::BincodeEncoded;
+use ::storage::persistent::SchemaError;
 
 use crate::config::Config;
 use crate::paused_loops::PausedLoopsState;
@@ -124,4 +124,14 @@ impl State {
     }
 }
 
-impl BincodeEncoded for State {}
+impl storage::persistent::Encoder for State {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        rmp_serde::to_vec(self).map_err(|_| SchemaError::EncodeError)
+    }
+}
+
+impl storage::persistent::Decoder for State {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        rmp_serde::from_slice(bytes).map_err(|_| SchemaError::DecodeError)
+    }
+}

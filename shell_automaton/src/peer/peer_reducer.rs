@@ -25,7 +25,9 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithMeta) {
                     .id
                     .duration_since(peer.quota.read_timestamp)
                     .as_millis();
-                if duration_since_restore_millis >= state.config.quota.restore_duration_millis {
+                if duration_since_restore_millis
+                    >= state.config.quota.restore_duration_millis as u128
+                {
                     peer.quota.bytes_read = 0;
                     peer.quota.read_timestamp = action.id;
                     peer.quota.reject_read = false;
@@ -53,7 +55,9 @@ pub fn peer_reducer(state: &mut State, action: &ActionWithMeta) {
                     .id
                     .duration_since(peer.quota.write_timestamp)
                     .as_millis();
-                if duration_since_restore_millis >= state.config.quota.restore_duration_millis {
+                if duration_since_restore_millis
+                    >= state.config.quota.restore_duration_millis as u128
+                {
                     peer.quota.bytes_written = 0;
                     peer.quota.write_timestamp = action.id;
                     peer.quota.reject_write = false;
