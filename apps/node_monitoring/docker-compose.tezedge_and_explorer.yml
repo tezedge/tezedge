@@ -27,7 +27,7 @@ services:
     volumes:
       - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"
     environment:
-      - TEZOS_STORAGE=index-log-size=5_000_000
+      - TEZOS_CONTEXT=index-log-size=5_000_000
 
   explorer:
     image: tezedge/tezedge-explorer:v1.9.1
