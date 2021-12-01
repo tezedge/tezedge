@@ -301,48 +301,40 @@ where
             rpc_id,
             block_hash,
         }) => {
-            if store
+            match (block_hash, store.state.get().mempool.head_hash()) {
+                (Some(h1), Some(h2)) if h1 != h2 => {
+                    store.service.rpc().respond(
+                        *rpc_id,
+                        serde_json::json!({
+                            "error":
+                                format!("non-current block, current is `{}`", h2.to_base58_check())
+                        }),
+                    );
+                }
+                _ => (),
+            }
+            let status = &store
                 .state
                 .get()
                 .mempool
-                .head_hash()
-                .map(|hh| hh == block_hash)
-                .unwrap_or(false)
-            {
-                let status = &store
-                    .state
-                    .get()
-                    .mempool
-                    .operations_state
-                    .iter()
-                    .filter_map(|(op, state)| {
-                        if let Some(slot) = state.endorsement_slot() {
-                            let mut json = match serde_json::to_value(state) {
-                                Ok(v) => v,
-                                Err(_) => return None,
-                            };
-                            let json_obj = json.as_object_mut()?;
-                            let _ = json_obj.remove("protocol_data")?;
-                            json_obj.insert("slot".to_string(), slot.clone());
-                            Some((op, json))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<BTreeMap<_, _>>();
-                store.service.rpc().respond(*rpc_id, status);
-            } else {
-                store.service.rpc().respond(
-                    *rpc_id,
-                    serde_json::json!({
-                        "error":
-                            format!(
-                                "non-current block, current is `{:?}`",
-                                store.state.get().mempool.head_hash()
-                            )
-                    }),
-                );
-            }
+                .operations_state
+                .iter()
+                .filter_map(|(op, state)| {
+                    if let Some(slot) = state.endorsement_slot() {
+                        let mut json = match serde_json::to_value(state) {
+                            Ok(v) => v,
+                            Err(_) => return None,
+                        };
+                        let json_obj = json.as_object_mut()?;
+                        let _ = json_obj.remove("protocol_data")?;
+                        json_obj.insert("slot".to_string(), slot.clone());
+                        Some((op, json))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeMap<_, _>>();
+            store.service.rpc().respond(*rpc_id, status);
         }
         _ => (),
     }

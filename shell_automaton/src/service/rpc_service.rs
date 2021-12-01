@@ -39,7 +39,7 @@ pub enum RpcResponse {
         level: Option<Level>,
     },
     GetEndorsementsStatus {
-        block_hash: BlockHash,
+        block_hash: Option<BlockHash>,
     },
 }
 

@@ -181,7 +181,7 @@ impl EnablingCondition<State> for MempoolOperationPrecheckedAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MempoolRpcEndorsementsStatusGetAction {
     pub rpc_id: RpcId,
-    pub block_hash: BlockHash,
+    pub block_hash: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {

@@ -716,7 +716,7 @@ pub(crate) async fn get_shell_automaton_endorsing_rights(
 }
 
 pub(crate) async fn get_shell_automaton_endorsements_status(
-    block_hash: BlockHash,
+    block_hash: Option<BlockHash>,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<serde_json::Value> {
     let rx = env
