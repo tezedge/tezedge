@@ -24,7 +24,7 @@ use thiserror::Error;
 use tokio::time::error::Elapsed;
 
 /// IPC communication errors
-#[derive(Debug, Error)]
+#[derive(Error, Debug)]
 pub enum IpcError {
     #[error("Receive message length error: {reason}")]
     ReceiveMessageLengthError { reason: io::Error },
