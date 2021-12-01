@@ -20,21 +20,16 @@ where
         }
         Action::WebsocketClientEvent(event) => {
             if let Some(client) = store.service.mio().websocket_client_get(event.token) {
-                match &client.connection {
-                    MioWsConnection::MidHandshake(_) => {
-                        store.dispatch(WebSocketConnectionHandshakeContinueAction {
-                            token: event.token
-                        });
-                    }
-                    MioWsConnection::Accepted(ws) => {
-                        // TODO: message handling
-                    }
+                if client.connection.is_established() {
+                    // TODO: dispatch a read action
+                } else {
+                    store.dispatch(WebSocketConnectionHandshakeContinueAction {
+                        token: event.token
+                    });
                 }
             }
         }
         Action::WebSocketConnectionIncomingAccept(_) => {
-            let state = store.state.get();
-
             match store.service.mio().websocket_connection_incoming_accept() {
                 // TODO: probobly some congestion checks
                 Ok((peer_token, is_handshake_complete)) => {

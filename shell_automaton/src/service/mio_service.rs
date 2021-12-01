@@ -124,6 +124,9 @@ pub enum WebSocketIncomingAcceptError {
 
     ///
     ConnectionNotFound,
+
+    /// Connection already established
+    ConnectionAlreadyEstablished
 }
 
 type HandshakeStatus = MidHandshake<ServerHandshake<TcpStream, NoCallback>>;
@@ -133,12 +136,38 @@ pub enum MioWsConnection {
 }
 
 impl MioWsConnection {
+    /// Starts the handshaking proceess
     pub fn new_connection(stream: TcpStream) -> Result<(Self, WsHandshakeCompleted), WebSocketIncomingAcceptError> {
         match tungstenite::accept(stream) {
             Ok(finalized) => Ok((Self::Accepted(finalized), true)),
+            // Would block
             Err(HandshakeError::Interrupted(state)) => Ok((Self::MidHandshake(state), false)),
             // TODO: do not ignore this error
             Err(HandshakeError::Failure(_)) => Err(WebSocketIncomingAcceptError::HandshakeError),
+        }
+    }
+
+    /// Continues the handshaking process by creating a new instance
+    pub fn continue_handshaking(connection: Self) -> Result<(Self, WsHandshakeCompleted), WebSocketIncomingAcceptError> {
+        match connection {
+            Self::Accepted(_) => Err(WebSocketIncomingAcceptError::ConnectionAlreadyEstablished),
+            Self::MidHandshake(state) => {
+                match state.handshake() {
+                    Ok(ws) => Ok((Self::Accepted(ws), true)),
+                    // Would block
+                    Err(HandshakeError::Interrupted(state)) => Ok((Self::MidHandshake(state), false)),
+                    // TODO: do not ignore this error
+                    Err(HandshakeError::Failure(_)) => Err(WebSocketIncomingAcceptError::HandshakeError),
+                }
+            }
+        }
+    }
+
+    /// If true, it means the connection is live and we have completed the handshake process
+    pub fn is_established(&self) -> bool {
+        match self {
+            Self::Accepted(_) => true,
+            Self::MidHandshake(_) => false
         }
     }
 }
@@ -478,24 +507,9 @@ impl MioService for MioServiceDefault {
         let key = token.index() - WEBSOCKET_EVENT_TOKEN_MIN.0;
 
         if let Some(client) = websocket_clients.try_remove(key) {
-            // TODO: move this to MioWsConnection as an associated fn
-            if let MioWsConnection::MidHandshake(mid) = client.connection {
-                match mid.handshake() {
-                    Ok(ws) => {
-                        let vacant_entry = websocket_clients.vacant_entry();
-                        vacant_entry.insert(MioWsClient::new(MioWsConnection::Accepted(ws)));
-                        Ok((token, true))
-                    }
-                    Err(HandshakeError::Interrupted(state)) => {
-                        let vacant_entry = websocket_clients.vacant_entry();
-                        vacant_entry.insert(MioWsClient::new(MioWsConnection::MidHandshake(state)));
-                        Ok((token, false))
-                    }
-                    Err(HandshakeError::Failure(error)) => return Err(WebSocketIncomingAcceptError::HandshakeError),
-                }
-            } else {
-                Err(WebSocketIncomingAcceptError::ConnectionNotFound)
-            }
+            let (connection, is_handshake_complete) = MioWsConnection::continue_handshaking(client.connection)?;
+            websocket_clients.insert(MioWsClient::new(connection));
+            Ok((token, is_handshake_complete))
         } else {
             Err(WebSocketIncomingAcceptError::ConnectionNotFound)
         }
