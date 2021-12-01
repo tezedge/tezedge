@@ -5093,6 +5093,271 @@ steps:
     ## TODO use 1 again
     - echo 'Increase is more than 5%' && exit 0
 
+---
+##############################################################################################################
+# This pipeline bootstraps a tezedge node to 1000 and measures time this takes
+##############################################################################################################
+kind: pipeline
+name: perf/bootstrap-time-009-florence
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
+  - corr/real-time-environment-cyclictest-latencies
+
+node:
+  tag: real-time-linux-runner
+
+volumes:
+  - name: snapshots
+    host:
+      path: /usr/local/etc/tezedge-ci/data/
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    temp: {}
+
+environment:
+  BLOCK_LEVEL: 4000
+
+steps:
+
+  - name: prepare-cache-dir
+    image: alpine/git
+    user: root
+    commands:
+      - mkdir -p drone-cache
+      - mkdir -p drone-cache-old
+
+  - name: restore-cache
+    image: meltwater/drone-cache
+    pull: true
+    environment:
+      SFTP_USERNAME:
+        from_secret: sftp_username
+      SFTP_PASSWORD:
+        from_secret: sftp_password
+      SFTP_AUTH_METHOD: PASSWORD
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
+      SFTP_CACHE_ROOT: "/upload"
+    settings:
+      restore: true
+      debug: true
+      backend: "sftp"
+      cache_key: 'build-{{ .Build.Number }}'
+      mount:
+        - 'drone-cache' # <- builds a cache from this directory
+
+  - name: restore-cache-old
+    image: meltwater/drone-cache
+    pull: true
+    environment:
+      SFTP_USERNAME:
+        from_secret: sftp_username
+      SFTP_PASSWORD:
+        from_secret: sftp_password
+      SFTP_AUTH_METHOD: PASSWORD
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
+      SFTP_CACHE_ROOT: "/upload"
+    settings:
+      restore: true
+      debug: true
+      backend: "sftp"
+      cache_key: 'build-old-{{ .Build.Number }}'
+      mount:
+        - 'drone-cache-old' # <- builds a cache from this directory
+
+  - name: octez-bootstrap-node
+    image: tezos/tezos:v9-release
+    detach: true
+    environment:
+      TEZOS_NODE_DIR: /home/tezos/data
+    volumes:
+      - name: snapshots
+        path: /snapshots
+    commands:
+      - tezos-node config init --network florencenet
+      - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
+      - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
+      - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+  - name: bootstrapping-octez-bootstrap-node
+    image: tezedge/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${BLOCK_LEVEL} --nodes http://octez-bootstrap-node:8732
+    when:
+      ref:
+      - refs/pull/*/head
+
+  - name: octez-node
+    image: tezos/tezos:v9-release
+    user: root
+    environment:
+      TEZOS_NODE_DIR: /tmp/tezos/data
+    commands:
+      - apk add curl jq perl
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - tezos-node config init --network florencenet
+      - cp light_node/etc/drone/identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
+      - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o octez-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o octez.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+
+  - name: tezedge-new-node
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
+    user: root
+    volumes:
+      - name: tools
+        path: /tools
+    environment:
+      THROTTLING_QUOTA_DISABLE: true
+    commands:
+      # let octez node to be up and running
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
+      - >
+        drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
+        --network florencenet --peers $${OCTEZ_IP}:9732
+        --config-file ./light_node/etc/tezedge/tezedge_drone.config
+        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o tezedge-new-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o tezedge-new.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+      - curl -s localhost:8732/stats/dbrw | jq .
+
+  - name: tezedge-old-node
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
+    user: root
+    volumes:
+      - name: tools
+        path: /tools
+    environment:
+      THROTTLING_QUOTA_DISABLE: true
+    commands:
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - rm -rf ./tezos-node-data ./light-node-data
+      - export LD_LIBRARY_PATH=drone-cache-old
+      - >
+        drone-cache-old/light-node --protocol-runner drone-cache-old/protocol-runner
+        --network florencenet --peers $${OCTEZ_IP}:9732
+        --config-file drone-cache-old/tezedge_drone.config
+        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+      # this command waits the node to be on level higher than 0
+      - |
+        time -o tezedge-old-1.time -f "%e" sh -c '
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          [ $${b:-0} -gt 0 ] && break
+        done
+        '
+      # this command waits the node to be on level $${BLOCK_LEVEL}
+      - |
+        time -o tezedge-old.time -f "%e" sh -c '
+        block=0
+        while true; do
+          sleep 0.2
+          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
+          b=$${b:-0}
+          [ $b -ge $${BLOCK_LEVEL} ] && break
+          echo "===> Block level $b"
+        done
+        '
+    when:
+      ref:
+        - refs/pull/*/head
+
+  - name: report-and-verify-tezedge-new-vs-old-node
+    image: busybox
+    commands:
+      - oct=$(cat octez.time)
+      - new=$(cat tezedge-new.time)
+      - old=$(cat tezedge-old.time)
+      - oct1=$(cat octez-1.time)
+      - new1=$(cat tezedge-new-1.time)
+      - old1=$(cat tezedge-old-1.time)
+      - diff=$(echo "scale=2; diff = ($new - $old) / $old * 100; scale=0; diff / 1" | bc)
+      - |
+        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
+        echo "Octez node: $oct seconds ($oct1 seconds)"
+        echo "New node:   $new seconds ($new1 seconds)"
+        echo "Old node:   $old seconds ($old1 seconds)"
+        echo "Difference: $diff%"
+        if [ "$diff" -gt 15 ]; then
+          echo "New node bootstrap is more than 15% slower then the old one!!!"
+          exit 1
+        fi
+    when:
+      ref:
+        - refs/pull/*/head
+
+  - name: report-and-verify-tezedge
+    image: busybox
+    commands:
+      - oct=$(cat octez.time)
+      - new=$(cat tezedge-new.time)
+      - oct1=$(cat octez-1.time)
+      - new1=$(cat tezedge-new-1.time)
+      - |
+        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
+        echo "Octez node: $oct seconds ($oct1 seconds)"
+        echo "New node:   $new seconds ($new1 seconds)"
+    when:
+      ref:
+        exclude:
+          - refs/pull/*/head
+
 ##############################################################################################################
 # This pipeline runs tezedge node and octez node,
 # which connects just to local octez nodes (does not connect to Internet to or any live node)
@@ -5803,271 +6068,6 @@ steps:
     when:
       ref:
       - refs/pull/*/head
-
----
-##############################################################################################################
-# This pipeline bootstraps a tezedge node to 1000 and measures time this takes
-##############################################################################################################
-kind: pipeline
-name: perf/bootstrap-time-009-florence
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - build-tezedge-binaries
-  - build-old-tezedge-binaries
-  - corr/real-time-environment-cyclictest-latencies
-
-node:
-  tag: real-time-linux-runner
-
-volumes:
-  - name: snapshots
-    host:
-      path: /usr/local/etc/tezedge-ci/data/
-  - name: tools
-    host:
-      path: /usr/local/etc/tezedge-ci/tools
-  - name: cache
-    temp: {}
-
-environment:
-  BLOCK_LEVEL: 4000
-
-steps:
-
-  - name: prepare-cache-dir
-    image: alpine/git
-    user: root
-    commands:
-      - mkdir -p drone-cache
-      - mkdir -p drone-cache-old
-
-  - name: restore-cache
-    image: meltwater/drone-cache
-    pull: true
-    environment:
-      SFTP_USERNAME:
-        from_secret: sftp_username
-      SFTP_PASSWORD:
-        from_secret: sftp_password
-      SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 65.21.119.66
-      SFTP_PORT: 22
-      SFTP_CACHE_ROOT: "/upload"
-    settings:
-      restore: true
-      debug: true
-      backend: "sftp"
-      cache_key: 'build-{{ .Build.Number }}'
-      mount:
-        - 'drone-cache' # <- builds a cache from this directory
-
-  - name: restore-cache-old
-    image: meltwater/drone-cache
-    pull: true
-    environment:
-      SFTP_USERNAME:
-        from_secret: sftp_username
-      SFTP_PASSWORD:
-        from_secret: sftp_password
-      SFTP_AUTH_METHOD: PASSWORD
-      SFTP_HOST: 65.21.119.66
-      SFTP_PORT: 22
-      SFTP_CACHE_ROOT: "/upload"
-    settings:
-      restore: true
-      debug: true
-      backend: "sftp"
-      cache_key: 'build-old-{{ .Build.Number }}'
-      mount:
-        - 'drone-cache-old' # <- builds a cache from this directory
-
-  - name: octez-bootstrap-node
-    image: tezos/tezos:v9-release
-    detach: true
-    environment:
-      TEZOS_NODE_DIR: /home/tezos/data
-    volumes:
-      - name: snapshots
-        path: /snapshots
-    commands:
-      - tezos-node config init --network florencenet
-      - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
-      - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
-
-  - name: bootstrapping-octez-bootstrap-node
-    image: tezedge/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap bootstrap --level=$${BLOCK_LEVEL} --nodes http://octez-bootstrap-node:8732
-    when:
-      ref:
-      - refs/pull/*/head
-
-  - name: octez-node
-    image: tezos/tezos:v9-release
-    user: root
-    environment:
-      TEZOS_NODE_DIR: /tmp/tezos/data
-    commands:
-      - apk add curl jq perl
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
-      - tezos-node config init --network florencenet
-      - cp light_node/etc/drone/identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
-      # this command waits the node to be on level higher than 0
-      - |
-        time -o octez-1.time -f "%e" sh -c '
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          [ $${b:-0} -gt 0 ] && break
-        done
-        '
-      # this command waits the node to be on level $${BLOCK_LEVEL}
-      - |
-        time -o octez.time -f "%e" sh -c '
-        block=0
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          b=$${b:-0}
-          [ $b -ge $${BLOCK_LEVEL} ] && break
-          echo "===> Block level $b"
-        done
-        '
-
-  - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
-    user: root
-    volumes:
-      - name: tools
-        path: /tools
-    environment:
-      THROTTLING_QUOTA_DISABLE: true
-    commands:
-      # let octez node to be up and running
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
-      - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
-      - >
-        drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file ./light_node/etc/tezedge/tezedge_drone.config
-        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
-      # this command waits the node to be on level higher than 0
-      - |
-        time -o tezedge-new-1.time -f "%e" sh -c '
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          [ $${b:-0} -gt 0 ] && break
-        done
-        '
-      # this command waits the node to be on level $${BLOCK_LEVEL}
-      - |
-        time -o tezedge-new.time -f "%e" sh -c '
-        block=0
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          b=$${b:-0}
-          [ $b -ge $${BLOCK_LEVEL} ] && break
-          echo "===> Block level $b"
-        done
-        '
-      - curl -s localhost:8732/stats/dbrw | jq .
-
-  - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v10.3-tezos
-    user: root
-    volumes:
-      - name: tools
-        path: /tools
-    environment:
-      THROTTLING_QUOTA_DISABLE: true
-    commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
-      - rm -rf ./tezos-node-data ./light-node-data
-      - export LD_LIBRARY_PATH=drone-cache-old
-      - >
-        drone-cache-old/light-node --protocol-runner drone-cache-old/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file drone-cache-old/tezedge_drone.config
-        --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
-      # this command waits the node to be on level higher than 0
-      - |
-        time -o tezedge-old-1.time -f "%e" sh -c '
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          [ $${b:-0} -gt 0 ] && break
-        done
-        '
-      # this command waits the node to be on level $${BLOCK_LEVEL}
-      - |
-        time -o tezedge-old.time -f "%e" sh -c '
-        block=0
-        while true; do
-          sleep 0.2
-          b=$(curl -s localhost:8732/chains/main/blocks/head/header | jq .level)
-          b=$${b:-0}
-          [ $b -ge $${BLOCK_LEVEL} ] && break
-          echo "===> Block level $b"
-        done
-        '
-    when:
-      ref:
-        - refs/pull/*/head
-
-  - name: report-and-verify-tezedge-new-vs-old-node
-    image: busybox
-    commands:
-      - oct=$(cat octez.time)
-      - new=$(cat tezedge-new.time)
-      - old=$(cat tezedge-old.time)
-      - oct1=$(cat octez-1.time)
-      - new1=$(cat tezedge-new-1.time)
-      - old1=$(cat tezedge-old-1.time)
-      - diff=$(echo "scale=2; diff = ($new - $old) / $old * 100; scale=0; diff / 1" | bc)
-      - |
-        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
-        echo "Octez node: $oct seconds ($oct1 seconds)"
-        echo "New node:   $new seconds ($new1 seconds)"
-        echo "Old node:   $old seconds ($old1 seconds)"
-        echo "Difference: $diff%"
-        if [ "$diff" -gt 15 ]; then
-          echo "New node bootstrap is more than 15% slower then the old one!!!"
-          exit 1
-        fi
-    when:
-      ref:
-        - refs/pull/*/head
-
-  - name: report-and-verify-tezedge
-    image: busybox
-    commands:
-      - oct=$(cat octez.time)
-      - new=$(cat tezedge-new.time)
-      - oct1=$(cat octez-1.time)
-      - new1=$(cat tezedge-new-1.time)
-      - |
-        echo "Nodes bootstrap time from 1 to block $${BLOCK_LEVEL} (time to first block)"
-        echo "Octez node: $oct seconds ($oct1 seconds)"
-        echo "New node:   $new seconds ($new1 seconds)"
-    when:
-      ref:
-        exclude:
-          - refs/pull/*/head
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
