@@ -386,22 +386,19 @@ impl Persistent {
     }
 
     fn update_sizes_to_disk(&mut self) -> Result<(), std::io::Error> {
-        // Update the file `sizes.db` file every 10 commits
-        if self.commit_counter % 10 == 0 {
-            // Gather all the file sizes + counter in a `Vec<u8>`
-            let file_sizes = self.get_file_sizes();
-            let file_sizes_bytes = serialize_file_sizes(&file_sizes);
+        // Gather all the file sizes + counter in a `Vec<u8>`
+        let file_sizes = self.get_file_sizes();
+        let file_sizes_bytes = serialize_file_sizes(&file_sizes);
 
-            // Compute the hash of `file_sizes_bytes`
-            let mut hasher = VarBlake2b::new(SIZES_HASH_BYTES_LENGTH).unwrap();
-            hasher.update(&file_sizes_bytes);
-            let hash = hasher.finalize_boxed();
+        // Compute the hash of `file_sizes_bytes`
+        let mut hasher = VarBlake2b::new(SIZES_HASH_BYTES_LENGTH).unwrap();
+        hasher.update(&file_sizes_bytes);
+        let hash = hasher.finalize_boxed();
 
-            debug_assert_eq!(hash.len(), SIZES_HASH_BYTES_LENGTH);
+        debug_assert_eq!(hash.len(), SIZES_HASH_BYTES_LENGTH);
 
-            // Write them to disk
-            self.write_sizes_to_disk(&hash, &file_sizes_bytes)?;
-        }
+        // Write them to disk
+        self.write_sizes_to_disk(&hash, &file_sizes_bytes)?;
 
         // Increment the counter
         self.commit_counter = self.commit_counter.wrapping_add(1);
