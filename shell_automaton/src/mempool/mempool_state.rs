@@ -7,6 +7,7 @@ use std::{
     net::SocketAddr,
 };
 
+use redux_rs::ActionId;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, HashBase58, OperationHash};
@@ -40,6 +41,9 @@ pub struct MempoolState {
     pub validated_operations: ValidatedOperations,
 
     pub operations_state: BTreeMap<HashBase58<OperationHash>, OperationState>,
+
+    pub current_head_timestamp: Option<ActionId>,
+    pub new_current_head: Option<BlockHash>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -133,6 +137,6 @@ impl MempoolState {
     }
 
     pub(super) fn head_hash(&self) -> Option<&BlockHash> {
-        self.local_head_state.as_ref().map(|(_, hash)| hash)
+        self.new_current_head.as_ref()
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::BlockHash;
+use slog::debug;
 use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::mempool::mempool_state::OperationState;
@@ -104,8 +105,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::BlockApplied(BlockAppliedAction {
             chain_id, block, ..
         }) => {
+            debug!(&state.log, "======== block applied");
             match block.message_typed_hash::<BlockHash>() {
                 Ok(hash) => {
+                    let time = mempool_state.current_head_timestamp.map(|id| format!("{:?}", action.id.duration_since(id))).unwrap_or("<nan>".to_string());
+                    debug!(&state.log, "======== block applied"; "hash" => hash.to_string(), "time" => time);
                     mempool_state.local_head_state = Some((
                         HeadState {
                             chain_id: chain_id.clone(),
@@ -133,8 +137,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .map(|(head, _)| head.current_block.level() != head_state.current_block.level())
                 .unwrap_or(false)
             {
+                debug!(&state.log, "======== new current head"; "hash" => head_state.current_block.message_typed_hash::<BlockHash>().as_ref().map(BlockHash::to_base58_check).unwrap_or("<>".to_string()));
                 mempool_state.local_head_state = None;
                 mempool_state.operations_state.clear();
+                mempool_state.current_head_timestamp = Some(action.id);
+                mempool_state.new_current_head = head_state.current_block.message_typed_hash::<BlockHash>().map_or(None, Some);
             }
 
             let pending = message.pending().iter().cloned();

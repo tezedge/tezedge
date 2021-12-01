@@ -301,7 +301,14 @@ where
             rpc_id,
             block_hash,
         }) => {
-            if store.state.get().mempool.head_hash() == Some(block_hash) {
+            if store
+                .state
+                .get()
+                .mempool
+                .head_hash()
+                .map(|hh| hh == block_hash)
+                .unwrap_or(false)
+            {
                 let status = &store
                     .state
                     .get()
@@ -325,10 +332,16 @@ where
                     .collect::<BTreeMap<_, _>>();
                 store.service.rpc().respond(*rpc_id, status);
             } else {
-                store
-                    .service
-                    .rpc()
-                    .respond(*rpc_id, serde_json::json!({"error": "non-current block"}));
+                store.service.rpc().respond(
+                    *rpc_id,
+                    serde_json::json!({
+                        "error":
+                            format!(
+                                "non-current block, current is `{:?}`",
+                                store.state.get().mempool.head_hash()
+                            )
+                    }),
+                );
             }
         }
         _ => (),
