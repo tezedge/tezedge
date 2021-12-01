@@ -48,6 +48,11 @@
 kind: pipeline
 name: build-tezedge-binaries
 
+trigger:
+  branch:
+    - master
+    - develop
+
 workspace:
   path: /drone/src
 
@@ -146,11 +151,6 @@ steps:
     mount:
       - 'drone-cache' # <- builds a cache from this directory
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ---
 ##############################################################################################################
 # This pipeline:
@@ -160,6 +160,13 @@ trigger:
 ##############################################################################################################
 kind: pipeline
 name: build-old-tezedge-binaries
+
+trigger:
+  branch:
+    - master
+    - develop
+  ref:
+    - refs/pull/*/head
 
 workspace:
   path: /drone/src
@@ -207,13 +214,6 @@ steps:
     mount:
       - 'drone-cache-old' # <- builds a cache from this directory
 
-trigger:
-  branch:
-    - master
-    - develop
-  ref:
-    - refs/pull/*/head
-
 ---
 ##############################################################################################################
 # This pipeline:
@@ -221,6 +221,11 @@ trigger:
 ##############################################################################################################
 kind: pipeline
 name: build-monitoring-artifacts
+
+trigger:
+  branch:
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -255,11 +260,6 @@ steps:
     mount:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
-trigger:
-  branch:
-    - master
-    - develop
-
 #############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
 # real time. It also generated artificial load to make the test more accurate.
@@ -270,6 +270,11 @@ trigger:
 ---
 kind: pipeline
 name: corr/real-time-environment-cyclictest-latencies
+
+trigger:
+  branch:
+    - master
+    - develop
 
 clone:
   disable: true
@@ -340,11 +345,6 @@ depends_on:
 node:
   tag: real-time-linux-runner
 
-trigger:
-  branch:
-    - master
-    - develop
-
 #############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration against octez node with different network cfg
 # to verify that the tezedge node accidentally won't kill the octez node
@@ -355,6 +355,11 @@ trigger:
 ---
 kind: pipeline
 name: corr/octez-tezedge-connection-with-different-networks-each
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   FROM_BLOCK_HEADER: 0
@@ -475,11 +480,6 @@ volumes:
   - name: cache
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -489,6 +489,11 @@ depends_on:
 ##############################################################################################################
 kind: pipeline
 name: corr/tezedge-unit-tests
+
+trigger:
+  branch:
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -561,17 +566,17 @@ steps:
     - cd apps/node_monitoring
     - cargo test --release --workspace
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ---
 ##############################################################################################################
 # This pipeline runs all the other ignored test in the tezedge project marked as integration tests
 ##############################################################################################################
 kind: pipeline
 name: corr/tezedge-integration-tests
+
+trigger:
+  branch:
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -797,17 +802,17 @@ depends_on:
 image_pull_secrets:
   - docker_pull_secret
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ---
 ##############################################################################################################
 # This pipeline replays the application of the first 20k blocks from florencenet using the in-memory context
 ##############################################################################################################
 kind: pipeline
 name: corr/replay-009-florence
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: florencenet
@@ -968,11 +973,6 @@ volumes:
     host:
       path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ##############################################################################################################
 # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
 # version from protocol 009-florence
@@ -984,11 +984,15 @@ trigger:
 kind: pipeline
 name: corr/octez-python-tests-applied-to-tezedge-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 environment:
   TEST_PROTO_DIR_SUFFIX: _009
   PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
   PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
-
 
 steps:
 
@@ -1214,11 +1218,6 @@ steps:
       - success
       - failure
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -1232,6 +1231,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/octez-python-tests-applied-to-tezedge-010-granada
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _010
@@ -1449,11 +1453,6 @@ steps:
       - success
       - failure
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -1467,6 +1466,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/octez-python-tests-applied-to-tezedge-alpha
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _alpha
@@ -1702,11 +1706,6 @@ steps:
       - success
       - failure
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
   - corr/octez-python-tests-applied-to-tezedge-009-florence
@@ -1723,6 +1722,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-sandbox-transfer-and-baking-007-carthage
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -1946,11 +1950,6 @@ volumes:
   - name: sandbox-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -1963,6 +1962,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/sandbox-launcher-rpc-server-009-florence
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2117,11 +2121,6 @@ steps:
 image_pull_secrets:
   - docker_pull_secret
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -2134,6 +2133,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/sandbox-launcher-rpc-server-010-granada
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2287,11 +2291,6 @@ steps:
       - nodes_count=$(echo $resp | jq '. | length')
       - drone-cache/build_files/assert_equals.sh 0 $nodes_count
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -2305,6 +2304,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-with-octez-baker-endorser-010-granada
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2602,11 +2606,6 @@ volumes:
   - name: sandbox-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -2633,6 +2632,11 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_2: running octez node, e.g.: http://octez-node-run-2:8732
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_3: running octez node, e.g.: http://octez-node-run-3:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-updated-node-run:18732
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: delphinet
@@ -2849,11 +2853,6 @@ volumes:
   - name: indexer-octez-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -2870,6 +2869,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: edo2net
@@ -3076,11 +3080,6 @@ volumes:
   - name: indexer-octez-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -3097,6 +3096,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-octez-rpcs-and-indexers-compatibility-009-florencenet
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: florencenet
@@ -3303,11 +3307,6 @@ volumes:
   - name: indexer-octez-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -3324,6 +3323,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-octez-rpcs-and-indexers-compatibility-010-granadanet
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: granadanet
@@ -3533,11 +3537,6 @@ volumes:
   - name: indexer-octez-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
 
@@ -3554,6 +3553,11 @@ depends_on:
 ---
 kind: pipeline
 name: corr/tezedge-octez-rpcs-and-indexers-compatibility-mainnet
+
+trigger:
+  branch:
+    - master
+    - develop
 
 environment:
   NETWORK: mainnet
@@ -3763,14 +3767,8 @@ volumes:
   - name: indexer-octez-data
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
-
 
 ---
 #########################################################
@@ -3778,6 +3776,11 @@ depends_on:
 #########################################################
 kind: pipeline
 name: corr/indexer-tz-tezos-009-florence
+
+trigger:
+  branch:
+    - develop
+    - master
 
 clone:
   disable: true
@@ -3794,11 +3797,6 @@ volumes:
   - name: tezos-data
     host:
       path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
-
-trigger:
-  branch:
-    - develop
-    - master
 
 steps:
 
@@ -3848,6 +3846,11 @@ steps:
 kind: pipeline
 name: corr/indexer-tz-tezedge-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 environment:
   NETWORK: florencenet
   BLOCK_HEAD: 20000
@@ -3864,11 +3867,6 @@ volumes:
 
 depends_on:
   - build-tezedge-binaries
-
-trigger:
-  branch:
-    - master
-    - develop
 
 steps:
 
@@ -3973,6 +3971,11 @@ steps:
 kind: pipeline
 name: corr/indexer-conseil-octez-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 clone:
   disable: true
 
@@ -3990,11 +3993,6 @@ volumes:
       path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
   - name: conseil-sql
     temp: {}
-
-trigger:
-  branch:
-    - master
-    - develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4075,6 +4073,11 @@ steps:
 kind: pipeline
 name: corr/indexer-conseil-tezedge-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 environment:
   NETWORK: florencenet
   BLOCK_HEAD: 20000
@@ -4093,11 +4096,6 @@ volumes:
 
 depends_on:
   - build-tezedge-binaries
-
-trigger:
-  branch:
-    - master
-    - develop
 
 steps:
 
@@ -4230,6 +4228,11 @@ steps:
 kind: pipeline
 name: corr/indexer-tzkt-octez-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 clone:
   disable: true
 
@@ -4247,11 +4250,6 @@ volumes:
       path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
   - name: conseil-sql
     temp: {}
-
-trigger:
-  branch:
-    - master
-    - develop
 
 depends_on:
   - build-tezedge-binaries
@@ -4318,6 +4316,11 @@ steps:
 kind: pipeline
 name: corr/indexer-tzkt-tezedge-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 environment:
   NETWORK: florencenet
   BLOCK_HEAD: 20000
@@ -4336,11 +4339,6 @@ volumes:
 
 depends_on:
   - build-tezedge-binaries
-
-trigger:
-  branch:
-    - master
-    - develop
 
 steps:
 
@@ -4460,6 +4458,11 @@ steps:
 kind: pipeline
 name: corr/monitoring-cpu-measurement-test
 
+trigger:
+  branch:
+    - master
+    - develop
+
 steps:
 
 - name: restore-cache-dir
@@ -4529,17 +4532,17 @@ volumes:
   host:
       path: /proc
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-monitoring-artifacts
 
 ---
 kind: pipeline
 name: corr/monitoring-memory-measurement-test
+
+trigger:
+  branch:
+    - master
+    - develop
 
 steps:
 
@@ -4611,17 +4614,17 @@ volumes:
   host:
       path: /proc
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-monitoring-artifacts
 
 ---
 kind: pipeline
 name: corr/monitoring-io-and-network-measurement-test
+
+trigger:
+  branch:
+    - master
+    - develop
 
 steps:
 
@@ -4692,16 +4695,17 @@ volumes:
   host:
       path: /proc
 
+depends_on:
+  - build-monitoring-artifacts
+
+---
+kind: pipeline
+name: corr/monitoring-disk-size-measurement-test
+
 trigger:
   branch:
     - master
     - develop
-
-depends_on:
-  - build-monitoring-artifacts
----
-kind: pipeline
-name: corr/monitoring-disk-size-measurement-test
 
 steps:
 
@@ -4777,11 +4781,6 @@ volumes:
   host:
       path: /proc
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-monitoring-artifacts
 
@@ -4791,6 +4790,11 @@ depends_on:
 #############################################################################################################
 kind: pipeline
 name: perf/tezedge-all-benchmarks
+
+trigger:
+  branch:
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -5047,11 +5051,6 @@ volumes:
   - name: cache
     temp: {}
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ---
 ##############################################################################################################
 # This pipeline runs valgrind dhat against `decode_stream` test on current and target branches
@@ -5059,6 +5058,11 @@ trigger:
 ##############################################################################################################
 kind: pipeline
 name: perf/dynamic-memory-allocation-decoding
+
+trigger:
+  branch:
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -5089,11 +5093,6 @@ steps:
     ## TODO use 1 again
     - echo 'Increase is more than 5%' && exit 0
 
-trigger:
-  branch:
-    - master
-    - develop
-
 ##############################################################################################################
 # This pipeline runs tezedge node and octez node,
 # which connects just to local octez nodes (does not connect to Internet to or any live node)
@@ -5112,6 +5111,11 @@ name: perf/wrk-tests-007-delphinet
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_2: running octez node, e.g.: http://octez-node-run-2:8732
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_3: running octez node, e.g.: http://octez-node-run-3:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-updated-node-run:18732
+
+trigger:
+  branch:
+    - master
+    - develop
 
 clone:
   disable: true
@@ -5347,11 +5351,6 @@ volumes:
     host:
       path: /usr/local/etc/tezedge-ci/perf
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
   - build-old-tezedge-binaries
@@ -5369,6 +5368,11 @@ name: perf/wrk-tests-009-florence
 # - BLOCK_HEAD - top block level used by bootstrap
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_1: running octez node, e.g.: http://octez-node:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-updated-run:18732
+
+trigger:
+  branch:
+    - master
+    - develop
 
 clone:
   disable: true
@@ -5594,11 +5598,6 @@ volumes:
     host:
       path: /usr/local/etc/tezedge-ci/perf
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
   - build-old-tezedge-binaries
@@ -5812,6 +5811,11 @@ steps:
 kind: pipeline
 name: perf/bootstrap-time-009-florence
 
+trigger:
+  branch:
+    - master
+    - develop
+
 depends_on:
   - build-tezedge-binaries
   - build-old-tezedge-binaries
@@ -5819,11 +5823,6 @@ depends_on:
 
 node:
   tag: real-time-linux-runner
-
-trigger:
-  branch:
-    - master
-    - develop
 
 volumes:
   - name: snapshots
@@ -6149,8 +6148,6 @@ depends_on:
   - corr/tezedge-sandbox-transfer-and-baking-007-carthage
   - corr/sandbox-launcher-rpc-server-009-florence
   - corr/sandbox-launcher-rpc-server-010-granada
-  - corr/tezedge-with-octez-baker-endorser-008-edo2
-  - corr/tezedge-with-octez-baker-endorser-009-florence
   - corr/tezedge-with-octez-baker-endorser-010-granada
   - corr/octez-python-tests-applied-to-tezedge-009-florence
   - corr/octez-python-tests-applied-to-tezedge-010-granada
@@ -6164,7 +6161,6 @@ depends_on:
   - corr/indexer-conseil-tezedge-009-florence
   - corr/indexer-tzkt-octez-009-florence
   - corr/indexer-tzkt-tezedge-009-florence
-  - perf/wrk-tests-009-florence
   - perf/memory-allocation-bootstrap-009-florence
   - perf/bootstrap-time-009-florence
 
@@ -6255,8 +6251,6 @@ depends_on:
   - corr/tezedge-sandbox-transfer-and-baking-007-carthage
   - corr/sandbox-launcher-rpc-server-009-florence
   - corr/sandbox-launcher-rpc-server-010-granada
-  - corr/tezedge-with-octez-baker-endorser-008-edo2
-  - corr/tezedge-with-octez-baker-endorser-009-florence
   - corr/tezedge-with-octez-baker-endorser-010-granada
   - corr/octez-python-tests-applied-to-tezedge-009-florence
   - corr/octez-python-tests-applied-to-tezedge-010-granada
@@ -6270,6 +6264,5 @@ depends_on:
   - corr/indexer-conseil-tezedge-009-florence
   - corr/indexer-tzkt-octez-009-florence
   - corr/indexer-tzkt-tezedge-009-florence
-  - perf/wrk-tests-009-florence
   - perf/memory-allocation-bootstrap-009-florence
   - perf/bootstrap-time-009-florence
