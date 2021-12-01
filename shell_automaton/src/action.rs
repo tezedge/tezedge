@@ -66,7 +66,7 @@ use crate::storage::state_snapshot::create::{
 
 use crate::websocket::connection::{
     WebSocketConnectionIncomingAcceptSuccessAction, WebSocketConnectionIncomingAcceptAction,
-    WebSocketConnectionIncomingAcceptErrorAction
+    WebSocketConnectionIncomingAcceptErrorAction, WebSocketConnectionHandshakeContinueAction,
 };
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -171,7 +171,7 @@ pub enum Action {
     MioTimeoutEvent(MioTimeoutEvent),
     P2pServerEvent(P2pServerEvent),
     WebsocketServerEvent(WebsocketServerEvent),
-    WebsocketClient(WebsocketClientEvent),
+    WebsocketClientEvent(WebsocketClientEvent),
     P2pPeerEvent(P2pPeerEvent),
     WakeupEvent(WakeupEvent),
 
@@ -258,6 +258,7 @@ pub enum Action {
     WebSocketConnectionIncomingAcceptSuccess(WebSocketConnectionIncomingAcceptSuccessAction),
     WebSocketConnectionIncomingAccept(WebSocketConnectionIncomingAcceptAction),
     WebSocketConnectionIncomingAcceptError(WebSocketConnectionIncomingAcceptErrorAction),
+    WebsocketConnectionContinueHandshake(WebSocketConnectionHandshakeContinueAction)
 }
 
 impl Action {

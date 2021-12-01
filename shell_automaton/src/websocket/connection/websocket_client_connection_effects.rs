@@ -1,16 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::thread::AccessError;
-
-use crate::peers::add::PeersAddIncomingPeerAction;
-use crate::service::mio_service::PeerConnectionIncomingAcceptError;
+use crate::service::mio_service::{PeerConnectionIncomingAcceptError, WebSocketIncomingAcceptError, MioWsConnection};
 use crate::service::{MioService, Service};
 use crate::{Action, ActionWithMeta, Store};
 
 use super::{
     WebSocketConnectionIncomingAcceptAction, WebSocketConnectionIncomingAcceptSuccessAction,
-    WebSocketConnectionIncomingAcceptErrorAction,
+    WebSocketConnectionIncomingAcceptErrorAction, WebSocketConnectionHandshakeContinueAction
 };
 
 pub fn websocket_connection_incoming_accept_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -21,24 +18,55 @@ where
         Action::WebsocketServerEvent(_) => {
             store.dispatch(WebSocketConnectionIncomingAcceptAction {});
         }
+        Action::WebsocketClientEvent(event) => {
+            if let Some(client) = store.service.mio().websocket_client_get(event.token) {
+                match &client.connection {
+                    MioWsConnection::MidHandshake(_) => {
+                        store.dispatch(WebSocketConnectionHandshakeContinueAction {
+                            token: event.token
+                        });
+                    }
+                    MioWsConnection::Accepted(ws) => {
+                        // TODO: message handling
+                    }
+                }
+            }
+        }
         Action::WebSocketConnectionIncomingAccept(_) => {
             let state = store.state.get();
 
             match store.service.mio().websocket_connection_incoming_accept() {
                 // TODO: probobly some congestion checks
-                Ok((client_token, address)) => {
-                    store.dispatch(WebSocketConnectionIncomingAcceptSuccessAction {
-                        token: client_token,
-                        address
-                    })
+                Ok((peer_token, is_handshake_complete)) => {
+                    if is_handshake_complete {
+                        store.dispatch(WebSocketConnectionIncomingAcceptSuccessAction {
+                            token: peer_token,
+                        });
+                    }
                 }
-                Err(error) => store.dispatch(WebSocketConnectionIncomingAcceptErrorAction { error }),
+                Err(error) => {
+                    store.dispatch(WebSocketConnectionIncomingAcceptErrorAction { error });
+                },
             };
         }
         Action::WebSocketConnectionIncomingAcceptError(action) => {
-            if !matches!(&action.error, PeerConnectionIncomingAcceptError::WouldBlock) {
+            if !matches!(&action.error, WebSocketIncomingAcceptError::ConnectionError(PeerConnectionIncomingAcceptError::WouldBlock)) {
                 // if no more progress can be made, accept next incoming connection.
                 store.dispatch(WebSocketConnectionIncomingAcceptAction {});
+            }
+        }
+        Action::WebsocketConnectionContinueHandshake(action) => {
+            match store.service.mio().websocket_connection_continue_handshaking(action.token) {
+                Ok((peer_token, is_handshake_complete)) => {
+                    if is_handshake_complete {
+                        store.dispatch(WebSocketConnectionIncomingAcceptSuccessAction {
+                            token: peer_token,
+                        });
+                    }
+                }
+                Err(error) => {
+                    store.dispatch(WebSocketConnectionIncomingAcceptErrorAction { error });
+                },
             }
         }
         _ => {}

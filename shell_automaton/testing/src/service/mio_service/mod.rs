@@ -160,11 +160,19 @@ impl MioService for MioServiceMocked {
         todo!()
     }
 
-    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError> {
+    fn websocket_connection_incoming_accept(&mut self) -> std::result::Result<(shell_automaton::peer::PeerToken, bool), shell_automaton::service::mio_service::WebSocketIncomingAcceptError> {
         todo!()
     }
 
     fn websocket_disconnect(&mut self, token: PeerToken) {
+        todo!()
+    }
+
+    fn websocket_connection_continue_handshaking(&mut self, token: PeerToken) -> Result<(PeerToken, shell_automaton::service::mio_service::WsHandshakeCompleted), shell_automaton::service::mio_service::WebSocketIncomingAcceptError> {
+        todo!()
+    }
+
+    fn websocket_client_get(&self, token: PeerToken) -> Option<&shell_automaton::service::mio_service::MioWsClient> {
         todo!()
     }
 }

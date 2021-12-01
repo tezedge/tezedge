@@ -4,7 +4,9 @@
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
-use tungstenite::HandshakeError;
+use tungstenite::handshake::server::NoCallback;
+use tungstenite::{HandshakeError, ServerHandshake};
+use tungstenite::handshake::MidHandshake;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -32,6 +34,7 @@ pub const WEBSOCKET_EVENT_TOKEN_MIN: mio::Token = mio::Token(10_000);
 pub const WEBSOCKET_EVENT_TOKEN_MAX: mio::Token = mio::Token(19_999);
 
 pub type MioPeerDefault = MioPeer<TcpStream>;
+pub type WsHandshakeCompleted = bool;
 
 pub trait MioService {
     type PeerStream: Read + Write;
@@ -55,8 +58,10 @@ pub trait MioService {
     // TODO: websocket stuff
     fn websocket_connection_incoming_listen_start(&mut self) -> io::Result<()>;
     fn websocket_connection_incoming_listen_stop(&mut self);
-    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError>;
+    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, WsHandshakeCompleted), WebSocketIncomingAcceptError>;
+    fn websocket_connection_continue_handshaking(&mut self, token: PeerToken) -> Result<(PeerToken, WsHandshakeCompleted), WebSocketIncomingAcceptError>;
     fn websocket_disconnect(&mut self, token: PeerToken);
+    fn websocket_client_get(&self, token: PeerToken) -> Option<&MioWsClient>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -110,23 +115,42 @@ impl<Stream: Clone> Clone for MioPeer<Stream> {
     }
 }
 
-pub struct MioWsClient<W> {
-    pub address: SocketAddr,
-    pub websocket: W,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum WebSocketIncomingAcceptError {
+    ConnectionError(PeerConnectionIncomingAcceptError),
+
+    /// Websocket Handshake error
+    HandshakeError,
+
+    ///
+    ConnectionNotFound,
 }
 
-impl<W> MioWsClient<W> {
-    pub fn new(address: SocketAddr, websocket: W) -> Self {
-        Self { address, websocket }
+type HandshakeStatus = MidHandshake<ServerHandshake<TcpStream, NoCallback>>;
+pub enum MioWsConnection {
+    MidHandshake(HandshakeStatus),
+    Accepted(WebSocket<TcpStream>),
+}
+
+impl MioWsConnection {
+    pub fn new_connection(stream: TcpStream) -> Result<(Self, WsHandshakeCompleted), WebSocketIncomingAcceptError> {
+        match tungstenite::accept(stream) {
+            Ok(finalized) => Ok((Self::Accepted(finalized), true)),
+            Err(HandshakeError::Interrupted(state)) => Ok((Self::MidHandshake(state), false)),
+            // TODO: do not ignore this error
+            Err(HandshakeError::Failure(_)) => Err(WebSocketIncomingAcceptError::HandshakeError),
+        }
     }
 }
 
-impl<W: Clone> Clone for MioWsClient<W> {
-    fn clone(&self) -> Self {
-        Self {
-            address: self.address,
-            websocket: self.websocket.clone()
-        }
+// TODO: do we need more info?
+pub struct MioWsClient {
+    pub connection: MioWsConnection,
+}
+
+impl MioWsClient {
+    pub fn new(connection: MioWsConnection) -> Self {
+        Self { connection }
     }
 }
 
@@ -186,7 +210,7 @@ pub struct MioServiceDefault {
     websocket_server: Option<TcpListener>,
 
     peers: Slab<MioPeer<TcpStream>>,
-    websocket_clients: Slab<MioWsClient<WebSocket<TcpStream>>>,
+    websocket_clients: Slab<MioWsClient>,
 }
 
 impl MioServiceDefault {
@@ -243,14 +267,13 @@ impl MioService for MioServiceDefault {
             let is_closed = event.is_error() || event.is_read_closed() || event.is_write_closed();
             let peer_token = PeerToken::new_unchecked(event.token().0);
 
-            match self.peer_get(peer_token) {
-                Some(peer) => {
-                    if event.token() > WEBSOCKET_EVENT_TOKEN_MIN && event.token() <= WEBSOCKET_EVENT_TOKEN_MAX {
-                        WebsocketClientEvent {
-                            token: peer_token,
-                            address: peer.address,
-                        }.into()
-                    } else {
+            if event.token() >= WEBSOCKET_EVENT_TOKEN_MIN && event.token() < WEBSOCKET_EVENT_TOKEN_MAX {
+                WebsocketClientEvent {
+                    token: peer_token,
+                }.into()
+            } else {
+                match self.peer_get(peer_token) {
+                    Some(peer) => {
                         P2pPeerEvent {
                             token: peer_token,
                             address: peer.address,
@@ -260,15 +283,15 @@ impl MioService for MioServiceDefault {
                             is_closed,
                         }.into()
                     }
+                    None => P2pPeerUnknownEvent {
+                        token: peer_token,
+    
+                        is_readable: event.is_readable(),
+                        is_writable: event.is_writable(),
+                        is_closed,
+                    }
+                    .into(),
                 }
-                None => P2pPeerUnknownEvent {
-                    token: peer_token,
-
-                    is_readable: event.is_readable(),
-                    is_writable: event.is_writable(),
-                    is_closed,
-                }
-                .into(),
             }
         }
     }
@@ -410,7 +433,7 @@ impl MioService for MioServiceDefault {
         drop(self.websocket_server.take());
     }
 
-    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, SocketAddr), PeerConnectionIncomingAcceptError> {
+    fn websocket_connection_incoming_accept(&mut self) -> Result<(PeerToken, WsHandshakeCompleted), WebSocketIncomingAcceptError> {
         let server = &mut self.websocket_server;
         let poll = &mut self.poll;
         let websocket_clients = &mut self.websocket_clients;
@@ -418,7 +441,7 @@ impl MioService for MioServiceDefault {
         if let Some(server) = server.as_mut() {
             let (mut stream, address) = server
                 .accept()
-                .map_err(PeerConnectionIncomingAcceptError::accept_error)?;
+                .map_err(|e| WebSocketIncomingAcceptError::ConnectionError(PeerConnectionIncomingAcceptError::accept_error(e)))?;
 
             let websocket_client_entry = websocket_clients.vacant_entry();
             let token = mio::Token(websocket_client_entry.key() + WEBSOCKET_EVENT_TOKEN_MIN.0);
@@ -429,28 +452,16 @@ impl MioService for MioServiceDefault {
                     token,
                     mio::Interest::READABLE | mio::Interest::WRITABLE,
                 )
-                .map_err(PeerConnectionIncomingAcceptError::poll_register_error)?;
+                .map_err(|e| WebSocketIncomingAcceptError::ConnectionError(PeerConnectionIncomingAcceptError::poll_register_error(e)))?;
 
-            // TODO: deal with this unwrap later
-            // let websocket = tungstenite::accept(stream).unwrap();
-            // TODO: move this to a separate fuinction with separate actions as Would block is needed to be handled on the websocket not on the stream
-            let websocket = match tungstenite::accept(stream) {
-                Ok(ws) => ws,
-                Err(e) => {
-                    match e {
-                        HandshakeError::Interrupted(_) => return Err(PeerConnectionIncomingAcceptError::WouldBlock),
-                        // TODO: create errors specifically for the Ws
-                        _ => return Err(PeerConnectionIncomingAcceptError::ServerNotListening)
-                    }
-                }
-            };
+            let (websocket_connection, is_handshake_complete) = MioWsConnection::new_connection(stream)?;
 
-            let client = MioWsClient::new(address, websocket);
+            let client = MioWsClient::new(websocket_connection);
             websocket_client_entry.insert(client);
 
-            Ok((PeerToken::new_unchecked(token.0), address))
+            Ok((PeerToken::new_unchecked(token.0), is_handshake_complete))
         } else {
-            Err(PeerConnectionIncomingAcceptError::ServerNotListening)
+            Err(WebSocketIncomingAcceptError::ConnectionError(PeerConnectionIncomingAcceptError::ServerNotListening))
         }
     }
 
@@ -458,7 +469,40 @@ impl MioService for MioServiceDefault {
         let index = token.index();
         if self.websocket_clients.contains(index) {
             let mut client = self.websocket_clients.remove(index);
-            let _ = self.poll.registry().deregister(client.websocket.get_mut());
         }
+    }
+
+    fn websocket_connection_continue_handshaking(&mut self, token: PeerToken) -> Result<(PeerToken, WsHandshakeCompleted), WebSocketIncomingAcceptError> {
+        let websocket_clients = &mut self.websocket_clients;
+
+        let key = token.index() - WEBSOCKET_EVENT_TOKEN_MIN.0;
+
+        if let Some(client) = websocket_clients.try_remove(key) {
+            // TODO: move this to MioWsConnection as an associated fn
+            if let MioWsConnection::MidHandshake(mid) = client.connection {
+                match mid.handshake() {
+                    Ok(ws) => {
+                        let vacant_entry = websocket_clients.vacant_entry();
+                        vacant_entry.insert(MioWsClient::new(MioWsConnection::Accepted(ws)));
+                        Ok((token, true))
+                    }
+                    Err(HandshakeError::Interrupted(state)) => {
+                        let vacant_entry = websocket_clients.vacant_entry();
+                        vacant_entry.insert(MioWsClient::new(MioWsConnection::MidHandshake(state)));
+                        Ok((token, false))
+                    }
+                    Err(HandshakeError::Failure(error)) => return Err(WebSocketIncomingAcceptError::HandshakeError),
+                }
+            } else {
+                Err(WebSocketIncomingAcceptError::ConnectionNotFound)
+            }
+        } else {
+            Err(WebSocketIncomingAcceptError::ConnectionNotFound)
+        }
+    }
+
+    fn websocket_client_get(&self, token: PeerToken) -> Option<&MioWsClient> {
+        let key = token.index() - WEBSOCKET_EVENT_TOKEN_MIN.0;
+        self.websocket_clients.get(key)
     }
 }

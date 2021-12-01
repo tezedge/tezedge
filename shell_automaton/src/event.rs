@@ -140,8 +140,6 @@ impl EnablingCondition<State> for P2pPeerUnknownEvent {
 pub struct WebsocketClientEvent {
     // TODO: maybe we should rename this? as ws will be using it as well
     pub token: PeerToken,
-
-    pub address: SocketAddr,
 }
 
 impl EnablingCondition<State> for WebsocketClientEvent {

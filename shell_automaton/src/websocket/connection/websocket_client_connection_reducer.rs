@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::service::mio_service::PeerConnectionIncomingAcceptError;
+use crate::service::mio_service::{PeerConnectionIncomingAcceptError, WebSocketIncomingAcceptError};
 use crate::{Action, ActionWithMeta, State};
 
 // TODO: create a custom state for the websocket? rename to TcpConnectionIncomingState?
-use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
+use super::WebSocketConnectionIncomingAcceptState;
 
 pub fn websocket_connection_incoming_accept_reducer(state: &mut State, action: &ActionWithMeta) {
     let action_time = action.time_as_nanos();
@@ -14,20 +14,19 @@ pub fn websocket_connection_incoming_accept_reducer(state: &mut State, action: &
     match &action.action {
         Action::WebSocketConnectionIncomingAcceptSuccess(action) => {
             match &state.websocket_connection_incoming_accept {
-                PeerConnectionIncomingAcceptState::Idle { .. } => {}
+                WebSocketConnectionIncomingAcceptState::Idle { .. } => {}
                 _ => return,
             }
-            state.websocket_connection_incoming_accept = PeerConnectionIncomingAcceptState::Success {
+            state.websocket_connection_incoming_accept = WebSocketConnectionIncomingAcceptState::Success {
                 time: action_time,
                 token: action.token,
-                address: action.address,
             };
         }
         Action::WebSocketConnectionIncomingAcceptError(action) => {
-            if matches!(&action.error, PeerConnectionIncomingAcceptError::WouldBlock) {
+            if matches!(&action.error, WebSocketIncomingAcceptError::ConnectionError(PeerConnectionIncomingAcceptError::WouldBlock)) {
                 return;
             }
-            state.peer_connection_incoming_accept = PeerConnectionIncomingAcceptState::Error {
+            state.websocket_connection_incoming_accept = WebSocketConnectionIncomingAcceptState::Error {
                 time: action_time,
                 error: action.error.clone(),
             };

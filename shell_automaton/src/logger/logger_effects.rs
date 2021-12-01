@@ -87,6 +87,15 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
         Action::WebsocketServerEvent(_) => {
             slog::crit!(log, "Websocket server event");
         }
+        Action::WebsocketClientEvent(_) => {
+            slog::crit!(log, "Websocket client event");
+        }
+        Action::WebsocketConnectionContinueHandshake(_) => {
+            slog::crit!(log, "Continuing handshake")
+        }
+        Action::WebSocketConnectionIncomingAcceptSuccess(_) => {
+            slog::crit!(log, "Successfull connection")
+        }
         Action::WebSocketConnectionIncomingAcceptError(error) => {
             slog::error!(log, "Websocket connection error: {:?}", error)
         }
