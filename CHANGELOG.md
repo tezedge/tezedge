@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+
+## [1.13.0] - 2021-12-01
+
+### Fixed
+
+- Removed redundant validations of `current_head` from peers, which in some cases was causing the node to lag behind.
+
 ## [1.12.0] - 2021-11-30
 
 ### Changed
@@ -627,7 +634,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/tezedge/tezedge/releases/v1.13.0
 [1.12.0]: https://github.com/tezedge/tezedge/releases/v1.12.0
 [1.11.0]: https://github.com/tezedge/tezedge/releases/v1.11.0
 [1.10.0]: https://github.com/tezedge/tezedge/releases/v1.10.0
