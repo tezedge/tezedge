@@ -15,7 +15,11 @@ pub enum LockDatabaseError {
     #[error("IOError {0}")]
     IOError(#[from] std::io::Error),
     #[error("Database already locked by {pid} ({path})")]
-    AlreadyLocked { path: PathBuf, pid: String },
+    AlreadyLocked {
+        path: PathBuf,
+        pid: String,
+        self_pid: String,
+    },
 }
 
 pub struct Lock {
@@ -99,6 +103,7 @@ impl Lock {
             return Err(LockDatabaseError::AlreadyLocked {
                 path: path.to_owned(),
                 pid,
+                self_pid: std::process::id().to_string(),
             });
         }
 
