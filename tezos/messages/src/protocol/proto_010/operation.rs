@@ -147,6 +147,7 @@ impl TryFrom<P2POperation> for OperationContents {
 /// Comparing to [super::super::proto_001::operation::Content], new variant [Operation::FailingNoop] is added.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 #[encoding(tags = "u8")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Contents {
     /// Endorsmnent (tag 0).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#id5].
@@ -154,18 +155,22 @@ pub enum Contents {
 
     /// Seed_nonce_revelation (tag 1).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#seed-nonce-revelation-tag-1].
+    #[serde(rename = "seed_nonce_revelation")]
     SeedNonceRevelation(SeedNonceRevelationOperation),
 
     /// Double_endorsement_evidence (tag 2).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-endorsement-evidence-tag-2].
+    #[serde(rename = "double_endorsement_evidence")]
     DoubleEndorsementEvidence(DoubleEndorsementEvidenceOperation),
 
     /// Double_baking_evidence (tag 3).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
+    #[serde(rename = "double_baking_evidence")]
     DoubleBakingEvidence(DoubleBakingEvidenceOperation),
 
     /// Activate_account (tag 4).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#activate-account-tag-4].
+    #[serde(rename = "activate_account")]
     ActivateAccount(ActivateAccountOperation),
 
     /// Proposals (tag 5).
@@ -179,11 +184,13 @@ pub enum Contents {
     /// Endorsement_with_slot (tag 10).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-with-slot-tag-10].
     #[encoding(tag = 10)]
+    #[serde(rename = "endorsement_with_slot")]
     EndorsementWithSlot(EndorsementWithSlotOperation),
 
     /// Failing_noop (tag 17).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#failing-noop-tag-17].
     #[encoding(tag = 17)]
+    #[serde(rename = "failing_noop")]
     FailingNoop(FailingNoopOperation),
 
     /// Reveal (tag 107).
@@ -205,6 +212,7 @@ pub enum Contents {
     /// Register_global_constant (tag 111).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#register-global-constant-tag-111].
     #[encoding(tag = 111)]
+    #[serde(rename = "register_global_constant")]
     RegisterGlobalConstant(RegisterGlobalConstantOperation),
 }
 

@@ -42,8 +42,9 @@ use crate::peer::handshaking::*;
 use crate::mempool::{
     BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
     MempoolGetOperationsAction, MempoolGetOperationsPendingAction, MempoolOperationInjectAction,
-    MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRpcRespondAction,
-    MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
+    MempoolOperationPrecheckedAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
+    MempoolRpcEndorsementsStatusGetAction, MempoolRpcRespondAction, MempoolValidateStartAction,
+    MempoolValidateWaitPrevalidatorAction,
 };
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
@@ -279,6 +280,8 @@ pub enum Action {
     MempoolRpcRespond(MempoolRpcRespondAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
+    MempoolOperationPrechecked(MempoolOperationPrecheckedAction),
+    MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
     BlockApplied(BlockAppliedAction),
 
     PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction),

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use crypto::hash::{BlockHash, OperationHash};
 use tezos_messages::p2p::encoding::{block_header::Level, operation::Operation};
@@ -20,7 +20,9 @@ pub trait RpcService {
     /// Try to receive/read queued message, if there is any.
     fn try_recv(&mut self) -> Result<(RpcResponse, RpcId), RpcRecvError>;
 
-    fn respond(&mut self, call_id: RpcId, json: serde_json::Value);
+    fn respond<J>(&mut self, call_id: RpcId, json: J)
+    where
+        J: serde::Serialize;
 }
 
 #[derive(Debug)]
@@ -35,7 +37,10 @@ pub enum RpcResponse {
     GetEndorsingRights {
         block_hash: BlockHash,
         level: Option<Level>,
-    }
+    },
+    GetEndorsementsStatus {
+        block_hash: BlockHash,
+    },
 }
 
 #[derive(Clone)]
@@ -96,8 +101,15 @@ impl RpcService for RpcServiceDefault {
         Ok((msg, id))
     }
 
-    fn respond(&mut self, call_id: RpcId, json: serde_json::Value) {
+    fn respond<J>(&mut self, call_id: RpcId, json: J)
+    where
+        J: serde::Serialize,
+    {
         if let Some(sender) = self.outgoing.remove(&call_id) {
+            let json = match serde_json::to_value(json) {
+                Ok(json) => json,
+                Err(err) => serde_json::json!({"error": err.to_string()}),
+            };
             let _ = sender.send(json);
         }
     }

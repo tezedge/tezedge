@@ -342,3 +342,18 @@ pub async fn dev_shell_automaton_endorsing_rights(
         &dev_services::get_shell_automaton_endorsing_rights(block_hash, level, &env).await?,
     )
 }
+
+pub async fn dev_shell_automaton_endorsements_status(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let block_hash = query
+        .get_str("block")
+        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `block`"))?;
+    let block_hash = BlockHash::from_base58_check(&block_hash)?;
+    make_json_response(
+        &dev_services::get_shell_automaton_endorsements_status(block_hash, &env).await?,
+    )
+}

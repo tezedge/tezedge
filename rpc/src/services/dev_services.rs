@@ -714,3 +714,16 @@ pub(crate) async fn get_shell_automaton_endorsing_rights(
     let response = rx.await?;
     Ok(response)
 }
+
+pub(crate) async fn get_shell_automaton_endorsements_status(
+    block_hash: BlockHash,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetEndorsementsStatus { block_hash })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}

@@ -11,7 +11,7 @@ use tezos_messages::p2p::{
 };
 
 use crate::{
-    mempool::BlockAppliedAction,
+    mempool::{BlockAppliedAction, MempoolOperationPrecheckedAction},
     prechecker::{Applied, CurrentBlock, PrecheckerEndorsementValidationRefusedAction, Refused},
     rights::{
         EndorsingRightsKey, RightsEndorsingRightsErrorAction, RightsEndorsingRightsReadyAction,
@@ -213,7 +213,7 @@ where
                             store.dispatch(PrecheckerEndorsementValidationRefusedAction {
                                 key: key.clone(),
                                 error: EndorsementValidationError::InvalidLevel,
-                                protocol_data,
+                                protocol_data: protocol_data.to_string(),
                             });
                         }
                     }
@@ -375,23 +375,32 @@ where
 
                 match validation_result {
                     Ok(Applied { protocol_data }) => {
+                        let protocol_data_as_string = protocol_data.to_string();
                         store.dispatch(PrecheckerEndorsementValidationAppliedAction {
                             key: key.clone(),
+                            protocol_data: protocol_data_as_string,
+                        });
+                        store.dispatch(MempoolOperationPrecheckedAction {
+                            operation: key.operation.clone(),
                             protocol_data,
-                        })
+                        });
                     }
                     Err(Refused {
                         error: EndorsementValidationError::UnsupportedPublicKey,
                         ..
-                    }) => store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() }),
+                    }) => {
+                        store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
+                    }
                     Err(Refused {
                         protocol_data,
                         error,
-                    }) => store.dispatch(PrecheckerEndorsementValidationRefusedAction {
-                        key: key.clone(),
-                        protocol_data,
-                        error,
-                    }),
+                    }) => {
+                        store.dispatch(PrecheckerEndorsementValidationRefusedAction {
+                            key: key.clone(),
+                            protocol_data,
+                            error,
+                        });
+                    }
                 };
             }
         }
@@ -416,7 +425,6 @@ where
                         protocol_data,
                         error,
                     },
-                operation,
                 ..
             }) = prechecker_state_operations.get(key)
             {

@@ -57,7 +57,7 @@ impl From<serde_json::Error> for EndorsementValidationError {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Applied {
-    pub protocol_data: String,
+    pub protocol_data: serde_json::Value,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -80,7 +80,7 @@ impl Refused {
 
 pub(super) trait OperationProtocolData {
     fn endorsement_level(&self) -> Option<Level>;
-    fn as_json(&self) -> String;
+    fn as_json(&self) -> serde_json::Value;
 }
 
 impl OperationProtocolData for tezos_messages::protocol::proto_010::operation::Operation {
@@ -102,8 +102,8 @@ impl OperationProtocolData for tezos_messages::protocol::proto_010::operation::O
         }
     }
 
-    fn as_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or("<cannot convert to json>".to_string())
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::json!("cannot convert to json"))
     }
 }
 
@@ -131,7 +131,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
 
         let start = Instant::now();
 
-        let refused = |error| Err(Refused::new(&self.as_json(), error));
+        let refused = |error| Err(Refused::new(&self.as_json().to_string(), error));
 
         let contents = if self.contents.len() == 1 {
             &self.contents[0]
@@ -194,7 +194,7 @@ impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Op
 
                 let done = Instant::now();
 
-                debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying), "json" => self.as_json());
+                debug!(log, "Signature verified"; "total" => format!("{:?}", done - start), "crypto" => format!("{:?}", done - verifying), "json" => self.as_json().to_string());
 
                 Ok(Applied {
                     protocol_data: self.as_json(),

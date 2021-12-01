@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::TryInto,
     net::SocketAddr,
 };
 
@@ -37,6 +38,8 @@ pub struct MempoolState {
     // operations that passed basic checks, are not sent because prevalidator is not ready
     pub(super) wait_prevalidator_operations: HashMap<HashBase58<OperationHash>, Operation>,
     pub validated_operations: ValidatedOperations,
+
+    pub operations_state: BTreeMap<HashBase58<OperationHash>, OperationState>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -67,4 +70,69 @@ pub struct PeerState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", rename_all = "lowercase")]
+pub enum OperationState {
+    Received {
+        receive_time: u64,
+    },
+    Prechecked {
+        protocol_data: serde_json::Value,
+        receive_time: u64,
+        precheck_time: u64,
+    },
+    /* TODO
+    Prevalidated {
+        protocol_data: serde_json::Value,
+        receive_time: u64,
+        precheck_time: u64,
+        prevalidate_time: u64,
+    },
+    Broadcast {
+        protocol_data: serde_json::Value,
+        receive_time: u64,
+        precheck_time: u64,
+        prevalidate_time: u64,
+        broadcast_time: u64,
+    }
+    */
+}
+
+impl OperationState {
+    pub(super) fn protocol_data(&self) -> Option<&serde_json::Value> {
+        match self {
+            OperationState::Prechecked { protocol_data, .. } => Some(protocol_data),
+            _ => None,
+        }
+    }
+
+    pub(super) fn endorsement_slot(&self) -> Option<&serde_json::Value> {
+        let contents = self
+            .protocol_data()?
+            .as_object()?
+            .get("contents")?
+            .as_array()?;
+        let contents_0 = if contents.len() == 1 {
+            contents.get(0)?.as_object()?
+        } else {
+            return None;
+        };
+        match contents_0.get("kind")?.as_str()? {
+            "endorsement_with_slot" => contents_0.get("slot"),
+            _ => None,
+        }
+    }
+}
+
+impl MempoolState {
+    pub(super) fn head_timestamp(&self) -> Option<u64> {
+        let (HeadState { current_block, .. }, _) = self.local_head_state.as_ref()?;
+        current_block.timestamp().try_into().map_or(None, Some)
+    }
+
+    pub(super) fn head_hash(&self) -> Option<&BlockHash> {
+        self.local_head_state.as_ref().map(|(_, hash)| hash)
+    }
 }

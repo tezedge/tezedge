@@ -78,6 +78,7 @@ impl PrecheckerPrecheckOperationResponseAction {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn prevalidate(operation: &Operation) -> Self {
         Self {
             response: PrecheckerPrecheckOperationResponse::Prevalidate(operation.clone()),

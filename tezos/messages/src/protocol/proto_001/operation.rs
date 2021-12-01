@@ -146,6 +146,7 @@ pub struct InlinedEndorsementVariant {
 /// Inlined endorsement contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-inlined-endorsement-contents-5-bytes-8-bit-tag].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum InlinedEndorsementContents {
     /// Endorsement (tag 0).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].

@@ -313,6 +313,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/endorsements_status",
+        dev_handler::dev_shell_automaton_endorsements_status,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/stats/memory",
         dev_handler::dev_stats_memory,
     );

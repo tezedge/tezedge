@@ -40,7 +40,10 @@ macro_rules! kv_actions {
         }
 
         impl $get_action {
-            pub fn new<K>(key: K) -> Self where K: Into<$key> {
+            pub fn new<K>(key: K) -> Self
+            where
+                K: Into<$key>,
+            {
                 Self { key: key.into() }
             }
         }

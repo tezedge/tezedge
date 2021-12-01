@@ -464,7 +464,7 @@ impl PublicKeySignatureVerifier for PublicKeyP256 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HashBase58<H>(pub H);
 
 impl<H> HashBase58<H>

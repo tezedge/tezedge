@@ -6,7 +6,7 @@ use std::{collections::HashMap, convert::TryFrom};
 use crypto::{
     base58::FromBase58CheckError,
     blake2b::Blake2bError,
-    hash::{BlockHash, ChainId, FromBytesError, OperationHash, Signature},
+    hash::{BlockHash, ChainId, FromBytesError, HashBase58, OperationHash, Signature},
 };
 use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
@@ -221,10 +221,30 @@ impl OperationDecodedContents {
         }
     }
 
-    pub(super) fn as_json(&self) -> String {
+    pub(super) fn as_json(&self) -> serde_json::Value {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.as_json(),
         }
+    }
+}
+
+impl PrecheckerState {
+    pub fn operations_for_block(
+        &self,
+        block_hash: Option<BlockHash>,
+    ) -> HashMap<HashBase58<OperationHash>, PrecheckerOperationState> {
+        let block_hash = if let Some(block_hash) = block_hash.as_ref() {
+            block_hash
+        } else if let Some(current) = &self.current_block {
+            &current.block_hash
+        } else {
+            return HashMap::default();
+        };
+        self.operations
+            .iter()
+            .filter(|(_, op)| op.operation.branch() == block_hash)
+            .map(|(key, op)| (key.operation.clone().into(), op.state.clone()))
+            .collect()
     }
 }
 

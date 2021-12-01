@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::mempool::MempoolOperationInjectAction;
+use crate::mempool::{MempoolOperationInjectAction, MempoolRpcEndorsementsStatusGetAction};
 use crate::rights::{EndorsingRightsKey, RightsRpcEndorsingRightsGetAction};
 use crate::service::rpc_service::RpcResponse;
 use crate::service::{RpcService, Service};
@@ -33,6 +33,10 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             },
                             rpc_id,
                         });
+                    }
+                    RpcResponse::GetEndorsementsStatus { block_hash } => {
+                        store
+                            .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
                     }
                 }
             }

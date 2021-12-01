@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ChainId, OperationHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
 use tezos_messages::p2p::encoding::{
     block_header::BlockHeader, mempool::Mempool, operation::Operation,
 };
@@ -160,6 +160,32 @@ impl EnablingCondition<State> for BlockAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolOperationPrecheckedAction {
+    pub operation: OperationHash,
+    pub protocol_data: serde_json::Value,
+}
+
+impl EnablingCondition<State> for MempoolOperationPrecheckedAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+// RPC
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolRpcEndorsementsStatusGetAction {
+    pub rpc_id: RpcId,
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
