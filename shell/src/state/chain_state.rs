@@ -17,7 +17,7 @@ use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,
 };
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, EncodingHash};
 use tezos_messages::p2p::encoding::current_branch::CurrentBranchMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
 use tezos_messages::Head;
@@ -65,6 +65,7 @@ pub(crate) mod bootstrap_constants {
     };
 }
 
+#[derive(Debug)]
 pub enum BlockAcceptanceResult {
     /// bool - true, means it is exactly the same as current head
     AcceptBlock(bool),
@@ -95,6 +96,8 @@ pub struct BlockchainState {
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
 
+    last_accepted_block_hash: Option<EncodingHash>,
+
     // Tokio runtime handle
     tokio_runtime: tokio::runtime::Handle,
 }
@@ -123,6 +126,7 @@ impl BlockchainState {
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
             chain_id,
             chain_genesis_block_hash,
+            last_accepted_block_hash: None,
             tokio_runtime,
         }
     }
@@ -167,7 +171,7 @@ impl BlockchainState {
 
     /// Validate if we can accept head
     pub fn can_accept_head(
-        &self,
+        &mut self,
         head: &CurrentHeadMessage,
         current_head: impl AsRef<Head>,
         api: &mut ProtocolRunnerConnection,
@@ -200,6 +204,12 @@ impl BlockchainState {
             return Ok(BlockAcceptanceResult::IgnoreBlock);
         }
 
+        if let Some(hash) = self.last_accepted_block_hash.as_ref() {
+            if hash == validated_header.hash() {
+                return Ok(BlockAcceptanceResult::AcceptBlock(false));
+            }
+        }
+
         // lets try to find protocol for validated_block
         let (protocol_hash, predecessor_header, missing_predecessor) =
             self.resolve_protocol(validated_header, current_head)?;
@@ -222,10 +232,13 @@ impl BlockchainState {
                     ))
             });
             // lets check strict multipass validation
-            match result {
-                Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
-                None => Ok(BlockAcceptanceResult::AcceptBlock(false)),
-            }
+            Ok(match result {
+                Some(error) => BlockAcceptanceResult::MutlipassValidationError(error),
+                None => {
+                    self.last_accepted_block_hash = Some(validated_header.hash().clone());
+                    BlockAcceptanceResult::AcceptBlock(false)
+                }
+            })
         } else {
             // if we came here, we dont know protocol to trigger validation
             // so probably we dont have predecessor procesed yet

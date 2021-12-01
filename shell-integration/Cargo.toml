@@ -1,6 +1,6 @@
 [package]
 name = "shell_integration"
-version = "1.12.0"
+version = "1.13.0"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2018"
 
