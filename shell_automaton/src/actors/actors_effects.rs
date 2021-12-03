@@ -32,12 +32,13 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                             message,
                         });
                     }
-                    ActorsMessageFrom::BlockApplied(chain_id, block, is_bootstrapped) => {
+                    ActorsMessageFrom::BlockApplied(chain_id, block, hash, is_bootstrapped) => {
                         store
                             .dispatch(
                                 BlockAppliedAction {
                                     chain_id,
                                     block,
+                                    hash,
                                     is_bootstrapped,
                                 },
                             );

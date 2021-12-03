@@ -40,7 +40,8 @@ pub fn mempool_effects<S>(
     // println!("{:#?}", action);
     if store.state().config.disable_mempool {
         if let Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) = &action.action {
-            store.service().rpc().respond(rpc_id.clone(), serde_json::Value::String("mempool disabled".to_string()));
+            let json = serde_json::Value::String("mempool disabled".to_string());
+            store.service().rpc().respond(rpc_id.clone(), json);
         }
         return;
     }
@@ -57,30 +58,28 @@ pub fn mempool_effects<S>(
                 ProtocolAction::OperationValidated(_) => {
                     store.dispatch(MempoolBroadcastAction {});
                     // respond
-                    let resp = if store.state().mempool.local_head_state.is_some() {
-                        serde_json::Value::Null
-                    } else {
-                        serde_json::Value::String("head is not ready".to_string())
-                    };
-                    let to_respond = store
-                        .state()
-                        .mempool
-                        .injected_rpc_ids
-                        .values()
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    for rpc_id in to_respond {
-                        store.service().rpc().respond(rpc_id, resp.clone());
+                    let ids = store.state().mempool.injected_rpc_ids.clone();
+                    for rpc_id in ids {
+                        store.service().rpc().respond(rpc_id, serde_json::Value::Null);
                     }
                     store.dispatch(MempoolRpcRespondAction {});
                 }
                 _ => {}
             }
-            // panic!("{:?}", act);
         }
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
             match message.message() {
+                PeerMessage::GetCurrentHead(ref get_current_head) => {
+                    // TODO(vlad): check chain_id
+                    let _ = get_current_head.chain_id();
+                    // TODO: send current head
+                }
                 PeerMessage::CurrentHead(ref current_head) => {
+                    if !store.state().mempool.is_bootstrapped {
+                        return;
+                    }
+
+                    // TODO(vlad): check chain_id
                     let message = current_head.current_mempool().clone();
                     let head_state = HeadState {
                         chain_id: current_head.chain_id().clone(),
@@ -124,9 +123,9 @@ pub fn mempool_effects<S>(
             }
         }
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, is_bootstrapped,
+            chain_id, block, ..
         }) => {
-            if *is_bootstrapped {
+            if store.state().mempool.is_bootstrapped {
                 let req = BeginConstructionRequest {
                     chain_id: chain_id.clone(),
                     predecessor: block.clone(),
@@ -138,28 +137,7 @@ pub fn mempool_effects<S>(
                     .begin_construction_for_mempool(req);
             }
         }
-        Action::MempoolRecvDone(MempoolRecvDoneAction {
-            address,
-            head_state,
-            ..
-        }) => {
-            let blocks = &store.state().mempool.applied_block;
-            let level = head_state.current_block.level();
-            let pred = head_state.current_block.predecessor();
-            if !blocks.contains(pred) && level > 1 {
-                // if predecessor of the head is not applied,
-                // we did not bootstrapped yet, should not handle mempool
-                return;
-            }
-            let req = BeginConstructionRequest {
-                chain_id: head_state.chain_id.clone(),
-                predecessor: head_state.current_block.clone(),
-                protocol_data: None,
-            };
-            store
-                .service()
-                .protocol()
-                .begin_construction_for_mempool(req);
+        Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(
@@ -190,9 +168,6 @@ pub fn mempool_effects<S>(
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            // if !store.state().mempool.applied_block.contains(operation.branch()) {
-            //     panic!();
-            // }
             store
                 .dispatch(
                     MempoolValidateStartAction {

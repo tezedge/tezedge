@@ -16,6 +16,7 @@ use crate::service::rpc_service::RpcId;
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
+    pub(super) is_bootstrapped: bool,
     // all blocks applied
     pub(super) applied_block: HashSet<BlockHash>,
     // do not create prevalidator for any applied block, create prevalidator:
@@ -27,7 +28,7 @@ pub struct MempoolState {
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
     // performed rpc
-    pub(super) injected_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injected_rpc_ids: Vec<RpcId>,
     // the current head applied
     pub local_head_state: Option<(HeadState, BlockHash)>,
     // let's track what our peers know, and what we waiting from them
