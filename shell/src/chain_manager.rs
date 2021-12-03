@@ -1400,6 +1400,7 @@ impl ChainManager {
             let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
                 ChainId::clone(&chain_id),
                 BlockHeader::clone(&block.header),
+                BlockHash::clone(&block.hash),
                 is_bootstrapped,
             );
             if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {

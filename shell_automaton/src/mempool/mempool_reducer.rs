@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use tezos_messages::p2p::binary_message::MessageHash;
-use crypto::hash::BlockHash;
 
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
@@ -35,9 +34,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.validated_operations.applied.push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
-                        mempool_state
-                            .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                        mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                 }
                 for v in &result.result.refused {
@@ -49,9 +46,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.validated_operations.refused.push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
-                        mempool_state
-                            .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                        mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                 }
                 for v in &result.result.branch_refused {
@@ -66,9 +61,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
-                        mempool_state
-                            .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                        mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                 }
                 for v in &result.result.branch_delayed {
@@ -83,9 +76,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .push(v.clone());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
-                        mempool_state
-                            .injected_rpc_ids
-                            .insert(v.hash.clone(), rpc_id);
+                        mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                 }
             }
@@ -94,24 +85,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         },
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, ..
+            chain_id, block, hash, is_bootstrapped,
         }) => {
-            match block.message_typed_hash::<BlockHash>() {
-                Ok(hash) => {
-                    mempool_state.local_head_state = Some((
-                        HeadState {
-                            chain_id: chain_id.clone(),
-                            current_block: block.clone(),
-                        },
-                        hash.clone(),
-                    ));
-                    mempool_state.applied_block.insert(hash);
-                },
-                Err(err) => {
-                    // TODO(vlad): unwrap
-                    let _ = err;
-                }
+            if *is_bootstrapped {
+                mempool_state.is_bootstrapped = true;
             }
+            mempool_state.local_head_state = Some((
+                HeadState {
+                    chain_id: chain_id.clone(),
+                    current_block: block.clone(),
+                },
+                hash.clone(),
+            ));
+            mempool_state.applied_block.insert(hash.clone());
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
@@ -172,7 +158,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction {
             operation,
         }) => {
-            // TODO(vlad): hash
             mempool_state.wait_prevalidator_operations.push(operation.clone());
         }
         Action::MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction {}) => {

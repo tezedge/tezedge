@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ChainId, OperationHash};
+use crypto::hash::{ChainId, BlockHash, OperationHash};
 use tezos_messages::p2p::encoding::{
     block_header::BlockHeader, mempool::Mempool, operation::Operation,
 };
@@ -164,6 +164,7 @@ impl EnablingCondition<State> for MempoolBroadcastDoneAction {
 pub struct BlockAppliedAction {
     pub chain_id: ChainId,
     pub block: BlockHeader,
+    pub hash: BlockHash,
     pub is_bootstrapped: bool,
 }
 
