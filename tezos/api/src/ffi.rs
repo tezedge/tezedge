@@ -152,6 +152,8 @@ pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
     pub protocol_data: Option<Vec<u8>>,
+    pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
+    pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -33,6 +33,8 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
             chain_id: chain_id.clone(),
             predecessor: last_block,
             protocol_data: None,
+            predecessor_block_metadata_hash: None,
+            predecessor_ops_metadata_hash: None,
         }),
     )
     .unwrap();
