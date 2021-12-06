@@ -26,7 +26,7 @@ use super::{
         MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
-        MempoolCleanupWaitPrevalidatorAction,
+        MempoolCleanupWaitPrevalidatorAction, MempoolSendAction,
     },
 };
 
@@ -72,7 +72,7 @@ pub fn mempool_effects<S>(
                     if get_current_head.chain_id().ne(&store.state().config.chain_id) {
                         return;
                     }
-                    // TODO: send current head
+                    store.dispatch(MempoolSendAction { address: *address });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
                     if !store.state().mempool.is_bootstrapped {
@@ -188,6 +188,13 @@ pub fn mempool_effects<S>(
             }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
+            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+            // TODO(vlad): add action removing peer_state for disconnected peers
+            for address in addresses {
+                store.dispatch(MempoolSendAction { address });
+            }
+        }
+        Action::MempoolSend(MempoolSendAction { address }) => {
             let (head_state, head_hash) = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
                 None => {
@@ -196,58 +203,54 @@ pub fn mempool_effects<S>(
                     return;
                 }
             };
-            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
-            // TODO(vlad): add action removing peer_state for disconnected peers
-            for address in addresses {
-                let peer = match store.state().mempool.peer_state.get(&address) {
-                    Some(v) => v,
-                    None => continue,
-                };
+            let peer = match store.state().mempool.peer_state.get(&address) {
+                Some(v) => v,
+                None => return,
+            };
 
-                let known_valid = store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .ops
-                    .iter()
-                    .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
-                    })
-                    .map(|(hash, _)| hash)
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let pending = store
-                    .state()
-                    .mempool
-                    .pending_operations
-                    .iter()
-                    .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
-                    })
-                    .map(|(hash, _)| hash)
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let message = CurrentHeadMessage::new(
-                    store.state().config.chain_id.clone(),
-                    head_state.clone(),
-                    Mempool::new(known_valid.clone(), pending.clone()),
-                );
-                let message = Arc::new(PeerMessageResponse::from(message));
+            let known_valid = store
+                .state()
+                .mempool
+                .validated_operations
+                .ops
+                .iter()
+                .filter(|(hash, op)| {
+                    !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                })
+                .map(|(hash, _)| hash)
+                .cloned()
+                .collect::<Vec<_>>();
+            let pending = store
+                .state()
+                .mempool
+                .pending_operations
+                .iter()
+                .filter(|(hash, op)| {
+                    !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                })
+                .map(|(hash, _)| hash)
+                .cloned()
+                .collect::<Vec<_>>();
+            let message = CurrentHeadMessage::new(
+                store.state().config.chain_id.clone(),
+                head_state.clone(),
+                Mempool::new(known_valid.clone(), pending.clone()),
+            );
+            let message = Arc::new(PeerMessageResponse::from(message));
 
-                store.dispatch(
-                    PeerMessageWriteInitAction {
-                        address,
-                        message: message.clone(),
-                    },
-                );
-                store.dispatch(
-                    MempoolBroadcastDoneAction {
-                        address,
-                        pending,
-                        known_valid,
-                    },
-                );
-            }
+            store.dispatch(
+                PeerMessageWriteInitAction {
+                    address: address.clone(),
+                    message: message.clone(),
+                },
+            );
+            store.dispatch(
+                MempoolBroadcastDoneAction {
+                    address: address.clone(),
+                    pending,
+                    known_valid,
+                },
+            );
         }
         _ => (),
     }

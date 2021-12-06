@@ -121,6 +121,19 @@ impl EnablingCondition<State> for MempoolCleanupWaitPrevalidatorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolSendAction {
+    pub address: SocketAddr,
+}
+
+impl EnablingCondition<State> for MempoolSendAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {}
 
 impl EnablingCondition<State> for MempoolBroadcastAction {

@@ -44,6 +44,7 @@ use crate::mempool::{
     MempoolGetOperationsAction, MempoolGetOperationsPendingAction, MempoolOperationInjectAction,
     MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRpcRespondAction,
     MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
+    MempoolSendAction,
 };
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
@@ -266,6 +267,7 @@ pub enum Action {
     MempoolValidateStart(MempoolValidateStartAction),
     MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction),
     MempoolRpcRespond(MempoolRpcRespondAction),
+    MempoolSend(MempoolSendAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction),
