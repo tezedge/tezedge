@@ -7,7 +7,7 @@ use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
-    BlockAppliedAction, HeadState, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
+    BlockAppliedAction, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
 };
@@ -16,7 +16,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     if state.config.disable_mempool {
         return;
     }
-    let mut mempool_state = &mut state.mempool;
+    let State { config, mempool, .. } = state;
+    let config = &*config;
+    let mempool_state = mempool;
 
     match &action.action {
         Action::Protocol(act) => match act {
@@ -90,19 +92,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if *is_bootstrapped {
                 mempool_state.is_bootstrapped = true;
             }
-            mempool_state.local_head_state = Some((
-                HeadState {
-                    chain_id: chain_id.clone(),
-                    current_block: block.clone(),
-                },
-                hash.clone(),
-            ));
+            if config.chain_id.ne(chain_id) {
+                return;
+            }
+            mempool_state.local_head_state = Some((block.clone(), hash.clone()));
             mempool_state.applied_block.insert(hash.clone());
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
             message,
-            ..
         }) => {
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();

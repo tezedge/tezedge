@@ -12,14 +12,11 @@ use tezos_messages::p2p::encoding::{
 
 use crate::service::rpc_service::RpcId;
 
-use super::mempool_state::HeadState;
-
 use crate::{action::EnablingCondition, state::State};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRecvDoneAction {
     pub address: SocketAddr,
-    pub head_state: HeadState,
     pub message: Mempool,
 }
 

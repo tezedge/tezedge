@@ -94,7 +94,7 @@ impl ShellAutomatonManager {
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
         pow_target: f64,
-        _chain_id: ChainId,
+        chain_id: ChainId,
     ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
@@ -171,6 +171,7 @@ impl ShellAutomatonManager {
             identity: (*identity).clone(),
             shell_compatibility_version: (*shell_compatibility_version).clone(),
             pow_target,
+            chain_id,
 
             check_timeouts_interval: Duration::from_millis(500),
             peer_connecting_timeout: Duration::from_secs(4),

@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
+use crypto::hash::{BlockHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
@@ -23,14 +23,12 @@ pub struct MempoolState {
     // * for block received as CurrentHead
     // * for block of injected operation
     pub prevalidator: Option<PrevalidatorWrapper>,
-    //
-    pub(super) requesting_prevalidator_for: Option<BlockHash>,
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
     // performed rpc
     pub(super) injected_rpc_ids: Vec<RpcId>,
     // the current head applied
-    pub local_head_state: Option<(HeadState, BlockHash)>,
+    pub local_head_state: Option<(BlockHeader, BlockHash)>,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks, sent to protocol validator
@@ -52,12 +50,6 @@ pub struct ValidatedOperations {
     // might be applied on a different branch if a reorganization happens
     pub branch_refused: Vec<Errored>,
     pub refused: Vec<Errored>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HeadState {
-    pub chain_id: ChainId,
-    pub current_block: BlockHeader,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]

@@ -28,7 +28,6 @@ use super::{
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
         MempoolCleanupWaitPrevalidatorAction,
     },
-    mempool_state::HeadState,
 };
 
 pub fn mempool_effects<S>(
@@ -70,25 +69,23 @@ pub fn mempool_effects<S>(
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
             match message.message() {
                 PeerMessage::GetCurrentHead(ref get_current_head) => {
-                    // TODO(vlad): check chain_id
-                    let _ = get_current_head.chain_id();
+                    if get_current_head.chain_id().ne(&store.state().config.chain_id) {
+                        return;
+                    }
                     // TODO: send current head
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
                     if !store.state().mempool.is_bootstrapped {
                         return;
                     }
+                    if current_head.chain_id().ne(&store.state().config.chain_id) {
+                        return;
+                    }
 
-                    // TODO(vlad): check chain_id
                     let message = current_head.current_mempool().clone();
-                    let head_state = HeadState {
-                        chain_id: current_head.chain_id().clone(),
-                        current_block: current_head.current_block_header().clone(),
-                    };
                     store.dispatch(
                         MempoolRecvDoneAction {
                             address: *address,
-                            head_state,
                             message,
                         },
                     );
@@ -231,8 +228,8 @@ pub fn mempool_effects<S>(
                     .cloned()
                     .collect::<Vec<_>>();
                 let message = CurrentHeadMessage::new(
-                    head_state.chain_id.clone(),
-                    head_state.current_block.clone(),
+                    store.state().config.chain_id.clone(),
+                    head_state.clone(),
                     Mempool::new(known_valid.clone(), pending.clone()),
                 );
                 let message = Arc::new(PeerMessageResponse::from(message));
