@@ -572,7 +572,7 @@ impl ProtocolRunnerConnection {
     const DEFAULT_TIMEOUT_LONG: Duration = Duration::from_secs(60 * 2);
     const DEFAULT_TIMEOUT_VERY_LONG: Duration = Duration::from_secs(60 * 30);
 
-    const APPLY_BLOCK_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_VERY_LONG;
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 240);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const BEGIN_APPLICATION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
