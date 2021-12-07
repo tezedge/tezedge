@@ -428,12 +428,12 @@ pub fn serialize_object(
     _batch: &mut Vec<(HashId, Arc<[u8]>)>,
     _referenced_older_objects: &mut Vec<HashId>,
     repository: &mut ContextKeyValueStore,
-    offset: Option<AbsoluteOffset>,
+    file_offset: Option<AbsoluteOffset>,
 ) -> Result<Option<AbsoluteOffset>, SerializationError> {
     let start = output.len();
 
-    let offset = offset.ok_or(SerializationError::MissingOffset)?;
-    let mut offset: AbsoluteOffset = offset.add_offset(start as u64);
+    let file_offset = file_offset.ok_or(SerializationError::MissingOffset)?;
+    let mut offset: AbsoluteOffset = file_offset.add_offset(start as u64);
 
     match object {
         Object::Directory(dir_id) => {
@@ -445,7 +445,7 @@ pub fn serialize_object(
                     storage,
                     stats,
                     repository,
-                    offset,
+                    file_offset,
                     strings,
                 )?;
             } else {
@@ -626,14 +626,12 @@ fn serialize_inode(
     storage: &Storage,
     stats: &mut SerializeStats,
     repository: &mut ContextKeyValueStore,
-    off: AbsoluteOffset,
+    file_offset: AbsoluteOffset,
     strings: &StringInterner,
 ) -> Result<AbsoluteOffset, SerializationError> {
     use SerializationError::*;
 
-    let mut start = output.len();
-    let mut offset = off.add_offset(start as u64);
-
+    let offset;
     let inode = storage.get_inode(inode_id)?;
 
     match inode {
@@ -658,14 +656,21 @@ fn serialize_inode(
 
                 let inode_id = pointer.inode_id();
                 let offset = serialize_inode(
-                    inode_id, output, hash_id, storage, stats, repository, off, strings,
+                    inode_id,
+                    output,
+                    hash_id,
+                    storage,
+                    stats,
+                    repository,
+                    file_offset,
+                    strings,
                 )?;
 
                 pointer.set_offset(offset);
             }
 
-            start = output.len();
-            offset = off.add_offset(start as u64);
+            let start = output.len();
+            offset = file_offset.add_offset(start as u64);
 
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
@@ -693,6 +698,9 @@ fn serialize_inode(
         Inode::Directory(dir_id) => {
             // We don't check if it's a new inode because the parent
             // caller (recursively) confirmed it's a new one.
+
+            let start = output.len();
+            offset = file_offset.add_offset(start as u64);
 
             let dir = storage.get_small_dir(*dir_id)?;
             serialize_directory_or_shape(
