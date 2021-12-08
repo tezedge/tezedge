@@ -145,6 +145,7 @@ Certificate:
                 keyid:E1:2F:3E:C9:77:09:2E:6D:6A:26:F1:7F:45:3B:30:3F:4E:D8:77:9B
                 DirName:/CN=Easy-RSA CA
                 serial:4D:04:D1:4A:10:52:34:02:D4:9B:45:C4:C1:BD:FD:F3:2C:EA:77:C9
+
             X509v3 Extended Key Usage:
                 TLS Web Server Authentication
             X509v3 Key Usage:
@@ -248,6 +249,7 @@ C0SRocQ//CD7E8xYVpKf1y5zD7IQGwY5qOxVK6l8kw==
 
 """
 Default node parameters.
+
 A high-number of connections helps triggering the maintenance process
  more often, which speeds up some tests. A synchronisation threshold of 0
  ensures all nodes are bootstrapped when they start, which can avoid
