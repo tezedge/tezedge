@@ -57,8 +57,8 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: IndexMap::new(),
-            values: IndexMap::new(),
+            hashes: IndexMap::with_capacity(100_000_000),
+            values: IndexMap::with_capacity(100_000_000),
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
             values_bytes: 0,
@@ -102,8 +102,8 @@ impl HashValueStore {
 
     pub(crate) fn clear(&mut self) {
         *self = Self {
-            hashes: IndexMap::new(),
-            values: IndexMap::new(),
+            hashes: IndexMap::empty(),
+            values: IndexMap::empty(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
             values_bytes: 0,

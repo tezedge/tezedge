@@ -20,7 +20,10 @@ use static_assertions::assert_eq_size;
 use tezos_timing::StorageMemoryUsage;
 use thiserror::Error;
 
-use crate::kv_store::{index_map::IndexMap, HashId};
+use crate::{
+    chunked_vec::ChunkedVec,
+    kv_store::{index_map::IndexMap, HashId},
+};
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
 use super::{
@@ -372,6 +375,22 @@ impl TryFrom<usize> for DirEntryId {
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct InodeId(u32);
 
+impl TryInto<usize> for InodeId {
+    type Error = DirEntryIdError;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        Ok(self.0 as usize)
+    }
+}
+
+impl TryFrom<usize> for InodeId {
+    type Error = DirEntryIdError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        value.try_into().map(InodeId).map_err(|_| DirEntryIdError)
+    }
+}
+
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct PointerToInodeInner {
@@ -517,7 +536,7 @@ pub struct Storage {
     /// The working tree doesn't manipulate `InodeId` but `DirectoryId` only.
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
-    inodes: Vec<Inode>,
+    inodes: IndexMap<InodeId, Inode>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
@@ -565,7 +584,7 @@ impl Storage {
             temp_dir: Vec::with_capacity(128),
             blobs: Vec::with_capacity(2048),
             nodes: IndexMap::with_capacity(4096),
-            inodes: Vec::with_capacity(256),
+            inodes: IndexMap::with_capacity(256),
             data: Vec::with_capacity(100_000),
             offsets_to_hash_id: HashMap::default(),
         }
@@ -778,15 +797,15 @@ impl Storage {
     }
 
     pub fn add_inode(&mut self, inode: Inode) -> Result<InodeId, StorageError> {
-        let current = self.inodes.len();
-        self.inodes.push(inode);
+        let current = self.inodes.push(inode)?;
 
-        if current & !FULL_31_BITS != 0 {
+        let current_index: usize = current.try_into().unwrap();
+        if current_index & !FULL_31_BITS != 0 {
             // Must fit in 31 bits (See PointerToInode)
             return Err(StorageError::InodeIndexTooBig);
         }
 
-        Ok(InodeId(current as u32))
+        Ok(current)
     }
 
     /// Copy directory from `Self::temp_dir` into `Self::directories` in a sorted order.
@@ -1140,7 +1159,7 @@ impl Storage {
 
     pub fn get_inode(&self, inode_id: InodeId) -> Result<&Inode, StorageError> {
         self.inodes
-            .get(inode_id.0 as usize)
+            .get(inode_id)?
             .ok_or(StorageError::InodeNotFound)
     }
 
@@ -1418,18 +1437,18 @@ impl Storage {
         }
 
         if self.inodes.capacity() > 256 {
-            self.inodes = Vec::with_capacity(256);
+            self.inodes = IndexMap::with_capacity(256);
         } else {
             self.inodes.clear();
         }
     }
 
     pub fn deallocate(&mut self) {
-        self.nodes = IndexMap::new();
+        self.nodes = IndexMap::empty();
         self.directories = Vec::new();
         self.temp_dir = Vec::new();
         self.blobs = Vec::new();
-        self.inodes = Vec::new();
+        self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();
     }

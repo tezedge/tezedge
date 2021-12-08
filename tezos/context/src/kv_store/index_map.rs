@@ -4,35 +4,36 @@
 use std::{
     convert::{TryFrom, TryInto},
     marker::PhantomData,
-    slice::SliceIndex,
 };
+
+use crate::chunked_vec::ChunkedVec;
 
 /// A container mapping a typed ID to a value.
 ///
 /// The underlying container is a `Vec` and the id is its index.
 #[derive(Debug)]
 pub struct IndexMap<K, V> {
-    entries: Vec<V>,
+    entries: ChunkedVec<V>,
     _phantom: PhantomData<K>,
 }
 
 impl<K, V> Default for IndexMap<K, V> {
     fn default() -> Self {
-        Self::new()
+        Self::empty()
     }
 }
 
 impl<K, V> IndexMap<K, V> {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
-            entries: Vec::new(),
+            entries: ChunkedVec::empty(),
             _phantom: PhantomData,
         }
     }
 
     pub fn with_capacity(cap: usize) -> Self {
         Self {
-            entries: Vec::with_capacity(cap),
+            entries: ChunkedVec::with_chunk_capacity(cap),
             _phantom: PhantomData,
         }
     }
@@ -49,15 +50,12 @@ impl<K, V> IndexMap<K, V> {
         self.entries.capacity()
     }
 
-    pub fn get_index<I>(&self, index: I) -> Option<&<I as SliceIndex<[V]>>::Output>
-    where
-        I: SliceIndex<[V]>,
-    {
+    pub fn get_index(&self, index: usize) -> Option<&V> {
         self.entries.get(index)
     }
 
-    pub fn as_slice(&self) -> &[V] {
-        self.entries.as_slice()
+    pub fn iter_values(&self) -> impl Iterator<Item = &V> {
+        self.entries.iter()
     }
 
     pub fn clear(&mut self) {
