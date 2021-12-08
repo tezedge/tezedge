@@ -4,7 +4,9 @@
 use serial_test::serial;
 
 use crypto::hash::ChainId;
-use tezos_api::ffi::{ApplyBlockRequest, BeginConstructionRequest, ValidateOperationRequest};
+use tezos_api::ffi::{
+    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ValidateOperationRequest,
+};
 
 use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -25,7 +27,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     );
 
     // apply block 1 and block 2
-    let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
+    let (last_block, apply_block_result) = apply_blocks_1_2(&chain_id, genesis_block_header);
 
     // let's initialize prevalidator for current head
     let prevalidator = apply_encoded_message(
@@ -33,8 +35,8 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
             chain_id: chain_id.clone(),
             predecessor: last_block,
             protocol_data: None,
-            predecessor_block_metadata_hash: None,
-            predecessor_ops_metadata_hash: None,
+            predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
+            predecessor_ops_metadata_hash: apply_block_result.ops_metadata_hash,
         }),
     )
     .unwrap();
@@ -66,7 +68,10 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     Ok(())
 }
 
-fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {
+fn apply_blocks_1_2(
+    chain_id: &ChainId,
+    genesis_block_header: BlockHeader,
+) -> (BlockHeader, ApplyBlockResponse) {
     // apply first block - level 1
     let apply_block_result =
         apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
@@ -132,8 +137,11 @@ fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bl
     );
     assert_eq!(2, apply_block_result.max_operations_ttl);
 
-    BlockHeader::from_bytes(hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap())
-        .unwrap()
+    (
+        BlockHeader::from_bytes(hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap())
+            .unwrap(),
+        apply_block_result,
+    )
 }
 
 /// Test data for protocol_v1 like 008 edo
