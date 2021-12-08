@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Range};
 
 type Chunk<T> = Vec<T>;
 
@@ -15,13 +15,19 @@ impl<T> Index<usize> for ChunkedVec<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).unwrap()
+        let list_index = index / self.chunk_capacity;
+        let chunk_index = index % self.chunk_capacity;
+
+        &self.list_of_chunks[list_index][chunk_index]
     }
 }
 
 impl<T> IndexMut<usize> for ChunkedVec<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.get_mut(index).unwrap()
+        let list_index = index / self.chunk_capacity;
+        let chunk_index = index % self.chunk_capacity;
+
+        &mut self.list_of_chunks[list_index][chunk_index]
     }
 }
 
@@ -115,6 +121,13 @@ impl<T> ChunkedVec<T> {
         self.list_of_chunks
             .get_mut(list_index)
             .and_then(|chunk| chunk.get_mut(chunk_index))
+    }
+
+    fn get_indexes_at(&self, index: usize) -> (usize, usize) {
+        let list_index = index / self.chunk_capacity;
+        let chunk_index = index % self.chunk_capacity;
+
+        (list_index, chunk_index)
     }
 
     pub fn resize_with<F>(&mut self, new_len: usize, mut fun: F)

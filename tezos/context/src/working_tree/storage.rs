@@ -21,7 +21,7 @@ use tezos_timing::StorageMemoryUsage;
 use thiserror::Error;
 
 use crate::{
-    chunked_vec::ChunkedVec,
+    chunked_slice::ChunkedSlice,
     kv_store::{index_map::IndexMap, HashId},
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
@@ -518,7 +518,7 @@ pub struct Storage {
     /// Concatenation of all directories in the working tree.
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
-    directories: Vec<(StringId, DirEntryId)>,
+    directories: ChunkedSlice<(StringId, DirEntryId)>,
     /// Temporary directory, this is used to avoid allocations when we
     /// manipulate `directories`
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
@@ -580,7 +580,7 @@ type IsNewKey = bool;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: Vec::with_capacity(16_384),
+            directories: ChunkedSlice::with_chunk_capacity(16_384),
             temp_dir: Vec::with_capacity(128),
             blobs: Vec::with_capacity(2048),
             nodes: IndexMap::with_capacity(4096),
@@ -668,7 +668,7 @@ impl Storage {
 
         let (start, end) = dir_id.get();
         self.directories
-            .get(start..end)
+            .get_slice(start..end)
             .ok_or(StorageError::DirNotFound)
     }
 
@@ -775,11 +775,17 @@ impl Storage {
         &mut self,
         new_dir: &mut Vec<(StringId, DirEntryId)>,
     ) -> Result<DirectoryId, StorageError> {
-        let start = self.directories.len();
-        self.directories.append(new_dir);
-        let end = self.directories.len();
+        // let start = self.directories.len();
+        let (start, length) = self.directories.append(new_dir);
 
-        DirectoryId::try_new_dir(start, end)
+        // println!("NEW DIR START={:?} END={:?} LENGTH={:?}", start, start + length, length);
+        // let end = self.directories.len();
+
+        // let start = self.directories.len();
+        // self.directories.append(new_dir);
+        // let end = self.directories.len();
+
+        DirectoryId::try_new_dir(start, start + length)
     }
 
     /// Use `self.temp_dir` to avoid allocations
@@ -816,7 +822,12 @@ impl Storage {
         dir_range: TempDirRange,
         strings: &StringInterner,
     ) -> Result<DirectoryId, StorageError> {
-        let start = self.directories.len();
+        // println!("COPY_SORTED CALLED");
+
+        let range_length = dir_range.end - dir_range.start;
+
+        // let start = self.directories.len();
+        let (start, _) = self.directories.append(&mut Vec::new());
 
         for (key_id, dir_entry_id) in &self.temp_dir[dir_range] {
             let key_str = strings.get_str(*key_id)?;
@@ -824,17 +835,22 @@ impl Storage {
 
             match self.binary_search_in_dir(dir, key_str, strings)? {
                 Ok(found) => {
-                    self.directories[start + found].1 = *dir_entry_id;
+                    self.directories.get_mut_at(start, found).1 = *dir_entry_id;
+                    // self.directories[start + found].1 = *dir_entry_id;
                 }
                 Err(index) => {
                     self.directories
-                        .insert(start + index, (*key_id, *dir_entry_id));
+                        .insert_at(start, index, (*key_id, *dir_entry_id));
+                    // self.directories
+                    //     .insert(start + index, (*key_id, *dir_entry_id));
                 }
             }
         }
 
-        let end = self.directories.len();
-        DirectoryId::try_new_dir(start, end)
+        DirectoryId::try_new_dir(start, start + range_length)
+
+        // let end = self.directories.len();
+        // DirectoryId::try_new_dir(start, end)
     }
 
     fn with_temp_dir_range<Fun>(&mut self, mut fun: Fun) -> Result<TempDirRange, StorageError>
@@ -1219,7 +1235,7 @@ impl Storage {
             let range = self.copy_dir_in_temp_dir(dir_id)?;
             // Remove the newly created directory from `Self::directories` to save memory.
             // It won't be used anymore as we're creating an inode.
-            self.directories.truncate(self.directories.len() - dir_len);
+            self.directories.remove_last_nelems(dir_len);
 
             let inode_id = self.create_inode(0, range, strings)?;
             self.temp_dir.clear();
@@ -1269,8 +1285,6 @@ impl Storage {
                     // INODE_POINTER_THRESHOLD items, so it should be converted to a
                     // `Inode::Directory`.
 
-                    let current_end = self.directories.len();
-
                     let dir_id = self.inodes_to_dir_sorted(inode_id, strings)?;
                     let new_dir_id = self.dir_remove(dir_id, key, strings)?;
 
@@ -1279,11 +1293,12 @@ impl Storage {
 
                         // Make sure the new directory was created at the end of Self::directories,
                         // otherwise the `Vec::truncate` below is incorrect.
-                        debug_assert_eq!(dir_id.get().1, self.directories.len());
+                        // debug_assert_eq!(dir_id.get().1, self.directories.len());
 
                         // Remove the directory that was just created with
                         // Self::inodes_to_dir_sorted above, it won't be used and save space.
-                        self.directories.truncate(current_end);
+                        self.directories.remove_last_nelems(dir_id.small_dir_len());
+                        // self.directories.truncate(current_end);
                         return Ok(Some(inode_id));
                     }
 
@@ -1431,7 +1446,7 @@ impl Storage {
         }
 
         if self.directories.capacity() > 16384 {
-            self.directories = Vec::with_capacity(16384);
+            self.directories = ChunkedSlice::with_chunk_capacity(16384);
         } else {
             self.directories.clear();
         }
@@ -1445,7 +1460,7 @@ impl Storage {
 
     pub fn deallocate(&mut self) {
         self.nodes = IndexMap::empty();
-        self.directories = Vec::new();
+        self.directories = ChunkedSlice::empty();
         self.temp_dir = Vec::new();
         self.blobs = Vec::new();
         self.inodes = IndexMap::empty();
