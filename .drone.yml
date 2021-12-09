@@ -3620,7 +3620,7 @@ steps:
 # just run octez 3 mainnet snapshoted nodes
 - name: octez-node-mainnet-run-1
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-1
@@ -3636,7 +3636,7 @@ steps:
 
 - name: octez-node-mainnet-run-2
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-2
@@ -3652,7 +3652,7 @@ steps:
 
 - name: octez-node-mainnet-run-3
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-3
