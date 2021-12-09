@@ -29,8 +29,8 @@ pub struct HashesContainer {
 impl HashesContainer {
     pub fn new(first_index: usize) -> Self {
         Self {
-            working_tree: IndexMap::with_capacity(1000),
-            commiting: IndexMap::with_capacity(1000),
+            working_tree: IndexMap::with_chunk_capacity(1000),
+            commiting: IndexMap::with_chunk_capacity(1000),
             is_commiting: false,
             first_index,
         }

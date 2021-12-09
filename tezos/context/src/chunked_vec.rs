@@ -11,10 +11,10 @@ pub const DEFAULT_LIST_LENGTH: usize = 10;
 /// use tezos_context::chunked_vec::ChunkedVec;
 ///
 /// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
-/// chunks.push(1);
-/// chunks.push(2);
-/// assert_eq!(*chunks.get(0).unwrap(), 1);
-/// assert_eq!(*chunks.get(1).unwrap(), 2);
+/// let a = chunks.push(1);
+/// let b = chunks.push(2);
+/// assert_eq!(*chunks.get(a).unwrap(), 1);
+/// assert_eq!(*chunks.get(b).unwrap(), 2);
 /// ```
 #[derive(Debug)]
 pub struct ChunkedVec<T> {
@@ -98,7 +98,9 @@ impl<T> ChunkedVec<T> {
     }
 
     /// Push an element in the last chunk.
-    pub fn push(&mut self, element: T) {
+    ///
+    /// Return the index of the new element.
+    pub fn push(&mut self, element: T) -> usize {
         let list_index = self.current_index / self.chunk_capacity;
 
         let chunk = match self.list_of_chunks.get_mut(list_index) {
@@ -110,8 +112,12 @@ impl<T> ChunkedVec<T> {
             }
         };
 
+        let index = self.current_index;
+
         chunk.push(element);
         self.current_index += 1;
+
+        index
     }
 
     pub fn len(&self) -> usize {

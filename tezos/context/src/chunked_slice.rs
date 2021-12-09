@@ -1,4 +1,4 @@
-use std::ops::{Index, Range, RangeFrom};
+use std::ops::{Index, Range};
 
 use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
 
@@ -9,8 +9,8 @@ use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
 /// use tezos_context::chunked_slice::ChunkedSlice;
 ///
 /// let mut chunks = ChunkedSlice::with_chunk_capacity(1000);
-/// chunks.extend_from_slice(&[1, 2, 3]);
-/// assert_eq!(chunks.get_slice(0..3).unwrap(), &[1, 2, 3])
+/// let (start, length) = chunks.extend_from_slice(&[1, 2, 3]);
+/// assert_eq!(chunks.get(start..start + length).unwrap(), &[1, 2, 3])
 /// ```
 #[derive(Debug)]
 pub struct ChunkedSlice<T> {
@@ -31,33 +31,26 @@ impl<T> Index<Range<usize>> for ChunkedSlice<T> {
     }
 }
 
-impl<T> Index<RangeFrom<usize>> for ChunkedSlice<T> {
-    type Output = [T];
-
-    fn index(&self, RangeFrom { start }: RangeFrom<usize>) -> &Self::Output {
-        let (list_index, chunk_index) = self.get_indexes_at(start);
-
-        &self.list_of_chunks[list_index][chunk_index..]
-    }
-}
-
 impl<T> ChunkedSlice<T>
 where
     T: Clone,
 {
+    /// Extends the last chunk with `slice`
+    ///
+    /// Return the index of the slice in the chunks, and its length
     pub fn extend_from_slice(&mut self, slice: &[T]) -> (usize, usize) {
         self.maybe_alloc_chunk();
 
         let start = self.get_start();
-        let other_length = slice.len();
-        self.nelems += other_length;
+        let slice_length = slice.len();
+        self.nelems += slice_length;
 
         self.list_of_chunks
             .last_mut()
-            .unwrap()
+            .unwrap() // Never fail, we called `Self::maybe_alloc_chunk`
             .extend_from_slice(slice);
 
-        (start, other_length)
+        (start, slice_length)
     }
 }
 
@@ -107,7 +100,9 @@ impl<T> ChunkedSlice<T> {
         }
     }
 
-    /// Append `other` in the last chunk.
+    /// Appends `other` in the last chunk.
+    ///
+    /// Return the index of the slice in the chunks, and its length
     pub fn append(&mut self, other: &mut Vec<T>) -> (usize, usize) {
         self.maybe_alloc_chunk();
 
@@ -115,12 +110,13 @@ impl<T> ChunkedSlice<T> {
         let other_length = other.len();
         self.nelems += other_length;
 
+        // Never fail, we called `Self::maybe_alloc_chunk`
         self.list_of_chunks.last_mut().unwrap().append(other);
 
         (start, other_length)
     }
 
-    pub fn get_slice(&self, Range { start, end }: Range<usize>) -> Option<&[T]> {
+    pub fn get(&self, Range { start, end }: Range<usize>) -> Option<&[T]> {
         let length = end - start;
         let (list_index, chunk_index) = self.get_indexes_at(start);
 
@@ -136,7 +132,7 @@ impl<T> ChunkedSlice<T> {
         (list_index, chunk_index)
     }
 
-    /// Remove `nelems` from the last chunk.
+    /// Removes `nelems` from the last chunk.
     pub fn remove_last_nelems(&mut self, nelems: usize) {
         if let Some(chunk) = self.list_of_chunks.last_mut() {
             chunk.truncate(chunk.len() - nelems);
@@ -144,6 +140,9 @@ impl<T> ChunkedSlice<T> {
         };
     }
 
+    /// Returns the index of the next slice to be pushed in the chunks.
+    ///
+    /// This must be called after any `Self::maybe_alloc_chunk`.
     fn get_start(&self) -> usize {
         let nfull_chunk = self.list_of_chunks.len().saturating_sub(1);
         let last_chunk_length = self.list_of_chunks.last().map(Vec::len).unwrap_or(0);

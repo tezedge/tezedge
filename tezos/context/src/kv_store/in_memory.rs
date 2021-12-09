@@ -57,8 +57,8 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: IndexMap::with_capacity(100_000_000),
-            values: IndexMap::with_capacity(100_000_000),
+            hashes: IndexMap::with_chunk_capacity(30_000_000), // ~900MB
+            values: IndexMap::with_chunk_capacity(30_000_000), // ~200MB
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
             values_bytes: 0,

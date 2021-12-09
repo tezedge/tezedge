@@ -113,7 +113,7 @@ impl DirectoryShapes {
     pub fn new() -> Self {
         Self {
             hash_to_strings: BTreeMap::default(),
-            id_to_hash: IndexMap::with_capacity(1024),
+            id_to_hash: IndexMap::with_chunk_capacity(1_024 * 100),
             temp: Vec::with_capacity(256),
             shapes: Vec::with_capacity(1000),
             to_serialize: Vec::with_capacity(256),

@@ -582,9 +582,9 @@ impl Storage {
         Self {
             directories: ChunkedSlice::with_chunk_capacity(16_384),
             temp_dir: Vec::with_capacity(128),
-            blobs: Vec::with_capacity(2048),
-            nodes: IndexMap::with_capacity(4096),
-            inodes: IndexMap::with_capacity(256),
+            blobs: Vec::with_capacity(2_048),
+            nodes: IndexMap::with_chunk_capacity(4_096),
+            inodes: IndexMap::with_chunk_capacity(256),
             data: Vec::with_capacity(100_000),
             offsets_to_hash_id: HashMap::default(),
         }
@@ -668,7 +668,7 @@ impl Storage {
 
         let (start, end) = dir_id.get();
         self.directories
-            .get_slice(start..end)
+            .get(start..end)
             .ok_or(StorageError::DirNotFound)
     }
 
@@ -775,15 +775,7 @@ impl Storage {
         &mut self,
         new_dir: &mut Vec<(StringId, DirEntryId)>,
     ) -> Result<DirectoryId, StorageError> {
-        // let start = self.directories.len();
         let (start, length) = self.directories.append(new_dir);
-
-        // println!("NEW DIR START={:?} END={:?} LENGTH={:?}", start, start + length, length);
-        // let end = self.directories.len();
-
-        // let start = self.directories.len();
-        // self.directories.append(new_dir);
-        // let end = self.directories.len();
 
         DirectoryId::try_new_dir(start, start + length)
     }
@@ -1278,14 +1270,9 @@ impl Storage {
                     if dir_id == new_dir_id {
                         // The key was not found.
 
-                        // Make sure the new directory was created at the end of Self::directories,
-                        // otherwise the `Vec::truncate` below is incorrect.
-                        // debug_assert_eq!(dir_id.get().1, self.directories.len());
-
                         // Remove the directory that was just created with
                         // Self::inodes_to_dir_sorted above, it won't be used and save space.
                         self.directories.remove_last_nelems(dir_id.small_dir_len());
-                        // self.directories.truncate(current_end);
                         return Ok(Some(inode_id));
                     }
 
@@ -1427,7 +1414,7 @@ impl Storage {
         }
 
         if self.nodes.capacity() > 4096 {
-            self.nodes = IndexMap::with_capacity(4096);
+            self.nodes = IndexMap::with_chunk_capacity(4096);
         } else {
             self.nodes.clear();
         }
@@ -1439,7 +1426,7 @@ impl Storage {
         }
 
         if self.inodes.capacity() > 256 {
-            self.inodes = IndexMap::with_capacity(256);
+            self.inodes = IndexMap::with_chunk_capacity(256);
         } else {
             self.inodes.clear();
         }

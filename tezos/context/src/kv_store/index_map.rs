@@ -31,7 +31,7 @@ impl<K, V> IndexMap<K, V> {
         }
     }
 
-    pub fn with_capacity(cap: usize) -> Self {
+    pub fn with_chunk_capacity(cap: usize) -> Self {
         Self {
             entries: ChunkedVec::with_chunk_capacity(cap),
             _phantom: PhantomData,
@@ -85,9 +85,8 @@ where
     K: TryFrom<usize>,
 {
     pub fn push(&mut self, value: V) -> Result<K, <K as TryFrom<usize>>::Error> {
-        let current = self.entries.len();
-        self.entries.push(value);
-        K::try_from(current)
+        let index = self.entries.push(value);
+        K::try_from(index)
     }
 }
 
@@ -98,9 +97,8 @@ where
     V: Default,
 {
     pub fn get_vacant_entry(&mut self) -> Result<(K, &mut V), <K as TryFrom<usize>>::Error> {
-        let current = self.entries.len();
-        self.entries.push(Default::default());
-        Ok((K::try_from(current)?, &mut self.entries[current]))
+        let index = self.entries.push(Default::default());
+        Ok((K::try_from(index)?, &mut self.entries[index]))
     }
 
     pub fn insert_at(&mut self, key: K, value: V) -> Result<V, <K as TryInto<usize>>::Error> {
