@@ -12,6 +12,7 @@ use tezos_timing::StringsMemoryUsage;
 
 use crate::{
     persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
+    chunked_string::ChunkedString, chunked_vec::ChunkedVec, persistent::file::File,
     serialize::DeserializationError,
     Map,
 };
@@ -85,17 +86,28 @@ pub struct SerializeStrings {
     pub strings: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 struct BigStrings {
     hashes: Map<u64, u32>,
-    strings: String,
-    offsets: Vec<(u32, u32)>,
+    strings: ChunkedString,
+    offsets: ChunkedVec<(u32, u32)>,
     to_serialize_index: usize,
+}
+
+impl Default for BigStrings {
+    fn default() -> Self {
+        Self {
+            hashes: Map::default(),
+            strings: ChunkedString::with_chunk_capacity(8192),
+            offsets: ChunkedVec::with_chunk_capacity(8192),
+            to_serialize_index: 0,
+        }
+    }
 }
 
 impl PartialEq for BigStrings {
     fn eq(&self, other: &Self) -> bool {
-        self.strings.len() == other.strings.len()
+        self.strings.nbytes() == other.strings.nbytes()
     }
 }
 
@@ -111,12 +123,10 @@ impl BigStrings {
             return *offset;
         }
 
-        let start = self.strings.len();
-        self.strings.push_str(s);
-        let end = self.strings.len();
+        let (start, length) = self.strings.push_str(s);
+        let end = start + length;
 
-        let index = self.offsets.len() as u32;
-        self.offsets.push((start as u32, end as u32));
+        let index = self.offsets.push((start as u32, end as u32)) as u32;
 
         self.hashes.insert(hashed, index);
 
@@ -133,24 +143,21 @@ impl BigStrings {
             return;
         }
 
-        debug_assert!(self.strings.len() < other.strings.len());
+        debug_assert!(self.strings.nbytes() < other.strings.nbytes());
         // Append the missing chunk into Self
-        let self_len = self.strings.len();
-        self.strings.push_str(&other.strings[self_len..]);
+        self.strings.extend_from(&other.strings);
         debug_assert_eq!(self.strings, other.strings);
 
         debug_assert!(self.offsets.len() < other.offsets.len());
         // Append the missing chunk into Self
-        let self_len = self.offsets.len();
-
-        self.offsets.extend_from_slice(&other.offsets[self_len..]);
+        self.offsets.extend_from(&other.offsets);
         debug_assert_eq!(self.offsets, other.offsets);
     }
 
     fn serialize_big_strings(&mut self, output: &mut SerializeStrings) {
         let start = self.to_serialize_index;
 
-        for (start, end) in &self.offsets[start..] {
+        for (start, end) in self.offsets.iter_from(start) {
             let start = *start as usize;
             let end = *end as usize;
             let string = &self.strings[start..end];
@@ -202,7 +209,7 @@ impl BigStrings {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default)]
 pub struct StringInterner {
     /// `Map` of hash of the string to their `StringId`
     /// We don't use `HashMap<String, StringId>` because the map would
@@ -325,7 +332,7 @@ impl StringInterner {
             all_strings_cap,
             all_strings_len: self.all_strings.len(),
             big_strings_cap,
-            big_strings_len: self.big_strings.strings.len(),
+            big_strings_len: self.big_strings.strings.nbytes(),
             big_strings_map_cap: self.big_strings.offsets.capacity(),
             big_strings_map_len: self.big_strings.offsets.len(),
             total_bytes: all_strings_cap + big_strings_cap,

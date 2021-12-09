@@ -114,6 +114,7 @@
 //!
 
 pub mod chunked_slice;
+pub mod chunked_string;
 pub mod chunked_vec;
 pub mod gc;
 pub mod hash;

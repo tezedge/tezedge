@@ -16,7 +16,7 @@ pub const DEFAULT_LIST_LENGTH: usize = 10;
 /// assert_eq!(*chunks.get(a).unwrap(), 1);
 /// assert_eq!(*chunks.get(b).unwrap(), 2);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkedVec<T> {
     list_of_chunks: Vec<Chunk<T>>,
     /// Index of the last element.
@@ -57,6 +57,33 @@ impl<'a, T> Iterator for ChunkedVecIter<'a, T> {
     }
 }
 
+impl<T> ChunkedVec<T>
+where
+    T: Clone,
+{
+    pub fn extend_from(&mut self, other: &Self) {
+        let our_length = self.list_of_chunks.len();
+        let other_length = other.list_of_chunks.len();
+
+        if our_length != other_length {
+            debug_assert!(our_length < other_length);
+            self.list_of_chunks
+                .resize_with(other_length, Default::default);
+        }
+
+        for (ours, other) in self.list_of_chunks[our_length..]
+            .iter_mut()
+            .zip(&other.list_of_chunks[our_length..])
+        {
+            if ours.len() < other.len() {
+                ours.extend_from_slice(&other[ours.len()..]);
+            }
+        }
+
+        self.current_index = other.current_index
+    }
+}
+
 impl<T> ChunkedVec<T> {
     /// Returns a new `ChunkedVec<T>` without allocating
     pub fn empty() -> Self {
@@ -72,7 +99,7 @@ impl<T> ChunkedVec<T> {
 
         let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
 
-        let mut list_of_vec: Vec<Vec<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
+        let mut list_of_vec: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
         list_of_vec.push(chunk);
 
         Self {
@@ -86,6 +113,13 @@ impl<T> ChunkedVec<T> {
         ChunkedVecIter {
             chunks: self,
             index: 0,
+        }
+    }
+
+    pub fn iter_from(&self, start: usize) -> ChunkedVecIter<T> {
+        ChunkedVecIter {
+            chunks: self,
+            index: start,
         }
     }
 

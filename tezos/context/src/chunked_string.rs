@@ -1,27 +1,17 @@
 use std::ops::{Index, Range};
 
-use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
+use crate::chunked_vec::DEFAULT_LIST_LENGTH;
 
-/// Structure allocating multiple `Chunk`, its values are accessible (only) by range
-///
-/// Example:
-/// ```
-/// use tezos_context::chunked_slice::ChunkedSlice;
-///
-/// let mut chunks = ChunkedSlice::with_chunk_capacity(1000);
-/// let (start, length) = chunks.extend_from_slice(&[1, 2, 3]);
-/// assert_eq!(chunks.get(start..start + length).unwrap(), &[1, 2, 3])
-/// ```
-#[derive(Debug)]
-pub struct ChunkedSlice<T> {
-    list_of_chunks: Vec<Chunk<T>>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChunkedString {
+    list_of_chunks: Vec<String>,
     chunk_capacity: usize,
-    /// Number of elements pushed in the chunks, this should be used for statistics only
-    nelems: usize,
+    /// Number of bytes
+    nbytes: usize,
 }
 
-impl<T> Index<Range<usize>> for ChunkedSlice<T> {
-    type Output = [T];
+impl Index<Range<usize>> for ChunkedString {
+    type Output = str;
 
     fn index(&self, Range { start, end }: Range<usize>) -> &Self::Output {
         let length = end - start;
@@ -31,52 +21,69 @@ impl<T> Index<Range<usize>> for ChunkedSlice<T> {
     }
 }
 
-impl<T> ChunkedSlice<T>
-where
-    T: Clone,
-{
-    /// Extends the last chunk with `slice`
-    ///
-    /// Return the index of the slice in the chunks, and its length
-    pub fn extend_from_slice(&mut self, slice: &[T]) -> (usize, usize) {
-        self.maybe_alloc_chunk();
-
-        let start = self.get_start();
-        let slice_length = slice.len();
-        self.nelems += slice_length;
-
-        self.list_of_chunks
-            .last_mut()
-            .unwrap() // Never fail, we called `Self::maybe_alloc_chunk`
-            .extend_from_slice(slice);
-
-        (start, slice_length)
-    }
-}
-
-impl<T> ChunkedSlice<T> {
+impl ChunkedString {
     /// Returns a new `ChunkedSlice<T>` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
             chunk_capacity: 1_000,
-            nelems: 0,
+            nbytes: 0,
         }
     }
 
     pub fn with_chunk_capacity(chunk_capacity: usize) -> Self {
         assert_ne!(chunk_capacity, 0);
 
-        let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
+        let chunk = String::with_capacity(chunk_capacity);
 
-        let mut list_of_vec: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
+        let mut list_of_vec: Vec<String> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
         list_of_vec.push(chunk);
 
         Self {
             list_of_chunks: list_of_vec,
             chunk_capacity,
-            nelems: 0,
+            nbytes: 0,
         }
+    }
+
+    pub fn extend_from(&mut self, other: &Self) {
+        let our_length = self.list_of_chunks.len();
+        let other_length = other.list_of_chunks.len();
+
+        if our_length != other_length {
+            debug_assert!(our_length < other_length);
+            self.list_of_chunks
+                .resize_with(other_length, Default::default);
+        }
+
+        for (ours, other) in self.list_of_chunks[our_length..]
+            .iter_mut()
+            .zip(&other.list_of_chunks[our_length..])
+        {
+            if ours.len() < other.len() {
+                ours.push_str(&other[ours.len()..]);
+            }
+        }
+
+        self.nbytes = other.nbytes;
+    }
+
+    /// Extends the last chunk with `slice`
+    ///
+    /// Return the index of the slice in the chunks, and its length
+    pub fn push_str(&mut self, slice: &str) -> (usize, usize) {
+        self.maybe_alloc_chunk();
+
+        let start = self.get_start();
+        let slice_length = slice.len();
+        self.nbytes += slice_length;
+
+        self.list_of_chunks
+            .last_mut()
+            .unwrap() // Never fail, we called `Self::maybe_alloc_chunk`
+            .push_str(slice);
+
+        (start, slice_length)
     }
 
     pub fn capacity(&self) -> usize {
@@ -96,27 +103,11 @@ impl<T> ChunkedSlice<T> {
             .unwrap_or(true)
         {
             self.list_of_chunks
-                .push(Vec::with_capacity(self.chunk_capacity));
+                .push(String::with_capacity(self.chunk_capacity));
         }
     }
 
-    /// Appends `other` in the last chunk.
-    ///
-    /// Return the index of the slice in the chunks, and its length
-    pub fn append(&mut self, other: &mut Vec<T>) -> (usize, usize) {
-        self.maybe_alloc_chunk();
-
-        let start = self.get_start();
-        let other_length = other.len();
-        self.nelems += other_length;
-
-        // Never fail, we called `Self::maybe_alloc_chunk`
-        self.list_of_chunks.last_mut().unwrap().append(other);
-
-        (start, other_length)
-    }
-
-    pub fn get(&self, Range { start, end }: Range<usize>) -> Option<&[T]> {
+    pub fn get(&self, Range { start, end }: Range<usize>) -> Option<&str> {
         let length = end - start;
         let (list_index, chunk_index) = self.get_indexes_at(start);
 
@@ -136,7 +127,7 @@ impl<T> ChunkedSlice<T> {
     pub fn remove_last_nelems(&mut self, nelems: usize) {
         if let Some(chunk) = self.list_of_chunks.last_mut() {
             chunk.truncate(chunk.len() - nelems);
-            self.nelems -= nelems;
+            self.nbytes -= nelems;
         };
     }
 
@@ -145,18 +136,18 @@ impl<T> ChunkedSlice<T> {
     /// This must be called after any `Self::maybe_alloc_chunk`.
     fn get_start(&self) -> usize {
         let nfull_chunk = self.list_of_chunks.len().saturating_sub(1);
-        let last_chunk_length = self.list_of_chunks.last().map(Vec::len).unwrap_or(0);
+        let last_chunk_length = self.list_of_chunks.last().map(String::len).unwrap_or(0);
 
         (nfull_chunk * self.chunk_capacity) + last_chunk_length
     }
 
-    pub fn nelems(&self) -> usize {
-        self.nelems
+    pub fn nbytes(&self) -> usize {
+        self.nbytes
     }
 
     pub fn deallocate(&mut self) {
         self.list_of_chunks = Vec::new();
-        self.nelems = 0;
+        self.nbytes = 0;
     }
 
     pub fn clear(&mut self) {
@@ -164,6 +155,6 @@ impl<T> ChunkedSlice<T> {
         if let Some(first_chunk) = self.list_of_chunks.last_mut() {
             first_chunk.clear();
         };
-        self.nelems = 0;
+        self.nbytes = 0;
     }
 }
