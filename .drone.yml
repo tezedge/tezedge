@@ -2501,7 +2501,7 @@ steps:
 
 - name: run-tezos-endorser-010-PtGRANAD
   user: root
-  image: tezos/tezos:v9-release
+  image: tezos/tezos:v11-release
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -2531,7 +2531,7 @@ steps:
 
 - name: run-tezos-baker-010-PtGRANAD
   user: root
-  image: tezos/tezos:v9-release
+  image: tezos/tezos:v11-release
   volumes:
     - name: sandbox-data
       path: /data/sandbox
