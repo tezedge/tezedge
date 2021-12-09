@@ -10,6 +10,7 @@ use super::{
     BlockAppliedAction, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
+    MempoolSendAction,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -89,11 +90,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::BlockApplied(BlockAppliedAction {
             chain_id, block, hash, is_bootstrapped,
         }) => {
-            if *is_bootstrapped {
-                mempool_state.is_bootstrapped = true;
-            }
             if config.chain_id.ne(chain_id) {
                 return;
+            }
+            if *is_bootstrapped {
+                mempool_state.is_bootstrapped = true;
             }
             mempool_state.local_head_state = Some((block.clone(), hash.clone()));
             mempool_state.applied_block.insert(hash.clone());
@@ -162,7 +163,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state.wait_prevalidator_operations.clear();
         }
         Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
-            state.mempool.injected_rpc_ids.clear();
+            mempool_state.injected_rpc_ids.clear();
+        }
+        Action::MempoolSend(MempoolSendAction { address }) => {
+            mempool_state.peer_state.entry(*address).or_default();
         }
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction {
             address,

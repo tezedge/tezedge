@@ -403,10 +403,12 @@ pub async fn inject_operation(
                 reason: resp.to_string(),
             });
         },
-        Ok(Err(_)) => warn!(
-            env.log(),
-            "Operation injection, state machine failed to respond"
-        ),
+        Ok(Err(err)) => {
+            warn!(env.log(), "Operation injection. State machine failed to respond: {}", err);
+            return Err(RpcServiceError::UnexpectedError {
+                reason: err.to_string(),
+            });
+        },
         Err(elapsed) => {
             warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
             return Err(RpcServiceError::UnexpectedError {
@@ -469,13 +471,16 @@ pub async fn inject_block(
 
     // clean actual mempool_state - just applied should be enough
     if let Some(validation_passes) = &validation_passes {
-        let mut current_mempool_state = env.current_mempool_state_storage().write()?;
+        let mut operation_hashes = Vec::new();
+        for op in validation_passes.into_iter().flatten() {
+            operation_hashes.push(op.message_typed_hash()?);
+        }
 
-        for vps in validation_passes {
-            for vp in vps {
-                let oph: OperationHash = vp.message_typed_hash()?;
-                current_mempool_state.remove_operation(oph);
-            }
+        if let Err(err) = env.shell_automaton_sender()
+            .send(RpcShellAutomatonMsg::RemoveOperations { operation_hashes })
+            .await
+        {
+            warn!(env.log(), "state machine failed to remove ops: {}", err);
         }
     }
 
@@ -556,10 +561,18 @@ pub async fn inject_block(
     Ok(block_hash_b58check_string)
 }
 
-pub fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
+pub async fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
     // request current head from the peers
-    env.shell_connector()
-        .request_current_head_from_connected_peers();
+    if let Err(err) = env.shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::RequestCurrentHeadFromConnectedPeers)
+        .await
+    {
+        warn!(env.log(), "state machine failed to respond: {}", err);
+        return Err(RpcServiceError::UnexpectedError {
+            reason: err.to_string(),
+        })
+    }
+
     Ok(())
 }
 

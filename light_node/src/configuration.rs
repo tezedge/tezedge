@@ -16,7 +16,6 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
-use shell::mempool::mempool_download_state::MempoolOperationStateConfiguration;
 use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
@@ -127,16 +126,6 @@ impl Ffi {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mempool {
-    pub mempool_download_state: MempoolOperationStateConfiguration,
-}
-
-impl Mempool {
-    const DEFAULT_DOWNLOADED_OPERATION_MAX_TTL_IN_SECONDS: u64 = 90;
-    const DEFAULT_DOWNLOAD_OPERATION_TIMEOUT_IN_MILLIS: u64 = 50;
-}
-
-#[derive(Debug, Clone)]
 pub struct Environment {
     pub p2p: P2p,
     pub rpc: Rpc,
@@ -145,7 +134,6 @@ pub struct Environment {
     pub identity: Identity,
     pub ffi: Ffi,
     pub replay: Option<Replay>,
-    pub mempool: Mempool,
 
     pub tezos_network: TezosEnvironment,
     pub tezos_network_config: TezosEnvironmentConfiguration,
@@ -183,7 +171,6 @@ impl slog::Value for Environment {
             "initialize_chain_manager_timeout",
             &format_args!("{:?}", self.initialize_chain_manager_timeout),
         )?;
-        serializer.emit_arguments("mempool", &format_args!("{:?}", self.mempool))?;
         serializer.emit_arguments(
             "enable_testchain",
             &format_args!("{:?}", self.enable_testchain),
@@ -1265,28 +1252,6 @@ impl Environment {
                     .parse::<u64>()
                     .expect("Provided value cannot be converted to number"),
             ),
-            mempool: Mempool {
-                mempool_download_state: MempoolOperationStateConfiguration::new(
-                    std::time::Duration::from_secs(
-                        args.value_of("mempool-downloaded-operation-max-ttl-in-secs")
-                            .unwrap_or(&format!(
-                                "{}",
-                                Mempool::DEFAULT_DOWNLOADED_OPERATION_MAX_TTL_IN_SECONDS
-                            ))
-                            .parse::<u64>()
-                            .expect("Provided value cannot be converted to number"),
-                    ),
-                    std::time::Duration::from_millis(
-                        args.value_of("mempool-download-operation-timeout-in-millis")
-                            .unwrap_or(&format!(
-                                "{}",
-                                Mempool::DEFAULT_DOWNLOAD_OPERATION_TIMEOUT_IN_MILLIS
-                            ))
-                            .parse::<u64>()
-                            .expect("Provided value cannot be converted to number"),
-                    ),
-                ),
-            },
         }
     }
 

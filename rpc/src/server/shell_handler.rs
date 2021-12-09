@@ -128,12 +128,9 @@ pub async fn mempool_monitor_operations(
 
     let state = env.state.clone();
     let log = env.log.clone();
-    let current_mempool_state_storage = env.current_mempool_state_storage.clone();
-    // TODO: remove unwrap() here
     let last_checked_head = state.read().unwrap().current_head().as_ref().hash.clone();
     make_json_stream_response(stream_services::OperationMonitorStream::new(
         chain_id,
-        current_mempool_state_storage,
         state,
         log,
         last_checked_head,
@@ -332,7 +329,7 @@ pub async fn mempool_request_operations(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_empty_json_response(
-        services::mempool_services::request_operations(&env),
+        services::mempool_services::request_operations(&env).await,
         env.log(),
     )
 }

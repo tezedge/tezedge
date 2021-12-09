@@ -134,6 +134,17 @@ impl EnablingCondition<State> for MempoolSendAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolAskCurrentHeadAction {}
+
+impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {}
 
 impl EnablingCondition<State> for MempoolBroadcastAction {

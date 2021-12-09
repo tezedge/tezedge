@@ -730,11 +730,9 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
 pub(crate) fn get_prevalidators(
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<Prevalidator>, RpcServiceError> {
-    env.shell_connector()
-        .find_mempool_prevalidators()
-        .map_err(|e| RpcServiceError::UnexpectedError {
-            reason: format!("{:?}", e),
-        })
+    // TODO(vlad):
+    let _ = env;
+    Ok(vec![])
 }
 
 #[cfg(test)]

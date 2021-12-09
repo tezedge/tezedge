@@ -5,7 +5,7 @@ use redux_rs::Store;
 use std::sync::Arc;
 
 use tezos_messages::p2p::encoding::{
-    current_head::CurrentHeadMessage,
+    current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
     mempool::Mempool,
     operation::{GetOperationsMessage, OperationMessage},
     peer::{PeerMessage, PeerMessageResponse},
@@ -26,7 +26,7 @@ use super::{
         MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
-        MempoolCleanupWaitPrevalidatorAction, MempoolSendAction,
+        MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
     },
 };
 
@@ -132,6 +132,7 @@ pub fn mempool_effects<S>(
                     .service()
                     .protocol()
                     .begin_construction_for_mempool(req);
+                store.dispatch(MempoolBroadcastAction {});
             }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
@@ -194,6 +195,21 @@ pub fn mempool_effects<S>(
                 store.dispatch(MempoolSendAction { address });
             }
         }
+        Action::MempoolAskCurrentHead(MempoolAskCurrentHeadAction {}) => {
+            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+            let message = GetCurrentHeadMessage::new(
+                store.state().config.chain_id.clone(),
+            );
+            let message = Arc::new(PeerMessageResponse::from(message));
+            for address in addresses {
+                store.dispatch(
+                    PeerMessageWriteInitAction {
+                        address: address.clone(),
+                        message: message.clone(),
+                    },
+                );
+            }
+        }
         Action::MempoolSend(MempoolSendAction { address }) => {
             let (head_state, head_hash) = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
@@ -203,6 +219,8 @@ pub fn mempool_effects<S>(
                     return;
                 }
             };
+            // TODO(vlad): remove
+            // println!("send head {} to {}", head_hash.to_base58_check(), address);
             let peer = match store.state().mempool.peer_state.get(&address) {
                 Some(v) => v,
                 None => return,
@@ -241,7 +259,7 @@ pub fn mempool_effects<S>(
             store.dispatch(
                 PeerMessageWriteInitAction {
                     address: address.clone(),
-                    message: message.clone(),
+                    message,
                 },
             );
             store.dispatch(

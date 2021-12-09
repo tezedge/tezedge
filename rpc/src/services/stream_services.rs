@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
+use std::sync::RwLock;
 
 use futures::task::{Context, Poll};
 use futures::Stream;
@@ -12,8 +13,8 @@ use slog::{error, Logger};
 use tezos_api::ffi::{Applied, Errored};
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
-use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_integration::{generate_stream_id, MempoolOperationRef, StreamCounter, StreamId};
+use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResult};
+use shell_integration::{generate_stream_id, MempoolOperationRef, StreamCounter, StreamId, StreamWakers};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
@@ -178,9 +179,42 @@ pub struct HeadMonitorStream {
     log: Logger,
 }
 
+// TODO(vlad): fake state
+#[derive(Default)]
+pub struct MempoolState {
+    prevalidator: Option<PrevalidatorWrapper>,
+    validation_result: ValidateOperationResult,
+    operations: HashMap<OperationHash, MempoolOperationRef>,
+    streams: StreamWakers,
+}
+
+impl MempoolState {
+    pub fn prevalidator(&self) -> Option<&PrevalidatorWrapper> {
+        self.prevalidator.as_ref()
+    }
+
+    pub fn result(&self) -> &ValidateOperationResult {
+        &self.validation_result
+    }
+
+    pub fn operations(&self) -> &HashMap<OperationHash, MempoolOperationRef> {
+        &self.operations
+    }
+}
+
+impl StreamCounter for MempoolState {
+    fn get_streams(&self) -> &StreamWakers {
+        &self.streams
+    }
+
+    fn get_mutable_streams(&mut self) -> &mut StreamWakers {
+        &mut self.streams
+    }
+}
+
 pub struct OperationMonitorStream {
     _chain_id: ChainId,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    current_mempool_state_storage: RwLock<MempoolState>,
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
@@ -194,7 +228,6 @@ pub struct OperationMonitorStream {
 impl OperationMonitorStream {
     pub fn new(
         _chain_id: ChainId,
-        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         state: RpcCollectedStateRef,
         log: Logger,
         last_checked_head: BlockHash,
@@ -202,7 +235,7 @@ impl OperationMonitorStream {
     ) -> Self {
         Self {
             _chain_id,
-            current_mempool_state_storage,
+            current_mempool_state_storage: RwLock::default(),
             state,
             last_checked_head,
             log,

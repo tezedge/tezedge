@@ -17,7 +17,6 @@ use shell::chain_feeder::ApplyBlock;
 use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::connector::ShellConnectorSupport;
-use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::shell_automaton_manager::ShellAutomatonManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
@@ -126,9 +125,6 @@ fn block_on_actors(
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
-    // create partial (global) states for sharing between threads/actors
-    let current_mempool_state_storage = init_mempool_state_storage();
-
     // create actor system
     let actor_system = Arc::new(
         SystemBuilder::new()
@@ -169,16 +165,6 @@ fn block_on_actors(
         env.identity.expected_pow,
         init_storage_data.chain_id.clone(),
     );
-
-    // initialize actors
-    let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
-        actor_system.clone(),
-        log.clone(),
-        persistent_storage.clone(),
-        current_mempool_state_storage.clone(),
-        Arc::clone(&tezos_protocol_api),
-        env.p2p.disable_mempool,
-    ));
 
     // start chain_feeder with controlled startup and wait for ok initialized context
     info!(log, "Initializing context... (6/8)");
@@ -241,7 +227,6 @@ fn block_on_actors(
     let (
         chain_manager,
         mut chain_manager_p2p_reader_thread_watcher,
-        mut chain_manager_mempool_prevalidation_thread_watcher,
     ) = ChainManager::actor(
         actor_system.as_ref(),
         block_applier.clone(),
@@ -253,12 +238,9 @@ fn block_on_actors(
         init_storage_data.clone(),
         is_sandbox,
         hydrated_current_head,
-        current_mempool_state_storage.clone(),
         env.p2p
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
-        mempool_prevalidator_factory.clone(),
-        env.mempool.mempool_download_state,
         identity.clone(),
         initialize_chain_manager_result_callback,
     )
@@ -272,7 +254,7 @@ fn block_on_actors(
     info!(log, "Chain manager initialized (8/8)");
 
     let shell_connector =
-        ShellConnectorSupport::new(chain_manager.clone(), mempool_prevalidator_factory.clone());
+        ShellConnectorSupport::new(chain_manager.clone());
 
     let mut rpc_server = RpcServer::new(
         log.clone(),
@@ -281,7 +263,6 @@ fn block_on_actors(
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
         &persistent_storage,
-        current_mempool_state_storage,
         Arc::clone(&tezos_protocol_api),
         env.tezos_network_config,
         Arc::new(shell_compatibility_version.to_network_version()),
@@ -378,43 +359,6 @@ fn block_on_actors(
                        "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
                        "reason" => format!("{}", e));
         }
-        if let Some(chain_manager_mempool_prevalidation_thread_watcher) = chain_manager_mempool_prevalidation_thread_watcher.as_mut() {
-            if let Err(e) = chain_manager_mempool_prevalidation_thread_watcher.stop() {
-                warn!(log, "Failed to stop thread watcher";
-                       "thread_name" => chain_manager_mempool_prevalidation_thread_watcher.thread_name(),
-                       "reason" => format!("{}", e));
-            }
-        }
-        let mempool_thread_watchers = match mempool_prevalidator_factory
-            .mempool_thread_watchers()
-            .lock()
-        {
-            Ok(mut mempool_prevalidator_factory) => {
-                let (mempool_thread_watchers_stop_initiated, _): (
-                    Vec<ThreadWatcher>,
-                    Vec<ThreadWatcher>,
-                ) = mempool_prevalidator_factory
-                    .drain()
-                    .map(|(_, b)| b)
-                    .partition(|thread_worker| {
-                        if let Err(e) = thread_worker.stop() {
-                            warn!(log, "Failed to stop thread watcher";
-                               "thread_name" => thread_worker.thread_name(),
-                               "reason" => format!("{}", e));
-                            false
-                        } else {
-                            true
-                        }
-                    });
-                mempool_thread_watchers_stop_initiated
-            }
-            Err(e) => {
-                warn!(log, "Failed to lock mempool thread watchers, so we cannot gracefully release them";
-                           "reason" => format!("{}", e));
-                vec![]
-            }
-        };
-        info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
         info!(log, "Sending shutdown notification to actors (4/9)");
         shell_channel.tell(
@@ -442,22 +386,6 @@ fn block_on_actors(
             thread.thread().unpark();
             if let Err(e) = thread.join() {
                 warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
-            }
-        }
-        if let Some(mut chain_manager_mempool_prevalidation_thread_watcher) = chain_manager_mempool_prevalidation_thread_watcher.take() {
-            if let Some(thread) = chain_manager_mempool_prevalidation_thread_watcher.thread() {
-                thread.thread().unpark();
-                if let Err(e) = thread.join() {
-                    warn!(log, "Failed to wait for mempool prevalidation thread"; "reason" => format!("{:?}", e));
-                }
-            }
-        }
-        for mut mempool_thread_watcher in mempool_thread_watchers {
-            if let Some(thread) = mempool_thread_watcher.thread() {
-                thread.thread().unpark();
-                if let Err(e) = thread.join() {
-                    warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
-                }
             }
         }
         info!(log, "Thread workers stopped");
@@ -679,6 +607,8 @@ fn main() {
             e
         ),
     };
+    // let _ = log;
+    // let log = Logger::root(slog::Discard, slog::o!());
 
     // Enable core dumps and increase open files limit
     system::init_limits(&log);

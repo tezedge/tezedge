@@ -32,6 +32,10 @@ pub enum RpcResponse {
         operation_hash: OperationHash,
         operation: Operation,
     },
+    RequestCurrentHeadFromConnectedPeers,
+    RemoveOperations {
+        operation_hashes: Vec<OperationHash>,
+    }
 }
 
 #[derive(Clone)]
