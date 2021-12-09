@@ -606,7 +606,7 @@ impl Storage {
         StorageMemoryUsage {
             nodes_len: self.nodes.len(),
             nodes_cap,
-            directories_len: self.directories.len(),
+            directories_len: self.directories.nelems(),
             directories_cap,
             temp_dir_cap,
             blobs_len: self.blobs.len(),
@@ -814,43 +814,55 @@ impl Storage {
         Ok(current)
     }
 
+    fn sort_slice(
+        slice: &mut [(StringId, DirEntryId)],
+        strings: &StringInterner,
+    ) -> Result<(), StorageError> {
+        let mut error = None;
+
+        slice.sort_unstable_by(|a, b| {
+            let a = match strings.get_str(a.0) {
+                Ok(a) => a,
+                Err(e) => {
+                    error = Some(e);
+                    ""
+                }
+            };
+
+            let b = match strings.get_str(b.0) {
+                Ok(b) => b,
+                Err(e) => {
+                    error = Some(e);
+                    ""
+                }
+            };
+
+            a.cmp(b)
+        });
+
+        if let Some(e) = error {
+            return Err(e.into());
+        };
+
+        Ok(())
+    }
+
     /// Copy directory from `Self::temp_dir` into `Self::directories` in a sorted order.
     ///
     /// `dir_range` is the range of the directory in `Self::temp_dir`
+    /// The method first sorts `Self::temp_dir[dir_range]` in place, and copy the directory
+    /// in `Self::directories`.
     fn copy_sorted(
         &mut self,
         dir_range: TempDirRange,
         strings: &StringInterner,
     ) -> Result<DirectoryId, StorageError> {
-        // println!("COPY_SORTED CALLED");
+        let temp_dir = &mut self.temp_dir[dir_range];
 
-        let range_length = dir_range.end - dir_range.start;
+        Self::sort_slice(temp_dir, strings)?;
+        let (start, length) = self.directories.extend_from_slice(temp_dir);
 
-        // let start = self.directories.len();
-        let (start, _) = self.directories.append(&mut Vec::new());
-
-        for (key_id, dir_entry_id) in &self.temp_dir[dir_range] {
-            let key_str = strings.get_str(*key_id)?;
-            let dir = &self.directories[start..];
-
-            match self.binary_search_in_dir(dir, key_str, strings)? {
-                Ok(found) => {
-                    self.directories.get_mut_at(start, found).1 = *dir_entry_id;
-                    // self.directories[start + found].1 = *dir_entry_id;
-                }
-                Err(index) => {
-                    self.directories
-                        .insert_at(start, index, (*key_id, *dir_entry_id));
-                    // self.directories
-                    //     .insert(start + index, (*key_id, *dir_entry_id));
-                }
-            }
-        }
-
-        DirectoryId::try_new_dir(start, start + range_length)
-
-        // let end = self.directories.len();
-        // DirectoryId::try_new_dir(start, end)
+        DirectoryId::try_new_dir(start, start + length)
     }
 
     fn with_temp_dir_range<Fun>(&mut self, mut fun: Fun) -> Result<TempDirRange, StorageError>
@@ -1139,32 +1151,7 @@ impl Storage {
     ) -> Result<Vec<(StringId, DirEntryId)>, MerkleError> {
         if dir_id.get_inode_id().is_some() {
             let mut dir = self.dir_to_vec_unsorted(dir_id)?;
-
-            let mut error = None;
-
-            dir.sort_unstable_by(|a, b| {
-                let a = match strings.get_str(a.0) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        error = Some(e);
-                        ""
-                    }
-                };
-
-                let b = match strings.get_str(b.0) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error = Some(e);
-                        ""
-                    }
-                };
-
-                a.cmp(b)
-            });
-
-            if let Some(e) = error {
-                return Err(e.into());
-            };
+            Self::sort_slice(&mut dir, strings)?;
 
             Ok(dir)
         } else {

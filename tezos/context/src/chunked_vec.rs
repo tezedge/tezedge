@@ -1,12 +1,25 @@
-use std::ops::{Index, IndexMut, Range};
+use std::ops::{Index, IndexMut};
 
-type Chunk<T> = Vec<T>;
+pub type Chunk<T> = Vec<T>;
 
-const DEFAULT_LIST_LENGTH: usize = 10;
+pub const DEFAULT_LIST_LENGTH: usize = 10;
 
+/// Structure allocating multiple `Chunk`, its values are accessible (only) by index
+///
+/// Example:
+/// ```
+/// use tezos_context::chunked_vec::ChunkedVec;
+///
+/// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
+/// chunks.push(1);
+/// chunks.push(2);
+/// assert_eq!(*chunks.get(0).unwrap(), 1);
+/// assert_eq!(*chunks.get(1).unwrap(), 2);
+/// ```
 #[derive(Debug)]
 pub struct ChunkedVec<T> {
     list_of_chunks: Vec<Chunk<T>>,
+    /// Index of the last element.
     current_index: usize,
     chunk_capacity: usize,
 }
@@ -15,8 +28,7 @@ impl<T> Index<usize> for ChunkedVec<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        let (list_index, chunk_index) = self.get_indexes_at(index);
 
         &self.list_of_chunks[list_index][chunk_index]
     }
@@ -24,8 +36,7 @@ impl<T> Index<usize> for ChunkedVec<T> {
 
 impl<T> IndexMut<usize> for ChunkedVec<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        let (list_index, chunk_index) = self.get_indexes_at(index);
 
         &mut self.list_of_chunks[list_index][chunk_index]
     }
@@ -47,6 +58,7 @@ impl<'a, T> Iterator for ChunkedVecIter<'a, T> {
 }
 
 impl<T> ChunkedVec<T> {
+    /// Returns a new `ChunkedVec<T>` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
@@ -85,6 +97,7 @@ impl<T> ChunkedVec<T> {
         self.chunk_capacity * self.list_of_chunks.len()
     }
 
+    /// Push an element in the last chunk.
     pub fn push(&mut self, element: T) {
         let list_index = self.current_index / self.chunk_capacity;
 
@@ -106,21 +119,17 @@ impl<T> ChunkedVec<T> {
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        let (list_index, chunk_index) = self.get_indexes_at(index);
 
-        self.list_of_chunks
-            .get(list_index)
-            .and_then(|chunk| chunk.get(chunk_index))
+        self.list_of_chunks.get(list_index)?.get(chunk_index)
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        let (list_index, chunk_index) = self.get_indexes_at(index);
 
         self.list_of_chunks
-            .get_mut(list_index)
-            .and_then(|chunk| chunk.get_mut(chunk_index))
+            .get_mut(list_index)?
+            .get_mut(chunk_index)
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
@@ -145,14 +154,10 @@ impl<T> ChunkedVec<T> {
     }
 
     pub fn clear(&mut self) {
-        for (index, chunk) in self.list_of_chunks.iter_mut().enumerate() {
-            if index == 0 {
-                chunk.clear();
-            } else if !chunk.is_empty() {
-                *chunk = Vec::new();
-            }
-        }
-
+        self.list_of_chunks.truncate(1);
+        if let Some(first_chunk) = self.list_of_chunks.last_mut() {
+            first_chunk.clear();
+        };
         self.current_index = 0;
     }
 }

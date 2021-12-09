@@ -1,14 +1,23 @@
 use std::ops::{Index, Range, RangeFrom};
 
-type Chunk<T> = Vec<T>;
+use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
 
-const DEFAULT_LIST_LENGTH: usize = 10;
-
+/// Structure allocating multiple `Chunk`, its values are accessible (only) by range
+///
+/// Example:
+/// ```
+/// use tezos_context::chunked_slice::ChunkedSlice;
+///
+/// let mut chunks = ChunkedSlice::with_chunk_capacity(1000);
+/// chunks.extend_from_slice(&[1, 2, 3]);
+/// assert_eq!(chunks.get_slice(0..3).unwrap(), &[1, 2, 3])
+/// ```
 #[derive(Debug)]
 pub struct ChunkedSlice<T> {
     list_of_chunks: Vec<Chunk<T>>,
-    // current_index: usize,
     chunk_capacity: usize,
+    /// Number of elements pushed in the chunks, this should be used for statistics only
+    nelems: usize,
 }
 
 impl<T> Index<Range<usize>> for ChunkedSlice<T> {
@@ -32,21 +41,33 @@ impl<T> Index<RangeFrom<usize>> for ChunkedSlice<T> {
     }
 }
 
-// impl<T> IndexMut<usize> for ChunkedVec<T> {
-//     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-//         let list_index = index / self.chunk_capacity;
-//         let chunk_index = index % self.chunk_capacity;
+impl<T> ChunkedSlice<T>
+where
+    T: Clone,
+{
+    pub fn extend_from_slice(&mut self, slice: &[T]) -> (usize, usize) {
+        self.maybe_alloc_chunk();
 
-//         &mut self.list_of_chunks[list_index][chunk_index]
-//     }
-// }
+        let start = self.get_start();
+        let other_length = slice.len();
+        self.nelems += other_length;
+
+        self.list_of_chunks
+            .last_mut()
+            .unwrap()
+            .extend_from_slice(slice);
+
+        (start, other_length)
+    }
+}
 
 impl<T> ChunkedSlice<T> {
+    /// Returns a new `ChunkedSlice<T>` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
-            // current_index: 0,
             chunk_capacity: 1_000,
+            nelems: 0,
         }
     }
 
@@ -60,8 +81,8 @@ impl<T> ChunkedSlice<T> {
 
         Self {
             list_of_chunks: list_of_vec,
-            // current_index: 0,
             chunk_capacity,
+            nelems: 0,
         }
     }
 
@@ -69,88 +90,43 @@ impl<T> ChunkedSlice<T> {
         self.chunk_capacity * self.list_of_chunks.len()
     }
 
+    /// Allocates one more chunk in 2 cases:
+    /// - The last chunk has reached `Self::chunk_capacity` limit
+    /// - `Self::list_of_chunks` is empty
+    fn maybe_alloc_chunk(&mut self) {
+        let chunk_capacity = self.chunk_capacity;
+
+        if self
+            .list_of_chunks
+            .last_mut()
+            .map(|chunk| chunk.len() >= chunk_capacity)
+            .unwrap_or(true)
+        {
+            self.list_of_chunks
+                .push(Vec::with_capacity(self.chunk_capacity));
+        }
+    }
+
+    /// Append `other` in the last chunk.
     pub fn append(&mut self, other: &mut Vec<T>) -> (usize, usize) {
+        self.maybe_alloc_chunk();
+
+        let start = self.get_start();
         let other_length = other.len();
-
-        match self.list_of_chunks.last_mut() {
-            Some(chunk) if chunk.len() >= self.chunk_capacity => {
-                self.list_of_chunks
-                    .push(Vec::with_capacity(self.chunk_capacity));
-                // self.list_of_chunks.last_mut().unwrap()
-            }
-            None => {
-                self.list_of_chunks
-                    .push(Vec::with_capacity(self.chunk_capacity));
-                // self.list_of_chunks.last_mut().unwrap()
-            }
-            Some(_) => (),
-        };
-
-        let start = self.len();
+        self.nelems += other_length;
 
         self.list_of_chunks.last_mut().unwrap().append(other);
 
         (start, other_length)
-
-        // let (list_index, chunk_index) = self.get_indexes_at(self.current_index);
-
-        // let chunk = match self.list_of_chunks.get_mut(list_index) {
-        //     Some(chunk) => chunk,
-        //     None => {
-        //         self.list_of_chunks
-        //             .push(Vec::with_capacity(self.chunk_capacity));
-        //         &mut self.list_of_chunks[list_index]
-        //     }
-        // };
-
-        // chunk.append(other);
-        // self.current_index += other_length;
     }
-
-    // pub fn append(&mut self, other: &mut Vec<T>) {
-    //     let other_length = other.len();
-    //     let (list_index, chunk_index) = self.get_indexes_at(self.current_index);
-
-    //     let chunk = match self.list_of_chunks.get_mut(list_index) {
-    //         Some(chunk) => chunk,
-    //         None => {
-    //             self.list_of_chunks
-    //                 .push(Vec::with_capacity(self.chunk_capacity));
-    //             &mut self.list_of_chunks[list_index]
-    //         }
-    //     };
-
-    //     chunk.append(other);
-    //     self.current_index += other_length;
-    // }
 
     pub fn get_slice(&self, Range { start, end }: Range<usize>) -> Option<&[T]> {
         let length = end - start;
         let (list_index, chunk_index) = self.get_indexes_at(start);
 
-        // let aa: Vec<_> = self.list_of_chunks.iter().map(|c| c.len()).collect();
-        // println!(
-        //     "GET_SLICE Range={:?} list_index={:?} chunk_index={:?} length={:?} end={:?} list={:?}",
-        //     Range { start, end }, list_index, chunk_index, length, chunk_index + length, aa
-        // );
-
         self.list_of_chunks
             .get(list_index)?
             .get(chunk_index..chunk_index + length)
-    }
-
-    pub fn get_mut_at(&mut self, start: usize, offset: usize) -> &mut T {
-        // println!("GET_MUT_AT CALLED");
-        let (list_index, chunk_index) = self.get_indexes_at(start);
-        &mut self.list_of_chunks[list_index][chunk_index + offset]
-    }
-
-    pub fn insert_at(&mut self, start: usize, offset: usize, elem: T) {
-        // println!("INSERT_AT CALLED");
-        let (list_index, chunk_index) = self.get_indexes_at(start);
-
-        let chunk = &mut self.list_of_chunks[list_index];
-        chunk.insert(chunk_index + offset, elem);
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
@@ -160,72 +136,35 @@ impl<T> ChunkedSlice<T> {
         (list_index, chunk_index)
     }
 
+    /// Remove `nelems` from the last chunk.
     pub fn remove_last_nelems(&mut self, nelems: usize) {
-        let chunk = match self.list_of_chunks.last_mut() {
-            Some(chunk) => chunk,
-            None => return,
+        if let Some(chunk) = self.list_of_chunks.last_mut() {
+            chunk.truncate(chunk.len() - nelems);
+            self.nelems -= nelems;
         };
-
-        chunk.truncate(chunk.len() - nelems);
     }
 
-    // pub fn truncate(&mut self, new_len: usize) {
-    // println!("TRUNCATE CALLED");
-    // if new_len >= self.current_index {
-    //     return;
-    // }
+    fn get_start(&self) -> usize {
+        let nfull_chunk = self.list_of_chunks.len().saturating_sub(1);
+        let last_chunk_length = self.list_of_chunks.last().map(Vec::len).unwrap_or(0);
 
-    // let (list_index, chunk_index) = self.get_indexes_at(new_len);
+        (nfull_chunk * self.chunk_capacity) + last_chunk_length
+    }
 
-    // let first_chunk = match self.list_of_chunks.get_mut(list_index) {
-    //     Some(chunk) => chunk,
-    //     None => return,
-    // };
-
-    // first_chunk.truncate(chunk_index);
-    // self.current_index = new_len;
-
-    // let rest_chunks = match self.list_of_chunks.get_mut(list_index + 1..) {
-    //     Some(chunks) => chunks,
-    //     None => return,
-    // };
-
-    // for chunk in rest_chunks {
-    //     chunk.truncate(0);
-    // }
-    // }
-
-    pub fn len(&self) -> usize {
-        let length = ((self.list_of_chunks.len() - 1) * self.chunk_capacity)
-            + self.list_of_chunks.last().map(|c| c.len()).unwrap_or(0);
-
-        // let list: Vec<_> = self.list_of_chunks.iter().map(|c| c.len()).collect();
-        // println!("LENGTH={:?} LIST={:?}", length, list);
-
-        length
-
-        // self.current_index
+    pub fn nelems(&self) -> usize {
+        self.nelems
     }
 
     pub fn deallocate(&mut self) {
         self.list_of_chunks = Vec::new();
-        // self.current_index = 0;
+        self.nelems = 0;
     }
 
     pub fn clear(&mut self) {
-        for (index, chunk) in self.list_of_chunks.iter_mut().enumerate() {
-            if index == 0 {
-                chunk.clear();
-            } else if !chunk.is_empty() {
-                *chunk = Vec::new();
-            }
-        }
-
-        // self.current_index = 0;
+        self.list_of_chunks.truncate(1);
+        if let Some(first_chunk) = self.list_of_chunks.last_mut() {
+            first_chunk.clear();
+        };
+        self.nelems = 0;
     }
 }
-
-// struct GrowableSlice<'a, T> {
-//     slice: &'a mut Vec<T>,
-//     start: usize,
-// }
