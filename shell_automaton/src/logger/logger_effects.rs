@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::peer::PeerStatus;
 use crate::{Action, ActionWithMeta, Service, Store};
 
 #[allow(unused)]
@@ -9,7 +10,8 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
     // eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 
-    let log = &store.state().log;
+    let state = store.state.get();
+    let log = &state.log;
 
     match &action.action {
         Action::PeerConnectionOutgoingError(content) => {
@@ -55,7 +57,9 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 "error" => format!("{:?}", content.error));
         }
         Action::PeerHandshakingFinish(content) => {
-            slog::info!(log, "Peer Handshaking successful"; "address" => content.address.to_string());
+            slog::info!(log, "Peer Handshaking successful";
+            "address" => content.address.to_string(),
+            "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)));
         }
         Action::PeerDisconnect(content) => {
             slog::warn!(log, "Disconnecting peer"; "address" => content.address.to_string());
@@ -72,6 +76,18 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 slog::warn!(log, "Peers timed out";
                     "timeouts" => format!("{:?}", content.peer_timeouts));
             }
+        }
+        Action::PeerMessageReadSuccess(content) => {
+            slog::trace!(log, "Received message from a peer";
+                "address" => content.address.to_string(),
+                "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)),
+                "message" => content.message.message());
+        }
+        Action::PeerMessageWriteInit(content) => {
+            slog::trace!(log, "Sending message to a peer";
+                "address" => content.address.to_string(),
+                "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)),
+                "message" => content.message.message());
         }
 
         Action::StorageResponseReceived(content) => match &content.response.result {
