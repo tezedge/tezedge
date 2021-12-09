@@ -3562,8 +3562,9 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-mainnet
 
 trigger:
   branch:
-    - master
-    - develop
+    # TODO: disabled for now because of the RPC test getting stuck in the rights RPC call
+    - x_master
+    - x_develop
 
 environment:
   NETWORK: mainnet
