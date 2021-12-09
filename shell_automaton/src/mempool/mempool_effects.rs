@@ -120,19 +120,22 @@ pub fn mempool_effects<S>(
             }
         }
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, ..
+            chain_id, block, block_metadata_hash, ops_metadata_hash, ..
         }) => {
             if store.state().mempool.is_bootstrapped {
                 let req = BeginConstructionRequest {
                     chain_id: chain_id.clone(),
                     predecessor: block.clone(),
                     protocol_data: None,
+                    predecessor_block_metadata_hash: block_metadata_hash.clone(),
+                    predecessor_ops_metadata_hash: ops_metadata_hash.clone(),
                 };
                 store
                     .service()
                     .protocol()
                     .begin_construction_for_mempool(req);
                 store.dispatch(MempoolBroadcastAction {});
+                // TODO(vlad): Flushing the reservoirs
             }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {

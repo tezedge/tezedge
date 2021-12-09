@@ -22,7 +22,7 @@ use itertools::{Itertools, MinMaxResult};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 
-use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash};
+use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, BlockMetadataHash, OperationMetadataListListHash};
 use crypto::seeded_step::Seed;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::PeerId;
@@ -101,6 +101,8 @@ pub struct AskPeersAboutCurrentHead {
 pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
+    block_metadata_hash: Option<BlockMetadataHash>,
+    ops_metadata_hash: Option<OperationMetadataListListHash>,
     result_roundtrip_timer: Arc<Instant>,
 }
 
@@ -108,11 +110,15 @@ impl ProcessValidatedBlock {
     pub fn new(
         block: Arc<BlockHeaderWithHash>,
         chain_id: Arc<ChainId>,
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
         result_roundtrip_timer: Instant,
     ) -> Self {
         Self {
             block,
             chain_id,
+            block_metadata_hash,
+            ops_metadata_hash,
             result_roundtrip_timer: Arc::new(result_roundtrip_timer),
         }
     }
@@ -948,8 +954,9 @@ impl ChainManager {
                 // 2. advertise current_head to network
                 let current_head = self.current_head_state.as_ref();
                 // get current header
-                if let Some(block) = self.block_storage.get(current_head.block_hash())? {
-                    let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
+                if let Some(_) = self.block_storage.get(current_head.block_hash())? {
+                    // TODO(vlad): remove
+                    /*let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
                         ChainId::clone(&self.chain_state.get_chain_id()),
                         BlockHeader::clone(&block.header),
                         BlockHash::clone(&block.hash),
@@ -957,7 +964,7 @@ impl ChainManager {
                     );
                     if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
                         warn!(log, "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
-                    }
+                    }*/
                 } else {
                     return Err(StateError::ProcessingError {
                         reason: format!(
@@ -1026,6 +1033,8 @@ impl ChainManager {
         let ProcessValidatedBlock {
             block,
             chain_id,
+            block_metadata_hash,
+            ops_metadata_hash,
             result_roundtrip_timer,
         } = validated_block;
         let result_roundtrip_timer = result_roundtrip_timer.elapsed();
@@ -1042,6 +1051,8 @@ impl ChainManager {
                 ChainId::clone(&chain_id),
                 BlockHeader::clone(&block.header),
                 BlockHash::clone(&block.hash),
+                block_metadata_hash,
+                ops_metadata_hash,
                 is_bootstrapped,
             );
             if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {

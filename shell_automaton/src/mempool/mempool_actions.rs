@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ChainId, BlockHash, OperationHash};
+use crypto::hash::{ChainId, BlockHash, OperationHash, BlockMetadataHash, OperationMetadataListListHash};
 use tezos_messages::p2p::encoding::{
     block_header::BlockHeader, mempool::Mempool, operation::Operation,
 };
@@ -186,6 +186,8 @@ pub struct BlockAppliedAction {
     pub chain_id: ChainId,
     pub block: BlockHeader,
     pub hash: BlockHash,
+    pub block_metadata_hash: Option<BlockMetadataHash>,
+    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub is_bootstrapped: bool,
 }
 

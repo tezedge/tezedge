@@ -88,7 +88,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         },
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, hash, is_bootstrapped,
+            chain_id, block, hash, is_bootstrapped, ..
         }) => {
             if config.chain_id.ne(chain_id) {
                 return;
