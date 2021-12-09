@@ -274,12 +274,20 @@ pub async fn prevalidate_operation(
     // TODO: possible to add ffi to pre_filter
     // TODO: possible to add ffi to decode_operation_data
 
+    let (predecessor_block_metadata_hash, predecessor_ops_metadata_hash) =
+        match block_meta_storage.get_additional_data(&mempool_head.hash)? {
+            Some(block_header_additional_data) => block_header_additional_data.into(),
+            None => (None, None),
+        };
+
     // begin construction of a new empty block
     let prevalidator = api
         .begin_construction_for_prevalidation(BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: (&*mempool_head.header).clone(),
             protocol_data: None,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
         })
         .await
         .map_err(|e| PrevalidateOperationError::ValidationError {

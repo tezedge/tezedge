@@ -52,6 +52,7 @@ pub enum TezosEnvironment {
     Edo2net,
     Florencenet,
     Granadanet,
+    Hangzhounet,
 }
 
 impl TezosEnvironment {
@@ -77,6 +78,7 @@ impl TezosEnvironment {
             TezosEnvironment::Edo2net => vec!["edo2net", "edo2"],
             TezosEnvironment::Florencenet => vec!["florencenet", "florence"],
             TezosEnvironment::Granadanet => vec!["granadanet", "granada"],
+            TezosEnvironment::Hangzhounet => vec!["hangzhounet", "hangzhou"],
         }
     }
 
@@ -110,6 +112,7 @@ impl TezosEnvironment {
             TezosEnvironment::Edo2net => None,
             TezosEnvironment::Florencenet => None,
             TezosEnvironment::Granadanet => None,
+            TezosEnvironment::Hangzhounet => None,
         }
     }
 
@@ -239,6 +242,10 @@ pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfigura
                     (
                         "PtEdoTezd3RHSC31mpxxo1npxFjoWWcFgQtxapi51Z8TLu6v6Uq".to_string(),
                         "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA".to_string(),
+                    ),
+                    (
+                        "PtHangzHogokSuiMHemCuowEavgYTP8J5qQ9fQS793MHYFpCY3r".to_string(),
+                        "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx".to_string(),
                     ),
                 ],
             },
@@ -474,6 +481,36 @@ pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfigura
         patch_context_genesis_parameters: Some(PatchContext {
             key: "sandbox_parameter".to_string(),
             json: r#"{ "genesis_pubkey": "edpkuix6Lv8vnrz6uDe1w8uaXY7YktitAxn6EHdy2jdzq5n5hZo94n" }"#.to_string(),
+        }),
+    });
+
+    env.insert(TezosEnvironment::Hangzhounet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2021-11-04T15:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis7e8c4d4snJW".to_string(),
+            protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "hangzhounet.teztnets.xyz".to_string(),
+            "hangzhounet.kaml.fr".to_string(),
+            "hangzhounet.smartpy.io".to_string(),
+            "hangzhounet.tezos.co.il".to_string(),
+            "hangzhounet.boot.tez.ie".to_string(),
+        ],
+        version: "TEZOS_HANGZHOUNET_2021-11-04T15:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![
+                (
+                    8191_i32,
+                    "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx".to_string(),
+                ),
+            ],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuYLienS3Xdt5c1vfRX1ibMxQuvfM67ByhJ9nmRYYKGAAoTq1UC" }"#.to_string(),
         }),
     });
 

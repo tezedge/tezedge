@@ -129,6 +129,7 @@ pub async fn mempool_monitor_operations(
     let state = env.state.clone();
     let log = env.log.clone();
     let current_mempool_state_storage = env.current_mempool_state_storage.clone();
+    // TODO: remove unwrap() here
     let last_checked_head = state.read().unwrap().current_head().as_ref().hash.clone();
     make_json_stream_response(stream_services::OperationMonitorStream::new(
         chain_id,
@@ -139,6 +140,7 @@ pub async fn mempool_monitor_operations(
         mempool_query,
     ))
 }
+
 // TODO: TE-685
 // pub async fn blocks(
 //     _: Request<Body>,

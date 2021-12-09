@@ -22,13 +22,13 @@ use tezos_protocol_ipc_client::{
 };
 use thiserror::Error;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::{BlockHash, BlockMetadataHash, ChainId, OperationMetadataListListHash};
 use shell_integration::{
     dispatch_oneshot_result, MempoolError, MempoolOperationReceived, ResetMempool,
 };
 use shell_integration::{StreamCounter, ThreadRunningStatus, ThreadWatcher};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
-use storage::{BlockHeaderWithHash, PersistentStorage};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use storage::{BlockStorage, BlockStorageReader, StorageError};
 use tezos_api::ffi::{BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -85,12 +85,14 @@ impl MempoolPrevalidator {
 
             thread::Builder::new().name(thread_name).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
+                let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_protocol_api.readable_connection_sync() {
                         Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
+                            &block_meta_storage,
                             &chain_meta_storage,
                             &current_mempool_state_storage,
                             &chain_id,
@@ -273,6 +275,7 @@ impl<T> From<PoisonError<T>> for PrevalidationError {
 
 fn process_prevalidation(
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     current_mempool_state_storage: &CurrentMempoolStateStorageRef,
     chain_id: &ChainId,
@@ -289,6 +292,7 @@ fn process_prevalidation(
     hydrate_state(
         chain_manager,
         block_storage,
+        block_meta_storage,
         chain_meta_storage,
         current_mempool_state_storage,
         api,
@@ -312,6 +316,14 @@ fn process_prevalidation(
                     if process_new_head {
                         debug!(log, "Mempool - new head received, so begin construction a new context"; "received_block_hash" => header.hash.to_base58_check());
 
+                        let (predecessor_block_metadata_hash, predecessor_ops_metadata_hash) =
+                            match block_meta_storage.get_additional_data(&header.hash)? {
+                                Some(block_header_additional_data) => {
+                                    block_header_additional_data.into()
+                                }
+                                None => (None, None),
+                            };
+
                         // try to begin construction new context
                         let (prevalidator, head) = begin_construction(
                             api,
@@ -319,6 +331,8 @@ fn process_prevalidation(
                             chain_id,
                             header.hash.clone(),
                             header.header.clone(),
+                            predecessor_block_metadata_hash,
+                            predecessor_ops_metadata_hash,
                             log,
                         )?;
 
@@ -379,6 +393,7 @@ fn process_prevalidation(
 fn hydrate_state(
     chain_manager: &ChainManagerRef,
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     current_mempool_state_storage: &CurrentMempoolStateStorageRef,
     api: &mut ProtocolRunnerConnection,
@@ -396,8 +411,24 @@ fn hydrate_state(
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some((head, header)) => {
-            begin_construction(api, tokio_runtime, chain_id, head.into(), header, log)?
+        Some((head, block_header)) => {
+            let block_hash = head.into();
+            let (predecessor_block_metadata_hash, predecessor_ops_metadata_hash) =
+                match block_meta_storage.get_additional_data(&block_hash)? {
+                    Some(block_header_additional_data) => block_header_additional_data.into(),
+                    None => (None, None),
+                };
+
+            begin_construction(
+                api,
+                tokio_runtime,
+                chain_id,
+                block_hash,
+                block_header,
+                predecessor_block_metadata_hash,
+                predecessor_ops_metadata_hash,
+                log,
+            )?
         }
         None => (None, None),
     };
@@ -434,6 +465,8 @@ fn begin_construction(
     chain_id: &ChainId,
     block_hash: BlockHash,
     block_header: Arc<BlockHeader>,
+    predecessor_block_metadata_hash: Option<BlockMetadataHash>,
+    predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
     log: &Logger,
 ) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
     let result = tokio::task::block_in_place(|| {
@@ -442,6 +475,8 @@ fn begin_construction(
                 chain_id: chain_id.clone(),
                 predecessor: block_header.as_ref().clone(),
                 protocol_data: None,
+                predecessor_block_metadata_hash,
+                predecessor_ops_metadata_hash,
             }),
         )
     });

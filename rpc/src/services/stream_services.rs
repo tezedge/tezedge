@@ -76,9 +76,9 @@ pub struct MonitoredOperation {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
-    #[serde(skip_serializing)]
     hash: String,
-    #[serde(skip_serializing)]
+    // TODO: This is represented as an Option<String> here but in OCaml it is an array of errors,
+    // so when empty it just gets serialized as "[]"
     error: Option<String>,
 }
 
@@ -198,7 +198,7 @@ impl OperationMonitorStream {
         state: RpcCollectedStateRef,
         log: Logger,
         last_checked_head: BlockHash,
-        mempool_operaions_query: MempoolOperationsQuery,
+        mempool_operations_query: MempoolOperationsQuery,
     ) -> Self {
         Self {
             _chain_id,
@@ -207,7 +207,7 @@ impl OperationMonitorStream {
             last_checked_head,
             log,
             contains_waker: false,
-            query: mempool_operaions_query,
+            query: mempool_operations_query,
             streamed_operations: HashSet::new(),
             stream_id: generate_stream_id(),
             poll_counter: 0,
