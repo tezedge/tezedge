@@ -3746,7 +3746,7 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
+    - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes,/config/network/user_activated_upgrades,/config/network/user_activated_protocol_overrides
     # mainnet rpcs of protocol 001 are too slow
     - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
     - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
