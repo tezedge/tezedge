@@ -3797,6 +3797,7 @@ dependencies = [
  "rand 0.7.3",
  "serde 1.0.130",
  "serde_json",
+ "slog",
  "strum",
  "strum_macros",
  "tezos_encoding",

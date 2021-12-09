@@ -4,10 +4,14 @@
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use crate::p2p::{binary_message::SizeFromChunk, encoding::prelude::*, peer_message_size};
+use crypto::hash::OperationHash;
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
+
+use crate::p2p::binary_message::{MessageHash, SizeFromChunk};
+use crate::p2p::encoding::prelude::*;
+use crate::p2p::peer_message_size;
 
 use super::limits::MESSAGE_MAX_SIZE;
 
@@ -109,6 +113,132 @@ impl PeerMessage {
 
     pub fn get_type_str(&self) -> &'static str {
         Self::type_str_for_message_index(self.index())
+    }
+}
+
+impl slog::Value for PeerMessage {
+    fn serialize(
+        &self,
+        _: &slog::Record,
+        _: slog::Key,
+        s: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        s.emit_arguments(
+            "peer_message_kind",
+            &format_args!("{}", self.get_type_str()),
+        )?;
+        match self {
+            PeerMessage::Disconnect => Ok(()),
+            PeerMessage::Advertise(v) => s.emit_arguments(
+                "peer_message_advertise_addrs",
+                &format_args!("{:?}", v.id()),
+            ),
+            PeerMessage::SwapRequest(v) => {
+                s.emit_arguments(
+                    "peer_message_swap_request_point",
+                    &format_args!("{}", v.point()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_swap_request_peer_id",
+                    &format_args!("{}", v.peer_id().to_base58_check()),
+                )
+            }
+            PeerMessage::SwapAck(v) => {
+                s.emit_arguments(
+                    "peer_message_swap_ack_point",
+                    &format_args!("{}", v.point()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_swap_ack_peer_id",
+                    &format_args!("{}", v.peer_id().to_base58_check()),
+                )
+            }
+            PeerMessage::Bootstrap => Ok(()),
+            PeerMessage::GetCurrentBranch(v) => s.emit_arguments(
+                "peer_message_get_current_branch_chain_id",
+                &format_args!("{}", v.chain_id.to_base58_check()),
+            ),
+            PeerMessage::CurrentBranch(v) => {
+                s.emit_arguments(
+                    "peer_message_current_branch_current_head",
+                    &format_args!("{:?}", v.current_branch().current_head()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_current_branch_history",
+                    &format_args!("{:?}", v.current_branch().history()),
+                )
+            }
+            PeerMessage::Deactivate(_) => Ok(()),
+            PeerMessage::GetCurrentHead(v) => s.emit_arguments(
+                "peer_message_get_current_head",
+                &format_args!("{}", v.chain_id().to_base58_check()),
+            ),
+            PeerMessage::CurrentHead(v) => {
+                s.emit_arguments(
+                    "peer_message_current_head_chain_id",
+                    &format_args!("{}", v.chain_id().to_base58_check()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_current_head_current_block_header",
+                    &format_args!("{:?}", v.current_block_header()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_current_head_current_mempool",
+                    &format_args!("{:?}", v.current_mempool()),
+                )
+            }
+            PeerMessage::GetBlockHeaders(v) => s.emit_arguments(
+                "peer_message_get_block_headers_hashes",
+                &format_args!("{:?}", v.get_block_headers()),
+            ),
+            PeerMessage::BlockHeader(v) => {
+                s.emit_arguments("peer_message_block_header", &format_args!("{:?}", v))
+            }
+            PeerMessage::GetOperations(v) => s.emit_arguments(
+                "peer_message_get_operations_hashes",
+                &format_args!("{:?}", v.get_operations()),
+            ),
+            PeerMessage::Operation(v) => {
+                let op_hash_result = v.operation().message_typed_hash::<OperationHash>();
+                s.emit_arguments(
+                    "peer_message_operation_branch",
+                    &format_args!("{:?}", v.operation().branch()),
+                )?;
+                s.emit_arguments(
+                    "peer_message_operation_data",
+                    &format_args!("{}", hex::encode(v.operation().data())),
+                )?;
+                s.emit_arguments(
+                    "peer_message_operation_hash",
+                    &format_args!("{:?}", op_hash_result),
+                )
+            }
+            PeerMessage::GetProtocols(v) => {
+                s.emit_arguments("peer_message_get_protocols", &format_args!("{:?}", v))
+            }
+            PeerMessage::Protocol(v) => {
+                s.emit_arguments("peer_message_protocol", &format_args!("{:?}", v))
+            }
+            PeerMessage::GetOperationsForBlocks(v) => s.emit_arguments(
+                "peer_message_get_operations_for_blocks",
+                &format_args!("{:?}", v.get_operations_for_blocks()),
+            ),
+            PeerMessage::OperationsForBlocks(v) => {
+                let op_hashes = v
+                    .operations()
+                    .iter()
+                    .map(|x| x.message_typed_hash::<OperationHash>())
+                    .collect::<Vec<_>>();
+                s.emit_arguments(
+                    "peer_message_operations_for_blocks_operation_hashes",
+                    &format_args!("{:?}", op_hashes),
+                )?;
+                s.emit_arguments(
+                    "peer_message_operations_for_blocks",
+                    &format_args!("{:?}", v),
+                )
+            }
+        }
     }
 }
 
