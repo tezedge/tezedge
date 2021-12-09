@@ -360,8 +360,8 @@ name: corr/octez-tezedge-connection-with-different-networks-each
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   FROM_BLOCK_HEADER: 0
@@ -494,8 +494,8 @@ name: corr/tezedge-unit-tests
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -577,8 +577,8 @@ name: corr/tezedge-integration-tests
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -813,8 +813,8 @@ name: corr/replay-009-florence
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: florencenet
@@ -988,8 +988,8 @@ name: corr/octez-python-tests-applied-to-tezedge-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _010
@@ -1456,8 +1456,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1475,8 +1475,8 @@ name: corr/octez-python-tests-applied-to-tezedge-alpha
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _alpha
@@ -1731,8 +1731,8 @@ name: corr/tezedge-sandbox-transfer-and-baking-007-carthage
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -1971,8 +1971,8 @@ name: corr/sandbox-launcher-rpc-server-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2141,8 +2141,8 @@ name: corr/sandbox-launcher-rpc-server-011-hangzhou
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2313,8 +2313,8 @@ name: corr/tezedge-with-octez-baker-endorser-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2641,8 +2641,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: delphinet
@@ -2878,8 +2878,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: edo2net
@@ -3105,8 +3105,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-009-florencenet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: florencenet
@@ -3332,8 +3332,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-010-granadanet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: granadanet
@@ -3746,7 +3746,7 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes,/config/network/user_activated_upgrades,/config/network/user_activated_protocol_overrides
+    - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     # mainnet rpcs of protocol 001 are too slow
     - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
     - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
