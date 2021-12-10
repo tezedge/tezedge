@@ -228,6 +228,8 @@ pub struct StringInterner {
 
 impl Default for StringInterner {
     fn default() -> Self {
+        // Note: Changing the chunk capacity of `all_strings` below will result in
+        // different `StringId` so it will make previous database (on disk) incompatible
         Self {
             string_to_offset: Map::default(),
             all_strings: ChunkedString::with_chunk_capacity(512 * 1024), // ~512KB
