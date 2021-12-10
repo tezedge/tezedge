@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use slog::{info, warn};
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};

@@ -121,6 +121,34 @@ impl EnablingCondition<State> for MempoolCleanupWaitPrevalidatorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolRegisterOperationsStreamAction {
+    pub rpc_id: RpcId,
+    pub applied: bool,
+    pub refused: bool,
+    pub branch_delayed: bool,
+    pub branch_refused: bool,
+}
+
+impl EnablingCondition<State> for MempoolRegisterOperationsStreamAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolUnregisterOperationsStreamsAction {}
+
+impl EnablingCondition<State> for MempoolUnregisterOperationsStreamsAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolSendAction {
     pub address: SocketAddr,
 }
@@ -174,6 +202,19 @@ pub struct MempoolBroadcastDoneAction {
 }
 
 impl EnablingCondition<State> for MempoolBroadcastDoneAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolRemoveAppliedOperationsAction {
+    pub operation_hashes: Vec<OperationHash>,
+}
+
+impl EnablingCondition<State> for MempoolRemoveAppliedOperationsAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;

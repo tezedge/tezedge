@@ -1,20 +1,36 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::service::rpc_service::RpcResponse;
+use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
-use crate::mempool::{MempoolOperationInjectAction, MempoolAskCurrentHeadAction};
+use crate::mempool::{
+    MempoolOperationInjectAction, MempoolAskCurrentHeadAction, MempoolRegisterOperationsStreamAction,
+    MempoolRemoveAppliedOperationsAction,
+};
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WakeupEvent(_) => {
+            while let Ok((msg, rpc_id)) = store.service().rpc().try_recv_stream() {
+                match msg {
+                    RpcRequestStream::GetOperations { applied, refused, branch_delayed, branch_refused } => {
+                        store.dispatch(MempoolRegisterOperationsStreamAction {
+                            rpc_id,
+                            applied,
+                            refused,
+                            branch_delayed,
+                            branch_refused,
+                        });
+                    }
+                }
+            }
             while let Ok((msg, rpc_id)) = store.service().rpc().try_recv() {
                 match msg {
-                    RpcResponse::GetCurrentGlobalState { channel } => {
+                    RpcRequest::GetCurrentGlobalState { channel } => {
                         let _ = channel.send(store.state.get().clone());
                     }
-                    RpcResponse::InjectOperation { operation, operation_hash } => {
+                    RpcRequest::InjectOperation { operation, operation_hash } => {
                         store.dispatch(
                             MempoolOperationInjectAction {
                                 operation,
@@ -23,12 +39,17 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             },
                         );
                     }
-                    RpcResponse::RequestCurrentHeadFromConnectedPeers => {
+                    RpcRequest::RequestCurrentHeadFromConnectedPeers => {
                         store.dispatch(MempoolAskCurrentHeadAction {});
                     }
-                    RpcResponse::RemoveOperations { operation_hashes } => {
-                        // TODO(vlad):
-                        let _ = operation_hashes;
+                    RpcRequest::RemoveOperations { operation_hashes } => {
+                        store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
+                    }
+                    RpcRequest::MempoolStatus => {
+                        match &store.state().mempool.running_since {
+                            None => store.service().rpc().respond(rpc_id, serde_json::Value::Null),
+                            Some(()) => store.service().rpc().respond(rpc_id, serde_json::Value::String("".to_string())),
+                        }
                     }
                 }
             }

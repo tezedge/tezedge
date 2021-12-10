@@ -7,7 +7,10 @@ use std::sync::Arc;
 use hyper::body::Buf;
 use hyper::{Body, Method, Request};
 
+use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
+
 use crypto::hash::ProtocolHash;
+use shell_automaton::service::rpc_service::RpcRequestStream;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::helpers::{
@@ -112,30 +115,27 @@ pub async fn mempool_monitor_operations(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    // TODO: use it
+    let _chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
     let applied = query.get_str("applied");
     let branch_refused = query.get_str("branch_refused");
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
 
-    let mempool_query = stream_services::MempoolOperationsQuery {
-        applied: applied == Some("yes"),
-        branch_refused: branch_refused == Some("yes"),
-        branch_delayed: branch_delayed == Some("yes"),
-        refused: refused == Some("yes"),
-    };
-
-    let state = env.state.clone();
-    let log = env.log.clone();
-    let last_checked_head = state.read().unwrap().current_head().as_ref().hash.clone();
-    make_json_stream_response(stream_services::OperationMonitorStream::new(
-        chain_id,
-        state,
-        log,
-        last_checked_head,
-        mempool_query,
-    ))
+    let stream = env.shell_automaton_sender()
+        .request_stream(RpcRequestStream::GetOperations {
+            applied: applied == Some("yes"),
+            branch_refused: branch_refused == Some("yes"),
+            branch_delayed: branch_delayed == Some("yes"),
+            refused: refused == Some("yes"),
+        })
+        .await
+        .ok()
+        .expect("state machine should be correct");
+    let stream = UnboundedReceiverStream::new(stream)
+        .map(|v| serde_json::to_string(&v).map_err(From::from));
+    make_json_stream_response(stream)
 }
 
 // TODO: TE-685
@@ -812,5 +812,5 @@ pub async fn worker_prevalidators(
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    result_to_json_response(helpers::get_prevalidators(&env), env.log())
+    result_to_json_response(helpers::get_prevalidators(&env).await, env.log())
 }

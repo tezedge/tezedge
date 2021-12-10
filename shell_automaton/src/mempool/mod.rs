@@ -12,3 +12,5 @@ pub use self::mempool_reducer::mempool_reducer;
 
 mod mempool_effects;
 pub use self::mempool_effects::mempool_effects;
+
+mod monitored_operation;

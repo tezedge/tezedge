@@ -10,7 +10,8 @@ use super::{
     BlockAppliedAction, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
-    MempoolSendAction,
+    MempoolSendAction, MempoolUnregisterOperationsStreamsAction, MempoolRemoveAppliedOperationsAction,
+    mempool_state::OperationStream,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -84,7 +85,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
             act => {
-                println!("{:?}", act);
+                let _ = act;
+                // println!("{:?}", act);
             }
         },
         Action::BlockApplied(BlockAppliedAction {
@@ -94,7 +96,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
             if *is_bootstrapped {
-                mempool_state.is_bootstrapped = true;
+                mempool_state.running_since = Some(());
             }
             mempool_state.local_head_state = Some((block.clone(), hash.clone()));
             mempool_state.applied_block.insert(hash.clone());
@@ -154,6 +156,18 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .pending_operations
                 .insert(operation_hash.clone(), operation.clone());
         }
+        Action::MempoolRegisterOperationsStream(act) => {
+            mempool_state.operation_streams.push(OperationStream {
+                rpc_id: act.rpc_id,
+                applied: act.applied,
+                refused: act.refused,
+                branch_delayed: act.branch_delayed,
+                branch_refused: act.branch_refused,
+            });
+        }
+        Action::MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction {}) => {
+            mempool_state.operation_streams.clear();
+        },
         Action::MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction {
             operation,
         }) => {
@@ -177,6 +191,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             peer.seen_operations.extend(known_valid.iter().cloned());
             peer.seen_operations.extend(pending.iter().cloned());
+        }
+        Action::MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction { operation_hashes }) => {
+            mempool_state.validated_operations.applied.retain(|v| !operation_hashes.contains(&v.hash));
+            for op in operation_hashes {
+                mempool_state.validated_operations.ops.remove(op);
+            }
         }
         _ => (),
     }

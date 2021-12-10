@@ -27,7 +27,9 @@ use super::{
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
         MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
+        MempoolUnregisterOperationsStreamsAction,
     },
+    monitored_operation::MonitoredOperation,
 };
 
 pub fn mempool_effects<S>(
@@ -54,7 +56,7 @@ pub fn mempool_effects<S>(
                     }
                     store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
                 }
-                ProtocolAction::OperationValidated(_) => {
+                ProtocolAction::OperationValidated(response) => {
                     store.dispatch(MempoolBroadcastAction {});
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
@@ -62,6 +64,40 @@ pub fn mempool_effects<S>(
                         store.service().rpc().respond(rpc_id, serde_json::Value::Null);
                     }
                     store.dispatch(MempoolRpcRespondAction {});
+                    let streams = store.state().mempool.operation_streams.clone();
+                    for stream in streams {
+                        let ops = &store.state().mempool.validated_operations.ops;
+                        let refused_ops = &store.state().mempool.validated_operations.refused_ops;
+                        let prot = store.state().mempool.prevalidator.as_ref().unwrap().protocol.to_base58_check();
+                        let applied = if stream.applied {
+                            response.result.applied.as_slice()
+                        } else {
+                            &[]
+                        };
+                        let refused = if stream.refused {
+                            response.result.refused.as_slice()
+                        } else {
+                            &[]
+                        };
+                        let branch_delayed = if stream.branch_delayed {
+                            response.result.branch_delayed.as_slice()
+                        } else {
+                            &[]
+                        };
+                        let branch_refused = if stream.branch_refused {
+                            response.result.branch_refused.as_slice()
+                        } else {
+                            &[]
+                        };
+                        let resp = std::iter::empty()
+                            .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
+                            .chain(MonitoredOperation::collect_errored(refused, refused_ops, &prot))
+                            .chain(MonitoredOperation::collect_errored(branch_delayed, ops, &prot))
+                            .chain(MonitoredOperation::collect_errored(branch_refused, ops, &prot))
+                            .collect::<Vec<_>>();
+                        let json = serde_json::to_value(resp).unwrap();
+                        store.service().rpc().respond_stream(stream.rpc_id, Some(json));
+                    }
                 }
                 _ => {}
             }
@@ -75,7 +111,7 @@ pub fn mempool_effects<S>(
                     store.dispatch(MempoolSendAction { address: *address });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
-                    if !store.state().mempool.is_bootstrapped {
+                    if store.state().mempool.running_since.is_none() {
                         return;
                     }
                     if current_head.chain_id().ne(&store.state().config.chain_id) {
@@ -122,7 +158,7 @@ pub fn mempool_effects<S>(
         Action::BlockApplied(BlockAppliedAction {
             chain_id, block, block_metadata_hash, ops_metadata_hash, ..
         }) => {
-            if store.state().mempool.is_bootstrapped {
+            if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
                     chain_id: chain_id.clone(),
                     predecessor: block.clone(),
@@ -137,6 +173,46 @@ pub fn mempool_effects<S>(
                 store.dispatch(MempoolBroadcastAction {});
                 // TODO(vlad): Flushing the reservoirs
             }
+            // close streams
+            let streams = store.state().mempool.operation_streams.clone();
+            store.dispatch(MempoolUnregisterOperationsStreamsAction {});
+            for stream in streams {
+                store.service().rpc().respond_stream(stream.rpc_id, None);
+            }
+        }
+        Action::MempoolRegisterOperationsStream(act) => {
+            // TODO(vlad): duplicated code
+            let ops = &store.state().mempool.validated_operations.ops;
+            let refused_ops = &store.state().mempool.validated_operations.refused_ops;
+            let prot = store.state().mempool.prevalidator.as_ref().unwrap().protocol.to_base58_check();
+            let applied = if act.applied {
+                store.state().mempool.validated_operations.applied.as_slice()
+            } else {
+                &[]
+            };
+            let refused = if act.refused {
+                store.state().mempool.validated_operations.refused.as_slice()
+            } else {
+                &[]
+            };
+            let branch_delayed = if act.branch_delayed {
+                store.state().mempool.validated_operations.branch_delayed.as_slice()
+            } else {
+                &[]
+            };
+            let branch_refused = if act.branch_refused {
+                store.state().mempool.validated_operations.branch_refused.as_slice()
+            } else {
+                &[]
+            };
+            let resp = std::iter::empty()
+                .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
+                .chain(MonitoredOperation::collect_errored(refused, refused_ops, &prot))
+                .chain(MonitoredOperation::collect_errored(branch_delayed, ops, &prot))
+                .chain(MonitoredOperation::collect_errored(branch_refused, ops, &prot))
+                .collect::<Vec<_>>();
+            let json = serde_json::to_value(resp).unwrap();
+            store.service().rpc().respond_stream(act.rpc_id, Some(json));
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
@@ -222,8 +298,6 @@ pub fn mempool_effects<S>(
                     return;
                 }
             };
-            // TODO(vlad): remove
-            // println!("send head {} to {}", head_hash.to_base58_check(), address);
             let peer = match store.state().mempool.peer_state.get(&address) {
                 Some(v) => v,
                 None => return,

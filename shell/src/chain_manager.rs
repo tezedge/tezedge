@@ -505,8 +505,6 @@ impl ChainManager {
 
                                 // process current head only if we are bootstrapped
                                 if self.current_bootstrap_state.is_bootstrapped() {
-                                    // TODO(vlad): remove
-                                    // info!(log, "receive head (bootstrapped) {}", message.current_block_header().message_typed_hash::<BlockHash>().unwrap().to_base58_check());
                                     if reused_protocol_runner_connection.is_none() {
                                         self.reused_protocol_runner_connection = Some(
                                             self.tezos_protocol_api.readable_connection_sync()?,
@@ -606,9 +604,6 @@ impl ChainManager {
                                         }
                                     };
                                 } else {
-                                    // TODO(vlad): remove
-                                    // info!(log, "receive head {}", message.current_block_header().message_typed_hash::<BlockHash>().unwrap().to_base58_check());
-
                                     // if not bootstraped, check if increasing
                                     let was_updated = peer.update_current_head_level(
                                         message.current_block_header().level(),
