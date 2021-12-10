@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::ops::{Index, IndexMut};
 
 use super::{Chunk, DEFAULT_LIST_LENGTH};
