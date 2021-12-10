@@ -66,21 +66,27 @@ where
         let other_length = other.list_of_chunks.len();
 
         if our_length != other_length {
-            debug_assert!(our_length < other_length);
+            assert!(our_length < other_length);
             self.list_of_chunks
                 .resize_with(other_length, Default::default);
         }
+
+        let our_length = our_length.saturating_sub(1);
+        let mut nelems = 0;
 
         for (ours, other) in self.list_of_chunks[our_length..]
             .iter_mut()
             .zip(&other.list_of_chunks[our_length..])
         {
-            if ours.len() < other.len() {
-                ours.extend_from_slice(&other[ours.len()..]);
+            let ours_length = ours.len();
+            if ours_length < other.len() {
+                nelems += other.len() - ours_length;
+                ours.extend_from_slice(&other[ours_length..]);
             }
         }
 
-        self.current_index = other.current_index
+        self.current_index += nelems;
+        assert_eq!(self.current_index, other.current_index);
     }
 }
 

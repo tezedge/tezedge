@@ -46,26 +46,36 @@ impl ChunkedString {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.nbytes == 0
+    }
+
     pub fn extend_from(&mut self, other: &Self) {
         let our_length = self.list_of_chunks.len();
         let other_length = other.list_of_chunks.len();
 
         if our_length != other_length {
-            debug_assert!(our_length < other_length);
+            assert!(our_length < other_length);
             self.list_of_chunks
                 .resize_with(other_length, Default::default);
         }
+
+        let our_length = our_length.saturating_sub(1);
+        let mut nbytes = 0;
 
         for (ours, other) in self.list_of_chunks[our_length..]
             .iter_mut()
             .zip(&other.list_of_chunks[our_length..])
         {
-            if ours.len() < other.len() {
-                ours.push_str(&other[ours.len()..]);
+            let ours_length = ours.len();
+            if ours_length < other.len() {
+                nbytes += other.len() - ours_length;
+                ours.push_str(&other[ours_length..]);
             }
         }
 
-        self.nbytes = other.nbytes;
+        self.nbytes += nbytes;
+        assert_eq!(self.nbytes, other.nbytes);
     }
 
     /// Extends the last chunk with `slice`

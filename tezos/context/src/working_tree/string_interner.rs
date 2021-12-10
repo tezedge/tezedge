@@ -209,7 +209,7 @@ impl BigStrings {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct StringInterner {
     /// `Map` of hash of the string to their `StringId`
     /// We don't use `HashMap<String, StringId>` because the map would
@@ -217,7 +217,7 @@ pub struct StringInterner {
     string_to_offset: Map<u64, StringId>,
     /// Concatenation of all strings < STRING_INTERN_THRESHOLD.
     /// This is never cleared/deallocated
-    all_strings: String,
+    all_strings: ChunkedString,
     /// List of `StringId` that needs to be commited
     pub all_strings_to_serialize: Vec<StringId>,
     /// Concatenation of big strings. This is cleared/deallocated
@@ -225,9 +225,21 @@ pub struct StringInterner {
     big_strings: BigStrings,
 }
 
+impl Default for StringInterner {
+    fn default() -> Self {
+        Self {
+            string_to_offset: Map::default(),
+            all_strings: ChunkedString::with_chunk_capacity(32_768),
+            all_strings_to_serialize: Vec::new(),
+            big_strings: BigStrings::default(),
+        }
+    }
+}
+
 impl PartialEq for StringInterner {
     fn eq(&self, other: &Self) -> bool {
-        self.all_strings.len() == other.all_strings.len() && self.big_strings == other.big_strings
+        self.all_strings.nbytes() == other.all_strings.nbytes()
+            && self.big_strings == other.big_strings
     }
 }
 
@@ -256,12 +268,11 @@ impl StringInterner {
             return;
         }
 
-        if self.all_strings.len() != other.all_strings.len() {
-            debug_assert!(self.all_strings.len() < other.all_strings.len());
+        if self.all_strings.nbytes() != other.all_strings.nbytes() {
+            debug_assert!(self.all_strings.nbytes() < other.all_strings.nbytes());
 
             // Append the missing chunk into Self
-            let self_len = self.all_strings.len();
-            self.all_strings.push_str(&other.all_strings[self_len..]);
+            self.all_strings.extend_from(&other.all_strings);
 
             self.all_strings_to_serialize
                 .extend_from_slice(&other.all_strings_to_serialize);
@@ -289,12 +300,12 @@ impl StringInterner {
             return *string_id;
         }
 
-        let index: u32 = self.all_strings.len() as u32;
-        let length: u32 = s.len() as u32;
+        let (index, length) = self.all_strings.push_str(s);
 
         assert_eq!(index & !0x3FFFFFF, 0);
 
-        self.all_strings.push_str(s);
+        let index = index as u32;
+        let length = length as u32;
 
         let string_id = StringId {
             bits: index << 5 | length,
@@ -330,7 +341,7 @@ impl StringInterner {
             all_strings_map_cap: self.string_to_offset.capacity(),
             all_strings_map_len: self.string_to_offset.len(),
             all_strings_cap,
-            all_strings_len: self.all_strings.len(),
+            all_strings_len: self.all_strings.nbytes(),
             big_strings_cap,
             big_strings_len: self.big_strings.strings.nbytes(),
             big_strings_map_cap: self.big_strings.offsets.capacity(),
