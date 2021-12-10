@@ -57,12 +57,12 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: IndexMap::with_chunk_capacity(30_000_000), // ~900MB
-            values: IndexMap::with_chunk_capacity(30_000_000), // ~200MB
+            hashes: IndexMap::with_chunk_capacity(10_000_000), // ~320MB
+            values: IndexMap::with_chunk_capacity(10_000_000), // ~80MB
             free_ids: consumer.into(),
-            new_ids: Vec::with_capacity(1024),
+            new_ids: Vec::with_capacity(1024), // ~8KB
             values_bytes: 0,
-        }
+        } // Total ~400MB
     }
 
     pub fn get_memory_usage(

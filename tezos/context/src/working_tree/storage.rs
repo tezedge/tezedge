@@ -529,7 +529,7 @@ pub struct Storage {
     /// vector `blobs`.
     /// Note that blobs < 8 bytes are not included in this vector `blobs`, such
     /// blob is directly inlined in the `BlobId`
-    blobs: Vec<u8>,
+    blobs: ChunkedSlice<u8>,
     /// Concatenation of all inodes.
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
@@ -580,14 +580,14 @@ type IsNewKey = bool;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: ChunkedSlice::with_chunk_capacity(16_384),
-            temp_dir: Vec::with_capacity(128),
-            blobs: Vec::with_capacity(2_048),
-            nodes: IndexMap::with_chunk_capacity(4_096),
-            inodes: IndexMap::with_chunk_capacity(256),
-            data: Vec::with_capacity(100_000),
+            directories: ChunkedSlice::with_chunk_capacity(64 * 1024), // ~524KB
+            temp_dir: Vec::with_capacity(128),                         // 128B
+            blobs: ChunkedSlice::with_chunk_capacity(128 * 1024),      // ~128KB
+            nodes: IndexMap::with_chunk_capacity(16 * 1024),           // ~360KB
+            inodes: IndexMap::with_chunk_capacity(256),                // ~160KB
+            data: Vec::with_capacity(100_000),                         // ~97KB
             offsets_to_hash_id: HashMap::default(),
-        }
+        } // Total ~1269KB
     }
 
     pub fn memory_usage(&self, strings: &StringInterner) -> StorageMemoryUsage {
@@ -609,7 +609,7 @@ impl Storage {
             directories_len: self.directories.nelems(),
             directories_cap,
             temp_dir_cap,
-            blobs_len: self.blobs.len(),
+            blobs_len: self.blobs.nelems(),
             blobs_cap,
             inodes_len: self.inodes.len(),
             inodes_cap,
@@ -622,11 +622,9 @@ impl Storage {
         if BLOB_INLINED_RANGE.contains(&blob.len()) {
             BlobId::try_new_inline(blob)
         } else {
-            let start = self.blobs.len();
-            self.blobs.extend_from_slice(blob);
-            let end = self.blobs.len();
+            let (start, length) = self.blobs.extend_from_slice(blob);
 
-            BlobId::try_new(start, end)
+            BlobId::try_new(start, start + length)
         }
     }
 
@@ -1408,7 +1406,7 @@ impl Storage {
 
     pub fn clear(&mut self) {
         if self.blobs.capacity() > 2048 {
-            self.blobs = Vec::with_capacity(2048);
+            self.blobs = ChunkedSlice::with_chunk_capacity(2048);
         } else {
             self.blobs.clear();
         }
@@ -1436,7 +1434,7 @@ impl Storage {
         self.nodes = IndexMap::empty();
         self.directories = ChunkedSlice::empty();
         self.temp_dir = Vec::new();
-        self.blobs = Vec::new();
+        self.blobs = ChunkedSlice::empty();
         self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();

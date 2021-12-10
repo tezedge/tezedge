@@ -98,10 +98,10 @@ impl Default for BigStrings {
     fn default() -> Self {
         Self {
             hashes: Map::default(),
-            strings: ChunkedString::with_chunk_capacity(8192),
-            offsets: ChunkedVec::with_chunk_capacity(8192),
+            strings: ChunkedString::with_chunk_capacity(64 * 1024 * 1024), // ~67MB
+            offsets: ChunkedVec::with_chunk_capacity(128 * 1024),          // ~1MB
             to_serialize_index: 0,
-        }
+        } // Total ~68MB
     }
 }
 
@@ -229,10 +229,10 @@ impl Default for StringInterner {
     fn default() -> Self {
         Self {
             string_to_offset: Map::default(),
-            all_strings: ChunkedString::with_chunk_capacity(32_768),
+            all_strings: ChunkedString::with_chunk_capacity(512 * 1024), // ~512KB
             all_strings_to_serialize: Vec::new(),
             big_strings: BigStrings::default(),
-        }
+        } // Total ~69MB
     }
 }
 
