@@ -21,7 +21,7 @@ use tezos_timing::StorageMemoryUsage;
 use thiserror::Error;
 
 use crate::{
-    chunked_slice::ChunkedSlice,
+    chunks::ChunkedSlice,
     kv_store::{index_map::IndexMap, HashId},
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};

@@ -113,9 +113,7 @@
 //! functionality that interacts with the repository (commit and checkout).
 //!
 
-pub mod chunked_slice;
-pub mod chunked_string;
-pub mod chunked_vec;
+pub mod chunks;
 pub mod gc;
 pub mod hash;
 pub mod serialize;

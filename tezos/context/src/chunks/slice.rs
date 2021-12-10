@@ -1,12 +1,12 @@
 use std::ops::{Index, Range};
 
-use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
+use super::{Chunk, DEFAULT_LIST_LENGTH};
 
 /// Structure allocating multiple `Chunk`, its values are accessible (only) by range
 ///
 /// Example:
 /// ```
-/// use tezos_context::chunked_slice::ChunkedSlice;
+/// use tezos_context::chunks::ChunkedSlice;
 ///
 /// let mut chunks = ChunkedSlice::with_chunk_capacity(1000);
 /// let (start, length) = chunks.extend_from_slice(&[1, 2, 3]);
@@ -16,7 +16,7 @@ use crate::chunked_vec::{Chunk, DEFAULT_LIST_LENGTH};
 pub struct ChunkedSlice<T> {
     list_of_chunks: Vec<Chunk<T>>,
     chunk_capacity: usize,
-    /// Number of elements pushed in the chunks, this should be used for statistics only
+    /// Number of elements in the chunks
     nelems: usize,
 }
 

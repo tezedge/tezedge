@@ -1,14 +1,12 @@
 use std::ops::{Index, IndexMut};
 
-pub type Chunk<T> = Vec<T>;
-
-pub const DEFAULT_LIST_LENGTH: usize = 10;
+use super::{Chunk, DEFAULT_LIST_LENGTH};
 
 /// Structure allocating multiple `Chunk`, its values are accessible (only) by index
 ///
 /// Example:
 /// ```
-/// use tezos_context::chunked_vec::ChunkedVec;
+/// use tezos_context::chunks::ChunkedVec;
 ///
 /// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
 /// let a = chunks.push(1);

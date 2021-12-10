@@ -6,7 +6,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::chunked_vec::ChunkedVec;
+use crate::chunks::ChunkedVec;
 
 /// A container mapping a typed ID to a value.
 ///

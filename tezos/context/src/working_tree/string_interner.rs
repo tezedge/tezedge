@@ -12,7 +12,8 @@ use tezos_timing::StringsMemoryUsage;
 
 use crate::{
     persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
-    chunked_string::ChunkedString, chunked_vec::ChunkedVec, persistent::file::File,
+    chunks::{ChunkedString, ChunkedVec},
+    persistent::file::File,
     serialize::DeserializationError,
     Map,
 };
