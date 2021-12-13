@@ -259,7 +259,7 @@ impl KeyValueStoreBackend for InMemory {
         self.string_interner.extend_from(string_interner);
     }
 
-    fn get_str(&self, string_id: StringId) -> Option<&str> {
+    fn get_str(&self, string_id: StringId) -> Option<Cow<str>> {
         self.string_interner.get_str(string_id).ok()
     }
 

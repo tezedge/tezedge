@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    borrow::Cow,
     collections::{
         btree_map::Entry::{Occupied, Vacant},
         hash_map::DefaultHasher,
@@ -12,6 +13,7 @@ use std::{
 };
 
 use crate::{
+    chunks::ChunkedVec,
     kv_store::index_map::IndexMap,
     persistent::file::{File, TAG_SHAPE, TAG_SHAPE_INDEX},
     serialize::DeserializationError,
@@ -82,7 +84,7 @@ pub struct ShapeSliceId {
 pub struct DirectoryShapes {
     /// Map `DirectoryShapeHash` to its `DirectoryShapeId` and strings.
     hash_to_strings: BTreeMap<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
-    shapes: Vec<StringId>,
+    shapes: ChunkedVec<StringId>,
 
     to_serialize: Vec<ShapeSliceId>,
 
@@ -105,7 +107,7 @@ impl Default for DirectoryShapes {
 }
 
 pub enum ShapeStrings<'a> {
-    SliceIds(&'a [StringId]),
+    SliceIds(Cow<'a, [StringId]>),
     Owned(Vec<String>),
 }
 
@@ -115,7 +117,7 @@ impl DirectoryShapes {
             hash_to_strings: BTreeMap::default(),
             id_to_hash: IndexMap::with_chunk_capacity(1_024 * 100),
             temp: Vec::with_capacity(256),
-            shapes: Vec::with_capacity(1000),
+            shapes: ChunkedVec::with_chunk_capacity(64 * 1024 * 1024), // 64 MB
             to_serialize: Vec::with_capacity(256),
         }
     }
@@ -127,7 +129,7 @@ impl DirectoryShapes {
     pub fn get_shape(
         &self,
         shape_id: DirectoryShapeId,
-    ) -> Result<&[StringId], DirectoryShapeError> {
+    ) -> Result<Cow<[StringId]>, DirectoryShapeError> {
         let hash = match self.id_to_hash.get(shape_id)?.copied() {
             Some(hash) => hash,
             None => return Err(DirectoryShapeError::ShapeIdNotFound),
@@ -143,7 +145,7 @@ impl DirectoryShapes {
         let end: usize = start + slice_id.length() as usize;
 
         self.shapes
-            .get(start..end)
+            .get_slice(start..end)
             .ok_or(DirectoryShapeError::ShapeIdNotFound)
     }
 
@@ -189,9 +191,9 @@ impl DirectoryShapes {
             let start: usize = slice_id.start() as usize;
             let end: usize = start + slice_id.length() as usize;
 
-            let shape = &self.shapes[start..end];
+            let shape = self.shapes.get_slice(start..end).unwrap();
 
-            for string_id in shape {
+            for string_id in shape.as_ref() {
                 let string_id: u32 = string_id.as_u32();
                 output.shapes.extend_from_slice(&string_id.to_le_bytes());
             }
@@ -221,7 +223,7 @@ impl DirectoryShapes {
 
             offset += string_id_bytes.len() as u64;
 
-            result.shapes.push(string_id)
+            result.shapes.push(string_id);
         }
 
         let mut offset = shapes_index_file.start();
@@ -238,12 +240,12 @@ impl DirectoryShapes {
             let start: usize = slice_id.start() as usize;
             let end: usize = start + slice_id.length() as usize;
 
-            let slice = &result.shapes[start..end];
+            let slice = result.shapes.get_slice(start..end).unwrap();
 
             result.temp.clear();
             let mut hasher = DefaultHasher::new();
             hasher.write_usize(slice.len());
-            for key_id in slice {
+            for key_id in slice.as_ref() {
                 hasher.write_u32(key_id.as_u32());
                 result.temp.push(*key_id);
             }

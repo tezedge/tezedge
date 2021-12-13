@@ -637,7 +637,7 @@ impl Storage {
             BlobRef::Ref { start, end } => match self.blobs.get_slice(start..end) {
                 Some(Cow::Borrowed(blob)) => Ok(Blob::Ref { blob }),
                 Some(Cow::Owned(blob)) => Ok(Blob::Owned { blob }),
-                None => return Err(StorageError::BlobNotFound),
+                None => Err(StorageError::BlobNotFound),
             },
         }
     }
@@ -713,7 +713,7 @@ impl Storage {
 
         let result = dir.binary_search_by(|value| {
             match strings.get_str(value.0) {
-                Ok(value) => value.cmp(key),
+                Ok(value) => value.as_ref().cmp(key),
                 Err(e) => {
                     // Take the error and stop the search
                     error = Some(e);
@@ -819,7 +819,7 @@ impl Storage {
                 Ok(a) => a,
                 Err(e) => {
                     error = Some(e);
-                    ""
+                    Cow::Borrowed("")
                 }
             };
 
@@ -827,15 +827,15 @@ impl Storage {
                 Ok(b) => b,
                 Err(e) => {
                     error = Some(e);
-                    ""
+                    Cow::Borrowed("")
                 }
             };
 
-            a.cmp(b)
+            a.cmp(&b)
         });
 
         if let Some(e) = error {
-            return Err(e.into());
+            return Err(e);
         };
 
         Ok(())
@@ -896,7 +896,7 @@ impl Storage {
                     for i in dir_range.clone() {
                         let (key_id, dir_entry_id) = this.temp_dir[i];
                         let key = strings.get_str(key_id)?;
-                        if index_of_key(depth, key) as u8 == index {
+                        if index_of_key(depth, &key) as u8 == index {
                             this.temp_dir.push((key_id, dir_entry_id));
                         }
                     }

@@ -4,16 +4,14 @@
 //! Implementation of string interning used to implement hash-consing for context path fragments.
 //! This avoids un-necessary duplication of strings, saving memory.
 
-use std::{collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
+use std::{borrow::Cow, collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
 
-use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use tezos_timing::StringsMemoryUsage;
 
 use crate::{
-    persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
     chunks::{ChunkedString, ChunkedVec},
-    persistent::file::File,
+    persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
     serialize::DeserializationError,
     Map,
 };
@@ -25,7 +23,7 @@ pub(crate) const STRING_INTERN_THRESHOLD: usize = 30;
 const FULL_31_BITS: usize = 0x7FFFFFFF;
 const FULL_5_BITS: usize = 0x1F;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringId {
     /// | 1 bit  |  31 bits |
     /// |--------|----------|
@@ -108,7 +106,7 @@ impl Default for BigStrings {
 
 impl PartialEq for BigStrings {
     fn eq(&self, other: &Self) -> bool {
-        self.strings.nbytes() == other.strings.nbytes()
+        self.strings.len() == other.strings.len()
     }
 }
 
@@ -134,7 +132,7 @@ impl BigStrings {
         index
     }
 
-    fn get_str(&self, index: usize) -> Option<&str> {
+    fn get_str(&self, index: usize) -> Option<Cow<str>> {
         let (start, end) = self.offsets.get(index).copied()?;
         self.strings.get(start as usize..end as usize)
     }
@@ -144,7 +142,7 @@ impl BigStrings {
             return;
         }
 
-        debug_assert!(self.strings.nbytes() < other.strings.nbytes());
+        debug_assert!(self.strings.len() < other.strings.len());
         // Append the missing chunk into Self
         self.strings.extend_from(&other.strings);
         debug_assert_eq!(self.strings, other.strings);
@@ -161,7 +159,7 @@ impl BigStrings {
         for (start, end) in self.offsets.iter_from(start) {
             let start = *start as usize;
             let end = *end as usize;
-            let string = &self.strings[start..end];
+            let string = self.strings.get(start..end).unwrap();
 
             let length: u32 = string.len() as u32;
 
@@ -228,8 +226,6 @@ pub struct StringInterner {
 
 impl Default for StringInterner {
     fn default() -> Self {
-        // Note: Changing the chunk capacity of `all_strings` below will result in
-        // different `StringId` so it will make previous database (on disk) incompatible
         Self {
             string_to_offset: Map::default(),
             all_strings: ChunkedString::with_chunk_capacity(512 * 1024), // ~512KB
@@ -241,8 +237,7 @@ impl Default for StringInterner {
 
 impl PartialEq for StringInterner {
     fn eq(&self, other: &Self) -> bool {
-        self.all_strings.nbytes() == other.all_strings.nbytes()
-            && self.big_strings == other.big_strings
+        self.all_strings.len() == other.all_strings.len() && self.big_strings == other.big_strings
     }
 }
 
@@ -271,8 +266,8 @@ impl StringInterner {
             return;
         }
 
-        if self.all_strings.nbytes() != other.all_strings.nbytes() {
-            debug_assert!(self.all_strings.nbytes() < other.all_strings.nbytes());
+        if self.all_strings.len() != other.all_strings.len() {
+            debug_assert!(self.all_strings.len() < other.all_strings.len());
 
             // Append the missing chunk into Self
             self.all_strings.extend_from(&other.all_strings);
@@ -322,7 +317,7 @@ impl StringInterner {
         string_id
     }
 
-    pub fn get_str(&self, string_id: StringId) -> Result<&str, StorageError> {
+    pub fn get_str(&self, string_id: StringId) -> Result<Cow<str>, StorageError> {
         if string_id.is_big() {
             return self
                 .big_strings
@@ -344,9 +339,9 @@ impl StringInterner {
             all_strings_map_cap: self.string_to_offset.capacity(),
             all_strings_map_len: self.string_to_offset.len(),
             all_strings_cap,
-            all_strings_len: self.all_strings.nbytes(),
+            all_strings_len: self.all_strings.len(),
             big_strings_cap,
-            big_strings_len: self.big_strings.strings.nbytes(),
+            big_strings_len: self.big_strings.strings.len(),
             big_strings_map_cap: self.big_strings.offsets.capacity(),
             big_strings_map_len: self.big_strings.offsets.len(),
             total_bytes: all_strings_cap + big_strings_cap,
@@ -362,15 +357,14 @@ impl StringInterner {
         for id in &self.all_strings_to_serialize {
             let (start, end) = id.get_start_end();
 
-            let string = self.all_strings[start..end].as_bytes();
+            let string = self.all_strings.get(start..end).unwrap();
+            let string = string.as_bytes();
 
             let length = string.len();
             let length: u8 = length.try_into().unwrap(); // never fail, the string is less than 30 bytes
 
             output.strings.push(length);
-            output
-                .strings
-                .extend_from_slice(self.all_strings[start..end].as_bytes());
+            output.strings.extend_from_slice(string);
         }
 
         self.all_strings_to_serialize.clear();

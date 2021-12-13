@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::ops::{Index, Range};
+use std::{borrow::Cow, ops::Range};
 
 use super::DEFAULT_LIST_LENGTH;
 
@@ -12,17 +12,6 @@ pub struct ChunkedString {
     chunk_capacity: usize,
     /// Number of bytes
     nbytes: usize,
-}
-
-impl Index<Range<usize>> for ChunkedString {
-    type Output = str;
-
-    fn index(&self, Range { start, end }: Range<usize>) -> &Self::Output {
-        let length = end - start;
-        let (list_index, chunk_index) = self.get_indexes_at(start);
-
-        &self.list_of_chunks[list_index][chunk_index..chunk_index + length]
-    }
 }
 
 impl ChunkedString {
@@ -86,48 +75,89 @@ impl ChunkedString {
     ///
     /// Return the index of the slice in the chunks, and its length
     pub fn push_str(&mut self, slice: &str) -> (usize, usize) {
-        self.maybe_alloc_chunk();
-
-        let start = self.get_start();
+        let start = self.len();
         let slice_length = slice.len();
+        let chunk_capacity = self.chunk_capacity;
+        let mut remaining_slice = slice;
+
+        while !remaining_slice.is_empty() {
+            let last_chunk = self.get_next_chunk();
+            let space_in_chunk = chunk_capacity - last_chunk.len();
+
+            let (slice, rest) = if remaining_slice.len() > space_in_chunk {
+                remaining_slice.split_at(space_in_chunk)
+            } else {
+                (remaining_slice, "")
+            };
+
+            remaining_slice = rest;
+            last_chunk.push_str(slice);
+        }
+
         self.nbytes += slice_length;
-
-        self.list_of_chunks
-            .last_mut()
-            .unwrap() // Never fail, we called `Self::maybe_alloc_chunk`
-            .push_str(slice);
-
         (start, slice_length)
+    }
+
+    /// Returns the last chunk with space available.
+    ///
+    /// Allocates one more chunk in 2 cases:
+    /// - The last chunk has reached `Self::chunk_capacity` limit
+    /// - `Self::list_of_chunks` is empty
+    fn get_next_chunk(&mut self) -> &mut String {
+        let chunk_capacity = self.chunk_capacity;
+
+        if self
+            .list_of_chunks
+            .last()
+            .map(|chunk| {
+                debug_assert!(chunk.len() <= chunk_capacity);
+                chunk.len() == chunk_capacity
+            })
+            .unwrap_or(true)
+        {
+            self.list_of_chunks
+                .push(String::with_capacity(self.chunk_capacity));
+        }
+
+        // Never fail, we just allocated one in case it's empty
+        self.list_of_chunks.last_mut().unwrap()
     }
 
     pub fn capacity(&self) -> usize {
         self.chunk_capacity * self.list_of_chunks.len()
     }
 
-    /// Allocates one more chunk in 2 cases:
-    /// - The last chunk has reached `Self::chunk_capacity` limit
-    /// - `Self::list_of_chunks` is empty
-    fn maybe_alloc_chunk(&mut self) {
-        let chunk_capacity = self.chunk_capacity;
-
-        if self
-            .list_of_chunks
-            .last_mut()
-            .map(|chunk| chunk.len() >= chunk_capacity)
-            .unwrap_or(true)
-        {
-            self.list_of_chunks
-                .push(String::with_capacity(self.chunk_capacity));
-        }
-    }
-
-    pub fn get(&self, Range { start, end }: Range<usize>) -> Option<&str> {
-        let length = end - start;
+    pub fn get(&self, Range { start, end }: Range<usize>) -> Option<Cow<str>> {
+        let slice_length = end - start;
         let (list_index, chunk_index) = self.get_indexes_at(start);
 
-        self.list_of_chunks
-            .get(list_index)?
-            .get(chunk_index..chunk_index + length)
+        let chunk = self.list_of_chunks.get(list_index)?;
+
+        if chunk_index + slice_length <= self.chunk_capacity {
+            chunk
+                .get(chunk_index..chunk_index + slice_length)
+                .map(Cow::Borrowed)
+        } else {
+            let mut slice = String::with_capacity(slice_length);
+            let mut iter_chunk = self.list_of_chunks.get(list_index..)?.iter();
+            let mut start_in_chunk = chunk_index;
+            let mut length = slice_length;
+
+            while length > 0 {
+                let chunk = iter_chunk.next()?;
+                let end_in_chunk = (start_in_chunk + length).min(self.chunk_capacity);
+
+                let part_slice = chunk.get(start_in_chunk..end_in_chunk)?;
+                slice.push_str(part_slice);
+
+                length -= end_in_chunk - start_in_chunk;
+                start_in_chunk = 0;
+            }
+
+            debug_assert_eq!(slice.len(), slice_length);
+
+            Some(Cow::Owned(slice))
+        }
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
@@ -137,25 +167,7 @@ impl ChunkedString {
         (list_index, chunk_index)
     }
 
-    /// Removes `nelems` from the last chunk.
-    pub fn remove_last_nelems(&mut self, nelems: usize) {
-        if let Some(chunk) = self.list_of_chunks.last_mut() {
-            chunk.truncate(chunk.len() - nelems);
-            self.nbytes -= nelems;
-        };
-    }
-
-    /// Returns the index of the next slice to be pushed in the chunks.
-    ///
-    /// This must be called after any `Self::maybe_alloc_chunk`.
-    fn get_start(&self) -> usize {
-        let nfull_chunk = self.list_of_chunks.len().saturating_sub(1);
-        let last_chunk_length = self.list_of_chunks.last().map(String::len).unwrap_or(0);
-
-        (nfull_chunk * self.chunk_capacity) + last_chunk_length
-    }
-
-    pub fn nbytes(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.nbytes
     }
 

@@ -8,15 +8,16 @@ use std::{
 
 use super::{Chunk, DEFAULT_LIST_LENGTH};
 
-/// Structure allocating multiple `Chunk`, its values are accessible (only) by range
+/// Structure allocating multiple `Chunk`
 ///
 /// Example:
 /// ```
-/// use tezos_context::chunks::ChunkedSlice;
+/// use tezos_context::chunks::ChunkedVec;
 ///
-/// let mut chunks = ChunkedSlice::with_chunk_capacity(1000);
+/// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
 /// let (start, length) = chunks.extend_from_slice(&[1, 2, 3]);
-/// assert_eq!(&*chunks.get_slice(start..start + length).unwrap(), &[1, 2, 3])
+/// assert_eq!(&*chunks.get_slice(start..start + length).unwrap(), &[1, 2, 3]);
+/// assert_eq!(*chunks.get(start).unwrap(), 1);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkedVec<T> {
