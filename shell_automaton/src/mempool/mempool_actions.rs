@@ -18,6 +18,7 @@ use crate::{action::EnablingCondition, state::State};
 pub struct MempoolRecvDoneAction {
     pub address: SocketAddr,
     pub message: Mempool,
+    pub level: i32,
 }
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {

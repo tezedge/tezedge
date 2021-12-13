@@ -140,6 +140,7 @@ pub fn mempool_effects<S>(
                         MempoolRecvDoneAction {
                             address: *address,
                             message,
+                            level: current_head.current_block_header().level(),
                         },
                     );
                 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, BTreeMap},
     net::SocketAddr,
 };
 
@@ -40,6 +40,8 @@ pub struct MempoolState {
     // operations that passed basic checks, are not sent because prevalidator is not ready
     pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
+    // track ttl
+    pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

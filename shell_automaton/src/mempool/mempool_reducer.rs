@@ -109,19 +109,47 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state.branch_changed = changed;
             mempool_state.local_head_state = Some((block.clone(), hash.clone()));
             mempool_state.applied_block.insert(hash.clone());
+
+            // TODO(vlad) move to separate action
+            // TODO: get from protocol
+            const TTL: i32 = 120;
+            if block.level() < TTL {
+                return;
+            }
+            let level = block.level() - TTL;
+
+            // `drain_filter` is unstable for now
+            for (_, ops) in mempool_state.level_to_operation.range(..level) {
+                for op in ops {
+                    mempool_state.pending_operations.remove(op);
+                    mempool_state.validated_operations.ops.remove(op);
+                    mempool_state.validated_operations.refused_ops.remove(op);
+                    mempool_state.validated_operations.applied.retain(|v| v.hash.ne(op));
+                    mempool_state.validated_operations.refused.retain(|v| v.hash.ne(op));
+                    mempool_state.validated_operations.branch_delayed.retain(|v| v.hash.ne(op));
+                    mempool_state.validated_operations.branch_refused.retain(|v| v.hash.ne(op));
+                    for (_, peer_state) in &mut mempool_state.peer_state {
+                        peer_state.seen_operations.remove(op);
+                    }
+                }
+            }
+            mempool_state.level_to_operation.retain(|x, _| *x >= level);
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
             message,
+            level,
         }) => {
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
+            let ops = mempool_state.level_to_operation.entry(*level).or_default();
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
                     || mempool_state.validated_operations.ops.contains_key(&hash);
                 if !known {
+                    ops.push(hash.clone());
                     peer.requesting_full_content.insert(hash.clone());
                     // of course peer knows about it, because he sent us it
                     peer.seen_operations.insert(hash);
@@ -158,6 +186,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             operation_hash,
             rpc_id,
         }) => {
+            let level = mempool_state
+                .local_head_state
+                .as_ref()
+                .map(|(h, _)| h.level())
+                .unwrap_or(0);
+            let ops = mempool_state.level_to_operation.entry(level).or_default();
+            ops.push(operation_hash.clone());
             mempool_state
                 .injecting_rpc_ids
                 .insert(operation_hash.clone(), rpc_id.clone());
