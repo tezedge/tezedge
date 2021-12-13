@@ -12,7 +12,9 @@ use std::{
 };
 
 use crate::{
-    kv_store::index_map::IndexMap, persistent::file::File, serialize::DeserializationError,
+    kv_store::index_map::IndexMap,
+    persistent::file::{File, TAG_SHAPE, TAG_SHAPE_INDEX},
+    serialize::DeserializationError,
 };
 use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -204,8 +206,8 @@ impl DirectoryShapes {
     }
 
     pub fn deserialize(
-        shapes_file: &mut File,
-        shapes_index_file: &mut File,
+        shapes_file: &mut File<{ TAG_SHAPE }>,
+        shapes_index_file: &mut File<{ TAG_SHAPE_INDEX }>,
     ) -> Result<Self, DeserializationError> {
         let mut result = Self::default();
         let mut string_id_bytes = [0u8; 4];

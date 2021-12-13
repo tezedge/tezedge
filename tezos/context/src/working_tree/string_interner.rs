@@ -10,7 +10,11 @@ use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use tezos_timing::StringsMemoryUsage;
 
-use crate::{persistent::file::File, serialize::DeserializationError, Map};
+use crate::{
+    persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
+    serialize::DeserializationError,
+    Map,
+};
 
 use super::storage::StorageError;
 
@@ -160,7 +164,9 @@ impl BigStrings {
         self.to_serialize_index = self.offsets.len();
     }
 
-    fn deserialize(big_strings_file: &mut File) -> Result<Self, DeserializationError> {
+    fn deserialize(
+        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+    ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
 
         let mut result = Self::default();
@@ -354,8 +360,8 @@ impl StringInterner {
     }
 
     pub fn deserialize(
-        strings_file: &mut File,
-        big_strings_file: &mut File,
+        strings_file: &mut File<{ TAG_STRINGS }>,
+        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
         let mut result = Self::default();
