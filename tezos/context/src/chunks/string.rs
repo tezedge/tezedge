@@ -5,7 +5,7 @@ use std::ops::{Index, Range};
 
 use super::DEFAULT_LIST_LENGTH;
 
-/// Structure similar to `ChunkedSlice` but using `String` instead of `Vec<T>`
+/// Structure similar to `ChunkedVec` but using `String` instead of `Vec<T>`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkedString {
     list_of_chunks: Vec<String>,

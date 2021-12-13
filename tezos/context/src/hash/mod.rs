@@ -133,7 +133,7 @@ fn hash_long_inode(
             // +-------------+--------------+--------+--------+
             // | \len(name)  |     name     |  kind  |  hash  |
 
-            for (name, dir_entry_id) in dir {
+            for (name, dir_entry_id) in dir.as_ref() {
                 let name = strings.get_str(*name)?;
 
                 leb128::write::unsigned(&mut hasher, name.len() as u64)?;
@@ -241,7 +241,7 @@ fn hash_short_inode(
     // +-------+--------------+-------------+-------+--------+
     // | kind  |  \len(name)  |    name     |  \32  |  hash  |
 
-    for (k, v) in dir {
+    for (k, v) in dir.as_ref() {
         let v = storage.get_dir_entry(*v)?;
         hasher.update(encode_irmin_dir_entry_kind(&v.dir_entry_kind()));
         // Key length is written in LEB128 encoding

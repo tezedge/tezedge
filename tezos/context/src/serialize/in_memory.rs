@@ -203,7 +203,7 @@ pub fn serialize_object(
             } else {
                 let dir = storage.get_small_dir(*dir_id)?;
 
-                serialize_directory(dir, output, storage, strings, repository, stats)?;
+                serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
                 batch.push((object_hash_id, Arc::from(output.as_slice())));
             }
@@ -344,7 +344,7 @@ fn serialize_inode(
             // caller (recursively) confirmed it's a new one.
 
             let dir = storage.get_small_dir(*dir_id)?;
-            serialize_directory(dir, output, storage, strings, repository, stats)?;
+            serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
             batch.push((hash_id, Arc::from(output.as_slice())));
         }

@@ -7,6 +7,7 @@
 //! are used as references to different types of values.
 
 use std::{
+    borrow::Cow,
     cell::Cell,
     cmp::Ordering,
     collections::HashMap,
@@ -21,7 +22,7 @@ use tezos_timing::StorageMemoryUsage;
 use thiserror::Error;
 
 use crate::{
-    chunks::ChunkedSlice,
+    chunks::ChunkedVec,
     kv_store::{index_map::IndexMap, HashId},
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
@@ -518,7 +519,7 @@ pub struct Storage {
     /// Concatenation of all directories in the working tree.
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
-    directories: ChunkedSlice<(StringId, DirEntryId)>,
+    directories: ChunkedVec<(StringId, DirEntryId)>,
     /// Temporary directory, this is used to avoid allocations when we
     /// manipulate `directories`
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
@@ -529,7 +530,7 @@ pub struct Storage {
     /// vector `blobs`.
     /// Note that blobs < 8 bytes are not included in this vector `blobs`, such
     /// blob is directly inlined in the `BlobId`
-    blobs: ChunkedSlice<u8>,
+    blobs: ChunkedVec<u8>,
     /// Concatenation of all inodes.
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
@@ -547,6 +548,7 @@ pub struct Storage {
 pub enum Blob<'a> {
     Inline { length: u8, value: [u8; 7] },
     Ref { blob: &'a [u8] },
+    Owned { blob: Vec<u8> },
 }
 
 impl<'a> AsRef<[u8]> for Blob<'a> {
@@ -554,6 +556,7 @@ impl<'a> AsRef<[u8]> for Blob<'a> {
         match self {
             Blob::Inline { length, value } => &value[..*length as usize],
             Blob::Ref { blob } => blob,
+            Blob::Owned { blob } => blob,
         }
     }
 }
@@ -580,12 +583,12 @@ type IsNewKey = bool;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: ChunkedSlice::with_chunk_capacity(64 * 1024), // ~524KB
-            temp_dir: Vec::with_capacity(128),                         // 128B
-            blobs: ChunkedSlice::with_chunk_capacity(128 * 1024),      // ~128KB
-            nodes: IndexMap::with_chunk_capacity(16 * 1024),           // ~360KB
-            inodes: IndexMap::with_chunk_capacity(256),                // ~160KB
-            data: Vec::with_capacity(100_000),                         // ~97KB
+            directories: ChunkedVec::with_chunk_capacity(64 * 1024), // ~524KB
+            temp_dir: Vec::with_capacity(128),                       // 128B
+            blobs: ChunkedVec::with_chunk_capacity(128 * 1024),      // ~128KB
+            nodes: IndexMap::with_chunk_capacity(16 * 1024),         // ~360KB
+            inodes: IndexMap::with_chunk_capacity(256),              // ~160KB
+            data: Vec::with_capacity(100_000),                       // ~97KB
             offsets_to_hash_id: HashMap::default(),
         } // Total ~1269KB
     }
@@ -606,10 +609,10 @@ impl Storage {
         StorageMemoryUsage {
             nodes_len: self.nodes.len(),
             nodes_cap,
-            directories_len: self.directories.nelems(),
+            directories_len: self.directories.len(),
             directories_cap,
             temp_dir_cap,
-            blobs_len: self.blobs.nelems(),
+            blobs_len: self.blobs.len(),
             blobs_cap,
             inodes_len: self.inodes.len(),
             inodes_cap,
@@ -631,13 +634,11 @@ impl Storage {
     pub fn get_blob(&self, blob_id: BlobId) -> Result<Blob, StorageError> {
         match blob_id.get() {
             BlobRef::Inline { length, value } => Ok(Blob::Inline { length, value }),
-            BlobRef::Ref { start, end } => {
-                let blob = match self.blobs.get(start..end) {
-                    Some(blob) => blob,
-                    None => return Err(StorageError::BlobNotFound),
-                };
-                Ok(Blob::Ref { blob })
-            }
+            BlobRef::Ref { start, end } => match self.blobs.get_slice(start..end) {
+                Some(Cow::Borrowed(blob)) => Ok(Blob::Ref { blob }),
+                Some(Cow::Owned(blob)) => Ok(Blob::Owned { blob }),
+                None => return Err(StorageError::BlobNotFound),
+            },
         }
     }
 
@@ -659,14 +660,14 @@ impl Storage {
     pub fn get_small_dir(
         &self,
         dir_id: DirectoryId,
-    ) -> Result<&[(StringId, DirEntryId)], StorageError> {
+    ) -> Result<Cow<[(StringId, DirEntryId)]>, StorageError> {
         if dir_id.is_inode() {
             return Err(StorageError::ExpectedDirGotInode);
         }
 
         let (start, end) = dir_id.get();
         self.directories
-            .get(start..end)
+            .get_slice(start..end)
             .ok_or(StorageError::DirNotFound)
     }
 
@@ -762,7 +763,10 @@ impl Storage {
             self.dir_find_dir_entry_recursive(inode_id, key, strings)
         } else {
             let dir = self.get_small_dir(dir_id).ok()?;
-            let index = self.binary_search_in_dir(dir, key, strings).ok()?.ok()?;
+            let index = self
+                .binary_search_in_dir(dir.as_ref(), key, strings)
+                .ok()?
+                .ok()?;
 
             Some(dir[index].1)
         }
@@ -941,8 +945,12 @@ impl Storage {
         let (dir_start, dir_end) = dir_id.get();
 
         self.with_temp_dir_range(|this| {
-            this.temp_dir
-                .extend_from_slice(&this.directories[dir_start..dir_end]);
+            let dir = this
+                .directories
+                .get_slice(dir_start..dir_end)
+                .ok_or(StorageError::DirNotFound)?;
+
+            this.temp_dir.extend_from_slice(dir.as_ref());
             Ok(())
         })
     }
@@ -1057,7 +1065,7 @@ impl Storage {
             }
             Inode::Directory(dir_id) => {
                 let dir = self.get_small_dir(*dir_id)?;
-                for elem in dir {
+                for elem in dir.as_ref() {
                     fun(elem)?;
                 }
             }
@@ -1084,7 +1092,7 @@ impl Storage {
             self.iter_inodes_recursive_unsorted(inode, &mut fun)?;
         } else {
             let dir = self.get_small_dir(dir_id)?;
-            for elem in dir {
+            for elem in dir.as_ref() {
                 fun(elem)?;
             }
         }
@@ -1182,11 +1190,11 @@ impl Storage {
         let dir_id = self.with_new_dir(|this, new_dir| {
             let dir = this.get_small_dir(dir_id)?;
 
-            let index = this.binary_search_in_dir(dir, key_str, strings)?;
+            let index = this.binary_search_in_dir(dir.as_ref(), key_str, strings)?;
 
             match index {
                 Ok(found) => {
-                    new_dir.extend_from_slice(dir);
+                    new_dir.extend_from_slice(dir.as_ref());
                     new_dir[found].1 = dir_entry_id;
                 }
                 Err(index) => {
@@ -1388,7 +1396,7 @@ impl Storage {
                 return Ok(dir_id);
             }
 
-            let index = match this.binary_search_in_dir(dir, key, strings)? {
+            let index = match this.binary_search_in_dir(dir.as_ref(), key, strings)? {
                 Ok(index) => index,
                 Err(_) => return Ok(dir_id), // The key was not found
             };
@@ -1406,7 +1414,7 @@ impl Storage {
 
     pub fn clear(&mut self) {
         if self.blobs.capacity() > 2048 {
-            self.blobs = ChunkedSlice::with_chunk_capacity(2048);
+            self.blobs = ChunkedVec::with_chunk_capacity(2048);
         } else {
             self.blobs.clear();
         }
@@ -1418,7 +1426,7 @@ impl Storage {
         }
 
         if self.directories.capacity() > 16384 {
-            self.directories = ChunkedSlice::with_chunk_capacity(16384);
+            self.directories = ChunkedVec::with_chunk_capacity(16384);
         } else {
             self.directories.clear();
         }
@@ -1432,9 +1440,9 @@ impl Storage {
 
     pub fn deallocate(&mut self) {
         self.nodes = IndexMap::empty();
-        self.directories = ChunkedSlice::empty();
+        self.directories = ChunkedVec::empty();
         self.temp_dir = Vec::new();
-        self.blobs = ChunkedSlice::empty();
+        self.blobs = ChunkedVec::empty();
         self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();

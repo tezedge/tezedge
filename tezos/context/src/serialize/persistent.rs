@@ -452,7 +452,7 @@ pub fn serialize_object(
                 let dir = storage.get_small_dir(*dir_id)?;
 
                 serialize_directory_or_shape(
-                    dir,
+                    dir.as_ref(),
                     object_hash_id,
                     offset,
                     output,
@@ -704,7 +704,7 @@ fn serialize_inode(
 
             let dir = storage.get_small_dir(*dir_id)?;
             serialize_directory_or_shape(
-                dir,
+                dir.as_ref(),
                 object_hash_id,
                 offset,
                 output,
