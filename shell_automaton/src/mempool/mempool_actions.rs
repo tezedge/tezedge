@@ -223,6 +223,30 @@ impl EnablingCondition<State> for MempoolRemoveAppliedOperationsAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolFlushAction {}
+
+impl EnablingCondition<State> for MempoolFlushAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+/// NOTE: this action is not specific to mempool, may be handled elsewhere
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BranchChangedAction {}
+
+impl EnablingCondition<State> for BranchChangedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+/// NOTE: this action is not specific to mempool, may be handled elsewhere
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockAppliedAction {
     pub chain_id: ChainId,
     pub block: BlockHeader,

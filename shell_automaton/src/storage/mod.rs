@@ -310,3 +310,24 @@ pub mod kv_cycle_eras {
         StorageCycleErasErrorAction
     );
 }
+
+pub mod kv_operations {
+    use crypto::hash::BlockHash;
+    use tezos_messages::p2p::encoding::operation::Operation;
+
+    kv_state_machine!(
+        operation,
+        OperationsGet,
+        OperationsGetSuccess,
+        OperationsGetError,
+        BlockHash,
+        Vec<Operation>,
+        |_hash, _ops| true,
+        StorageOperationsGet,
+        StorageOperationsGetAction,
+        StorageOperationsOk,
+        StorageOperationsOkAction,
+        StorageOperationsError,
+        StorageOperationsErrorAction
+    );
+}

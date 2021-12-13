@@ -4,17 +4,23 @@
 use redux_rs::Store;
 use std::sync::Arc;
 
-use tezos_messages::p2p::encoding::{
-    current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
-    mempool::Mempool,
-    operation::{GetOperationsMessage, OperationMessage},
-    peer::{PeerMessage, PeerMessageResponse},
+use crypto::hash::OperationHash;
+
+use tezos_messages::p2p::{
+    binary_message::MessageHash,
+    encoding::{
+        current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
+        mempool::Mempool,
+        operation::{GetOperationsMessage, OperationMessage},
+        peer::{PeerMessage, PeerMessageResponse},
+    },
 };
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction};
 use crate::protocol::ProtocolAction;
+use crate::storage::kv_operations;
 use crate::{
     service::{ProtocolService, RpcService},
     Action, ActionWithMeta, Service, State,
@@ -27,7 +33,8 @@ use super::{
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
         MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
-        MempoolUnregisterOperationsStreamsAction,
+        MempoolUnregisterOperationsStreamsAction, MempoolFlushAction,
+        MempoolRemoveAppliedOperationsAction, BranchChangedAction,
     },
     monitored_operation::MonitoredOperation,
 };
@@ -47,9 +54,19 @@ pub fn mempool_effects<S>(
         return;
     }
     match &action.action {
+        Action::StorageOperationsOk(kv_operations::StorageOperationsOkAction { key, value }) => {
+            if store.state().mempool.local_head_state.as_ref().unwrap().1.eq(key) {
+                let operation_hashes = value
+                    .iter()
+                    .map(|op| op.message_typed_hash::<OperationHash>().unwrap())
+                    .collect();
+                store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
+            }
+        }
         Action::Protocol(act) => {
             match act {
                 ProtocolAction::PrevalidatorForMempoolReady(_) => {
+                    store.dispatch(MempoolFlushAction {});
                     let ops = store.state().mempool.wait_prevalidator_operations.clone();
                     for operation in ops {
                         store.dispatch(MempoolValidateStartAction { operation });
@@ -156,7 +173,7 @@ pub fn mempool_effects<S>(
             }
         }
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, block_metadata_hash, ops_metadata_hash, ..
+            chain_id, block, block_metadata_hash, ops_metadata_hash, hash, ..
         }) => {
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
@@ -170,8 +187,12 @@ pub fn mempool_effects<S>(
                     .service()
                     .protocol()
                     .begin_construction_for_mempool(req);
-                store.dispatch(MempoolBroadcastAction {});
-                // TODO(vlad): Flushing the reservoirs
+                if store.state().mempool.branch_changed {
+                    store.dispatch(BranchChangedAction {});
+                } else {
+                    store.dispatch(MempoolBroadcastAction {});
+                }
+                store.dispatch(kv_operations::StorageOperationsGetAction { key: hash.clone() });
             }
             // close streams
             let streams = store.state().mempool.operation_streams.clone();

@@ -20,10 +20,11 @@ use storage::shell_automaton_action_meta_storage::{
 };
 use storage::{
     BlockAdditionalData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ConstantsStorage, CycleErasStorage, CycleMetaStorage, PersistentStorage,
-    ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage, ShellAutomatonStateStorage,
+    BlockStorageReader, ConstantsStorage, CycleErasStorage, CycleMetaStorage, OperationsStorage,
+    OperationsStorageReader, PersistentStorage, ShellAutomatonActionMetaStorage,
+    ShellAutomatonActionStorage, ShellAutomatonStateStorage,
 };
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
 use crate::request::RequestId;
 use crate::{Action, ActionId, ActionKind, ActionWithMeta, State};
@@ -69,6 +70,7 @@ pub enum StorageRequestPayload {
     BlockMetaGet(BlockHash),
     BlockHeaderGet(BlockHash),
     BlockAdditionalDataGet(BlockHash),
+    OperationsGet(BlockHash),
     ConstantsGet(ProtocolHash),
     CycleErasGet(ProtocolHash),
     CycleMetaGet(i32),
@@ -83,6 +85,7 @@ pub enum StorageResponseSuccess {
     BlockMetaGetSuccess(BlockHash, Option<Meta>),
     BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
     BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
+    OperationsGetSuccess(BlockHash, Option<Vec<Operation>>),
     ConstantsGetSuccess(ProtocolHash, Option<String>),
     CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
     CycleMetaGetSuccess(i32, Option<CycleData>),
@@ -97,6 +100,7 @@ pub enum StorageResponseError {
     BlockMetaGetError(BlockHash, StorageError),
     BlockHeaderGetError(BlockHash, StorageError),
     BlockAdditionalDataGetError(BlockHash, StorageError),
+    OperationsGetError(BlockHash, StorageError),
     ConstantsGetError(ProtocolHash, StorageError),
     CycleErasGetError(ProtocolHash, StorageError),
     CycleMetaGetError(i32, StorageError),
@@ -199,6 +203,7 @@ impl StorageServiceDefault {
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
         let block_meta_storage = BlockMetaStorage::new(&storage);
         let block_storage = BlockStorage::new(&storage);
+        let operations_storage = OperationsStorage::new(&storage);
         let constants_storage = ConstantsStorage::new(&storage);
         let cycle_meta_storage = CycleMetaStorage::new(&storage);
         let cycle_eras_storage = CycleErasStorage::new(&storage);
@@ -275,6 +280,11 @@ impl StorageServiceDefault {
                     .get_additional_data(&block_hash)
                     .map(|data| BlockAdditionalDataGetSuccess(block_hash.clone(), data))
                     .map_err(|err| BlockAdditionalDataGetError(block_hash, err.into())),
+                OperationsGet(block_hash) => operations_storage
+                    .get_operations(&block_hash)
+                    .map(|data| data.into_iter().map(Vec::from).flatten().collect())
+                    .map(|ops| OperationsGetSuccess(block_hash.clone(), Some(ops)))
+                    .map_err(|err| OperationsGetError(block_hash.clone(), err.into())),
                 ConstantsGet(protocol_hash) => constants_storage
                     .get(&protocol_hash)
                     .map(|constants| ConstantsGetSuccess(protocol_hash.clone(), constants))

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::mem;
+
 use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::protocol::ProtocolAction;
@@ -11,6 +13,7 @@ use super::{
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
     MempoolSendAction, MempoolUnregisterOperationsStreamsAction, MempoolRemoveAppliedOperationsAction,
+    BranchChangedAction,
     mempool_state::OperationStream,
 };
 
@@ -98,6 +101,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if *is_bootstrapped {
                 mempool_state.running_since = Some(());
             }
+            let changed = if let Some((_, old_head_hash)) = &mempool_state.local_head_state {
+                old_head_hash.ne(&block.predecessor())
+            } else {
+                false
+            };
+            mempool_state.branch_changed = changed;
             mempool_state.local_head_state = Some((block.clone(), hash.clone()));
             mempool_state.applied_block.insert(hash.clone());
         }
@@ -194,8 +203,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction { operation_hashes }) => {
             mempool_state.validated_operations.applied.retain(|v| !operation_hashes.contains(&v.hash));
+            mempool_state.validated_operations.branch_delayed.retain(|v| !operation_hashes.contains(&v.hash));
             for op in operation_hashes {
                 mempool_state.validated_operations.ops.remove(op);
+            }
+        }
+        Action::BranchChanged(BranchChangedAction {}) => {
+            // remove all `branch_refused` results, put them into `pending_operations` collections
+            // to validate again with new prevalidator
+            for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
+                if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                    mempool_state.pending_operations.insert(v.hash, op.clone());
+                    mempool_state.wait_prevalidator_operations.push(op);
+                }
             }
         }
         _ => (),

@@ -32,6 +32,7 @@ pub struct MempoolState {
     pub(super) operation_streams: Vec<OperationStream>,
     // the current head applied
     pub local_head_state: Option<(BlockHeader, BlockHash)>,
+    pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks, sent to protocol validator

@@ -46,6 +46,7 @@ use crate::mempool::{
     MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
     MempoolSendAction, MempoolAskCurrentHeadAction, MempoolRegisterOperationsStreamAction,
     MempoolUnregisterOperationsStreamsAction, MempoolRemoveAppliedOperationsAction,
+    MempoolFlushAction, BranchChangedAction,
 };
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
@@ -84,8 +85,8 @@ use crate::storage::state_snapshot::create::{
     StorageStateSnapshotCreatePendingAction, StorageStateSnapshotCreateSuccessAction,
 };
 use crate::storage::{
-    kv_block_additional_data, kv_block_header, kv_block_meta, kv_constants, kv_cycle_eras,
-    kv_cycle_meta,
+    kv_block_additional_data, kv_block_header, kv_block_meta, kv_operations, kv_constants,
+    kv_cycle_eras, kv_cycle_meta,
 };
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -276,6 +277,9 @@ pub enum Action {
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction),
     MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction),
+    MempoolFlush(MempoolFlushAction),
+
+    BranchChanged(BranchChangedAction),
     BlockApplied(BlockAppliedAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),
@@ -302,6 +306,10 @@ pub enum Action {
     StorageBlockMetaGet(kv_block_meta::StorageBlockMetaGetAction),
     StorageBlockMetaOk(kv_block_meta::StorageBlockMetaOkAction),
     StorageBlockMetaError(kv_block_meta::StorageBlockMetaErrorAction),
+
+    StorageOperationsGet(kv_operations::StorageOperationsGetAction),
+    StorageOperationsOk(kv_operations::StorageOperationsOkAction),
+    StorageOperationsError(kv_operations::StorageOperationsErrorAction),
 
     StorageBlockAdditionalDataGet(kv_block_additional_data::StorageBlockAdditionalDataGetAction),
     StorageBlockAdditionalDataOk(kv_block_additional_data::StorageBlockAdditionalDataOkAction),
