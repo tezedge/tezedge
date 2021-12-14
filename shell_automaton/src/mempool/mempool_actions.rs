@@ -224,6 +224,19 @@ impl EnablingCondition<State> for MempoolRemoveAppliedOperationsAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolGetPendingOperationsAction {
+    pub rpc_id: RpcId,
+}
+
+impl EnablingCondition<State> for MempoolGetPendingOperationsAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolFlushAction {}
 
 impl EnablingCondition<State> for MempoolFlushAction {

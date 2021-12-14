@@ -44,6 +44,7 @@ pub enum RpcRequest {
         operation_hashes: Vec<OperationHash>,
     },
     MempoolStatus,
+    GetPendingOperations,
 }
 
 #[derive(Debug)]

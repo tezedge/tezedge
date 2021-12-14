@@ -34,9 +34,9 @@ use super::{
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
         MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
         MempoolUnregisterOperationsStreamsAction, MempoolFlushAction,
-        MempoolRemoveAppliedOperationsAction, BranchChangedAction,
+        MempoolRemoveAppliedOperationsAction, BranchChangedAction, MempoolGetPendingOperationsAction,
     },
-    monitored_operation::MonitoredOperation,
+    monitored_operation::{MempoolOperations, MonitoredOperation},
 };
 
 pub fn mempool_effects<S>(
@@ -47,9 +47,16 @@ pub fn mempool_effects<S>(
 {
     // println!("{:#?}", action);
     if store.state().config.disable_mempool {
-        if let Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) = &action.action {
-            let json = serde_json::Value::String("mempool disabled".to_string());
-            store.service().rpc().respond(rpc_id.clone(), json);
+        match &action.action {
+            Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
+                let json = serde_json::Value::String("disabled".to_string());
+                store.service().rpc().respond(*rpc_id, json);
+            }
+            Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
+                let json = serde_json::to_value(MempoolOperations::default()).unwrap();
+                store.service().rpc().respond(*rpc_id, json);
+            }
+            _ => (),
         }
         return;
     }
@@ -235,6 +242,34 @@ pub fn mempool_effects<S>(
                 .collect::<Vec<_>>();
             let json = serde_json::to_value(resp).unwrap();
             store.service().rpc().respond_stream(act.rpc_id, Some(json));
+        }
+        Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
+            let empty = || serde_json::to_value(&MempoolOperations::default()).unwrap();
+            let prevalidator = match &store.state().mempool.prevalidator {
+                Some(v) => v,
+                None => {
+                    store.service().rpc().respond(*rpc_id, empty());
+                    return;
+                },
+            };
+            let (_, current_branch) = match &store.state().mempool.local_head_state {
+                Some(v) => v,
+                None => {
+                    store.service().rpc().respond(*rpc_id, empty());
+                    return;
+                },
+            };
+            let v_ops = &store.state().mempool.validated_operations;
+            let v = MempoolOperations::collect(
+                &v_ops.applied,
+                &v_ops.refused,
+                &v_ops.branch_delayed,
+                &v_ops.branch_refused,
+                &store.state().mempool.validated_operations.ops,
+                current_branch,
+                &prevalidator.protocol,
+            );
+            store.service().rpc().respond(*rpc_id, serde_json::to_value(&v).unwrap());
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {

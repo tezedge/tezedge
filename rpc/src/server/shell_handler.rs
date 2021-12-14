@@ -278,8 +278,7 @@ pub async fn mempool_pending_operations(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let log = env.log.clone();
     let pending_operations = services::mempool_services::get_pending_operations(&chain_id, env)
-        .await
-        .map(|(pending_operations, _)| pending_operations);
+        .await;
     result_to_json_response(pending_operations, &log)
 }
 

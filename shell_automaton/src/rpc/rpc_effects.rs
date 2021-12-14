@@ -5,7 +5,7 @@ use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
 use crate::mempool::{
     MempoolOperationInjectAction, MempoolAskCurrentHeadAction, MempoolRegisterOperationsStreamAction,
-    MempoolRemoveAppliedOperationsAction,
+    MempoolRemoveAppliedOperationsAction, MempoolGetPendingOperationsAction,
 };
 use crate::{Action, ActionWithMeta, Store};
 
@@ -50,6 +50,9 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             None => store.service().rpc().respond(rpc_id, serde_json::Value::Null),
                             Some(()) => store.service().rpc().respond(rpc_id, serde_json::Value::String("".to_string())),
                         }
+                    }
+                    RpcRequest::GetPendingOperations => {
+                        store.dispatch(MempoolGetPendingOperationsAction { rpc_id });
                     }
                 }
             }

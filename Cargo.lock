@@ -3169,6 +3169,7 @@ dependencies = [
 name = "shell_automaton"
 version = "1.14.0"
 dependencies = [
+ "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
  "bincode",
  "bytes",
  "crypto",
