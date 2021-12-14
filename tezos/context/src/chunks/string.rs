@@ -15,7 +15,7 @@ pub struct ChunkedString {
 }
 
 impl ChunkedString {
-    /// Returns a new `ChunkedSlice<T>` without allocating
+    /// Returns a new `ChunkedString` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),

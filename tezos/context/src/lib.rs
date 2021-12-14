@@ -113,8 +113,6 @@
 //! functionality that interacts with the repository (commit and checkout).
 //!
 
-#![feature(cow_is_borrowed)]
-
 pub mod chunks;
 pub mod gc;
 pub mod hash;

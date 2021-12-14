@@ -580,15 +580,20 @@ impl Default for Storage {
 // Whether or not a non-existing key was added to the inode
 type IsNewKey = bool;
 
+const DEFAULT_DIRECTORIES_CAPACITY: usize = 64 * 1024;
+const DEFAULT_BLOBS_CAPACITY: usize = 128 * 1024;
+const DEFAULT_NODES_CAPACITY: usize = 16 * 1024;
+const DEFAULT_INODES_CAPACITY: usize = 256;
+
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: ChunkedVec::with_chunk_capacity(64 * 1024), // ~524KB
-            temp_dir: Vec::with_capacity(128),                       // 128B
-            blobs: ChunkedVec::with_chunk_capacity(128 * 1024),      // ~128KB
-            nodes: IndexMap::with_chunk_capacity(16 * 1024),         // ~360KB
-            inodes: IndexMap::with_chunk_capacity(256),              // ~160KB
-            data: Vec::with_capacity(100_000),                       // ~97KB
+            directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~524KB
+            temp_dir: Vec::with_capacity(128),                                          // 128B
+            blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // ~128KB
+            nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~360KB
+            inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~160KB
+            data: Vec::with_capacity(100_000),                                          // ~97KB
             offsets_to_hash_id: HashMap::default(),
         } // Total ~1269KB
     }
@@ -1413,26 +1418,26 @@ impl Storage {
     }
 
     pub fn clear(&mut self) {
-        if self.blobs.capacity() > 2048 {
-            self.blobs = ChunkedVec::with_chunk_capacity(2048);
+        if self.blobs.capacity() > DEFAULT_BLOBS_CAPACITY {
+            self.blobs = ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY);
         } else {
             self.blobs.clear();
         }
 
-        if self.nodes.capacity() > 4096 {
-            self.nodes = IndexMap::with_chunk_capacity(4096);
+        if self.nodes.capacity() > DEFAULT_NODES_CAPACITY {
+            self.nodes = IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY);
         } else {
             self.nodes.clear();
         }
 
-        if self.directories.capacity() > 16384 {
-            self.directories = ChunkedVec::with_chunk_capacity(16384);
+        if self.directories.capacity() > DEFAULT_DIRECTORIES_CAPACITY {
+            self.directories = ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY);
         } else {
             self.directories.clear();
         }
 
-        if self.inodes.capacity() > 256 {
-            self.inodes = IndexMap::with_chunk_capacity(256);
+        if self.inodes.capacity() > DEFAULT_INODES_CAPACITY {
+            self.inodes = IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY);
         } else {
             self.inodes.clear();
         }

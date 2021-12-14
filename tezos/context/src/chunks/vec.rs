@@ -164,7 +164,7 @@ where
 }
 
 impl<T> ChunkedVec<T> {
-    /// Returns a new `ChunkedSlice<T>` without allocating
+    /// Returns a new `ChunkedVec<T>` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
