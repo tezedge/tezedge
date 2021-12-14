@@ -29,7 +29,7 @@ use crate::{
 use super::{
     mempool_actions::{
         BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-        MempoolGetOperationsAction, MempoolGetOperationsPendingAction,
+        MempoolGetOperationsAction, MempoolMarkOperationsAsPendingAction,
         MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
         MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
@@ -285,20 +285,19 @@ pub fn mempool_effects<S>(
             }
         }
         Action::MempoolGetOperations(MempoolGetOperationsAction { address }) => {
-            if let Some(peer) = store.state().mempool.peer_state.get(address) {
-                let ops = peer.requesting_full_content.iter().cloned().collect();
-                store.dispatch(
-                    MempoolGetOperationsPendingAction {
-                        address: *address,
-                    },
-                );
-                store.dispatch(
-                    PeerMessageWriteInitAction {
-                        address: *address,
-                        message: Arc::new(GetOperationsMessage::new(ops).into()),
-                    },
-                );
-            }
+            let peer = store.state().mempool.peer_state.get(address).expect("enabling condition");
+            let ops = peer.requesting_full_content.iter().cloned().collect();
+            store.dispatch(
+                MempoolMarkOperationsAsPendingAction {
+                    address: *address,
+                },
+            );
+            store.dispatch(
+                PeerMessageWriteInitAction {
+                    address: *address,
+                    message: Arc::new(GetOperationsMessage::new(ops).into()),
+                },
+            );
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {

@@ -41,7 +41,7 @@ use crate::peer::handshaking::*;
 
 use crate::mempool::{
     BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-    MempoolGetOperationsAction, MempoolGetOperationsPendingAction, MempoolOperationInjectAction,
+    MempoolGetOperationsAction, MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
     MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRpcRespondAction,
     MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
     MempoolSendAction, MempoolAskCurrentHeadAction, MempoolRegisterOperationsStreamAction,
@@ -263,7 +263,7 @@ pub enum Action {
 
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),
-    MempoolGetOperationsPending(MempoolGetOperationsPendingAction),
+    MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction),
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
     MempoolOperationInject(MempoolOperationInjectAction),
     MempoolValidateStart(MempoolValidateStartAction),

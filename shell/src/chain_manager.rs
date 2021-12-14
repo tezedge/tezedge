@@ -943,31 +943,6 @@ impl ChainManager {
                        "num_of_peers_for_bootstrap_threshold" => self.current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
                        "remote_best_known_level" => remote_best_known_level,
                        "reached_on_level" => chain_manager_current_level);
-
-                // here we reached bootstrapped state, so we need to do more things
-                // 1. reset mempool with current_head
-                // 2. advertise current_head to network
-                let current_head = self.current_head_state.as_ref();
-                // get current header
-                if let Some(_) = self.block_storage.get(current_head.block_hash())? {
-                    // TODO(vlad): remove
-                    /*let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
-                        ChainId::clone(&self.chain_state.get_chain_id()),
-                        BlockHeader::clone(&block.header),
-                        BlockHash::clone(&block.hash),
-                        true,
-                    );
-                    if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
-                        warn!(log, "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
-                    }*/
-                } else {
-                    return Err(StateError::ProcessingError {
-                        reason: format!(
-                            "BlockHeader ({}) was not found!",
-                            current_head.block_hash().to_base58_check()
-                        ),
-                    });
-                }
             }
         }
 

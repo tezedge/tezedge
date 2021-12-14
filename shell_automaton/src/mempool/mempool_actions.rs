@@ -14,6 +14,7 @@ use crate::service::rpc_service::RpcId;
 
 use crate::{action::EnablingCondition, state::State};
 
+/// Process the mempool received from the peer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRecvDoneAction {
     pub address: SocketAddr,
@@ -23,12 +24,12 @@ pub struct MempoolRecvDoneAction {
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
         let _ = state;
         true
     }
 }
 
+/// Query operations from the peer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolGetOperationsAction {
     pub address: SocketAddr,
@@ -36,25 +37,23 @@ pub struct MempoolGetOperationsAction {
 
 impl EnablingCondition<State> for MempoolGetOperationsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
+        state.mempool.peer_state.contains_key(&self.address)
     }
 }
 
+/// Mark operations requested from the peer as pending
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolGetOperationsPendingAction {
+pub struct MempoolMarkOperationsAsPendingAction {
     pub address: SocketAddr,
 }
 
-impl EnablingCondition<State> for MempoolGetOperationsPendingAction {
+impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
+        state.mempool.peer_state.contains_key(&self.address)
     }
 }
 
+/// Take the operation received from the peer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
     pub address: SocketAddr,
@@ -63,7 +62,6 @@ pub struct MempoolOperationRecvDoneAction {
 
 impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
         let _ = state;
         true
     }

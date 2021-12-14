@@ -9,7 +9,7 @@ use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
-    BlockAppliedAction, MempoolBroadcastDoneAction, MempoolGetOperationsPendingAction,
+    BlockAppliedAction, MempoolBroadcastDoneAction, MempoolMarkOperationsAsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRpcRespondAction, MempoolValidateWaitPrevalidatorAction, MempoolCleanupWaitPrevalidatorAction,
     MempoolSendAction, MempoolUnregisterOperationsStreamsAction, MempoolRemoveAppliedOperationsAction,
@@ -156,7 +156,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
-        Action::MempoolGetOperationsPending(MempoolGetOperationsPendingAction { address }) => {
+        Action::MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction { address }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
             peer.pending_full_content
                 .extend(peer.requesting_full_content.drain());
