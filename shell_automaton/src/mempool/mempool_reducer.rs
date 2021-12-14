@@ -6,6 +6,7 @@ use std::mem;
 use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::protocol::ProtocolAction;
+use crate::peers::remove::PeersRemoveAction;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
@@ -225,6 +226,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::MempoolSend(MempoolSendAction { address }) => {
             mempool_state.peer_state.entry(*address).or_default();
+        }
+        Action::PeersRemove(PeersRemoveAction { address }) => {
+            mempool_state.peer_state.remove(address);
         }
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction {
             address,

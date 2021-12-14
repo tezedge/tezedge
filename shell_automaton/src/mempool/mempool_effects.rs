@@ -92,6 +92,8 @@ pub fn mempool_effects<S>(
                     for stream in streams {
                         let ops = &store.state().mempool.validated_operations.ops;
                         let refused_ops = &store.state().mempool.validated_operations.refused_ops;
+                        // `ProtocolAction::OperationValidated` action can happens only
+                        // if we have a prevalidator
                         let prot = store.state().mempool.prevalidator.as_ref().unwrap().protocol.to_base58_check();
                         let applied = if stream.applied {
                             response.result.applied.as_slice()
@@ -213,7 +215,10 @@ pub fn mempool_effects<S>(
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
             let refused_ops = &store.state().mempool.validated_operations.refused_ops;
-            let prot = store.state().mempool.prevalidator.as_ref().unwrap().protocol.to_base58_check();
+            let prot = match &store.state().mempool.prevalidator {
+                Some(prevalidator) => prevalidator.protocol.to_base58_check(),
+                None => return,
+            };
             let applied = if act.applied {
                 store.state().mempool.validated_operations.applied.as_slice()
             } else {
@@ -325,7 +330,6 @@ pub fn mempool_effects<S>(
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
-            // TODO(vlad): add action removing peer_state for disconnected peers
             for address in addresses {
                 store.dispatch(MempoolSendAction { address });
             }
