@@ -374,5 +374,7 @@ mod tests {
 
             assert_eq!(&source[i..], &*chunks.get_slice(i..source_size).unwrap(),);
         }
+
+        assert_eq!(&source, &chunks.iter().map(|n| *n).collect::<Vec<_>>())
     }
 }

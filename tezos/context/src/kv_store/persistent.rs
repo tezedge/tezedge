@@ -3,6 +3,7 @@
 
 use std::{
     borrow::Cow, collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher, io::Write,
+    sync::atomic::Ordering,
 };
 
 #[cfg(test)]
@@ -200,11 +201,22 @@ impl Hashes {
 
         let in_memory = self.in_memory.get_commiting();
 
+        let mut nhashes = 0;
+
         // Copy all hashes into the flat vector `Self::in_memory_bytes`
         self.in_memory_bytes.clear();
         for hash in in_memory {
+            nhashes += 1;
             self.in_memory_bytes.extend_from_slice(hash);
         }
+
+        let ncreated = self.in_memory.ncreated.load(Ordering::Relaxed);
+        println!(
+            "[hash] Appending to `hashes.db` nhashes={:?} length={:?} ncreated={:?}",
+            nhashes,
+            &self.in_memory_bytes.len(),
+            ncreated
+        );
 
         self.hashes_file.append(&self.in_memory_bytes)?;
 
