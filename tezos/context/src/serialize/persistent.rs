@@ -452,7 +452,7 @@ pub fn serialize_object(
                 let dir = storage.get_small_dir(*dir_id)?;
 
                 serialize_directory_or_shape(
-                    dir,
+                    dir.as_ref(),
                     object_hash_id,
                     offset,
                     output,
@@ -704,7 +704,7 @@ fn serialize_inode(
 
             let dir = storage.get_small_dir(*dir_id)?;
             serialize_directory_or_shape(
-                dir,
+                dir.as_ref(),
                 object_hash_id,
                 offset,
                 output,
@@ -774,7 +774,7 @@ fn deserialize_shaped_directory(
     let shape_id = DirectoryShapeId::from(shape_id);
 
     let directory_shape = match repository.get_shape(shape_id).map_err(Box::new)? {
-        ShapeStrings::SliceIds(slice_ids) => Cow::Borrowed(slice_ids),
+        ShapeStrings::SliceIds(slice_ids) => slice_ids,
         ShapeStrings::Owned(slice_strings) => {
             // We are in the readonly protocol runner.
             // Store the `String` in the `StringInterner`.

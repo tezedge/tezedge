@@ -193,12 +193,12 @@ impl Hashes {
     }
 
     fn commit(&mut self) -> Result<(), std::io::Error> {
-        let in_memory = self.in_memory.get_commiting();
-
-        if in_memory.is_empty() {
+        if self.in_memory.is_commiting_empty() {
             self.in_memory.commited();
             return Ok(());
         }
+
+        let in_memory = self.in_memory.get_commiting();
 
         // Copy all hashes into the flat vector `Self::in_memory_bytes`
         self.in_memory_bytes.clear();
@@ -662,7 +662,7 @@ impl KeyValueStoreBackend for Persistent {
         self.shapes.make_shape(dir).map_err(Into::into)
     }
 
-    fn get_str(&self, string_id: StringId) -> Option<&str> {
+    fn get_str(&self, string_id: StringId) -> Option<Cow<str>> {
         self.string_interner.get_str(string_id).ok()
     }
 

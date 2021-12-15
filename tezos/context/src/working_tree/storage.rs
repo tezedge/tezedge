@@ -7,6 +7,7 @@
 //! are used as references to different types of values.
 
 use std::{
+    borrow::Cow,
     cell::Cell,
     cmp::Ordering,
     collections::HashMap,
@@ -20,7 +21,10 @@ use static_assertions::assert_eq_size;
 use tezos_timing::StorageMemoryUsage;
 use thiserror::Error;
 
-use crate::kv_store::{index_map::IndexMap, HashId};
+use crate::{
+    chunks::ChunkedVec,
+    kv_store::{index_map::IndexMap, HashId},
+};
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
 use super::{
@@ -372,6 +376,22 @@ impl TryFrom<usize> for DirEntryId {
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct InodeId(u32);
 
+impl TryInto<usize> for InodeId {
+    type Error = DirEntryIdError;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        Ok(self.0 as usize)
+    }
+}
+
+impl TryFrom<usize> for InodeId {
+    type Error = DirEntryIdError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        value.try_into().map(InodeId).map_err(|_| DirEntryIdError)
+    }
+}
+
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct PointerToInodeInner {
@@ -499,7 +519,7 @@ pub struct Storage {
     /// Concatenation of all directories in the working tree.
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
-    directories: Vec<(StringId, DirEntryId)>,
+    directories: ChunkedVec<(StringId, DirEntryId)>,
     /// Temporary directory, this is used to avoid allocations when we
     /// manipulate `directories`
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
@@ -510,14 +530,14 @@ pub struct Storage {
     /// vector `blobs`.
     /// Note that blobs < 8 bytes are not included in this vector `blobs`, such
     /// blob is directly inlined in the `BlobId`
-    blobs: Vec<u8>,
+    blobs: ChunkedVec<u8>,
     /// Concatenation of all inodes.
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
     /// The working tree doesn't manipulate `InodeId` but `DirectoryId` only.
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
-    inodes: Vec<Inode>,
+    inodes: IndexMap<InodeId, Inode>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
@@ -528,6 +548,7 @@ pub struct Storage {
 pub enum Blob<'a> {
     Inline { length: u8, value: [u8; 7] },
     Ref { blob: &'a [u8] },
+    Owned { blob: Vec<u8> },
 }
 
 impl<'a> AsRef<[u8]> for Blob<'a> {
@@ -535,6 +556,7 @@ impl<'a> AsRef<[u8]> for Blob<'a> {
         match self {
             Blob::Inline { length, value } => &value[..*length as usize],
             Blob::Ref { blob } => blob,
+            Blob::Owned { blob } => blob,
         }
     }
 }
@@ -558,17 +580,22 @@ impl Default for Storage {
 // Whether or not a non-existing key was added to the inode
 type IsNewKey = bool;
 
+const DEFAULT_DIRECTORIES_CAPACITY: usize = 64 * 1024;
+const DEFAULT_BLOBS_CAPACITY: usize = 128 * 1024;
+const DEFAULT_NODES_CAPACITY: usize = 16 * 1024;
+const DEFAULT_INODES_CAPACITY: usize = 256;
+
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: Vec::with_capacity(16_384),
-            temp_dir: Vec::with_capacity(128),
-            blobs: Vec::with_capacity(2048),
-            nodes: IndexMap::with_capacity(4096),
-            inodes: Vec::with_capacity(256),
-            data: Vec::with_capacity(100_000),
+            directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~524KB
+            temp_dir: Vec::with_capacity(128),                                          // 128B
+            blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // ~128KB
+            nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~360KB
+            inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~160KB
+            data: Vec::with_capacity(100_000),                                          // ~97KB
             offsets_to_hash_id: HashMap::default(),
-        }
+        } // Total ~1269KB
     }
 
     pub fn memory_usage(&self, strings: &StringInterner) -> StorageMemoryUsage {
@@ -603,24 +630,20 @@ impl Storage {
         if BLOB_INLINED_RANGE.contains(&blob.len()) {
             BlobId::try_new_inline(blob)
         } else {
-            let start = self.blobs.len();
-            self.blobs.extend_from_slice(blob);
-            let end = self.blobs.len();
+            let (start, length) = self.blobs.extend_from_slice(blob);
 
-            BlobId::try_new(start, end)
+            BlobId::try_new(start, start + length)
         }
     }
 
     pub fn get_blob(&self, blob_id: BlobId) -> Result<Blob, StorageError> {
         match blob_id.get() {
             BlobRef::Inline { length, value } => Ok(Blob::Inline { length, value }),
-            BlobRef::Ref { start, end } => {
-                let blob = match self.blobs.get(start..end) {
-                    Some(blob) => blob,
-                    None => return Err(StorageError::BlobNotFound),
-                };
-                Ok(Blob::Ref { blob })
-            }
+            BlobRef::Ref { start, end } => match self.blobs.get_slice(start..end) {
+                Some(Cow::Borrowed(blob)) => Ok(Blob::Ref { blob }),
+                Some(Cow::Owned(blob)) => Ok(Blob::Owned { blob }),
+                None => Err(StorageError::BlobNotFound),
+            },
         }
     }
 
@@ -642,14 +665,14 @@ impl Storage {
     pub fn get_small_dir(
         &self,
         dir_id: DirectoryId,
-    ) -> Result<&[(StringId, DirEntryId)], StorageError> {
+    ) -> Result<Cow<[(StringId, DirEntryId)]>, StorageError> {
         if dir_id.is_inode() {
             return Err(StorageError::ExpectedDirGotInode);
         }
 
         let (start, end) = dir_id.get();
         self.directories
-            .get(start..end)
+            .get_slice(start..end)
             .ok_or(StorageError::DirNotFound)
     }
 
@@ -695,7 +718,7 @@ impl Storage {
 
         let result = dir.binary_search_by(|value| {
             match strings.get_str(value.0) {
-                Ok(value) => value.cmp(key),
+                Ok(value) => value.as_ref().cmp(key),
                 Err(e) => {
                     // Take the error and stop the search
                     error = Some(e);
@@ -745,7 +768,10 @@ impl Storage {
             self.dir_find_dir_entry_recursive(inode_id, key, strings)
         } else {
             let dir = self.get_small_dir(dir_id).ok()?;
-            let index = self.binary_search_in_dir(dir, key, strings).ok()?.ok()?;
+            let index = self
+                .binary_search_in_dir(dir.as_ref(), key, strings)
+                .ok()?
+                .ok()?;
 
             Some(dir[index].1)
         }
@@ -756,11 +782,9 @@ impl Storage {
         &mut self,
         new_dir: &mut Vec<(StringId, DirEntryId)>,
     ) -> Result<DirectoryId, StorageError> {
-        let start = self.directories.len();
-        self.directories.append(new_dir);
-        let end = self.directories.len();
+        let (start, length) = self.directories.append(new_dir);
 
-        DirectoryId::try_new_dir(start, end)
+        DirectoryId::try_new_dir(start, start + length)
     }
 
     /// Use `self.temp_dir` to avoid allocations
@@ -778,44 +802,66 @@ impl Storage {
     }
 
     pub fn add_inode(&mut self, inode: Inode) -> Result<InodeId, StorageError> {
-        let current = self.inodes.len();
-        self.inodes.push(inode);
+        let current = self.inodes.push(inode)?;
 
-        if current & !FULL_31_BITS != 0 {
+        let current_index: usize = current.try_into().unwrap();
+        if current_index & !FULL_31_BITS != 0 {
             // Must fit in 31 bits (See PointerToInode)
             return Err(StorageError::InodeIndexTooBig);
         }
 
-        Ok(InodeId(current as u32))
+        Ok(current)
+    }
+
+    fn sort_slice(
+        slice: &mut [(StringId, DirEntryId)],
+        strings: &StringInterner,
+    ) -> Result<(), StorageError> {
+        let mut error = None;
+
+        slice.sort_unstable_by(|a, b| {
+            let a = match strings.get_str(a.0) {
+                Ok(a) => a,
+                Err(e) => {
+                    error = Some(e);
+                    Cow::Borrowed("")
+                }
+            };
+
+            let b = match strings.get_str(b.0) {
+                Ok(b) => b,
+                Err(e) => {
+                    error = Some(e);
+                    Cow::Borrowed("")
+                }
+            };
+
+            a.cmp(&b)
+        });
+
+        if let Some(e) = error {
+            return Err(e);
+        };
+
+        Ok(())
     }
 
     /// Copy directory from `Self::temp_dir` into `Self::directories` in a sorted order.
     ///
     /// `dir_range` is the range of the directory in `Self::temp_dir`
+    /// The method first sorts `Self::temp_dir[dir_range]` in place, and copy the directory
+    /// in `Self::directories`.
     fn copy_sorted(
         &mut self,
         dir_range: TempDirRange,
         strings: &StringInterner,
     ) -> Result<DirectoryId, StorageError> {
-        let start = self.directories.len();
+        let temp_dir = &mut self.temp_dir[dir_range];
 
-        for (key_id, dir_entry_id) in &self.temp_dir[dir_range] {
-            let key_str = strings.get_str(*key_id)?;
-            let dir = &self.directories[start..];
+        Self::sort_slice(temp_dir, strings)?;
+        let (start, length) = self.directories.extend_from_slice(temp_dir);
 
-            match self.binary_search_in_dir(dir, key_str, strings)? {
-                Ok(found) => {
-                    self.directories[start + found].1 = *dir_entry_id;
-                }
-                Err(index) => {
-                    self.directories
-                        .insert(start + index, (*key_id, *dir_entry_id));
-                }
-            }
-        }
-
-        let end = self.directories.len();
-        DirectoryId::try_new_dir(start, end)
+        DirectoryId::try_new_dir(start, start + length)
     }
 
     fn with_temp_dir_range<Fun>(&mut self, mut fun: Fun) -> Result<TempDirRange, StorageError>
@@ -855,7 +901,7 @@ impl Storage {
                     for i in dir_range.clone() {
                         let (key_id, dir_entry_id) = this.temp_dir[i];
                         let key = strings.get_str(key_id)?;
-                        if index_of_key(depth, key) as u8 == index {
+                        if index_of_key(depth, &key) as u8 == index {
                             this.temp_dir.push((key_id, dir_entry_id));
                         }
                     }
@@ -904,8 +950,12 @@ impl Storage {
         let (dir_start, dir_end) = dir_id.get();
 
         self.with_temp_dir_range(|this| {
-            this.temp_dir
-                .extend_from_slice(&this.directories[dir_start..dir_end]);
+            let dir = this
+                .directories
+                .get_slice(dir_start..dir_end)
+                .ok_or(StorageError::DirNotFound)?;
+
+            this.temp_dir.extend_from_slice(dir.as_ref());
             Ok(())
         })
     }
@@ -1020,7 +1070,7 @@ impl Storage {
             }
             Inode::Directory(dir_id) => {
                 let dir = self.get_small_dir(*dir_id)?;
-                for elem in dir {
+                for elem in dir.as_ref() {
                     fun(elem)?;
                 }
             }
@@ -1047,7 +1097,7 @@ impl Storage {
             self.iter_inodes_recursive_unsorted(inode, &mut fun)?;
         } else {
             let dir = self.get_small_dir(dir_id)?;
-            for elem in dir {
+            for elem in dir.as_ref() {
                 fun(elem)?;
             }
         }
@@ -1104,32 +1154,7 @@ impl Storage {
     ) -> Result<Vec<(StringId, DirEntryId)>, MerkleError> {
         if dir_id.get_inode_id().is_some() {
             let mut dir = self.dir_to_vec_unsorted(dir_id)?;
-
-            let mut error = None;
-
-            dir.sort_unstable_by(|a, b| {
-                let a = match strings.get_str(a.0) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        error = Some(e);
-                        ""
-                    }
-                };
-
-                let b = match strings.get_str(b.0) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error = Some(e);
-                        ""
-                    }
-                };
-
-                a.cmp(b)
-            });
-
-            if let Some(e) = error {
-                return Err(e.into());
-            };
+            Self::sort_slice(&mut dir, strings)?;
 
             Ok(dir)
         } else {
@@ -1140,7 +1165,7 @@ impl Storage {
 
     pub fn get_inode(&self, inode_id: InodeId) -> Result<&Inode, StorageError> {
         self.inodes
-            .get(inode_id.0 as usize)
+            .get(inode_id)?
             .ok_or(StorageError::InodeNotFound)
     }
 
@@ -1170,11 +1195,11 @@ impl Storage {
         let dir_id = self.with_new_dir(|this, new_dir| {
             let dir = this.get_small_dir(dir_id)?;
 
-            let index = this.binary_search_in_dir(dir, key_str, strings)?;
+            let index = this.binary_search_in_dir(dir.as_ref(), key_str, strings)?;
 
             match index {
                 Ok(found) => {
-                    new_dir.extend_from_slice(dir);
+                    new_dir.extend_from_slice(dir.as_ref());
                     new_dir[found].1 = dir_entry_id;
                 }
                 Err(index) => {
@@ -1200,7 +1225,7 @@ impl Storage {
             let range = self.copy_dir_in_temp_dir(dir_id)?;
             // Remove the newly created directory from `Self::directories` to save memory.
             // It won't be used anymore as we're creating an inode.
-            self.directories.truncate(self.directories.len() - dir_len);
+            self.directories.remove_last_nelems(dir_len);
 
             let inode_id = self.create_inode(0, range, strings)?;
             self.temp_dir.clear();
@@ -1250,21 +1275,15 @@ impl Storage {
                     // INODE_POINTER_THRESHOLD items, so it should be converted to a
                     // `Inode::Directory`.
 
-                    let current_end = self.directories.len();
-
                     let dir_id = self.inodes_to_dir_sorted(inode_id, strings)?;
                     let new_dir_id = self.dir_remove(dir_id, key, strings)?;
 
                     if dir_id == new_dir_id {
                         // The key was not found.
 
-                        // Make sure the new directory was created at the end of Self::directories,
-                        // otherwise the `Vec::truncate` below is incorrect.
-                        debug_assert_eq!(dir_id.get().1, self.directories.len());
-
                         // Remove the directory that was just created with
                         // Self::inodes_to_dir_sorted above, it won't be used and save space.
-                        self.directories.truncate(current_end);
+                        self.directories.remove_last_nelems(dir_id.small_dir_len());
                         return Ok(Some(inode_id));
                     }
 
@@ -1382,7 +1401,7 @@ impl Storage {
                 return Ok(dir_id);
             }
 
-            let index = match this.binary_search_in_dir(dir, key, strings)? {
+            let index = match this.binary_search_in_dir(dir.as_ref(), key, strings)? {
                 Ok(index) => index,
                 Err(_) => return Ok(dir_id), // The key was not found
             };
@@ -1399,37 +1418,37 @@ impl Storage {
     }
 
     pub fn clear(&mut self) {
-        if self.blobs.capacity() > 2048 {
-            self.blobs = Vec::with_capacity(2048);
+        if self.blobs.capacity() > DEFAULT_BLOBS_CAPACITY {
+            self.blobs = ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY);
         } else {
             self.blobs.clear();
         }
 
-        if self.nodes.capacity() > 4096 {
-            self.nodes = IndexMap::with_capacity(4096);
+        if self.nodes.capacity() > DEFAULT_NODES_CAPACITY {
+            self.nodes = IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY);
         } else {
             self.nodes.clear();
         }
 
-        if self.directories.capacity() > 16384 {
-            self.directories = Vec::with_capacity(16384);
+        if self.directories.capacity() > DEFAULT_DIRECTORIES_CAPACITY {
+            self.directories = ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY);
         } else {
             self.directories.clear();
         }
 
-        if self.inodes.capacity() > 256 {
-            self.inodes = Vec::with_capacity(256);
+        if self.inodes.capacity() > DEFAULT_INODES_CAPACITY {
+            self.inodes = IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY);
         } else {
             self.inodes.clear();
         }
     }
 
     pub fn deallocate(&mut self) {
-        self.nodes = IndexMap::new();
-        self.directories = Vec::new();
+        self.nodes = IndexMap::empty();
+        self.directories = ChunkedVec::empty();
         self.temp_dir = Vec::new();
-        self.blobs = Vec::new();
-        self.inodes = Vec::new();
+        self.blobs = ChunkedVec::empty();
+        self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();
     }

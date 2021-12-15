@@ -80,7 +80,7 @@ pub trait KeyValueStoreBackend {
     /// Returns the string associated to this `string_id`.
     ///
     /// The string interner must have been updated with the `synchronize_strings_from` method.
-    fn get_str(&self, string_id: StringId) -> Option<&str>;
+    fn get_str(&self, string_id: StringId) -> Option<Cow<str>>;
     /// Update the repository `StringInterner` to be in sync with `string_interner`.
     fn synchronize_strings_from(&mut self, string_interner: &StringInterner);
     /// Return the object associated to this `object_ref`.

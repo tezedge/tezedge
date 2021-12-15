@@ -326,7 +326,7 @@ impl TezedgeIndex {
             let key = strings.get_str(*key)?;
 
             // construct full path as Tree key is only one chunk of it
-            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            let fullpath = self.key_to_string(prefix) + delimiter + &key;
             let rdepth = depth.map(|d| d - 1);
             let key_str = key.to_string();
 
@@ -366,7 +366,7 @@ impl TezedgeIndex {
 
                 for (key, child_dir_entry) in dir.iter() {
                     let key = strings.get_str(*key)?;
-                    let fullpath = path.to_owned() + "/" + key;
+                    let fullpath = path.to_owned() + "/" + &key;
                     let key_str = key.to_string();
 
                     let object = self.dir_entry_object(*child_dir_entry, storage, strings)?;
@@ -552,7 +552,7 @@ impl TezedgeIndex {
 
             let key = strings.get_str(*key)?;
             // construct full path as Tree key is only one chunk of it
-            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            let fullpath = self.key_to_string(prefix) + delimiter + &key;
 
             self.collect_key_values_from_tree_recursively(
                 &fullpath,
@@ -595,7 +595,7 @@ impl TezedgeIndex {
                 dir.iter()
                     .map(|(key, child_dir_entry_id)| {
                         let key = strings.get_str(*key)?;
-                        let fullpath = path.to_owned() + "/" + key;
+                        let fullpath = path.to_owned() + "/" + &key;
 
                         match self.dir_entry_object(*child_dir_entry_id, storage, strings) {
                             Err(_) => Ok(()),

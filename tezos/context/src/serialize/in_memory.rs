@@ -203,7 +203,7 @@ pub fn serialize_object(
             } else {
                 let dir = storage.get_small_dir(*dir_id)?;
 
-                serialize_directory(dir, output, storage, strings, repository, stats)?;
+                serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
                 batch.push((object_hash_id, Arc::from(output.as_slice())));
             }
@@ -344,7 +344,7 @@ fn serialize_inode(
             // caller (recursively) confirmed it's a new one.
 
             let dir = storage.get_small_dir(*dir_id)?;
-            serialize_directory(dir, output, storage, strings, repository, stats)?;
+            serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
             batch.push((hash_id, Arc::from(output.as_slice())));
         }
@@ -370,7 +370,7 @@ fn deserialize_shaped_directory(
     let shape_id = DirectoryShapeId::from(shape_id);
 
     let directory_shape = match repository.get_shape(shape_id).map_err(Box::new)? {
-        ShapeStrings::SliceIds(slice_ids) => Cow::Borrowed(slice_ids),
+        ShapeStrings::SliceIds(slice_ids) => slice_ids,
         ShapeStrings::Owned(strings_slice) => {
             // We are in the readonly protocol runner.
             // Store the `String` in the `StringInterner`.

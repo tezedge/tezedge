@@ -113,6 +113,7 @@
 //! functionality that interacts with the repository (commit and checkout).
 //!
 
+pub mod chunks;
 pub mod gc;
 pub mod hash;
 pub mod serialize;
