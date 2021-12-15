@@ -14,6 +14,7 @@ use crate::serialize::persistent::AbsoluteOffset;
 use std::sync::Arc;
 
 use crate::{
+    initializer::IndexInitializationError,
     kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash},
     serialize::DeserializationError,
     working_tree::{
@@ -134,6 +135,8 @@ pub trait KeyValueStoreBackend {
     ///
     /// This is used on the persistent context, to avoid commiting unused HashId
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError>;
+    /// Reload the persistent database and verify its integrity
+    fn reload_database(&mut self) -> Result<(), DBError>;
     /// Simulate a `commit`, by writing data to disk/memory, without computing hash
     #[cfg(test)]
     fn synchronize_data(
@@ -193,6 +196,11 @@ pub enum DBError {
     },
     #[error("Commit to disk error: {err:?}")]
     CommitToDiskError { err: io::Error },
+    #[error("Reloading database error: {err:?}")]
+    ReloadingError {
+        #[from]
+        err: IndexInitializationError,
+    },
 }
 
 impl From<HashIdError> for DBError {

@@ -192,7 +192,7 @@ pub fn get_context_index() -> Result<Option<TezedgeIndex>, TezedgeIndexError> {
         .read()
         .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .as_ref()
-        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None, None)))
+        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None)))
 }
 
 ocaml_export! {

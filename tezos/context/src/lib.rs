@@ -113,6 +113,22 @@
 //! functionality that interacts with the repository (commit and checkout).
 //!
 
+/// Print logs on stdout with the prefix `[tezedge.context]`
+macro_rules! log {
+    () => (println!("[tezedge.context]"));
+    ($($arg:tt)*) => ({
+        println!("[tezedge.context] {}", format_args!($($arg)*))
+    })
+}
+
+/// Print logs on stderr with the prefix `[tezedge.context]`
+macro_rules! elog {
+    () => (eprintln!("[tezedge.context]"));
+    ($($arg:tt)*) => ({
+        eprintln!("[tezedge.context] {}", format_args!($($arg)*));
+    })
+}
+
 pub mod chunks;
 pub mod gc;
 pub mod hash;
