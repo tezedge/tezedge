@@ -42,6 +42,7 @@ pub enum Protocol {
     Edo,
     Florence,
     Granada,
+    Hangzhou,
 }
 
 impl Protocol {
@@ -59,6 +60,7 @@ impl Protocol {
             Protocol::Edo => "edo",
             Protocol::Florence => "florence",
             Protocol::Granada => "granada",
+            Protocol::Hangzhou => "hangzhou",
         }
     }
 
@@ -76,6 +78,7 @@ impl Protocol {
             "edo" => Some(Protocol::Edo),
             "florence" => Some(Protocol::Florence),
             "granada" => Some(Protocol::Granada),
+            "hangzhou" => Some(Protocol::Hangzhou),
             _ => None,
         }
     }
@@ -95,6 +98,7 @@ const BLOCK_DELPHI: &str = "BM5fVxrUeoHJ8pLZNzdDwgW656MnWJMciJYGFvTF6ysj9pT4wi6"
 const BLOCK_EDO: &str = "BKpJVfDq5BkSPQpJFiJumZxnWs7GM9zZJjRkScaoqWLSCUDYMdJ";
 const BLOCK_FLORENCE: &str = "BMTcukHJeJpDoABwNVkhqeFM9JcDv29GCqpcgohY2Qcy8kXM9Uw";
 const BLOCK_GRANADA: &str = "BLzEHPYwpqWSDfu28saTkAUxZ7WnPkNxe8Epg5NfixBfQv7KRUN";
+const BLOCK_HANGZHOU: &str = "BL4S6iH3vQ1Fds3eLopNgRJAd76VVYfa9RgcXB5p2ePRChUo9nP";
 
 const PROTOCOLS: &[(&str, Protocol)] = &[
     (BLOCK_GENESIS, Protocol::Genesis),     // block 0
@@ -109,6 +113,7 @@ const PROTOCOLS: &[(&str, Protocol)] = &[
     (BLOCK_EDO, Protocol::Edo),             // block 1_343_489
     (BLOCK_FLORENCE, Protocol::Florence),   // block 1_466_368
     (BLOCK_GRANADA, Protocol::Granada),     // block 1_589_248
+    (BLOCK_HANGZHOU, Protocol::Hangzhou),   // block 1_916_929
 ];
 
 #[derive(Debug)]
