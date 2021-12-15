@@ -437,41 +437,19 @@ where
                 None => return,
             };
 
-            let ops = &store.state().mempool.validated_operations.ops;
-
-            // TODO: fix it for Idiazabal protocol, there are no such operations.
-            let endorsements = store
-                .state()
-                .mempool
-                .validated_operations
-                .branch_delayed
-                .iter()
-                .filter_map(|v| {
-                    let op = ops.get(&v.hash)?;
-                    let data = op.data().as_slice();
-                    let tag = data.get(0)?;
-                    // for protocols A..=H, tag == 0x00 means it is endorsement
-                    if !peer.seen_operations.contains(&v.hash) && *tag == 0x00 {
-                        Some(&v.hash)
-                    } else {
-                        None
-                    }
-                });
-
             let known_valid = store
                 .state()
                 .mempool
                 .validated_operations
-                .applied
+                .ops
                 .iter()
-                .filter_map(|v| {
-                    if !peer.seen_operations.contains(&v.hash) {
-                        Some(&v.hash)
+                .filter_map(|(hash, _)| {
+                    if !peer.seen_operations.contains(&hash) {
+                        Some(hash)
                     } else {
                         None
                     }
                 })
-                .chain(endorsements)
                 .cloned()
                 .collect::<Vec<_>>();
             let pending = store
