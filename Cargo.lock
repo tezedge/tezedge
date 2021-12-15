@@ -644,9 +644,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.2.1"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81156fece84ab6a9f2afdb109ce3ae577e42b1228441eded99bd77f627953b1a"
+checksum = "738c290dfaea84fc1ca15ad9c168d083b05a714e1efddd8edaab678dc28d2836"
 dependencies = [
  "cfg-if",
 ]
@@ -3650,7 +3650,9 @@ name = "tezos_context"
 version = "1.14.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "blake2",
+ "crc32fast",
  "crossbeam-channel",
  "crypto",
  "flate2",

@@ -99,8 +99,10 @@ pub struct TezedgeIndex {
     /// This is never deallocated.
     /// The working tree and repository have `StringId` which refers to
     /// a data inside `StringInterner`.
-    pub string_interner: Rc<RefCell<StringInterner>>,
+    pub string_interner: Rc<RefCell<Option<StringInterner>>>,
 }
+
+use std::cell::RefMut;
 
 // TODO: some of the utility methods here (and in `WorkingTree`) should probably be
 // standalone functions defined in a separate module that take the `index`
@@ -110,15 +112,40 @@ impl TezedgeIndex {
     pub fn new(
         repository: Arc<RwLock<ContextKeyValueStore>>,
         patch_context: Option<BoxRoot<PatchContextFunction>>,
-        string_interner: Option<StringInterner>,
     ) -> Self {
         let patch_context = Rc::new(patch_context);
         Self {
             patch_context,
             repository,
             storage: Default::default(),
-            string_interner: Rc::new(RefCell::new(string_interner.unwrap_or_default())),
+            string_interner: Rc::new(RefCell::new(None)),
         }
+    }
+
+    pub fn get_string_interner(&self) -> Result<RefMut<StringInterner>, DBError> {
+        // When the context is reloaded/restarted, the existings strings (found the the db file)
+        // are in the repository.
+        // We want `TezedgeIndex` to have its string interner updated with the one
+        // from the repository.
+
+        let mut strings: RefMut<Option<StringInterner>> = self.string_interner.borrow_mut();
+
+        if strings.is_some() {
+            // The strings are already in `TezedgeIndex`
+            return Ok(RefMut::map(strings, |s| s.as_mut().unwrap())); // Do no fail
+        }
+        // Strings are not in `TezedgeIndex`, we need to request them to
+        // the repository
+        let mut repo = self.repository.write()?;
+        let string_interner = repo.take_strings_on_reload();
+
+        // `unwrap_or_default` because only the persistent backend returns
+        // the strings on `take_string_on_reload`, with other backends,
+        // we create a default `StringInterner`.
+        strings.replace(string_interner.unwrap_or_default());
+
+        // Do not fail, we just replace the `Option`
+        Ok(RefMut::map(strings, |s| s.as_mut().unwrap()))
     }
 
     fn with_deallocation(&self) -> TezedgeIndexWithDeallocation {
@@ -479,7 +506,7 @@ impl TezedgeIndex {
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
         let mut storage = self.storage.borrow_mut();
-        let mut strings = self.string_interner.borrow_mut();
+        let mut strings = self.get_string_interner()?;
 
         let commit = self.get_commit(object_ref, &mut storage, &mut strings)?;
 
@@ -532,8 +559,8 @@ impl TezedgeIndex {
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let mut storage = self.storage.borrow_mut();
-        let mut strings = self.string_interner.borrow_mut();
         let repository = self.repository.read()?;
+        let mut strings = self.get_string_interner()?;
 
         let commit = self.get_commit(object_ref, &mut storage, &mut strings)?;
 
@@ -643,7 +670,7 @@ impl TezedgeIndex {
     /// - The repository needs those interned strings when it sends the directory shapes to the
     ///   read only protocol runner.
     fn synchronize_interned_strings_to_repository(&self) -> Result<(), MerkleError> {
-        let mut strings = self.string_interner.borrow_mut();
+        let mut strings = self.get_string_interner()?;
         let mut repository = self.repository.write()?;
         repository.synchronize_strings_from(&strings);
 
@@ -728,8 +755,8 @@ impl TezedgeIndex {
         };
 
         let mut storage = self.storage.borrow_mut();
-        let mut strings = self.string_interner.borrow_mut();
         let repository = self.repository.read()?;
+        let mut strings = self.get_string_interner()?;
 
         self._get_context_tree_by_prefix(
             object_ref,
@@ -756,7 +783,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         };
 
         let mut storage = self.storage.borrow_mut();
-        let mut strings = self.string_interner.borrow_mut();
+        let mut strings = self.get_string_interner()?;
 
         Ok(self
             .get_commit(object_ref, &mut storage, &mut strings)
@@ -779,7 +806,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
         let dir_id = {
             let mut storage = index.storage.borrow_mut();
-            let mut strings = index.string_interner.borrow_mut();
+            let mut strings = index.get_string_interner()?;
 
             let commit = match self.fetch_commit(object_ref, &mut storage, &mut strings)? {
                 Some(commit) => commit,
@@ -967,7 +994,7 @@ impl ShellContextApi for TezedgeContext {
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {
         let repository = self.index.repository.read()?;
         let storage = self.index.storage.borrow();
-        let strings = self.index.string_interner.borrow();
+        let strings = self.index.get_string_interner()?;
 
         let usage = ContextMemoryUsage {
             repo: repository.memory_usage(),

@@ -1193,7 +1193,7 @@ mod tests {
     fn test_serialize() {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
-        let mut repo = Persistent::try_new(None).unwrap();
+        let mut repo = Persistent::try_new(None, true).unwrap();
         let mut stats = SerializeStats::default();
         let mut batch = Vec::new();
         let mut older_objects = Vec::new();
@@ -1630,7 +1630,7 @@ mod tests {
 
     #[test]
     fn test_serialize_empty_blob() {
-        let mut repo = Persistent::try_new(None).expect("failed to create context");
+        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
@@ -1687,7 +1687,7 @@ mod tests {
 
     #[test]
     fn test_hash_id() {
-        let mut repo = Persistent::try_new(None).expect("failed to create context");
+        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
         let mut output = Vec::with_capacity(10);
         let mut stats = Default::default();
 

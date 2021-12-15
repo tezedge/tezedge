@@ -171,36 +171,7 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
-                let mut storage = root.index.storage.borrow_mut();
-                let mut strings = root.index.string_interner.borrow_mut();
-
-                let dir = if let Some(repo) = root.index.repository.read().ok() {
-                    match storage.dir_to_vec_sorted(*dir_id, &mut strings, &*repo) {
-                        Ok(dir) => dir,
-                        Err(e) => {
-                            eprintln!("TreeWalkerLevel `dir_to_vec_sorted` error='{:?}'", e);
-                            Vec::new()
-                        }
-                    }
-                } else {
-                    eprintln!("TreeWalkerLevel Failed to lock repository");
-                    Vec::new()
-                };
-
-                let dir_vec: Vec<(String, DirEntryId)> = dir
-                    .into_iter()
-                    .map(|(key_id, dir_entry_id)| {
-                        (
-                            strings
-                                .get_str(key_id)
-                                .map(|s| s.to_string())
-                                // Never fail, the error would have been caught above with `dir_to_vec_sorted`.
-                                .unwrap_or_default(),
-                            dir_entry_id,
-                        )
-                    })
-                    .collect();
-
+                let dir_vec = Self::get_keys_on_directory(&root, *dir_id);
                 Some(dir_vec.into_iter())
             } else {
                 None
@@ -216,6 +187,49 @@ impl TreeWalkerLevel {
             yield_self: depth.map(|d| d.should_apply(current_depth)).unwrap_or(true),
             children_iter,
         }
+    }
+
+    fn get_keys_on_directory(root: &WorkingTree, dir_id: DirectoryId) -> Vec<(String, DirEntryId)> {
+        let mut storage = root.index.storage.borrow_mut();
+        let mut strings = match root.index.get_string_interner() {
+            Ok(strings) => strings,
+            Err(e) => {
+                eprintln!(
+                    "TreeWalkerLevel: Failed to get the string interner: {:?}",
+                    e
+                );
+                return Vec::new();
+            }
+        };
+
+        let repository = match root.index.repository.read() {
+            Ok(repo) => repo,
+            Err(e) => {
+                eprintln!("TreeWalkerLevel Failed to lock repository: {:?}", e);
+                return Vec::new();
+            }
+        };
+
+        let dir = match storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository) {
+            Ok(dir) => dir,
+            Err(e) => {
+                eprintln!("TreeWalkerLevel `dir_to_vec_sorted` failed '{:?}'", e);
+                Vec::new()
+            }
+        };
+
+        dir.into_iter()
+            .map(|(key_id, dir_entry_id)| {
+                (
+                    strings
+                        .get_str(key_id)
+                        .map(|s| s.to_string())
+                        // Never fail, the error would have been caught above with `dir_to_vec_sorted`.
+                        .unwrap_or_default(),
+                    dir_entry_id,
+                )
+            })
+            .collect()
     }
 }
 
@@ -514,7 +528,7 @@ impl WorkingTree {
         }
 
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
         let root = self.get_root_directory();
 
         let dir_entry_id = match self
@@ -551,7 +565,7 @@ impl WorkingTree {
             self.delete(key)
         } else {
             let mut storage = self.index.storage.borrow_mut();
-            let mut strings = self.index.string_interner.borrow_mut();
+            let mut strings = self.index.get_string_interner()?;
 
             let dir_entry = match tree.root {
                 WorkingTreeRoot::Directory(dir_id) => {
@@ -624,8 +638,9 @@ impl WorkingTree {
     ) -> Result<Vec<(String, WorkingTree)>, MerkleError> {
         let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
         let repository = self.index.repository.read()?;
+        let mut strings = self.index.get_string_interner()?;
+
         let dir_id = self.find_or_create_directory(root, key, &mut storage, &mut strings)?;
 
         // It's important to get the directory sorted here
@@ -656,7 +671,7 @@ impl WorkingTree {
     /// Fetches the dir_entry from repository if necessary.
     fn dir_entry_tree(&self, dir_entry_id: DirEntryId) -> Result<Self, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
         let object = self
             .index
@@ -715,7 +730,7 @@ impl WorkingTree {
     /// Fetches data from repository if necessary.
     pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
         let root = self.get_root_directory();
 
@@ -758,7 +773,7 @@ impl WorkingTree {
         }
 
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
         let dir_entry_id = match self
             .index
@@ -782,12 +797,15 @@ impl WorkingTree {
         }
 
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
 
         match self
             .index
-            .find_dir_entry(dir_id, key, &mut storage, &mut strings)
-        {
+            .get_string_interner()
+            .map_err(MerkleError::from)
+            .and_then(|mut strings| {
+                self.index
+                    .find_dir_entry(dir_id, key, &mut storage, &mut strings)
+            }) {
             Ok(dir_entry_id) => dir_entry_id.is_some(),
             Err(_) => false,
         }
@@ -831,7 +849,7 @@ impl WorkingTree {
             SerializingData::new(repository, offset, serialize_function, keep_older_objects);
 
         let storage = self.index.storage.borrow();
-        let strings = self.index.string_interner.borrow();
+        let strings = self.index.get_string_interner()?;
 
         let commit_offset = self.serialize_objects_recursively(
             commit_object,
@@ -859,7 +877,7 @@ impl WorkingTree {
     /// Set key/val to the working tree.
     pub fn add(&self, key: &ContextKey, value: &[u8]) -> Result<Self, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
         let blob_id = storage.add_blob_by_ref(value)?;
 
         let dir_entry = DirEntry::new_blob(Object::Blob(blob_id));
@@ -893,7 +911,7 @@ impl WorkingTree {
             return Ok(Object::Directory(root));
         }
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
         self.compute_new_root_with_change(key, None, &mut storage, &mut strings)
     }
 
@@ -990,7 +1008,7 @@ impl WorkingTree {
         // TOOD: unnecessery recalculation, should be one when set_staged_root
         let root = self.get_root_directory();
         let storage = self.index.storage.borrow();
-        let strings = self.index.string_interner.borrow();
+        let strings = self.index.get_string_interner()?;
         hash_directory(root, repository, &storage, &strings).map_err(MerkleError::from)
     }
 
@@ -1071,7 +1089,7 @@ impl WorkingTree {
         repository: &ContextKeyValueStore,
     ) -> Result<Object, MerkleError> {
         let mut storage = self.index.storage.borrow_mut();
-        let mut strings = self.index.string_interner.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
         repository
             .get_object(object_ref, &mut storage, &mut strings)
