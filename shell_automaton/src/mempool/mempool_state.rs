@@ -18,11 +18,7 @@ use crate::service::rpc_service::RpcId;
 pub struct MempoolState {
     // TODO(vlad): instant
     pub running_since: Option<()>,
-    // all blocks applied
-    pub(super) applied_block: HashSet<BlockHash>,
-    // do not create prevalidator for any applied block, create prevalidator:
-    // * for block received as CurrentHead
-    // * for block of injected operation
+    // create prevalidator for any applied block, create prevalidator:
     pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,

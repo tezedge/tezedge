@@ -143,7 +143,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             };
             mempool_state.branch_changed = changed;
             mempool_state.local_head_state = Some((block.clone(), hash.clone()));
-            mempool_state.applied_block.insert(hash.clone());
 
             // TODO(vlad) move to separate action
             // TODO: get from protocol
