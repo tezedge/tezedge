@@ -88,11 +88,9 @@ where
                     store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
                 }
                 ProtocolAction::OperationValidated(response) => {
-                    if !response.result.applied.is_empty() {
-                        store.dispatch(MempoolBroadcastAction {
-                            ignore_empty_mempool: true,
-                        });
-                    }
+                    store.dispatch(MempoolBroadcastAction {
+                        ignore_empty_mempool: true,
+                    });
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
                     for rpc_id in ids {
@@ -439,16 +437,41 @@ where
                 None => return,
             };
 
+            let ops = &store.state().mempool.validated_operations.ops;
+
+            // TODO: fix it for Idiazabal protocol, there are no such operations.
+            let endorsements = store
+                .state()
+                .mempool
+                .validated_operations
+                .branch_delayed
+                .iter()
+                .filter_map(|v| {
+                    let op = ops.get(&v.hash)?;
+                    let data = op.data().as_slice();
+                    let tag = data.get(0)?;
+                    // for protocols A..=H, tag == 0x00 means it is endorsement
+                    if !peer.seen_operations.contains(&v.hash) && *tag == 0x00 {
+                        Some(&v.hash)
+                    } else {
+                        None
+                    }
+                });
+
             let known_valid = store
                 .state()
                 .mempool
                 .validated_operations
-                .ops
+                .applied
                 .iter()
-                .filter(|(hash, op)| {
-                    !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                .filter_map(|v| {
+                    if !peer.seen_operations.contains(&v.hash) {
+                        Some(&v.hash)
+                    } else {
+                        None
+                    }
                 })
-                .map(|(hash, _)| hash)
+                .chain(endorsements)
                 .cloned()
                 .collect::<Vec<_>>();
             let pending = store
