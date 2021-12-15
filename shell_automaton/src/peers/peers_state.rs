@@ -97,6 +97,10 @@ impl PeersState {
         self.list.iter()
     }
 
+    pub fn iter_addr<'a>(&'a self) -> impl Iterator<Item = &'a SocketAddr> + 'a {
+        self.list.keys()
+    }
+
     #[inline(always)]
     pub fn iter_mut<'a>(&'a mut self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a mut Peer)> {
         self.list.iter_mut()

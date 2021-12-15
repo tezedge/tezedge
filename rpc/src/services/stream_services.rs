@@ -1,19 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::pin::Pin;
 
 use futures::task::{Context, Poll};
 use futures::Stream;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Serialize;
 use slog::{error, Logger};
-use tezos_api::ffi::{Applied, Errored};
 
-use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
-use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_integration::{generate_stream_id, MempoolOperationRef, StreamCounter, StreamId};
+use crypto::hash::{BlockHash, ProtocolHash};
+use shell_integration::{generate_stream_id, StreamCounter, StreamId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
@@ -59,114 +55,6 @@ impl TryFrom<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct MempoolOperationsQuery {
-    pub applied: bool,
-    pub refused: bool,
-    pub branch_delayed: bool,
-    pub branch_refused: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MonitoredOperation {
-    branch: String,
-
-    #[serde(flatten)]
-    protocol_data: HashMap<String, Value>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    protocol: Option<String>,
-    hash: String,
-    // TODO: This is represented as an Option<String> here but in OCaml it is an array of errors,
-    // so when empty it just gets serialized as "[]"
-    error: Option<String>,
-}
-
-impl MonitoredOperation {
-    pub fn collect_applied(
-        applied: &[Applied],
-        operations: &HashMap<OperationHash, MempoolOperationRef>,
-        protocol_hash: &str,
-        streamed_operations: &mut HashSet<String>,
-    ) -> Result<Vec<Self>, RpcServiceError> {
-        let mut result = Vec::with_capacity(applied.len());
-        for applied_op in applied {
-            let op_hash = applied_op.hash.to_base58_check();
-
-            // if the operation is allready included in the stream, ignore it
-            if streamed_operations.contains(&op_hash) {
-                continue;
-            }
-
-            streamed_operations.insert(op_hash.clone());
-
-            let operation = match operations.get(&applied_op.hash) {
-                Some(op) => op,
-                None => {
-                    return Err(RpcServiceError::NoDataFoundError {
-                        reason: "Operation hash not found in operations data".into(),
-                    })
-                }
-            };
-            let monitored_op = MonitoredOperation {
-                branch: operation.operation().branch().to_base58_check(),
-                protocol: Some(protocol_hash.to_string()),
-                hash: op_hash,
-                protocol_data: serde_json::from_str(&applied_op.protocol_data_json)?,
-                error: None,
-            };
-            result.push(monitored_op)
-        }
-        Ok(result)
-    }
-
-    pub fn collect_errored(
-        errored: &[Errored],
-        operations: &HashMap<OperationHash, MempoolOperationRef>,
-        protocol_hash: &str,
-        streamed_operations: &mut HashSet<String>,
-    ) -> Result<Vec<Self>, RpcServiceError> {
-        let mut result = Vec::with_capacity(errored.len());
-        for errored_op in errored {
-            let op_hash = errored_op.hash.to_base58_check();
-
-            // if the operation is allready included in the stream, ignore it
-            if streamed_operations.contains(&op_hash) {
-                continue;
-            }
-
-            streamed_operations.insert(op_hash.clone());
-
-            let operation = match operations.get(&errored_op.hash) {
-                Some(op) => op,
-                None => {
-                    return Err(RpcServiceError::NoDataFoundError {
-                        reason: "Operation hash not found in operations data".into(),
-                    })
-                }
-            };
-            let monitored_op = MonitoredOperation {
-                branch: operation.operation().branch().to_base58_check(),
-                protocol: Some(protocol_hash.to_string()),
-                hash: op_hash,
-                protocol_data: serde_json::from_str(
-                    &errored_op
-                        .protocol_data_json_with_error_json
-                        .protocol_data_json,
-                )?,
-                error: Some(
-                    errored_op
-                        .protocol_data_json_with_error_json
-                        .error_json
-                        .clone(),
-                ),
-            };
-            result.push(monitored_op)
-        }
-        Ok(result)
-    }
-}
-
 pub struct HeadMonitorStream {
     block_meta_storage: BlockMetaStorage,
 
@@ -176,126 +64,6 @@ pub struct HeadMonitorStream {
     contains_waker: bool,
     stream_id: StreamId,
     log: Logger,
-}
-
-pub struct OperationMonitorStream {
-    _chain_id: ChainId,
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
-    state: RpcCollectedStateRef,
-    last_checked_head: BlockHash,
-    log: Logger,
-    contains_waker: bool,
-    stream_id: StreamId,
-    streamed_operations: HashSet<String>,
-    query: MempoolOperationsQuery,
-    poll_counter: usize,
-}
-
-impl OperationMonitorStream {
-    pub fn new(
-        _chain_id: ChainId,
-        current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        state: RpcCollectedStateRef,
-        log: Logger,
-        last_checked_head: BlockHash,
-        mempool_operations_query: MempoolOperationsQuery,
-    ) -> Self {
-        Self {
-            _chain_id,
-            current_mempool_state_storage,
-            state,
-            last_checked_head,
-            log,
-            contains_waker: false,
-            query: mempool_operations_query,
-            streamed_operations: HashSet::new(),
-            stream_id: generate_stream_id(),
-            poll_counter: 0,
-        }
-    }
-
-    fn yield_operations(&mut self) -> Poll<Option<Result<String, RpcServiceError>>> {
-        let OperationMonitorStream {
-            current_mempool_state_storage,
-            query,
-            streamed_operations,
-            ..
-        } = self;
-
-        // 1. get the operations currently in mempool
-        match current_mempool_state_storage.read() {
-            Ok(mempool_state) => {
-                let (validate_operation_result, operations, protocol_hash) =
-                    match mempool_state.prevalidator() {
-                        Some(prevalidator) => (
-                            mempool_state.result(),
-                            mempool_state.operations(),
-                            prevalidator.protocol.to_base58_check(),
-                        ),
-                        None => {
-                            // No prevalidator present means the node is not bootstrapped and cannot process mempool operations
-                            // end the stream in this case
-                            return Poll::Ready(None);
-                        }
-                    };
-                let mut requested_ops =
-                    Vec::with_capacity(validate_operation_result.operations_count());
-
-                // 2. collect the requested operations
-                if query.applied {
-                    let monitored_applied = MonitoredOperation::collect_applied(
-                        &validate_operation_result.applied,
-                        operations,
-                        &protocol_hash,
-                        streamed_operations,
-                    )?;
-                    requested_ops.extend(monitored_applied);
-                }
-                if query.refused {
-                    let monitored_refused = MonitoredOperation::collect_errored(
-                        &validate_operation_result.refused,
-                        operations,
-                        &protocol_hash,
-                        streamed_operations,
-                    )?;
-                    requested_ops.extend(monitored_refused);
-                }
-                if query.branch_delayed {
-                    let monitored_branch_delayed = MonitoredOperation::collect_errored(
-                        &validate_operation_result.branch_delayed,
-                        operations,
-                        &protocol_hash,
-                        streamed_operations,
-                    )?;
-                    requested_ops.extend(monitored_branch_delayed);
-                }
-                if query.branch_refused {
-                    let monitored_branch_refused = MonitoredOperation::collect_errored(
-                        &validate_operation_result.branch_refused,
-                        operations,
-                        &protocol_hash,
-                        streamed_operations,
-                    )?;
-                    requested_ops.extend(monitored_branch_refused);
-                }
-                // release lock asap
-                drop(mempool_state);
-
-                // handle special case, when the first poll has no operations, return an empty vector
-                if requested_ops.is_empty() && self.poll_counter == 1 {
-                    return Poll::Ready(Some(Ok("[]\n".to_string())));
-                } else if requested_ops.is_empty() {
-                    return Poll::Pending;
-                }
-
-                let mut to_yield_string: String = serde_json::to_string(&requested_ops)?;
-                to_yield_string = to_yield_string.replace("\\", "");
-                to_yield_string.push('\n');
-                Poll::Ready(Some(Ok(to_yield_string)))
-            }
-            Err(_) => Poll::Ready(None),
-        }
-    }
 }
 
 impl HeadMonitorStream {
@@ -430,74 +198,4 @@ impl Drop for HeadMonitorStream {
     }
 }
 
-impl Stream for OperationMonitorStream {
-    type Item = Result<String, RpcServiceError>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<String, RpcServiceError>>> {
-        self.poll_counter += 1;
-
-        if !self.contains_waker {
-            match self.current_mempool_state_storage.write() {
-                Ok(mut mempool_state) => {
-                    mempool_state.add_stream(self.stream_id, cx.waker().clone())
-                }
-                Err(e) => {
-                    error!(
-                        self.log,
-                        "OperationMonitorStream cannot access shared mempool state, reason: {}", e
-                    );
-                    return Poll::Ready(None);
-                }
-            };
-            self.contains_waker = true;
-        }
-
-        let is_last_checked_head_the_same_as_current_head = match self.state.read() {
-            Ok(state) => self.last_checked_head.eq(&state.current_head().hash),
-            Err(e) => {
-                error!(
-                    self.log,
-                    "OperationMonitorStream cannot access shared rpc state, reason: {}", e
-                );
-                return Poll::Ready(None);
-            }
-        };
-
-        if is_last_checked_head_the_same_as_current_head {
-            // current head not changed, check for new operations
-            let yielded = self.yield_operations();
-            match yielded {
-                Poll::Pending => Poll::Pending,
-                _ => yielded,
-            }
-        } else {
-            // Head change, end stream
-            match self.current_mempool_state_storage.write() {
-                Ok(mut mempool_state) => {
-                    mempool_state.remove_stream(self.stream_id);
-                    Poll::Ready(None)
-                }
-                Err(e) => {
-                    error!(
-                        self.log,
-                        "OperationMonitorStream cannot access shared mempool state, reason: {}", e
-                    );
-                    Poll::Ready(None)
-                }
-            }
-        }
-    }
-}
-
-impl Drop for OperationMonitorStream {
-    fn drop(&mut self) {
-        if let Ok(mut state) = self.current_mempool_state_storage.write() {
-            state.remove_stream(self.stream_id);
-        };
-    }
-}
-
-// TODO: add tests for both Streams!
+// TODO: add tests for Stream!

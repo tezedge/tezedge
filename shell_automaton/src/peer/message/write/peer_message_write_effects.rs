@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::net::SocketAddr;
+
+use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::peer::binary_message::write::{
@@ -11,7 +14,24 @@ use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::Service;
 use crate::{Action, ActionWithMeta, Store};
 
-use super::{PeerMessageWriteInitAction, PeerMessageWriteNextAction};
+use super::PeerMessageWriteNextAction;
+
+fn binary_message_write_init<S: Service>(
+    store: &mut Store<S>,
+    address: SocketAddr,
+    encoded_message: Result<Vec<u8>, BinaryWriterError>,
+) -> bool {
+    match encoded_message {
+        Ok(bytes) => store.dispatch(PeerBinaryMessageWriteSetContentAction {
+            address,
+            message: bytes,
+        }),
+        Err(err) => store.dispatch(PeerMessageWriteErrorAction {
+            address,
+            error: err.into(),
+        }),
+    }
+}
 
 pub fn peer_message_write_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
@@ -28,12 +48,9 @@ where
             };
 
             if let PeerBinaryMessageWriteState::Init { .. } = &peer.message_write.current {
-                if let Some(front_msg) = peer.message_write.queue.front() {
-                    let message = front_msg.clone();
-                    store.dispatch(PeerMessageWriteInitAction {
-                        address: action.address,
-                        message,
-                    });
+                if let Some(next_message) = peer.message_write.queue.front() {
+                    let message_encode_result = next_message.as_bytes();
+                    binary_message_write_init(store, action.address, message_encode_result);
                 }
             }
         }
@@ -47,20 +64,7 @@ where
             };
 
             if let PeerBinaryMessageWriteState::Init { .. } = &peer.message_write.current {
-                match action.message.as_bytes() {
-                    Ok(bytes) => {
-                        store.dispatch(PeerBinaryMessageWriteSetContentAction {
-                            address: action.address,
-                            message: bytes,
-                        });
-                    }
-                    Err(err) => {
-                        store.dispatch(PeerMessageWriteErrorAction {
-                            address: action.address,
-                            error: err.into(),
-                        });
-                    }
-                }
+                binary_message_write_init(store, action.address, action.message.as_bytes());
             }
         }
         Action::PeerBinaryMessageWriteReady(action) => {

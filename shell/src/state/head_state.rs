@@ -13,7 +13,6 @@ use storage::{PersistentStorage, StorageError};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::Head;
 
-use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::state::StateError;
 use crate::validation;
 
@@ -68,21 +67,22 @@ impl HeadState {
     pub fn try_update_new_current_head(
         &mut self,
         potential_new_head: &BlockHeaderWithHash,
-        current_mempool_state: &CurrentMempoolStateStorageRef,
     ) -> Result<Option<(Head, HeadResult)>, StateError> {
         // check if we can update head
         {
-            let mempool_state = current_mempool_state.read()?;
+            // TODO(vlad): check fitness in mempool
+            // let mempool_state = current_mempool_state.read()?;
             let current_context_fitness = {
                 // get fitness from mempool, if not, than use current_head.fitness
-                if let Some(Some(fitness)) = mempool_state
-                    .prevalidator()
-                    .map(|p| p.context_fitness.as_ref())
-                {
-                    fitness
-                } else {
-                    self.current_head.fitness()
-                }
+                // if let Some(Some(fitness)) = mempool_state
+                //     .prevalidator()
+                //     .map(|p| p.context_fitness.as_ref())
+                // {
+                //     fitness
+                // } else {
+                //     self.current_head.fitness()
+                // }
+                self.current_head.fitness()
             };
             // need to check against current_head, if not accepted, just ignore potential head
             if !validation::can_update_current_head(
@@ -94,7 +94,7 @@ impl HeadState {
                 return Ok(None);
             }
             // release lock asap
-            drop(mempool_state);
+            // drop(mempool_state);
         }
 
         // we need to check, if previous head is predecessor of new_head (for later use)

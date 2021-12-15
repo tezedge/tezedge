@@ -22,7 +22,7 @@ use super::SignatureCurve;
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
-#[derive(Serialize, Deserialize, Clone, PartialEq, HasEncoding, NomReader, BinWriter)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),

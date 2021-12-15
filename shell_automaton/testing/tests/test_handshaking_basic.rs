@@ -1,6 +1,9 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    convert::TryFrom,
+    time::{Duration, SystemTime},
+};
 
-use crypto::nonce::Nonce;
+use crypto::{hash::ChainId, nonce::Nonce};
 use shell_automaton::peers::check::timeouts::PeersCheckTimeoutsInitAction;
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Config, Quota, State};
@@ -26,6 +29,7 @@ fn build_cluster(pow_target: f64) -> Cluster {
             vec![1],
             vec![1],
         ),
+        chain_id: ChainId::try_from("NetXz969SFaFn8k").unwrap(), // granada
         check_timeouts_interval: Duration::from_millis(500),
         peer_connecting_timeout: Duration::from_millis(2000),
         peer_handshaking_timeout: Duration::from_secs(8),

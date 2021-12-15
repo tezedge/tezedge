@@ -4,21 +4,10 @@
 //! Module contains strict/exact api between [shell] and  [outside thread/world, like rpc, ws...]
 //! This covers one-direction "world -> shell" communication
 
-use crypto::hash::ChainId;
-
-use super::{UnexpectedError, UnsupportedMessageError};
+use super::UnsupportedMessageError;
 use crate::messages::*;
 
-pub trait ShellConnector: InjectBlockConnector {
-    fn request_current_head_from_connected_peers(&self);
-
-    fn find_mempool_prevalidators(&self) -> Result<Vec<Prevalidator>, UnexpectedError>;
-
-    fn find_mempool_prevalidator_caller(
-        &self,
-        chain_id: &ChainId,
-    ) -> Option<Box<dyn MempoolPrevalidatorCaller>>;
-}
+pub trait ShellConnector: InjectBlockConnector {}
 
 pub trait InjectBlockConnector {
     fn inject_block(

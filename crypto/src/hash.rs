@@ -99,6 +99,14 @@ macro_rules! define_hash {
             }
         }
 
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                // TODO - TE-373: with b58 this could be done without the need
+                // to perform a heap allocation.
+                write!(f, "{}", self.to_base58_check())
+            }
+        }
+
         impl ::std::fmt::Debug for $name {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 // TODO - TE-373: with b58 this could be done without the need
