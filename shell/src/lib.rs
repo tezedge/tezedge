@@ -199,17 +199,12 @@ pub mod connector {
     }
 
     impl ShellConnectorSupport {
-        pub fn new(
-            chain_manager: ChainManagerRef,
-        ) -> Self {
-            ShellConnectorSupport {
-                chain_manager,
-            }
+        pub fn new(chain_manager: ChainManagerRef) -> Self {
+            ShellConnectorSupport { chain_manager }
         }
     }
 
-    impl ShellConnector for ShellConnectorSupport {
-    }
+    impl ShellConnector for ShellConnectorSupport {}
 
     impl InjectBlockConnector for ShellConnectorSupport {
         fn inject_block(

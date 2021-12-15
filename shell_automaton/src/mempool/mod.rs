@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 mod mempool_state;
-pub use self::mempool_state::MempoolState;
+pub use self::mempool_state::{
+    MempoolState, OperationNodeCurrentHeadStats, OperationNodeStats, OperationStats,
+    OperationValidationResult, OperationsStats,
+};
 
 mod mempool_actions;
 pub use self::mempool_actions::*;

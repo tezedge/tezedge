@@ -7,8 +7,7 @@
 use super::UnsupportedMessageError;
 use crate::messages::*;
 
-pub trait ShellConnector: InjectBlockConnector {
-}
+pub trait ShellConnector: InjectBlockConnector {}
 
 pub trait InjectBlockConnector {
     fn inject_block(

@@ -699,3 +699,96 @@ pub(crate) async fn get_shell_automaton_actions_graph(
         })
         .collect())
 }
+
+pub type OperationsStats = HashMap<String, OperationStats>;
+
+#[derive(Serialize)]
+pub struct OperationStats {
+    /// Minimum time when we saw this operation. Latencies are measured
+    /// from this point.
+    min_time: u64,
+    validation_result: Option<(u64, shell_automaton::mempool::OperationValidationResult)>,
+    nodes: HashMap<String, OperationNodeStats>,
+}
+
+#[derive(Serialize)]
+pub struct OperationNodeStats {
+    received: Vec<OperationNodeCurrentHeadStats>,
+    sent: Vec<OperationNodeCurrentHeadStats>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationNodeCurrentHeadStats {
+    /// Latency from first time we have seen that operation.
+    latency: u64,
+    block_level: i32,
+    block_timestamp: i64,
+}
+
+pub(crate) async fn get_shell_automaton_mempool_operation_stats(
+    env: &RpcServiceEnvironment,
+) -> Result<OperationsStats, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetMempoolOperationStats { channel: tx })
+        .await;
+
+    let result = rx
+        .await?
+        .into_iter()
+        .map(|(op_hash, op_stats)| {
+            let min_time = op_stats.nodes.iter().fold(u64::MAX, |mut r, (_, stats)| {
+                if let Some(min_sent) = stats.sent.iter().map(|x| x.time).min() {
+                    r = r.min(min_sent);
+                }
+                if let Some(min_received) = stats.received.iter().map(|x| x.time).min() {
+                    r = r.min(min_received);
+                }
+                r
+            });
+            let min_time = if min_time == u64::MAX { 0 } else { min_time };
+
+            let op_stats = OperationStats {
+                min_time,
+                validation_result: op_stats
+                    .validation_result
+                    .map(|(time, result)| (time.checked_sub(min_time).unwrap_or(0), result)),
+                nodes: op_stats
+                    .nodes
+                    .into_iter()
+                    .map(|(k, stats)| {
+                        (
+                            k.to_base58_check(),
+                            OperationNodeStats {
+                                received: stats
+                                    .received
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: stats.time.checked_sub(min_time).unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                                sent: stats
+                                    .sent
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: stats.time.checked_sub(min_time).unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+
+            (op_hash.to_base58_check(), op_stats)
+        })
+        .collect();
+
+    Ok(result)
+}

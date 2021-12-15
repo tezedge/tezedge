@@ -123,7 +123,8 @@ pub async fn mempool_monitor_operations(
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
 
-    let stream = env.shell_automaton_sender()
+    let stream = env
+        .shell_automaton_sender()
         .request_stream(RpcRequestStream::GetOperations {
             applied: applied == Some("yes"),
             branch_refused: branch_refused == Some("yes"),
@@ -133,8 +134,8 @@ pub async fn mempool_monitor_operations(
         .await
         .ok()
         .expect("state machine should be correct");
-    let stream = UnboundedReceiverStream::new(stream)
-        .map(|v| serde_json::to_string(&v).map_err(From::from));
+    let stream =
+        UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
     make_json_stream_response(stream)
 }
 
@@ -277,8 +278,8 @@ pub async fn mempool_pending_operations(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let log = env.log.clone();
-    let pending_operations = services::mempool_services::get_pending_operations(&chain_id, env)
-        .await;
+    let pending_operations =
+        services::mempool_services::get_pending_operations(&chain_id, env).await;
     result_to_json_response(pending_operations, &log)
 }
 

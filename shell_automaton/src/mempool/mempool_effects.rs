@@ -28,21 +28,20 @@ use crate::{
 
 use super::{
     mempool_actions::{
-        BlockAppliedAction, MempoolBroadcastAction, MempoolBroadcastDoneAction,
-        MempoolGetOperationsAction, MempoolMarkOperationsAsPendingAction,
-        MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
-        MempoolRpcRespondAction, MempoolValidateStartAction, MempoolValidateWaitPrevalidatorAction,
-        MempoolCleanupWaitPrevalidatorAction, MempoolSendAction, MempoolAskCurrentHeadAction,
-        MempoolUnregisterOperationsStreamsAction, MempoolFlushAction,
-        MempoolRemoveAppliedOperationsAction, BranchChangedAction, MempoolGetPendingOperationsAction,
+        BlockAppliedAction, BranchChangedAction, MempoolAskCurrentHeadAction,
+        MempoolBroadcastAction, MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction,
+        MempoolFlushAction, MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
+        MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
+        MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
+        MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
+        MempoolUnregisterOperationsStreamsAction, MempoolValidateStartAction,
+        MempoolValidateWaitPrevalidatorAction,
     },
     monitored_operation::{MempoolOperations, MonitoredOperation},
 };
 
-pub fn mempool_effects<S>(
-    store: &mut Store<State, S, Action>,
-    action: &ActionWithMeta,
-) where
+pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
+where
     S: Service,
 {
     // println!("{:#?}", action);
@@ -62,7 +61,15 @@ pub fn mempool_effects<S>(
     }
     match &action.action {
         Action::StorageOperationsOk(kv_operations::StorageOperationsOkAction { key, value }) => {
-            if store.state().mempool.local_head_state.as_ref().unwrap().1.eq(key) {
+            if store
+                .state()
+                .mempool
+                .local_head_state
+                .as_ref()
+                .unwrap()
+                .1
+                .eq(key)
+            {
                 let operation_hashes = value
                     .iter()
                     .map(|op| op.message_typed_hash::<OperationHash>().unwrap())
@@ -85,7 +92,10 @@ pub fn mempool_effects<S>(
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
                     for rpc_id in ids {
-                        store.service().rpc().respond(rpc_id, serde_json::Value::Null);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
                     store.dispatch(MempoolRpcRespondAction {});
                     let streams = store.state().mempool.operation_streams.clone();
@@ -94,7 +104,14 @@ pub fn mempool_effects<S>(
                         let refused_ops = &store.state().mempool.validated_operations.refused_ops;
                         // `ProtocolAction::OperationValidated` action can happens only
                         // if we have a prevalidator
-                        let prot = store.state().mempool.prevalidator.as_ref().unwrap().protocol.to_base58_check();
+                        let prot = store
+                            .state()
+                            .mempool
+                            .prevalidator
+                            .as_ref()
+                            .unwrap()
+                            .protocol
+                            .to_base58_check();
                         let applied = if stream.applied {
                             response.result.applied.as_slice()
                         } else {
@@ -117,12 +134,27 @@ pub fn mempool_effects<S>(
                         };
                         let resp = std::iter::empty()
                             .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(refused, refused_ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(branch_delayed, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(branch_refused, ops, &prot))
+                            .chain(MonitoredOperation::collect_errored(
+                                refused,
+                                refused_ops,
+                                &prot,
+                            ))
+                            .chain(MonitoredOperation::collect_errored(
+                                branch_delayed,
+                                ops,
+                                &prot,
+                            ))
+                            .chain(MonitoredOperation::collect_errored(
+                                branch_refused,
+                                ops,
+                                &prot,
+                            ))
                             .collect::<Vec<_>>();
                         let json = serde_json::to_value(resp).unwrap();
-                        store.service().rpc().respond_stream(stream.rpc_id, Some(json));
+                        store
+                            .service()
+                            .rpc()
+                            .respond_stream(stream.rpc_id, Some(json));
                     }
                 }
                 _ => {}
@@ -131,7 +163,10 @@ pub fn mempool_effects<S>(
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
             match message.message() {
                 PeerMessage::GetCurrentHead(ref get_current_head) => {
-                    if get_current_head.chain_id().ne(&store.state().config.chain_id) {
+                    if get_current_head
+                        .chain_id()
+                        .ne(&store.state().config.chain_id)
+                    {
                         return;
                     }
                     store.dispatch(MempoolSendAction { address: *address });
@@ -145,21 +180,17 @@ pub fn mempool_effects<S>(
                     }
 
                     let message = current_head.current_mempool().clone();
-                    store.dispatch(
-                        MempoolRecvDoneAction {
-                            address: *address,
-                            message,
-                            level: current_head.current_block_header().level(),
-                        },
-                    );
+                    store.dispatch(MempoolRecvDoneAction {
+                        address: *address,
+                        message,
+                        level: current_head.current_block_header().level(),
+                    });
                 }
                 PeerMessage::Operation(ref op) => {
-                    store.dispatch(
-                        MempoolOperationRecvDoneAction {
-                            address: *address,
-                            operation: op.clone().into(),
-                        },
-                    );
+                    store.dispatch(MempoolOperationRecvDoneAction {
+                        address: *address,
+                        operation: op.clone().into(),
+                    });
                 }
                 PeerMessage::GetOperations(ref hashes) => {
                     for hash in hashes.get_operations() {
@@ -170,12 +201,10 @@ pub fn mempool_effects<S>(
 
                         if let Some(op) = op {
                             let message = OperationMessage::from(op.clone());
-                            store.dispatch(
-                                PeerMessageWriteInitAction {
-                                    address: *address,
-                                    message: message.into(),
-                                },
-                            );
+                            store.dispatch(PeerMessageWriteInitAction {
+                                address: *address,
+                                message: message.into(),
+                            });
                         }
                     }
                 }
@@ -183,7 +212,12 @@ pub fn mempool_effects<S>(
             }
         }
         Action::BlockApplied(BlockAppliedAction {
-            chain_id, block, block_metadata_hash, ops_metadata_hash, hash, ..
+            chain_id,
+            block,
+            block_metadata_hash,
+            ops_metadata_hash,
+            hash,
+            ..
         }) => {
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
@@ -220,30 +254,62 @@ pub fn mempool_effects<S>(
                 None => return,
             };
             let applied = if act.applied {
-                store.state().mempool.validated_operations.applied.as_slice()
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .applied
+                    .as_slice()
             } else {
                 &[]
             };
             let refused = if act.refused {
-                store.state().mempool.validated_operations.refused.as_slice()
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .refused
+                    .as_slice()
             } else {
                 &[]
             };
             let branch_delayed = if act.branch_delayed {
-                store.state().mempool.validated_operations.branch_delayed.as_slice()
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .branch_delayed
+                    .as_slice()
             } else {
                 &[]
             };
             let branch_refused = if act.branch_refused {
-                store.state().mempool.validated_operations.branch_refused.as_slice()
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .branch_refused
+                    .as_slice()
             } else {
                 &[]
             };
             let resp = std::iter::empty()
                 .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                .chain(MonitoredOperation::collect_errored(refused, refused_ops, &prot))
-                .chain(MonitoredOperation::collect_errored(branch_delayed, ops, &prot))
-                .chain(MonitoredOperation::collect_errored(branch_refused, ops, &prot))
+                .chain(MonitoredOperation::collect_errored(
+                    refused,
+                    refused_ops,
+                    &prot,
+                ))
+                .chain(MonitoredOperation::collect_errored(
+                    branch_delayed,
+                    ops,
+                    &prot,
+                ))
+                .chain(MonitoredOperation::collect_errored(
+                    branch_refused,
+                    ops,
+                    &prot,
+                ))
                 .collect::<Vec<_>>();
             let json = serde_json::to_value(resp).unwrap();
             store.service().rpc().respond_stream(act.rpc_id, Some(json));
@@ -255,14 +321,14 @@ pub fn mempool_effects<S>(
                 None => {
                     store.service().rpc().respond(*rpc_id, empty());
                     return;
-                },
+                }
             };
             let (_, current_branch) = match &store.state().mempool.local_head_state {
                 Some(v) => v,
                 None => {
                     store.service().rpc().respond(*rpc_id, empty());
                     return;
-                },
+                }
             };
             let v_ops = &store.state().mempool.validated_operations;
             let v = MempoolOperations::collect(
@@ -274,44 +340,39 @@ pub fn mempool_effects<S>(
                 current_branch,
                 &prevalidator.protocol,
             );
-            store.service().rpc().respond(*rpc_id, serde_json::to_value(&v).unwrap());
+            store
+                .service()
+                .rpc()
+                .respond(*rpc_id, serde_json::to_value(&v).unwrap());
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
-                    store.dispatch(
-                        MempoolGetOperationsAction {
-                            address: *address,
-                        },
-                    );
+                    store.dispatch(MempoolGetOperationsAction { address: *address });
                 } else {
                     // if this mempool doesn't introduce new operations, we have nothing to do
                 }
             }
         }
         Action::MempoolGetOperations(MempoolGetOperationsAction { address }) => {
-            let peer = store.state().mempool.peer_state.get(address).expect("enabling condition");
+            let peer = store
+                .state()
+                .mempool
+                .peer_state
+                .get(address)
+                .expect("enabling condition");
             let ops = peer.requesting_full_content.iter().cloned().collect();
-            store.dispatch(
-                MempoolMarkOperationsAsPendingAction {
-                    address: *address,
-                },
-            );
-            store.dispatch(
-                PeerMessageWriteInitAction {
-                    address: *address,
-                    message: Arc::new(GetOperationsMessage::new(ops).into()),
-                },
-            );
+            store.dispatch(MempoolMarkOperationsAsPendingAction { address: *address });
+            store.dispatch(PeerMessageWriteInitAction {
+                address: *address,
+                message: Arc::new(GetOperationsMessage::new(ops).into()),
+            });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            store
-                .dispatch(
-                    MempoolValidateStartAction {
-                        operation: operation.clone(),
-                    },
-                );
+            store.dispatch(MempoolValidateStartAction {
+                operation: operation.clone(),
+            });
         }
         Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
             let mempool_state = &store.state().mempool;
@@ -325,7 +386,9 @@ pub fn mempool_effects<S>(
                     .protocol()
                     .validate_operation_for_mempool(validate_req);
             } else {
-                store.dispatch(MempoolValidateWaitPrevalidatorAction { operation: operation.clone() });
+                store.dispatch(MempoolValidateWaitPrevalidatorAction {
+                    operation: operation.clone(),
+                });
             }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
@@ -336,17 +399,13 @@ pub fn mempool_effects<S>(
         }
         Action::MempoolAskCurrentHead(MempoolAskCurrentHeadAction {}) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
-            let message = GetCurrentHeadMessage::new(
-                store.state().config.chain_id.clone(),
-            );
+            let message = GetCurrentHeadMessage::new(store.state().config.chain_id.clone());
             let message = Arc::new(PeerMessageResponse::from(message));
             for address in addresses {
-                store.dispatch(
-                    PeerMessageWriteInitAction {
-                        address: address.clone(),
-                        message: message.clone(),
-                    },
-                );
+                store.dispatch(PeerMessageWriteInitAction {
+                    address: address.clone(),
+                    message: message.clone(),
+                });
             }
         }
         Action::MempoolSend(MempoolSendAction { address }) => {
@@ -393,19 +452,15 @@ pub fn mempool_effects<S>(
             );
             let message = Arc::new(PeerMessageResponse::from(message));
 
-            store.dispatch(
-                PeerMessageWriteInitAction {
-                    address: address.clone(),
-                    message,
-                },
-            );
-            store.dispatch(
-                MempoolBroadcastDoneAction {
-                    address: address.clone(),
-                    pending,
-                    known_valid,
-                },
-            );
+            store.dispatch(PeerMessageWriteInitAction {
+                address: address.clone(),
+                message,
+            });
+            store.dispatch(MempoolBroadcastDoneAction {
+                address: address.clone(),
+                pending,
+                known_valid,
+            });
         }
         _ => (),
     }

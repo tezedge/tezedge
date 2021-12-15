@@ -54,10 +54,7 @@ pub struct PeerState {
 }
 
 impl PeerState {
-    pub fn new(
-        peer_id: Arc<PeerId>,
-        limits: DataQueuesLimits,
-    ) -> Self {
+    pub fn new(peer_id: Arc<PeerId>, limits: DataQueuesLimits) -> Self {
         PeerState {
             peer_id,
             is_bootstrapped: false,

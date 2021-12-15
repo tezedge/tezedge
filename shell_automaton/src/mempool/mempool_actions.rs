@@ -5,7 +5,9 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ChainId, BlockHash, OperationHash, BlockMetadataHash, OperationMetadataListListHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ChainId, OperationHash, OperationMetadataListListHash,
+};
 use tezos_messages::p2p::encoding::{
     block_header::BlockHeader, mempool::Mempool, operation::Operation,
 };

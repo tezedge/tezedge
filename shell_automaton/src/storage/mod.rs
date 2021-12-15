@@ -121,38 +121,30 @@ macro_rules! kv_effects {
             use crate::storage::request::*;
             use crate::Action;
             match &action.action {
-                Action::$get($get_action { key }) => store.dispatch(
-                    StorageRequestCreateAction {
-                        payload: StorageRequestPayload::$request(key.clone()),
-                    },
-                ),
+                Action::$get($get_action { key }) => store.dispatch(StorageRequestCreateAction {
+                    payload: StorageRequestPayload::$request(key.clone()),
+                }),
                 Action::StorageRequestSuccess(StorageRequestSuccessAction {
                     result: StorageResponseSuccess::$success(key, Some(value)),
                     ..
-                }) => store.dispatch(
-                    $ok_action {
-                        key: key.clone(),
-                        value: value.clone(),
-                    },
-                ),
+                }) => store.dispatch($ok_action {
+                    key: key.clone(),
+                    value: value.clone(),
+                }),
                 Action::StorageRequestSuccess(StorageRequestSuccessAction {
                     result: StorageResponseSuccess::$success(key, None),
                     ..
-                }) => store.dispatch(
-                    $err_action {
-                        key: key.clone(),
-                        error: Error::NotFound,
-                    },
-                ),
+                }) => store.dispatch($err_action {
+                    key: key.clone(),
+                    error: Error::NotFound,
+                }),
                 Action::StorageRequestError(StorageRequestErrorAction {
                     error: StorageResponseError::$error(key, error),
                     ..
-                }) => store.dispatch(
-                    $err_action {
-                        key: key.clone(),
-                        error: error.clone().into(),
-                    }
-                ),
+                }) => store.dispatch($err_action {
+                    key: key.clone(),
+                    error: error.clone().into(),
+                }),
                 _ => true,
             };
         }

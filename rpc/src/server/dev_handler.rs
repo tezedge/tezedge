@@ -326,3 +326,12 @@ pub async fn dev_shell_automaton_actions_graph_get(
 ) -> ServiceResult {
     make_json_response(&dev_services::get_shell_automaton_actions_graph(&env).await?)
 }
+
+pub async fn dev_shell_automaton_mempool_operation_stats_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_mempool_operation_stats(&env).await?)
+}

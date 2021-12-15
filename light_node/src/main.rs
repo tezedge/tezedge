@@ -224,10 +224,7 @@ fn block_on_actors(
         initialize_chain_manager_result_callback_receiver,
     ) = create_oneshot_callback();
 
-    let (
-        chain_manager,
-        mut chain_manager_p2p_reader_thread_watcher,
-    ) = ChainManager::actor(
+    let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
@@ -253,8 +250,7 @@ fn block_on_actors(
     };
     info!(log, "Chain manager initialized (8/8)");
 
-    let shell_connector =
-        ShellConnectorSupport::new(chain_manager.clone());
+    let shell_connector = ShellConnectorSupport::new(chain_manager.clone());
 
     let mut rpc_server = RpcServer::new(
         log.clone(),

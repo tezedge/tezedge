@@ -32,20 +32,15 @@ pub async fn get_pending_operations(
     _chain_id: &ChainId,
     env: Arc<RpcServiceEnvironment>,
 ) -> Result<serde_json::Value, RpcServiceError> {
-    env
-        .shell_automaton_sender()
+    env.shell_automaton_sender()
         .send(RpcShellAutomatonMsg::GetPendingOperations)
         .await
-        .map_err(|_| {
-            RpcServiceError::UnexpectedError {
-                reason: "the channel between rpc and shell is overflown".to_string(),
-            }
+        .map_err(|_| RpcServiceError::UnexpectedError {
+            reason: "the channel between rpc and shell is overflown".to_string(),
         })?
         .await
-        .map_err(|_| {
-            RpcServiceError::UnexpectedError {
-                reason: "state machine failed to respond".to_string(),
-            }
+        .map_err(|_| RpcServiceError::UnexpectedError {
+            reason: "state machine failed to respond".to_string(),
         })
 }
 
@@ -89,21 +84,22 @@ pub async fn inject_operation(
     match result {
         Ok(Ok(serde_json::Value::Null)) => (),
         Ok(Ok(serde_json::Value::String(reason))) => {
-            return Err(RpcServiceError::UnexpectedError {
-                reason,
-            });
-        },
+            return Err(RpcServiceError::UnexpectedError { reason });
+        }
         Ok(Ok(resp)) => {
             return Err(RpcServiceError::UnexpectedError {
                 reason: resp.to_string(),
             });
-        },
+        }
         Ok(Err(err)) => {
-            warn!(env.log(), "Operation injection. State machine failed to respond: {}", err);
+            warn!(
+                env.log(),
+                "Operation injection. State machine failed to respond: {}", err
+            );
             return Err(RpcServiceError::UnexpectedError {
                 reason: err.to_string(),
             });
-        },
+        }
         Err(elapsed) => {
             warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
             return Err(RpcServiceError::UnexpectedError {
@@ -171,7 +167,8 @@ pub async fn inject_block(
             operation_hashes.push(op.message_typed_hash()?);
         }
 
-        if let Err(err) = env.shell_automaton_sender()
+        if let Err(err) = env
+            .shell_automaton_sender()
             .send(RpcShellAutomatonMsg::RemoveOperations { operation_hashes })
             .await
         {
@@ -258,14 +255,15 @@ pub async fn inject_block(
 
 pub async fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
     // request current head from the peers
-    if let Err(err) = env.shell_automaton_sender()
+    if let Err(err) = env
+        .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::RequestCurrentHeadFromConnectedPeers)
         .await
     {
         warn!(env.log(), "state machine failed to respond: {}", err);
         return Err(RpcServiceError::UnexpectedError {
             reason: err.to_string(),
-        })
+        });
     }
 
     Ok(())

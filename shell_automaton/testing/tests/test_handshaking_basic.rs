@@ -1,6 +1,9 @@
-use std::{time::{Duration, SystemTime}, convert::TryFrom};
+use std::{
+    convert::TryFrom,
+    time::{Duration, SystemTime},
+};
 
-use crypto::{nonce::Nonce, hash::ChainId};
+use crypto::{hash::ChainId, nonce::Nonce};
 use shell_automaton::peers::check::timeouts::PeersCheckTimeoutsInitAction;
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Config, Quota, State};

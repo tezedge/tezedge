@@ -35,6 +35,10 @@ pub enum RpcRequest {
     GetCurrentGlobalState {
         channel: oneshot::Sender<State>,
     },
+    GetMempoolOperationStats {
+        channel: oneshot::Sender<crate::mempool::OperationsStats>,
+    },
+
     InjectOperation {
         operation_hash: OperationHash,
         operation: Operation,
@@ -54,7 +58,7 @@ pub enum RpcRequestStream {
         refused: bool,
         branch_delayed: bool,
         branch_refused: bool,
-    }
+    },
 }
 
 #[derive(Clone)]
@@ -155,9 +159,11 @@ impl RpcService for RpcServiceDefault {
 
     fn respond_stream(&mut self, call_id: RpcId, json: Option<serde_json::Value>) {
         match json {
-            Some(json) => if let Some(sender) = self.outgoing_streams.get(&call_id) {
-                let _ = sender.send(json);
-            },
+            Some(json) => {
+                if let Some(sender) = self.outgoing_streams.get(&call_id) {
+                    let _ = sender.send(json);
+                }
+            }
             None => drop(self.outgoing_streams.remove(&call_id)),
         }
     }

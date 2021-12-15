@@ -22,7 +22,9 @@ use itertools::{Itertools, MinMaxResult};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 
-use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, BlockMetadataHash, OperationMetadataListListHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ChainId, CryptoboxPublicKeyHash, OperationMetadataListListHash,
+};
 use crypto::seeded_step::Seed;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::PeerId;
@@ -268,12 +270,7 @@ impl ChainManager {
                 Arc::new(Mutex::new(Some(first_initialization_done_result_callback))),
             )),
         )
-        .map(|actor| {
-            (
-                actor,
-                p2p_reader_thread_watcher,
-            )
-        })
+        .map(|actor| (actor, p2p_reader_thread_watcher))
     }
 
     /// The `ChainManager` is intended to serve as a singleton actor so that's why
@@ -304,10 +301,7 @@ impl ChainManager {
 
         match msg {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
-                let peer = PeerState::new(
-                    peer_id.clone(),
-                    chain_state.data_queues_limits(),
-                );
+                let peer = PeerState::new(peer_id.clone(), chain_state.data_queues_limits());
                 // store peer
                 self.peers.insert(peer_id.address, peer);
 
@@ -337,7 +331,16 @@ impl ChainManager {
 
                         match received.message.message() {
                             PeerMessage::CurrentBranch(message) => {
-                                info!(log, "received current branch {} from {}", message.current_branch().message_typed_hash::<BlockHash>().unwrap().to_base58_check(), peer.peer_id.address);
+                                info!(
+                                    log,
+                                    "received current branch {} from {}",
+                                    message
+                                        .current_branch()
+                                        .message_typed_hash::<BlockHash>()
+                                        .unwrap()
+                                        .to_base58_check(),
+                                    peer.peer_id.address
+                                );
                                 peer.update_current_head_level(
                                     message.current_branch().current_head().level(),
                                 );

@@ -3,10 +3,10 @@
 
 use std::collections::HashMap;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{OperationHash, BlockHash, ProtocolHash};
+use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -25,20 +25,26 @@ fn convert_applied(
     operations: &HashMap<OperationHash, Operation>,
     current_branch: &BlockHash,
 ) -> Vec<HashMap<String, Value>> {
-    applied.iter()
+    applied
+        .iter()
         .filter_map(move |v| {
             let branch = operations.get(&v.hash)?.branch();
             if branch.ne(current_branch) {
                 return None;
             }
-            let mut m = serde_json::from_str(&v.protocol_data_json)
-                .unwrap_or_else(|err| {
-                    let mut m = HashMap::new();
-                    m.insert("protocol_data_parse_error".to_string(), Value::String(err.to_string()));
-                    m
-                });
+            let mut m = serde_json::from_str(&v.protocol_data_json).unwrap_or_else(|err| {
+                let mut m = HashMap::new();
+                m.insert(
+                    "protocol_data_parse_error".to_string(),
+                    Value::String(err.to_string()),
+                );
+                m
+            });
             m.insert("hash".to_string(), Value::String(v.hash.to_base58_check()));
-            m.insert("branch".to_string(), Value::String(branch.to_base58_check()));
+            m.insert(
+                "branch".to_string(),
+                Value::String(branch.to_base58_check()),
+            );
             Some(m)
         })
         .collect()
@@ -65,7 +71,10 @@ fn convert_errored(
             serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)
                 .unwrap_or_else(|err| {
                     let mut m = HashMap::new();
-                    m.insert("protocol_data_parse_error".to_string(), Value::String(err.to_string()));
+                    m.insert(
+                        "protocol_data_parse_error".to_string(),
+                        Value::String(err.to_string()),
+                    );
                     m
                 })
         };
@@ -77,8 +86,14 @@ fn convert_errored(
                 .unwrap_or_else(|err| Value::String(err.to_string()))
         };
 
-        m.insert("protocol".to_string(), Value::String(protocol.to_base58_check()));
-        m.insert("branch".to_string(), Value::String(operation.branch().to_base58_check()));
+        m.insert(
+            "protocol".to_string(),
+            Value::String(protocol.to_base58_check()),
+        );
+        m.insert(
+            "branch".to_string(),
+            Value::String(operation.branch().to_base58_check()),
+        );
         m.insert("error".to_string(), error);
         result.push(Value::Array(vec![
             Value::String(v.hash.to_base58_check()),
@@ -126,24 +141,22 @@ impl<'a> MonitoredOperation<'a> {
         operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
-        applied
-            .iter()
-            .filter_map(move |applied_op| {
-                let op_hash = applied_op.hash.to_base58_check();
-                let operation = operations.get(&applied_op.hash)?;
-                let (protocol_data, err) = match serde_json::from_str(&applied_op.protocol_data_json) {
-                    Ok(protocol_data) => (protocol_data, None),
-                    Err(err) => (HashMap::default(), Some(err.to_string())),
-                };
-                Some(MonitoredOperation {
-                    branch: operation.branch().to_base58_check(),
-                    protocol: protocol_hash,
-                    hash: op_hash,
-                    protocol_data,
-                    error: vec![],
-                    protocol_data_parse_error: err,
-                })
+        applied.iter().filter_map(move |applied_op| {
+            let op_hash = applied_op.hash.to_base58_check();
+            let operation = operations.get(&applied_op.hash)?;
+            let (protocol_data, err) = match serde_json::from_str(&applied_op.protocol_data_json) {
+                Ok(protocol_data) => (protocol_data, None),
+                Err(err) => (HashMap::default(), Some(err.to_string())),
+            };
+            Some(MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: protocol_hash,
+                hash: op_hash,
+                protocol_data,
+                error: vec![],
+                protocol_data_parse_error: err,
             })
+        })
     }
 
     pub fn collect_errored(
@@ -151,29 +164,26 @@ impl<'a> MonitoredOperation<'a> {
         operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
-        errored
-            .iter()
-            .filter_map(move |errored_op| {
-                let op_hash = errored_op.hash.to_base58_check();
-                let operation = operations.get(&errored_op.hash)?;
-                let json = &errored_op.protocol_data_json_with_error_json.protocol_data_json;
-                let (protocol_data, err) = match serde_json::from_str(json) {
-                    Ok(protocol_data) => (protocol_data, None),
-                    Err(err) => (HashMap::default(), Some(err.to_string())),
-                };
-                let ocaml_err = &errored_op
-                    .protocol_data_json_with_error_json
-                    .error_json;
-                Some(MonitoredOperation {
-                    branch: operation.branch().to_base58_check(),
-                    protocol: protocol_hash,
-                    hash: op_hash,
-                    protocol_data,
-                    error: serde_json::from_str(ocaml_err)
-                        .unwrap_or_else(|err| vec![err.to_string()]),
-                    protocol_data_parse_error: err,
-                })
+        errored.iter().filter_map(move |errored_op| {
+            let op_hash = errored_op.hash.to_base58_check();
+            let operation = operations.get(&errored_op.hash)?;
+            let json = &errored_op
+                .protocol_data_json_with_error_json
+                .protocol_data_json;
+            let (protocol_data, err) = match serde_json::from_str(json) {
+                Ok(protocol_data) => (protocol_data, None),
+                Err(err) => (HashMap::default(), Some(err.to_string())),
+            };
+            let ocaml_err = &errored_op.protocol_data_json_with_error_json.error_json;
+            Some(MonitoredOperation {
+                branch: operation.branch().to_base58_check(),
+                protocol: protocol_hash,
+                hash: op_hash,
+                protocol_data,
+                error: serde_json::from_str(ocaml_err).unwrap_or_else(|err| vec![err.to_string()]),
+                protocol_data_parse_error: err,
             })
+        })
     }
 }
 
@@ -218,12 +228,11 @@ mod tests {
         );
 
         // convert
-        let current_branch = "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H".try_into().unwrap();
+        let current_branch = "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H"
+            .try_into()
+            .unwrap();
         let result = convert_applied(&data, &operations, &current_branch);
-        assert_json_eq!(
-            serde_json::to_value(result).unwrap(),
-            expected_json,
-        );
+        assert_json_eq!(serde_json::to_value(result).unwrap(), expected_json,);
     }
 
     #[test]
@@ -245,7 +254,9 @@ mod tests {
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()).unwrap(),
         );
-        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into().unwrap();
+        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
+            .try_into()
+            .unwrap();
 
         let expected_json = json!(
             [
@@ -264,10 +275,7 @@ mod tests {
 
         // convert
         let result = convert_errored(&data, &operations, &protocol);
-        assert_json_eq!(
-            serde_json::to_value(result).unwrap(),
-            expected_json,
-        );
+        assert_json_eq!(serde_json::to_value(result).unwrap(), expected_json,);
     }
 
     #[test]
@@ -289,7 +297,9 @@ mod tests {
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()).unwrap(),
         );
-        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into().unwrap();
+        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
+            .try_into()
+            .unwrap();
 
         let expected_json = json!(
             [
@@ -306,9 +316,6 @@ mod tests {
 
         // convert
         let result = convert_errored(&data, &operations, &protocol);
-        assert_json_eq!(
-            serde_json::to_value(result).unwrap(),
-            expected_json,
-        );
+        assert_json_eq!(serde_json::to_value(result).unwrap(), expected_json,);
     }
 }

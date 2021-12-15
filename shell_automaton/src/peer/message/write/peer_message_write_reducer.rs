@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
 use crate::{Action, ActionWithMeta, State};
@@ -13,22 +11,7 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(peer) = state.peers.get_mut(&action.address) {
                 match &mut peer.status {
                     PeerStatus::Handshaked(PeerHandshaked { message_write, .. }) => {
-                        // check the current message against the head of the queue
-                        // to see if the current one is the the next queued one
-                        if let Some(front_msg) = message_write.queue.front() {
-                            // pop message from the queue, if that's the
-                            // message that we are initiating write for.
-                            if Arc::ptr_eq(front_msg, &action.message) {
-                                message_write.queue.pop_front();
-                            }
-                        }
-
-                        if let PeerBinaryMessageWriteState::Init { .. } = &message_write.current {
-                            // if binary message writing is idle, immediately start writing the message
-                        } else {
-                            // otherwise queue it for later reading
-                            message_write.queue.push_back(action.message.clone());
-                        }
+                        message_write.queue.push_back(action.message.clone());
                     }
                     _ => {}
                 }
@@ -53,6 +36,7 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
                             message_write.current = PeerBinaryMessageWriteState::Init {
                                 crypto: write_crypto,
                             };
+                            message_write.queue.pop_front();
                         }
                         _ => return,
                     },

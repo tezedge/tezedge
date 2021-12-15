@@ -15,7 +15,7 @@ use thiserror::Error;
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use storage::block_meta_storage::Meta;
 use storage::{BlockHeaderWithHash, StorageError};
-use tezos_api::ffi::{BeginApplicationRequest};
+use tezos_api::ffi::BeginApplicationRequest;
 use tezos_messages::base::fitness_comparator::*;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;

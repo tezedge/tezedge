@@ -7,21 +7,21 @@ use std::{convert::TryInto, ops::Neg};
 
 use anyhow::bail;
 use async_ipc::IpcError;
+use chrono::{SecondsFormat, Utc};
 use hex::FromHexError;
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-use chrono::{SecondsFormat, Utc};
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use shell_integration::{Prevalidator, WorkerStatus, WorkerStatusPhase};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
     BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError,
 };
-use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -732,7 +732,8 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
 pub(crate) async fn get_prevalidators(
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<Prevalidator>, RpcServiceError> {
-    let prevalidator_status = env.shell_automaton_sender()
+    let prevalidator_status = env
+        .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::MempoolStatus)
         .await
         .map_err(|err| RpcServiceError::UnexpectedError {
@@ -751,7 +752,7 @@ pub(crate) async fn get_prevalidators(
                 phase: WorkerStatusPhase::Running,
                 // TODO: proper time
                 since: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-            }
+            },
         }])
     }
 }

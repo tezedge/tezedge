@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{time::{Duration, SystemTime}, convert::TryFrom};
+use std::{
+    convert::TryFrom,
+    time::{Duration, SystemTime},
+};
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
-    hash::{CryptoboxPublicKeyHash, HashTrait, ChainId},
+    hash::{ChainId, CryptoboxPublicKeyHash, HashTrait},
     proof_of_work::ProofOfWork,
 };
 use tezos_identity::Identity;

@@ -46,8 +46,10 @@ impl ProtocolServiceDefault {
     }
 
     // `op` takes mutex with the connection, the connection cannot be `None`, it is safe to unwrap
-    fn spawn<F>(&mut self, op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static)
-    where
+    fn spawn<F>(
+        &mut self,
+        op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static,
+    ) where
         F: Future<Output = Result<ProtocolAction, ProtocolServiceError>> + Send,
     {
         let api = self.api.clone();
@@ -77,7 +79,10 @@ impl ProtocolServiceDefault {
     {
         let mut cn_lock = cn.lock().await;
         if cn_lock.is_none() {
-            let connection = api.readable_connection().await.map_err(|err| err.to_string())?;
+            let connection = api
+                .readable_connection()
+                .await
+                .map_err(|err| err.to_string())?;
             *cn_lock = Some(connection);
         }
         drop(cn_lock);

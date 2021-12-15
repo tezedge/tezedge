@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{HashMap, HashSet, BTreeMap},
+    collections::{BTreeMap, HashMap, HashSet},
     net::SocketAddr,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, OperationHash};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
@@ -42,6 +42,8 @@ pub struct MempoolState {
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
+
+    pub operation_stats: OperationsStats,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -67,7 +69,7 @@ pub struct ValidatedOperations {
     pub refused: Vec<Errored>,
 }
 
-// TODO(vlad): `pending_full_content` should be global set to avoid request the same operation 
+// TODO(vlad): `pending_full_content` should be global set to avoid request the same operation
 // for multiple peers
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
@@ -77,4 +79,42 @@ pub struct PeerState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
+}
+
+pub type OperationsStats = HashMap<OperationHash, OperationStats>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationStats {
+    pub validation_result: Option<(u64, OperationValidationResult)>,
+    pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
+}
+
+impl OperationStats {
+    pub fn new() -> Self {
+        Self {
+            validation_result: None,
+            nodes: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OperationValidationResult {
+    Applied,
+    Refused,
+    BranchRefused,
+    BranchDelayed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationNodeStats {
+    pub received: Vec<OperationNodeCurrentHeadStats>,
+    pub sent: Vec<OperationNodeCurrentHeadStats>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationNodeCurrentHeadStats {
+    pub time: u64,
+    pub block_level: i32,
+    pub block_timestamp: i64,
 }
