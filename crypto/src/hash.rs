@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryFrom;
+use std::{borrow::Borrow, convert::TryFrom, marker::PhantomData};
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
@@ -44,10 +44,14 @@ pub trait HashTrait: Into<Hash> + AsRef<Hash> {
 
     /// Tries to create this hash from the `bytes`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError>;
+
+    fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError>;
+
+    fn to_b58check(&self) -> String;
 }
 
 /// Error creating hash from bytes
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum FromBytesError {
     /// Invalid data size
     #[error("invalid hash size")]
@@ -69,10 +73,6 @@ macro_rules! define_hash {
         pub struct $name(pub Hash);
 
         impl $name {
-            pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-                HashType::$name.b58check_to_hash(data).map(Self)
-            }
-
             fn from_bytes(data: &[u8]) -> Result<Self, FromBytesError> {
                 if data.len() == HashType::$name.size() {
                     Ok($name(data.into()))
@@ -89,13 +89,12 @@ macro_rules! define_hash {
                 }
             }
 
+            pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
+                Self::from_b58check(data)
+            }
+
             pub fn to_base58_check(&self) -> String {
-                // TODO: Fixing TE-373 will allow to get rid of this `unreachable`
-                HashType::$name
-                    .hash_to_b58check(&self.0)
-                    .unwrap_or_else(|_| {
-                        unreachable!("Typed hash should always be representable in base58")
-                    })
+                self.to_b58check()
             }
         }
 
@@ -133,6 +132,19 @@ macro_rules! define_hash {
             fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
                 $name::try_from(bytes)
             }
+
+            fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError> {
+                HashType::$name.b58check_to_hash(data).map(Self)
+            }
+
+            fn to_b58check(&self) -> String {
+                // TODO: Fixing TE-373 will allow to get rid of this `unreachable`
+                HashType::$name
+                    .hash_to_b58check(&self.0)
+                    .unwrap_or_else(|_| {
+                        unreachable!("Typed hash should always be representable in base58")
+                    })
+            }
         }
 
         impl std::convert::AsRef<Hash> for $name {
@@ -165,6 +177,12 @@ macro_rules! define_hash {
             type Error = FromBase58CheckError;
             fn try_from(encoded: &str) -> Result<Self, Self::Error> {
                 Self::from_base58_check(encoded)
+            }
+        }
+
+        impl std::convert::From<$name> for HashBase58<$name> {
+            fn from(hash: $name) -> Self {
+                Self(hash)
             }
         }
     };
@@ -320,7 +338,7 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake
         .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error, serde::Serialize, serde::Deserialize)]
 pub enum TryFromPKError {
     #[error("Error calculating digest")]
     Digest(#[from] Blake2bError),
@@ -355,6 +373,138 @@ impl TryFrom<PublicKeyP256> for ContractTz3Hash {
         let hash = blake2b::digest_160(&source.0)?;
         let typed_hash = Self::from_bytes(&hash)?;
         Ok(typed_hash)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct HashBase58<H>(pub H);
+
+impl<H> HashBase58<H>
+where
+    H: HashTrait,
+{
+    pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
+        H::from_b58check(data).map(Self)
+    }
+
+    pub fn to_base58_check(&self) -> String {
+        self.0.to_b58check()
+    }
+}
+
+impl<H> serde::Serialize for HashBase58<H>
+where
+    H: HashTrait,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0.to_b58check())
+    }
+}
+
+struct HashVisitor<H>(PhantomData<H>);
+
+impl<H> Default for HashVisitor<H> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<'de, H> serde::de::Visitor<'de> for HashVisitor<H>
+where
+    H: HashTrait,
+{
+    type Value = H;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("base58 encoded data expected")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Self::Value::from_b58check(v)
+            .map_err(|e| E::custom(format!("error constructing hash from base58check: {}", e)))
+    }
+}
+
+impl<'de, H> serde::Deserialize<'de> for HashBase58<H>
+where
+    H: HashTrait,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_str(HashVisitor::default())
+            .map(Self)
+    }
+}
+
+impl<H> From<HashBase58<H>> for Vec<u8>
+where
+    H: Into<Vec<u8>>,
+{
+    fn from(hash: HashBase58<H>) -> Self {
+        hash.0.into()
+    }
+}
+
+impl<H> AsRef<Vec<u8>> for HashBase58<H>
+where
+    H: AsRef<Vec<u8>>,
+{
+    fn as_ref(&self) -> &Vec<u8> {
+        self.0.as_ref()
+    }
+}
+
+impl<H> HashTrait for HashBase58<H>
+where
+    H: HashTrait,
+{
+    /// Returns this hash type.
+    fn hash_type() -> HashType {
+        H::hash_type()
+    }
+
+    /// Returns the size of this hash.
+    fn hash_size() -> usize {
+        H::hash_size()
+    }
+
+    /// Tries to create this hash from the `bytes`.
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
+        H::try_from_bytes(bytes).map(Self)
+    }
+
+    fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError> {
+        H::from_b58check(data).map(Self)
+    }
+
+    fn to_b58check(&self) -> String {
+        self.0.to_b58check()
+    }
+}
+
+impl<H> Borrow<H> for HashBase58<H> {
+    fn borrow(&self) -> &H {
+        &self.0
+    }
+}
+
+impl<H> TryFrom<&str> for HashBase58<H>
+where
+    H: HashTrait,
+{
+    type Error = FromBase58CheckError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Ok(Self(H::from_b58check(value)?))
     }
 }
 

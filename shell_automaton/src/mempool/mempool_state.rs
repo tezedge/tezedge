@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashBase58, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
@@ -21,7 +21,7 @@ pub struct MempoolState {
     // create prevalidator for any applied block, create prevalidator:
     pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
-    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injecting_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
     // performed rpc
     pub(super) injected_rpc_ids: Vec<RpcId>,
     // operation streams requested by baker
@@ -32,7 +32,7 @@ pub struct MempoolState {
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
     // operations that passed basic checks, sent to protocol validator
-    pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
     pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
@@ -53,8 +53,8 @@ pub struct OperationStream {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
-    pub ops: HashMap<OperationHash, Operation>,
-    pub refused_ops: HashMap<OperationHash, Operation>,
+    pub ops: HashMap<HashBase58<OperationHash>, Operation>,
+    pub refused_ops: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
@@ -77,12 +77,12 @@ pub struct PeerState {
     pub(super) seen_operations: HashSet<OperationHash>,
 }
 
-pub type OperationsStats = HashMap<OperationHash, OperationStats>;
+pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
     pub validation_result: Option<(u64, OperationValidationResult)>,
-    pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
+    pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
 
 impl OperationStats {
