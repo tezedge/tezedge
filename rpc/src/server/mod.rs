@@ -18,7 +18,6 @@ use tezos_protocol_ipc_client::ProtocolRunnerApi;
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::mempool::CurrentMempoolStateStorageRef;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
@@ -69,8 +68,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
-    current_mempool_state_storage: CurrentMempoolStateStorageRef,
-    #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
     shell_connector: ShellConnectorRef,
@@ -105,7 +102,6 @@ impl RpcServiceEnvironment {
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
-        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
         main_chain_id: ChainId,
         state: RpcCollectedStateRef,
@@ -121,7 +117,6 @@ impl RpcServiceEnvironment {
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
-            current_mempool_state_storage,
             main_chain_id,
             state,
             log,

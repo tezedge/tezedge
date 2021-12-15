@@ -46,9 +46,15 @@ use peers::dns_lookup::PeersDnsLookupInitAction;
 pub mod storage;
 use crate::storage::state_snapshot::create::StorageStateSnapshotCreateInitAction;
 
+pub mod mempool;
+
 pub mod rpc;
 
 pub mod actors;
+
+pub mod protocol;
+
+pub mod rights;
 
 pub mod service;
 use service::MioService;

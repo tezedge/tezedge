@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::actors::actors_effects;
+use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::{Action, ActionId, ActionWithMeta, Store};
@@ -28,9 +29,20 @@ use crate::peers::check::timeouts::peers_check_timeouts_effects;
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 
+use crate::mempool::mempool_effects;
+use crate::protocol::protocol_effects;
+
 use crate::storage::request::storage_request_effects;
 use crate::storage::state_snapshot::create::{
     storage_state_snapshot_create_effects, StorageStateSnapshotCreateInitAction,
+};
+
+use crate::storage::{
+    kv_block_additional_data::effects as kv_block_additional_data_effects,
+    kv_block_header::effects as kv_block_header_effects,
+    kv_block_meta::effects as kv_block_meta_effects, kv_constants::effects as kv_constants_effects,
+    kv_cycle_eras::effects as kv_cycle_eras_effects,
+    kv_cycle_meta::effects as kv_cycle_meta_effects,
 };
 
 use crate::rpc::rpc_effects;
@@ -70,6 +82,10 @@ fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &Acti
 
 pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     // these four effects must be first and in this order!
+    // if action.action.as_ref().starts_with("Rights") {
+    //     slog::debug!(store.state().log, "Rights action"; "action" => format!("{:#?}", action.action));
+    // }
+
     logger_effects(store, action);
     last_action_effects(store, action);
     applied_actions_count_effects(store, action);
@@ -77,6 +93,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     paused_loops_effects(store, action);
 
     peer_effects(store, action);
+
+    protocol_effects(store, action);
 
     peer_connection_outgoing_effects(store, action);
     peer_connection_incoming_accept_effects(store, action);
@@ -98,9 +116,20 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     peers_check_timeouts_effects(store, action);
     peers_graylist_effects(store, action);
 
+    mempool_effects(store, action);
+
     storage_request_effects(store, action);
     storage_state_snapshot_create_effects(store, action);
 
     actors_effects(store, action);
     rpc_effects(store, action);
+
+    rights_effects(store, action);
+
+    kv_block_meta_effects(store, action);
+    kv_block_header_effects(store, action);
+    kv_block_additional_data_effects(store, action);
+    kv_constants_effects(store, action);
+    kv_cycle_eras_effects(store, action);
+    kv_cycle_meta_effects(store, action);
 }

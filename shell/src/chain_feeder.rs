@@ -1011,6 +1011,13 @@ fn _apply_block(
     // Lets mark header as applied and store result
     // store success result
     let store_result_timer = Instant::now();
+    let validated_block = ProcessValidatedBlock::new(
+        block,
+        chain_id,
+        apply_block_result.block_metadata_hash.clone(),
+        apply_block_result.ops_metadata_hash.clone(),
+        Instant::now(),
+    );
     let block_additional_data = store_applied_block_result(
         block_storage,
         block_meta_storage,
@@ -1024,7 +1031,7 @@ fn _apply_block(
     let store_result_elapsed = store_result_timer.elapsed();
 
     Ok(Some((
-        ProcessValidatedBlock::new(block, chain_id, Instant::now()),
+        validated_block,
         block_additional_data,
         BlockValidationTimer::new(
             validated_at_timer.elapsed(),

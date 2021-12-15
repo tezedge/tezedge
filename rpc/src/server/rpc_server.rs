@@ -1,8 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use shell::mempool::CurrentMempoolStateStorageRef;
-use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
+use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
@@ -43,11 +42,10 @@ impl RpcServer {
     pub fn new(
         log: Logger,
         shell_connector: ShellConnectorRef,
-        shell_automaton_channel: RpcShellAutomatonChannel,
+        shell_automaton_channel: RpcShellAutomatonSender,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
-        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezos_protocol_api: Arc<ProtocolRunnerApi>,
         tezos_env: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -63,11 +61,10 @@ impl RpcServer {
         let env = Arc::new(RpcServiceEnvironment::new(
             Arc::new(tokio_executor),
             shell_connector,
-            shell_automaton_channel.sender(),
+            shell_automaton_channel,
             tezos_env,
             network_version,
             persistent_storage,
-            current_mempool_state_storage,
             tezos_protocol_api,
             init_storage_data.chain_id.clone(),
             shared_state,

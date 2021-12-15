@@ -28,8 +28,19 @@ use crate::peers::dns_lookup::peers_dns_lookup_reducer;
 use crate::peers::graylist::peers_graylist_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
+use crate::mempool::mempool_reducer;
+
+use crate::rights::rights_reducer;
+
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
+use crate::storage::{
+    kv_block_additional_data::reducer as kv_block_additional_data_reducer,
+    kv_block_header::reducer as kv_block_header_reducer,
+    kv_block_meta::reducer as kv_block_meta_reducer, kv_constants::reducer as kv_constants_reducer,
+    kv_cycle_eras::reducer as kv_cycle_eras_reducer,
+    kv_cycle_meta::reducer as kv_cycle_meta_reducer,
+};
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
     state.set_last_action(action);
@@ -72,8 +83,16 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_remove_reducer,
         peers_check_timeouts_reducer,
         peers_graylist_reducer,
+        mempool_reducer,
+        rights_reducer,
         storage_request_reducer,
         storage_state_snapshot_create_reducer,
+        kv_block_meta_reducer,
+        kv_block_header_reducer,
+        kv_block_additional_data_reducer,
+        kv_constants_reducer,
+        kv_cycle_eras_reducer,
+        kv_cycle_meta_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer

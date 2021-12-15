@@ -1,24 +1,20 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use slog::{info, warn};
 
-use crypto::hash::{ChainId, OperationHash, ProtocolHash};
-use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::validation;
+use crypto::hash::{ChainId, OperationHash};
 use shell_integration::*;
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage};
-use tezos_api::ffi::{Applied, Errored};
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
@@ -27,147 +23,30 @@ const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const INJECT_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct MempoolOperations {
-    pub applied: Vec<HashMap<String, Value>>,
-    pub refused: Vec<Value>,
-    pub branch_refused: Vec<Value>,
-    pub branch_delayed: Vec<Value>,
-    // TODO: unprocessed - we dont have protocol data, because we can get it just from ffi now
-    pub unprocessed: Vec<Value>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct InjectedBlockWithOperations {
     pub data: String,
     pub operations: Vec<Vec<DecodedOperation>>,
 }
 
-pub fn get_pending_operations(
+pub async fn get_pending_operations(
     _chain_id: &ChainId,
-    current_mempool_state_storage: &CurrentMempoolStateStorageRef,
-) -> Result<(MempoolOperations, Option<ProtocolHash>), RpcServiceError> {
-    // get actual known state of mempool
-    let current_mempool_state = current_mempool_state_storage.read()?;
-
-    // convert to rpc data - we need protocol_hash
-    let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state
-        .prevalidator()
-    {
-        Some(prevalidator) => {
-            let result = current_mempool_state.result();
-            let operations = current_mempool_state.operations();
-            (
-                MempoolOperations {
-                    applied: convert_applied(&result.applied, operations)?,
-                    refused: convert_errored(&result.refused, operations, &prevalidator.protocol)?,
-                    branch_refused: convert_errored(
-                        &result.branch_refused,
-                        operations,
-                        &prevalidator.protocol,
-                    )?,
-                    branch_delayed: convert_errored(
-                        &result.branch_delayed,
-                        operations,
-                        &prevalidator.protocol,
-                    )?,
-                    unprocessed: vec![],
-                },
-                Some(prevalidator.protocol.clone()),
-            )
-        }
-        None => (MempoolOperations::default(), None),
-    };
-
-    Ok((mempool_operations, mempool_prevalidator_protocol))
-}
-
-pub(crate) fn convert_applied(
-    applied: &[Applied],
-    operations: &HashMap<OperationHash, MempoolOperationRef>,
-) -> Result<Vec<HashMap<String, Value>>, RpcServiceError> {
-    let mut result: Vec<HashMap<String, Value>> = Vec::with_capacity(applied.len());
-    for a in applied {
-        let operation_hash = a.hash.to_base58_check();
-        let protocol_data: HashMap<String, Value> = serde_json::from_str(&a.protocol_data_json)?;
-        let operation = match operations.get(&a.hash) {
-            Some(b) => b,
-            None => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "missing operation data for operation_hash: {}",
-                        &operation_hash
-                    ),
-                });
+    env: Arc<RpcServiceEnvironment>,
+) -> Result<serde_json::Value, RpcServiceError> {
+    env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetPendingOperations)
+        .await
+        .map_err(|_| {
+            RpcServiceError::UnexpectedError {
+                reason: "the channel between rpc and shell is overflown".to_string(),
             }
-        };
-
-        let mut m = HashMap::new();
-        m.insert(String::from("hash"), Value::String(operation_hash));
-        m.insert(
-            String::from("branch"),
-            Value::String(operation.operation().branch().to_base58_check()),
-        );
-        m.extend(protocol_data);
-        result.push(m);
-    }
-
-    Ok(result)
-}
-
-pub(crate) fn convert_errored(
-    errored: &[Errored],
-    operations: &HashMap<OperationHash, MempoolOperationRef>,
-    protocol: &ProtocolHash,
-) -> Result<Vec<Value>, RpcServiceError> {
-    let mut result: Vec<Value> = Vec::with_capacity(errored.len());
-    let protocol = protocol.to_base58_check();
-
-    for e in errored {
-        let operation_hash = e.hash.to_base58_check();
-        let operation = match operations.get(&e.hash) {
-            Some(b) => b,
-            None => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "missing operation data for operation_hash: {}",
-                        &operation_hash
-                    ),
-                });
+        })?
+        .await
+        .map_err(|_| {
+            RpcServiceError::UnexpectedError {
+                reason: "state machine failed to respond".to_string(),
             }
-        };
-
-        let protocol_data: HashMap<String, Value> = if e
-            .protocol_data_json_with_error_json
-            .protocol_data_json
-            .is_empty()
-        {
-            HashMap::new()
-        } else {
-            serde_json::from_str(&e.protocol_data_json_with_error_json.protocol_data_json)?
-        };
-
-        let error = if e.protocol_data_json_with_error_json.error_json.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_str(&e.protocol_data_json_with_error_json.error_json)?
-        };
-
-        let mut m = HashMap::new();
-        m.insert(String::from("protocol"), Value::String(protocol.clone()));
-        m.insert(
-            String::from("branch"),
-            Value::String(operation.operation().branch().to_base58_check()),
-        );
-        m.extend(protocol_data);
-        m.insert(String::from("error"), error);
-
-        result.push(Value::Array(vec![
-            Value::String(operation_hash),
-            serde_json::to_value(m)?,
-        ]));
-    }
-
-    Ok(result)
+        })
 }
 
 pub async fn inject_operation(
@@ -185,20 +64,6 @@ pub async fn inject_operation(
 
     let start_request = Instant::now();
 
-    // find prevalidator for chain_id, if not found, then stop
-
-    let mempool_prevalidator_caller = if let Some(mempool_prevalidator_caller) = env
-        .shell_connector()
-        .find_mempool_prevalidator_caller(&chain_id)
-    {
-        mempool_prevalidator_caller
-    } else {
-        warn!(env.log(), "No mempool prevalidator was found"; "chain_id" => chain_id.to_base58_check(), "caller" => "mempool_services");
-        return Err(RpcServiceError::UnexpectedError {
-            reason: "Prevalidator is not running, cannot inject the operation.".to_string(),
-        });
-    };
-
     // parse operation data
     let operation: Operation =
         Operation::from_bytes(hex::decode(operation_data)?).map_err(|e| {
@@ -206,104 +71,50 @@ pub async fn inject_operation(
                 reason: format!("{}", e),
             }
         })?;
-    let operation_hash = operation.message_typed_hash()?;
+    let operation_hash: OperationHash = operation.message_typed_hash()?;
 
-    // prepare database accessors
-    let persistent_storage = env.persistent_storage();
-    let block_storage = BlockStorage::new(persistent_storage);
-    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
-
-    // do prevalidation before add the operation to mempool
-    let mut connection = env.tezos_protocol_api().readable_connection().await?;
-    let result = validation::prevalidate_operation(
-        &chain_id,
-        &operation_hash,
-        &operation,
-        env.current_mempool_state_storage(),
-        &mut connection,
-        &block_storage,
-        &block_meta_storage,
-    )
-    .await
-    .map_err(|e| RpcServiceError::UnexpectedError {
-        reason: format!("{}", e),
-    })?;
-
-    // can accpect operation ?
-    if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
-        return Err(RpcServiceError::UnexpectedError {
-            reason: format!(
-                "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
-                operation_hash.to_base58_check(),
-                result
-            ),
-        });
-    }
-
-    // store operation in mempool storage
+    let msg = RpcShellAutomatonMsg::InjectOperation {
+        operation: operation.clone(),
+        operation_hash: operation_hash.clone(),
+    };
+    let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> =
+        env.shell_automaton_sender().send(msg).await.map_err(|_| {
+            RpcServiceError::UnexpectedError {
+                reason: "the channel between rpc and shell is overflown".to_string(),
+            }
+        })?;
     let operation_hash_b58check_string = operation_hash.to_base58_check();
 
-    // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let (result_callback_sender, result_callback_receiver) = if is_async {
-        // if async no wait
-        (None, None)
-    } else {
-        // if not async, means sync and we wait till operations is added to pendings
-        let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
-        (Some(result_callback_sender), Some(result_callback_receiver))
-    };
-
-    let start_async = Instant::now();
-
-    // ping mempool with new operation for mempool validation
-    if mempool_prevalidator_caller
-        .try_tell(MempoolRequestMessage::MempoolOperationReceived(
-            MempoolOperationReceived {
-                operation_hash,
-                operation: Arc::new(OperationMessage::from(operation)),
-                result_callback: result_callback_sender,
-            },
-        ))
-        .is_err()
-    {
-        return Err(RpcServiceError::UnexpectedError {
-            reason: format!(
-                    "Operation injection error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
-                    &operation_hash_b58check_string,
-                )});
-    }
-
-    if let Some(receiver) = result_callback_receiver {
-        // we spawn as blocking because we are under async/await
-        let result = tokio::task::spawn_blocking(move || {
-            receiver.recv_timeout(INJECT_OPERATION_WAIT_TIMEOUT)
-        })
-        .await;
-        match result {
-            Ok(Ok(_)) => {
-                info!(env.log(), "Operation injected";
-                                     "operation_hash" => &operation_hash_b58check_string,
-                                     "elapsed" => format!("{:?}", start_request.elapsed()),
-                                     "elapsed_async" => format!("{:?}", start_async.elapsed()));
-            }
-            Ok(Err(e)) => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "Operation injection error received, operation_hash: {}, reason: {}!",
-                        &operation_hash_b58check_string, e
-                    ),
-                });
-            }
-            Err(e) => {
-                return Err(RpcServiceError::UnexpectedError {
-                    reason: format!(
-                        "Operation injection error async wait, operation_hash: {}, reason: {}!",
-                        &operation_hash_b58check_string, e
-                    ),
-                });
-            }
+    let result = tokio::time::timeout(INJECT_OPERATION_WAIT_TIMEOUT, receiver).await;
+    match result {
+        Ok(Ok(serde_json::Value::Null)) => (),
+        Ok(Ok(serde_json::Value::String(reason))) => {
+            return Err(RpcServiceError::UnexpectedError {
+                reason,
+            });
+        },
+        Ok(Ok(resp)) => {
+            return Err(RpcServiceError::UnexpectedError {
+                reason: resp.to_string(),
+            });
+        },
+        Ok(Err(err)) => {
+            warn!(env.log(), "Operation injection. State machine failed to respond: {}", err);
+            return Err(RpcServiceError::UnexpectedError {
+                reason: err.to_string(),
+            });
+        },
+        Err(elapsed) => {
+            warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
+            return Err(RpcServiceError::UnexpectedError {
+                reason: "timeout".to_string(),
+            });
         }
     }
+
+    info!(env.log(), "Operation injected";
+        "operation_hash" => &operation_hash_b58check_string,
+        "elapsed" => format!("{:?}", start_request.elapsed()));
 
     Ok(operation_hash_b58check_string)
 }
@@ -355,13 +166,16 @@ pub async fn inject_block(
 
     // clean actual mempool_state - just applied should be enough
     if let Some(validation_passes) = &validation_passes {
-        let mut current_mempool_state = env.current_mempool_state_storage().write()?;
+        let mut operation_hashes = Vec::new();
+        for op in validation_passes.into_iter().flatten() {
+            operation_hashes.push(op.message_typed_hash()?);
+        }
 
-        for vps in validation_passes {
-            for vp in vps {
-                let oph: OperationHash = vp.message_typed_hash()?;
-                current_mempool_state.remove_operation(oph);
-            }
+        if let Err(err) = env.shell_automaton_sender()
+            .send(RpcShellAutomatonMsg::RemoveOperations { operation_hashes })
+            .await
+        {
+            warn!(env.log(), "state machine failed to remove ops: {}", err);
         }
     }
 
@@ -442,151 +256,17 @@ pub async fn inject_block(
     Ok(block_hash_b58check_string)
 }
 
-pub fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
+pub async fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
     // request current head from the peers
-    env.shell_connector()
-        .request_current_head_from_connected_peers();
+    if let Err(err) = env.shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::RequestCurrentHeadFromConnectedPeers)
+        .await
+    {
+        warn!(env.log(), "state machine failed to respond: {}", err);
+        return Err(RpcServiceError::UnexpectedError {
+            reason: err.to_string(),
+        })
+    }
+
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::{collections::HashMap, convert::TryInto};
-
-    use assert_json_diff::assert_json_eq;
-    use serde_json::json;
-
-    use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
-    use tezos_messages::p2p::binary_message::BinaryRead;
-    use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
-
-    use crate::services::mempool_services::{convert_applied, convert_errored};
-
-    #[test]
-    fn test_convert_applied() -> Result<(), anyhow::Error> {
-        let data = vec![
-            Applied {
-                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-            }
-        ];
-
-        let mut operations = HashMap::new();
-        // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
-        operations.insert(
-            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
-        );
-
-        let expected_json = json!(
-            [
-                {
-                    "hash" : "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-                    "branch" : "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H",
-                    "contents": [{ "kind": "endorsement", "level": 459020 } ],
-                    "signature": "siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9"
-                }
-            ]
-        );
-
-        // convert
-        let result = convert_applied(&data, &operations)?;
-        assert_json_eq!(
-            serde_json::to_value(result)?,
-            serde_json::to_value(expected_json)?
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_convert_errored() -> Result<(), anyhow::Error> {
-        let data = vec![
-            Errored {
-                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        let mut operations = HashMap::new();
-        // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
-        operations.insert(
-            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
-        );
-        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
-
-        let expected_json = json!(
-                [
-                    [
-                        "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-                        {
-                            "protocol" : "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
-                            "branch" : "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H",
-                            "contents": [{ "kind": "endorsement", "level": 459020}],
-                            "signature": "siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9",
-                            "error" : [ { "kind": "temporary", "id": "proto.005-PsBabyM1.operation.wrong_endorsement_predecessor", "expected": "BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL", "provided": "BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4" } ]
-                        }
-                    ]
-                ]
-        );
-
-        // convert
-        let result = convert_errored(&data, &operations, &protocol)?;
-        assert_json_eq!(
-            serde_json::to_value(result)?,
-            serde_json::to_value(expected_json)?
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_convert_errored_missing_protocol_data() -> Result<(), anyhow::Error> {
-        let data = vec![
-            Errored {
-                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-                is_endorsement: Some(true),
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        let mut operations = HashMap::new();
-        // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
-        operations.insert(
-            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-            Arc::new(OperationMessage::from(Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?)),
-        );
-        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
-
-        let expected_json = json!(
-                [
-                    [
-                        "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-                        {
-                            "protocol" : "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
-                            "branch" : "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H",
-                            "error" : [ { "kind": "temporary", "id": "proto.005-PsBabyM1.operation.wrong_endorsement_predecessor", "expected": "BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL", "provided": "BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4" } ]
-                        }
-                    ]
-                ]
-        );
-
-        // convert
-        let result = convert_errored(&data, &operations, &protocol)?;
-        assert_json_eq!(
-            serde_json::to_value(result)?,
-            serde_json::to_value(expected_json)?
-        );
-
-        Ok(())
-    }
 }
