@@ -88,7 +88,11 @@ where
                     store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
                 }
                 ProtocolAction::OperationValidated(response) => {
-                    store.dispatch(MempoolBroadcastAction {});
+                    if !response.result.applied.is_empty() {
+                        store.dispatch(MempoolBroadcastAction {
+                            ignore_empty_mempool: true,
+                        });
+                    }
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
                     for rpc_id in ids {
@@ -169,7 +173,10 @@ where
                     {
                         return;
                     }
-                    store.dispatch(MempoolSendAction { address: *address });
+                    store.dispatch(MempoolSendAction {
+                        address: *address,
+                        ignore_empty_mempool: false,
+                    });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
                     if store.state().mempool.running_since.is_none() {
@@ -234,7 +241,9 @@ where
                 if store.state().mempool.branch_changed {
                     store.dispatch(BranchChangedAction {});
                 } else {
-                    store.dispatch(MempoolBroadcastAction {});
+                    store.dispatch(MempoolBroadcastAction {
+                        ignore_empty_mempool: false,
+                    });
                 }
                 store.dispatch(kv_operations::StorageOperationsGetAction { key: hash.clone() });
             }
@@ -391,10 +400,15 @@ where
                 });
             }
         }
-        Action::MempoolBroadcast(MempoolBroadcastAction {}) => {
+        Action::MempoolBroadcast(MempoolBroadcastAction {
+            ignore_empty_mempool,
+        }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
-                store.dispatch(MempoolSendAction { address });
+                store.dispatch(MempoolSendAction {
+                    address,
+                    ignore_empty_mempool: *ignore_empty_mempool,
+                });
             }
         }
         Action::MempoolAskCurrentHead(MempoolAskCurrentHeadAction {}) => {
@@ -408,7 +422,10 @@ where
                 });
             }
         }
-        Action::MempoolSend(MempoolSendAction { address }) => {
+        Action::MempoolSend(MempoolSendAction {
+            address,
+            ignore_empty_mempool,
+        }) => {
             let (head_state, head_hash) = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
                 None => {
@@ -445,10 +462,14 @@ where
                 .map(|(hash, _)| hash)
                 .cloned()
                 .collect::<Vec<_>>();
+            let mempool = Mempool::new(known_valid.clone(), pending.clone());
+            if mempool.is_empty() && *ignore_empty_mempool {
+                return;
+            }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
                 head_state.clone(),
-                Mempool::new(known_valid.clone(), pending.clone()),
+                mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
 

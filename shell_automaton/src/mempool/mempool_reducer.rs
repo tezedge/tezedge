@@ -280,7 +280,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
             mempool_state.injected_rpc_ids.clear();
         }
-        Action::MempoolSend(MempoolSendAction { address }) => {
+        Action::MempoolSend(MempoolSendAction { address, .. }) => {
             mempool_state.peer_state.entry(*address).or_default();
         }
         Action::PeersRemove(PeersRemoveAction { address }) => {
