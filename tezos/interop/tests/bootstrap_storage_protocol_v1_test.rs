@@ -433,6 +433,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     let max_operations_ttl = 1;
 
+    let predecessor_block_metadata_hash = apply_block_result.block_metadata_hash;
+
     // apply second block - level 2
     let apply_block_result =
         apply_encoded_message(ProtocolMessage::ApplyBlockCall(ApplyBlockRequest {
@@ -452,7 +454,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
                 ),
             ),
             max_operations_ttl,
-            predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
+            predecessor_block_metadata_hash: predecessor_block_metadata_hash.clone(),
             predecessor_ops_metadata_hash: None,
         }))
         .unwrap();
@@ -522,7 +524,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
                 ),
             ),
             max_operations_ttl,
-            predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
+            predecessor_block_metadata_hash,
             predecessor_ops_metadata_hash: None,
         }))
         .unwrap();
