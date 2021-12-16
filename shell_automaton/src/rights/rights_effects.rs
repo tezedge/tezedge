@@ -71,7 +71,7 @@ where
                 endorsing_rights_state.get(key)
             {
                 store.dispatch(kv_block_header::StorageBlockHeaderGetAction {
-                    key: key.current_block_hash.clone(),
+                    key: key.current_block_hash.clone().into(),
                 });
             }
         }
@@ -82,7 +82,7 @@ where
             for key in endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == key {
+                    if &rights_key.current_block_hash == &key.0 {
                         Some(rights_key)
                     } else {
                         None
@@ -104,7 +104,7 @@ where
             for key in endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == key {
+                    if &rights_key.current_block_hash == &key.0 {
                         Some(rights_key)
                     } else {
                         None
@@ -137,9 +137,9 @@ where
                 endorsing_rights_state.get(key)
             {
                 store.dispatch(
-                    kv_block_additional_data::StorageBlockAdditionalDataGetAction {
-                        key: key.current_block_hash.clone(),
-                    },
+                    kv_block_additional_data::StorageBlockAdditionalDataGetAction::new(
+                        key.current_block_hash.clone(),
+                    ),
                 );
             }
         }
@@ -149,7 +149,7 @@ where
             let rights_keys: Vec<_> = endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == key {
+                    if &rights_key.current_block_hash == &key.0 {
                         Some(rights_key)
                     } else {
                         None
@@ -170,7 +170,7 @@ where
             for key in endorsing_rights_state
                 .iter()
                 .filter_map(|(rights_key, _)| {
-                    if &rights_key.current_block_hash == key {
+                    if &rights_key.current_block_hash == &key.0 {
                         Some(rights_key)
                     } else {
                         None
@@ -206,7 +206,7 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = data_proto_hash.clone();
-                store.dispatch(kv_constants::StorageConstantsGetAction { key });
+                store.dispatch(kv_constants::StorageConstantsGetAction::new(key));
             }
         }
         Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction { key, value }) => {
@@ -218,7 +218,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == key {
+                        if data_proto_hash == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -255,7 +255,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == key {
+                        if data_proto_hash == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -293,7 +293,7 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = data_proto_hash.clone();
-                store.dispatch(kv_cycle_eras::StorageCycleErasGetAction { key });
+                store.dispatch(kv_cycle_eras::StorageCycleErasGetAction::new(key));
             }
         }
         Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key, value }) => {
@@ -305,7 +305,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == key {
+                        if data_proto_hash == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -335,7 +335,7 @@ where
                         ..
                     } = request
                     {
-                        if data_proto_hash == key {
+                        if data_proto_hash == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -409,7 +409,7 @@ where
             }) = endorsing_rights_state.get(key)
             {
                 let key = *data_cycle;
-                store.dispatch(kv_cycle_meta::StorageCycleMetaGetAction { key });
+                store.dispatch(kv_cycle_meta::StorageCycleMetaGetAction::new(key));
             }
         }
         Action::StorageCycleMetaOk(kv_cycle_meta::StorageCycleMetaOkAction { key, value }) => {
@@ -420,7 +420,7 @@ where
                         cycle: data_cycle, ..
                     } = request
                     {
-                        if data_cycle == key {
+                        if data_cycle == &key.0 {
                             Some(rights_key)
                         } else {
                             None
@@ -449,7 +449,7 @@ where
                         cycle: data_cycle, ..
                     } = request
                     {
-                        if data_cycle == key {
+                        if data_cycle == &key.0 {
                             Some(rights_key)
                         } else {
                             None

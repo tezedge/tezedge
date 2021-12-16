@@ -39,6 +39,15 @@ macro_rules! kv_actions {
             pub key: $key,
         }
 
+        impl $get_action {
+            pub fn new<K>(key: K) -> Self
+            where
+                K: Into<$key>,
+            {
+                Self { key: key.into() }
+            }
+        }
+
         impl crate::EnablingCondition<crate::State> for $get_action {
             fn is_enabled(&self, state: &crate::State) -> bool {
                 let _ = state;
@@ -179,7 +188,7 @@ macro_rules! kv_state_machine {
 }
 
 pub mod kv_block_meta {
-    use crypto::hash::BlockHash;
+    use crypto::hash::{BlockHash, HashBase58};
     use storage::block_meta_storage::Meta;
 
     kv_state_machine!(
@@ -187,7 +196,7 @@ pub mod kv_block_meta {
         BlockMetaGet,
         BlockMetaGetSuccess,
         BlockMetaGetError,
-        BlockHash,
+        HashBase58<BlockHash>,
         Meta,
         |_hash, _meta| true,
         StorageBlockMetaGet,
@@ -200,7 +209,7 @@ pub mod kv_block_meta {
 }
 
 pub mod kv_block_additional_data {
-    use crypto::hash::BlockHash;
+    use crypto::hash::{BlockHash, HashBase58};
     use storage::block_meta_storage::BlockAdditionalData;
 
     kv_state_machine!(
@@ -208,7 +217,7 @@ pub mod kv_block_additional_data {
         BlockAdditionalDataGet,
         BlockAdditionalDataGetSuccess,
         BlockAdditionalDataGetError,
-        BlockHash,
+        HashBase58<BlockHash>,
         BlockAdditionalData,
         |_hash, _additinal_data| true,
         StorageBlockAdditionalDataGet,
@@ -221,7 +230,7 @@ pub mod kv_block_additional_data {
 }
 
 pub mod kv_block_header {
-    use crypto::hash::BlockHash;
+    use crypto::hash::{BlockHash, HashBase58};
     use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
     kv_state_machine!(
@@ -229,7 +238,7 @@ pub mod kv_block_header {
         BlockHeaderGet,
         BlockHeaderGetSuccess,
         BlockHeaderGetError,
-        BlockHash,
+        HashBase58<BlockHash>,
         BlockHeader,
         |_hash, _header| true,
         StorageBlockHeaderGet,
@@ -242,14 +251,14 @@ pub mod kv_block_header {
 }
 
 pub mod kv_constants {
-    use crypto::hash::ProtocolHash;
+    use crypto::hash::{HashBase58, ProtocolHash};
 
     kv_state_machine!(
         constants,
         ConstantsGet,
         ConstantsGetSuccess,
         ConstantsGetError,
-        ProtocolHash,
+        HashBase58<ProtocolHash>,
         String,
         |_key, _value| true,
         StorageConstantsGet,
@@ -262,15 +271,48 @@ pub mod kv_constants {
 }
 
 pub mod kv_cycle_meta {
+    use std::{convert::TryFrom, num::ParseIntError};
+
     use storage::cycle_storage::CycleData;
+
     pub type Cycle = i32;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+    #[serde(into = "String", try_from = "String")]
+    pub struct CycleKey(pub Cycle);
+
+    impl From<i32> for CycleKey {
+        fn from(source: i32) -> Self {
+            Self(source)
+        }
+    }
+
+    impl From<CycleKey> for i32 {
+        fn from(source: CycleKey) -> Self {
+            source.0
+        }
+    }
+
+    impl From<CycleKey> for String {
+        fn from(source: CycleKey) -> Self {
+            source.0.to_string()
+        }
+    }
+
+    impl TryFrom<String> for CycleKey {
+        type Error = ParseIntError;
+
+        fn try_from(source: String) -> Result<Self, Self::Error> {
+            source.parse().map(Self)
+        }
+    }
 
     kv_state_machine!(
         cycle_data,
         CycleMetaGet,
         CycleMetaGetSuccess,
         CycleMetaGetError,
-        Cycle,
+        CycleKey,
         CycleData,
         |_cycle, _data| true,
         StorageCycleMetaGet,
@@ -283,7 +325,7 @@ pub mod kv_cycle_meta {
 }
 
 pub mod kv_cycle_eras {
-    use crypto::hash::ProtocolHash;
+    use crypto::hash::{HashBase58, ProtocolHash};
     use storage::cycle_eras_storage::CycleErasData;
 
     kv_state_machine!(
@@ -291,7 +333,7 @@ pub mod kv_cycle_eras {
         CycleErasGet,
         CycleErasGetSuccess,
         CycleErasGetError,
-        ProtocolHash,
+        HashBase58<ProtocolHash>,
         CycleErasData,
         |_proto, _eras| true,
         StorageCycleErasGet,
@@ -304,7 +346,7 @@ pub mod kv_cycle_eras {
 }
 
 pub mod kv_operations {
-    use crypto::hash::BlockHash;
+    use crypto::hash::{BlockHash, HashBase58};
     use tezos_messages::p2p::encoding::operation::Operation;
 
     kv_state_machine!(
@@ -312,7 +354,7 @@ pub mod kv_operations {
         OperationsGet,
         OperationsGetSuccess,
         OperationsGetError,
-        BlockHash,
+        HashBase58<BlockHash>,
         Vec<Operation>,
         |_hash, _ops| true,
         StorageOperationsGet,

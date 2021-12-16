@@ -40,11 +40,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone())
+                            .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
                             .validation_result =
                             Some((action.time_as_nanos(), OperationValidationResult::Applied));
@@ -58,11 +58,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state.validated_operations.refused.push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone())
+                            .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
                             .validation_result =
                             Some((action.time_as_nanos(), OperationValidationResult::Refused));
@@ -76,14 +76,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state
                             .validated_operations
                             .branch_refused
                             .push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone())
+                            .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
                             .validation_result = Some((
                             action.time_as_nanos(),
@@ -99,14 +99,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone(), op);
+                            .insert(v.hash.clone().into(), op);
                         mempool_state
                             .validated_operations
                             .branch_delayed
                             .push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone())
+                            .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
                             .validation_result = Some((
                             action.time_as_nanos(),
@@ -233,7 +233,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             mempool_state
                 .pending_operations
-                .insert(operation_hash, operation.clone());
+                .insert(operation_hash.into(), operation.clone());
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation,
@@ -249,10 +249,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             ops.push(operation_hash.clone());
             mempool_state
                 .injecting_rpc_ids
-                .insert(operation_hash.clone(), rpc_id.clone());
+                .insert(operation_hash.clone().into(), rpc_id.clone());
             mempool_state
                 .pending_operations
-                .insert(operation_hash.clone(), operation.clone());
+                .insert(operation_hash.clone().into(), operation.clone());
         }
         Action::MempoolRegisterOperationsStream(act) => {
             mempool_state.operation_streams.push(OperationStream {
@@ -318,7 +318,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // to validate again with new prevalidator
             for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
                 if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                    mempool_state.pending_operations.insert(v.hash, op.clone());
+                    mempool_state
+                        .pending_operations
+                        .insert(v.hash.into(), op.clone());
                     mempool_state.wait_prevalidator_operations.push(op);
                 }
             }
@@ -336,7 +338,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     for op_hash in op_hash_iter {
                         let stats = mempool_state
                             .operation_stats
-                            .entry(op_hash.clone())
+                            .entry(op_hash.clone().into())
                             .or_insert(OperationStats::new());
                         if let Some(peer) = state.peers.get(&content.address) {
                             if let Some(pkh) = peer.public_key_hash() {
@@ -350,7 +352,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                     });
                                 } else {
                                     stats.nodes.insert(
-                                        pkh.clone(),
+                                        pkh.clone().into(),
                                         OperationNodeStats {
                                             received: vec![OperationNodeCurrentHeadStats {
                                                 time,
@@ -405,7 +407,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     let stats = state
                         .mempool
                         .operation_stats
-                        .entry(op_hash.clone())
+                        .entry(op_hash.clone().into())
                         .or_insert(OperationStats::new());
 
                     if let Some(stats) = stats.nodes.get_mut(pkh) {
@@ -416,7 +418,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                         });
                     } else {
                         stats.nodes.insert(
-                            pkh.clone(),
+                            pkh.clone().into(),
                             OperationNodeStats {
                                 received: vec![],
                                 sent: vec![OperationNodeCurrentHeadStats {

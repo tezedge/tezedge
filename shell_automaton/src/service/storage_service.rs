@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-use crypto::hash::{BlockHash, ProtocolHash};
+use crypto::hash::{BlockHash, HashBase58, ProtocolHash};
 use serde::{Deserialize, Serialize};
 use storage::block_meta_storage::Meta;
 use storage::cycle_eras_storage::CycleErasData;
@@ -27,6 +27,7 @@ use storage::{
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
 use crate::request::RequestId;
+use crate::storage::kv_cycle_meta::CycleKey;
 use crate::{Action, ActionId, ActionKind, ActionWithMeta, State};
 
 use super::service_channel::{
@@ -67,13 +68,13 @@ pub enum StorageRequestPayload {
         duration_nanos: u64,
     },
 
-    BlockMetaGet(BlockHash),
-    BlockHeaderGet(BlockHash),
-    BlockAdditionalDataGet(BlockHash),
-    OperationsGet(BlockHash),
-    ConstantsGet(ProtocolHash),
-    CycleErasGet(ProtocolHash),
-    CycleMetaGet(i32),
+    BlockMetaGet(HashBase58<BlockHash>),
+    BlockHeaderGet(HashBase58<BlockHash>),
+    BlockAdditionalDataGet(HashBase58<BlockHash>),
+    OperationsGet(HashBase58<BlockHash>),
+    ConstantsGet(HashBase58<ProtocolHash>),
+    CycleErasGet(HashBase58<ProtocolHash>),
+    CycleMetaGet(CycleKey),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -82,13 +83,13 @@ pub enum StorageResponseSuccess {
     ActionPutSuccess(ActionId),
     ActionMetaUpdateSuccess(ActionId),
 
-    BlockMetaGetSuccess(BlockHash, Option<Meta>),
-    BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
-    BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
-    OperationsGetSuccess(BlockHash, Option<Vec<Operation>>),
-    ConstantsGetSuccess(ProtocolHash, Option<String>),
-    CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
-    CycleMetaGetSuccess(i32, Option<CycleData>),
+    BlockMetaGetSuccess(HashBase58<BlockHash>, Option<Meta>),
+    BlockHeaderGetSuccess(HashBase58<BlockHash>, Option<BlockHeader>),
+    BlockAdditionalDataGetSuccess(HashBase58<BlockHash>, Option<BlockAdditionalData>),
+    OperationsGetSuccess(HashBase58<BlockHash>, Option<Vec<Operation>>),
+    ConstantsGetSuccess(HashBase58<ProtocolHash>, Option<String>),
+    CycleErasGetSuccess(HashBase58<ProtocolHash>, Option<CycleErasData>),
+    CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -97,13 +98,13 @@ pub enum StorageResponseError {
     ActionPutError(StorageError),
     ActionMetaUpdateError(StorageError),
 
-    BlockMetaGetError(BlockHash, StorageError),
-    BlockHeaderGetError(BlockHash, StorageError),
-    BlockAdditionalDataGetError(BlockHash, StorageError),
-    OperationsGetError(BlockHash, StorageError),
-    ConstantsGetError(ProtocolHash, StorageError),
-    CycleErasGetError(ProtocolHash, StorageError),
-    CycleMetaGetError(i32, StorageError),
+    BlockMetaGetError(HashBase58<BlockHash>, StorageError),
+    BlockHeaderGetError(HashBase58<BlockHash>, StorageError),
+    BlockAdditionalDataGetError(HashBase58<BlockHash>, StorageError),
+    OperationsGetError(HashBase58<BlockHash>, StorageError),
+    ConstantsGetError(HashBase58<ProtocolHash>, StorageError),
+    CycleErasGetError(HashBase58<ProtocolHash>, StorageError),
+    CycleMetaGetError(CycleKey, StorageError),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -264,11 +265,11 @@ impl StorageServiceDefault {
                     Ok(ActionMetaUpdateSuccess(action_id))
                 }
                 BlockMetaGet(block_hash) => block_meta_storage
-                    .get(&block_hash)
+                    .get(&block_hash.0)
                     .map(|block_meta| BlockMetaGetSuccess(block_hash.clone(), block_meta))
                     .map_err(|err| BlockMetaGetError(block_hash, err.into())),
                 BlockHeaderGet(block_hash) => block_storage
-                    .get(&block_hash)
+                    .get(&block_hash.0)
                     .map(|block_header_with_hash| {
                         BlockHeaderGetSuccess(
                             block_hash.clone(),
@@ -277,24 +278,24 @@ impl StorageServiceDefault {
                     })
                     .map_err(|err| BlockHeaderGetError(block_hash, err.into())),
                 BlockAdditionalDataGet(block_hash) => block_meta_storage
-                    .get_additional_data(&block_hash)
+                    .get_additional_data(&block_hash.0)
                     .map(|data| BlockAdditionalDataGetSuccess(block_hash.clone(), data))
                     .map_err(|err| BlockAdditionalDataGetError(block_hash, err.into())),
                 OperationsGet(block_hash) => operations_storage
-                    .get_operations(&block_hash)
+                    .get_operations(&block_hash.0)
                     .map(|data| data.into_iter().map(Vec::from).flatten().collect())
                     .map(|ops| OperationsGetSuccess(block_hash.clone(), Some(ops)))
                     .map_err(|err| OperationsGetError(block_hash.clone(), err.into())),
                 ConstantsGet(protocol_hash) => constants_storage
-                    .get(&protocol_hash)
+                    .get(&protocol_hash.0)
                     .map(|constants| ConstantsGetSuccess(protocol_hash.clone(), constants))
                     .map_err(|err| ConstantsGetError(protocol_hash, err.into())),
                 CycleMetaGet(cycle) => cycle_meta_storage
-                    .get(&cycle)
+                    .get(&cycle.0)
                     .map(|cycle_data| CycleMetaGetSuccess(cycle, cycle_data))
                     .map_err(|err| CycleMetaGetError(cycle, err.into())),
                 CycleErasGet(proto_hash) => cycle_eras_storage
-                    .get(&proto_hash)
+                    .get(&proto_hash.0)
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
             };

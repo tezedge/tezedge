@@ -68,7 +68,7 @@ where
                 .as_ref()
                 .unwrap()
                 .1
-                .eq(key)
+                .eq(&key.0)
             {
                 let operation_hashes = value
                     .iter()
@@ -243,7 +243,9 @@ where
                         ignore_empty_mempool: false,
                     });
                 }
-                store.dispatch(kv_operations::StorageOperationsGetAction { key: hash.clone() });
+                store.dispatch(kv_operations::StorageOperationsGetAction {
+                    key: hash.clone().into(),
+                });
             }
             // close streams
             let streams = store.state().mempool.operation_streams.clone();
@@ -444,13 +446,12 @@ where
                 .ops
                 .iter()
                 .filter_map(|(hash, _)| {
-                    if !peer.seen_operations.contains(&hash) {
-                        Some(hash)
+                    if !peer.seen_operations.contains(&hash.0) {
+                        Some(hash.0.clone())
                     } else {
                         None
                     }
                 })
-                .cloned()
                 .collect::<Vec<_>>();
             let pending = store
                 .state()
@@ -458,10 +459,9 @@ where
                 .pending_operations
                 .iter()
                 .filter(|(hash, op)| {
-                    !peer.seen_operations.contains(*hash) && head_hash.eq(op.branch())
+                    !peer.seen_operations.contains(&hash.0) && head_hash.eq(op.branch())
                 })
-                .map(|(hash, _)| hash)
-                .cloned()
+                .map(|(hash, _)| hash.0.clone())
                 .collect::<Vec<_>>();
             let mempool = Mempool::new(known_valid.clone(), pending.clone());
             if mempool.is_empty() && *ignore_empty_mempool {
