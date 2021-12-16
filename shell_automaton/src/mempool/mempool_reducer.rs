@@ -11,9 +11,9 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
-use super::mempool_state::OperationStream;
+use super::mempool_state::{HeadState, OperationStream};
 use super::{
-    BlockAppliedAction, BranchChangedAction, MempoolBroadcastDoneAction,
+    BlockAppliedAction, MempoolFlushAction, MempoolBroadcastDoneAction,
     MempoolCleanupWaitPrevalidatorAction, MempoolMarkOperationsAsPendingAction,
     MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
     MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
@@ -32,6 +32,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::Protocol(act) => match act {
             ProtocolAction::PrevalidatorForMempoolReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
+                // unwrap is safe, cannot have prevalidator and haven't `local_head_state`
+                mempool_state
+                    .local_head_state
+                    .as_mut()
+                    .unwrap()
+                    .prevalidator_ready = true;
             }
             ProtocolAction::OperationValidated(result) => {
                 mempool_state.prevalidator = Some(result.prevalidator.clone());
@@ -136,13 +142,18 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if *is_bootstrapped {
                 mempool_state.running_since = Some(());
             }
-            let changed = if let Some((_, old_head_hash)) = &mempool_state.local_head_state {
-                old_head_hash.ne(&block.predecessor())
+            let changed = if let Some(old_head) = &mempool_state.local_head_state {
+                old_head.hash.ne(&block.predecessor())
             } else {
                 false
             };
             mempool_state.branch_changed = changed;
-            mempool_state.local_head_state = Some((block.clone(), hash.clone()));
+            mempool_state.local_head_state = Some(HeadState {
+                header: block.clone(),
+                hash: hash.clone(),
+                ops_removed: false,
+                prevalidator_ready: false,
+            });
 
             // TODO(vlad) move to separate action
             // TODO: get from protocol
@@ -243,7 +254,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let level = mempool_state
                 .local_head_state
                 .as_ref()
-                .map(|(h, _)| h.level())
+                .map(|state| state.header.level())
                 .unwrap_or(0);
             let ops = mempool_state.level_to_operation.entry(level).or_default();
             ops.push(operation_hash.clone());
@@ -312,16 +323,40 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // remove operation from stats
                 mempool_state.operation_stats.remove(op);
             }
+            if let Some(state) = &mut mempool_state.local_head_state {
+                state.ops_removed = true;
+            }
         }
-        Action::BranchChanged(BranchChangedAction {}) => {
-            // remove all `branch_refused` results, put them into `pending_operations` collections
-            // to validate again with new prevalidator
-            for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
-                if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                    mempool_state
-                        .pending_operations
-                        .insert(v.hash.into(), op.clone());
-                    mempool_state.wait_prevalidator_operations.push(op);
+        Action::MempoolFlush(MempoolFlushAction {}) => {
+            if mempool_state.branch_changed {
+                // remove all `branch_refused` results, put them into `pending_operations`
+                // to validate again with new prevalidator
+                for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
+                    if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                        mempool_state
+                            .pending_operations
+                            .insert(v.hash.into(), op.clone());
+                        mempool_state.wait_prevalidator_operations.push(op);
+                    }
+                }
+            } else {
+                // remove all remaining `applied` results and all `branch_delayed` results,
+                // put them into `pending_operations` to validate again with new prevalidator
+                for v in mem::take(&mut mempool_state.validated_operations.branch_delayed) {
+                    if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                        mempool_state
+                            .pending_operations
+                            .insert(v.hash.into(), op.clone());
+                        mempool_state.wait_prevalidator_operations.push(op);
+                    }
+                }
+                for v in mem::take(&mut mempool_state.validated_operations.applied) {
+                    if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                        mempool_state
+                            .pending_operations
+                            .insert(v.hash.into(), op.clone());
+                        mempool_state.wait_prevalidator_operations.push(op);
+                    }
                 }
             }
         }

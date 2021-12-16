@@ -28,9 +28,9 @@ use crate::{
 
 use super::{
     mempool_actions::{
-        BlockAppliedAction, BranchChangedAction, MempoolAskCurrentHeadAction,
+        BlockAppliedAction, MempoolFlushAction, MempoolAskCurrentHeadAction,
         MempoolBroadcastAction, MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction,
-        MempoolFlushAction, MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
+        MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
         MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
         MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
         MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
@@ -60,6 +60,13 @@ where
         return;
     }
     match &action.action {
+        Action::MempoolFlush(MempoolFlushAction {}) => {
+            let ops = store.state().mempool.wait_prevalidator_operations.clone();
+            for operation in ops {
+                store.dispatch(MempoolValidateStartAction { operation });
+            }
+            store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
+        }
         Action::StorageOperationsOk(kv_operations::StorageOperationsOkAction { key, value }) => {
             if store
                 .state()
@@ -67,7 +74,7 @@ where
                 .local_head_state
                 .as_ref()
                 .unwrap()
-                .1
+                .hash
                 .eq(&key.0)
             {
                 let operation_hashes = value
@@ -75,17 +82,13 @@ where
                     .map(|op| op.message_typed_hash::<OperationHash>().unwrap())
                     .collect();
                 store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
+                store.dispatch(MempoolFlushAction {});
             }
         }
         Action::Protocol(act) => {
             match act {
                 ProtocolAction::PrevalidatorForMempoolReady(_) => {
                     store.dispatch(MempoolFlushAction {});
-                    let ops = store.state().mempool.wait_prevalidator_operations.clone();
-                    for operation in ops {
-                        store.dispatch(MempoolValidateStartAction { operation });
-                    }
-                    store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
                 }
                 ProtocolAction::OperationValidated(response) => {
                     store.dispatch(MempoolBroadcastAction {
@@ -236,16 +239,14 @@ where
                     .service()
                     .protocol()
                     .begin_construction_for_mempool(req);
-                if store.state().mempool.branch_changed {
-                    store.dispatch(BranchChangedAction {});
-                } else {
+                store.dispatch(kv_operations::StorageOperationsGetAction {
+                    key: hash.clone().into(),
+                });
+                if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         ignore_empty_mempool: false,
                     });
                 }
-                store.dispatch(kv_operations::StorageOperationsGetAction {
-                    key: hash.clone().into(),
-                });
             }
             // close streams
             let streams = store.state().mempool.operation_streams.clone();
@@ -332,8 +333,8 @@ where
                     return;
                 }
             };
-            let (_, current_branch) = match &store.state().mempool.local_head_state {
-                Some(v) => v,
+            let current_branch = match &store.state().mempool.local_head_state {
+                Some(v) => &v.hash,
                 None => {
                     store.service().rpc().respond(*rpc_id, empty());
                     return;
@@ -426,7 +427,7 @@ where
             address,
             ignore_empty_mempool,
         }) => {
-            let (head_state, head_hash) = match store.state().mempool.local_head_state.clone() {
+            let head_state = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
                 None => {
                     // should always have current head here
@@ -459,7 +460,7 @@ where
                 .pending_operations
                 .iter()
                 .filter(|(hash, op)| {
-                    !peer.seen_operations.contains(&hash.0) && head_hash.eq(op.branch())
+                    !peer.seen_operations.contains(&hash.0) && head_state.hash.eq(op.branch())
                 })
                 .map(|(hash, _)| hash.0.clone())
                 .collect::<Vec<_>>();
@@ -469,7 +470,7 @@ where
             }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                head_state.clone(),
+                head_state.header.clone(),
                 mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));

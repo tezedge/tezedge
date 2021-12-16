@@ -27,7 +27,7 @@ pub struct MempoolState {
     // operation streams requested by baker
     pub(super) operation_streams: Vec<OperationStream>,
     // the current head applied
-    pub local_head_state: Option<(BlockHeader, BlockHash)>,
+    pub local_head_state: Option<HeadState>,
     pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
@@ -40,6 +40,16 @@ pub struct MempoolState {
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
     pub operation_stats: OperationsStats,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HeadState {
+    pub(super) header: BlockHeader,
+    pub(super) hash: BlockHash,
+    // operations included in the head already removed
+    pub(super) ops_removed: bool,
+    // prevalidator for the head is created
+    pub(super) prevalidator_ready: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

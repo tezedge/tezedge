@@ -40,12 +40,12 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 use crate::peer::handshaking::*;
 
 use crate::mempool::{
-    BlockAppliedAction, BranchChangedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
-    MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolFlushAction,
-    MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
-    MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
-    MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRegisterOperationsStreamAction,
-    MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
+    BlockAppliedAction, MempoolFlushAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
+    MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolGetOperationsAction,
+    MempoolGetPendingOperationsAction, MempoolMarkOperationsAsPendingAction,
+    MempoolOperationInjectAction, MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
+    MempoolRegisterOperationsStreamAction, MempoolRemoveAppliedOperationsAction,
+    MempoolRpcRespondAction, MempoolSendAction,
     MempoolUnregisterOperationsStreamsAction, MempoolValidateStartAction,
     MempoolValidateWaitPrevalidatorAction,
 };
@@ -281,7 +281,6 @@ pub enum Action {
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
     MempoolFlush(MempoolFlushAction),
 
-    BranchChanged(BranchChangedAction),
     BlockApplied(BlockAppliedAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),

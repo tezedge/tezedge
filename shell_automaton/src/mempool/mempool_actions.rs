@@ -244,21 +244,11 @@ pub struct MempoolFlushAction {}
 
 impl EnablingCondition<State> for MempoolFlushAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
-    }
-}
-
-/// NOTE: this action is not specific to mempool, may be handled elsewhere
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BranchChangedAction {}
-
-impl EnablingCondition<State> for BranchChangedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
+        if let Some(state) = &state.mempool.local_head_state {
+            state.ops_removed && state.prevalidator_ready
+        } else {
+            false
+        }
     }
 }
 
