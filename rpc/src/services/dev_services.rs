@@ -715,6 +715,12 @@ pub struct OperationStats {
 pub struct OperationNodeStats {
     received: Vec<OperationNodeCurrentHeadStats>,
     sent: Vec<OperationNodeCurrentHeadStats>,
+
+    content_requested: Vec<u64>,
+    content_received: Vec<u64>,
+
+    content_requested_remote: Vec<u64>,
+    content_sent: Vec<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -770,6 +776,26 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                                         block_level: stats.block_level,
                                         block_timestamp: stats.block_timestamp,
                                     })
+                                    .collect(),
+                                content_requested: stats
+                                    .content_requested
+                                    .into_iter()
+                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .collect(),
+                                content_received: stats
+                                    .content_received
+                                    .into_iter()
+                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .collect(),
+                                content_requested_remote: stats
+                                    .content_requested_remote
+                                    .into_iter()
+                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .collect(),
+                                content_sent: stats
+                                    .content_sent
+                                    .into_iter()
+                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
                                     .collect(),
                             },
                         )

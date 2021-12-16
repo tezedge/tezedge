@@ -4,6 +4,7 @@
 use std::mem;
 use std::net::SocketAddr;
 
+use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
@@ -361,9 +362,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::PeerMessageReadSuccess(content) => {
+            let peer = match state
+                .peers
+                .get(&content.address)
+                .and_then(|peer| peer.status.as_handshaked())
+            {
+                Some(v) => v,
+                None => return,
+            };
+            let peer_pkh = &peer.public_key_hash;
+            let time = action.time_as_nanos();
+
             match content.message.message() {
                 PeerMessage::CurrentHead(msg) => {
-                    let time = action.time_as_nanos();
                     let block_header = msg.current_block_header();
                     let mempool = msg.current_mempool();
                     let op_hash_iter = mempool
@@ -372,32 +383,53 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .chain(mempool.known_valid())
                         .cloned();
 
-                    if let Some(peer) = state.peers.get(&content.address) {
-                        if let Some(pkh) = peer.public_key_hash() {
-                            for op_hash in op_hash_iter {
-                                mempool_state
-                                    .operation_stats
-                                    .entry(op_hash.into())
-                                    .or_insert(OperationStats::new())
-                                    .received_in_current_head(
-                                        pkh,
-                                        OperationNodeCurrentHeadStats {
-                                            time,
-                                            block_level: block_header.level(),
-                                            block_timestamp: block_header.timestamp(),
-                                        },
-                                    );
-                            }
-                        }
+                    for op_hash in op_hash_iter {
+                        mempool_state
+                            .operation_stats
+                            .entry(op_hash.into())
+                            .or_insert(OperationStats::new())
+                            .received_in_current_head(
+                                peer_pkh,
+                                OperationNodeCurrentHeadStats {
+                                    time,
+                                    block_level: block_header.level(),
+                                    block_timestamp: block_header.timestamp(),
+                                },
+                            );
                     }
+                }
+                PeerMessage::GetOperations(msg) => {
+                    for op_hash in msg.get_operations().iter().cloned() {
+                        mempool_state
+                            .operation_stats
+                            .entry(op_hash.into())
+                            .or_insert(OperationStats::new())
+                            .content_requested_remote(peer_pkh, time);
+                    }
+                }
+                PeerMessage::Operation(msg) => {
+                    let op_hash = match msg.operation().message_typed_hash() {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
+
+                    mempool_state
+                        .operation_stats
+                        .entry(op_hash)
+                        .or_insert(OperationStats::new())
+                        .content_received(peer_pkh, time);
                 }
                 _ => return,
             };
         }
         Action::PeerMessageWriteInit(content) => {
-            if matches!(content.message.message(), PeerMessage::CurrentHead(_)) {
-                update_operation_sent_stats(state, content.address, action.time_as_nanos());
+            match content.message.message() {
+                PeerMessage::CurrentHead(_)
+                | PeerMessage::GetOperations(_)
+                | PeerMessage::Operation(_) => {}
+                _ => return,
             }
+            update_operation_sent_stats(state, content.address, action.time_as_nanos());
         }
         Action::PeerMessageWriteNext(content) => {
             update_operation_sent_stats(state, content.address, action.time_as_nanos());
@@ -414,36 +446,61 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
         },
         None => return,
     };
+    let msg = match peer.message_write.queue.front() {
+        Some(v) => v.message(),
+        None => return,
+    };
 
-    if let Some(msg) = peer.message_write.queue.front() {
-        match msg.message() {
-            PeerMessage::CurrentHead(msg) => {
-                let block_header = msg.current_block_header();
-                let mempool = msg.current_mempool();
-                let op_hash_iter = mempool
-                    .pending()
-                    .iter()
-                    .chain(mempool.known_valid())
-                    .cloned();
-                let pkh = &peer.public_key_hash;
+    match msg {
+        PeerMessage::CurrentHead(msg) => {
+            let block_header = msg.current_block_header();
+            let mempool = msg.current_mempool();
+            let op_hash_iter = mempool
+                .pending()
+                .iter()
+                .chain(mempool.known_valid())
+                .cloned();
+            let pkh = &peer.public_key_hash;
 
-                for op_hash in op_hash_iter {
-                    state
-                        .mempool
-                        .operation_stats
-                        .entry(op_hash.into())
-                        .or_insert(OperationStats::new())
-                        .sent_in_current_head(
-                            pkh,
-                            OperationNodeCurrentHeadStats {
-                                time,
-                                block_level: block_header.level(),
-                                block_timestamp: block_header.timestamp(),
-                            },
-                        );
-                }
+            for op_hash in op_hash_iter {
+                state
+                    .mempool
+                    .operation_stats
+                    .entry(op_hash.into())
+                    .or_insert(OperationStats::new())
+                    .sent_in_current_head(
+                        pkh,
+                        OperationNodeCurrentHeadStats {
+                            time,
+                            block_level: block_header.level(),
+                            block_timestamp: block_header.timestamp(),
+                        },
+                    );
             }
-            _ => return,
-        };
-    }
+        }
+        PeerMessage::GetOperations(msg) => {
+            for op_hash in msg.get_operations().iter().cloned() {
+                state
+                    .mempool
+                    .operation_stats
+                    .entry(op_hash.into())
+                    .or_insert(OperationStats::new())
+                    .content_requested(&peer.public_key_hash, time);
+            }
+        }
+        PeerMessage::Operation(msg) => {
+            let op_hash: OperationHash = match msg.operation().message_typed_hash() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+
+            state
+                .mempool
+                .operation_stats
+                .entry(op_hash.into())
+                .or_insert(OperationStats::new())
+                .content_sent(&peer.public_key_hash, time);
+        }
+        _ => return,
+    };
 }

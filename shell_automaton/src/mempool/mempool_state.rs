@@ -121,7 +121,7 @@ impl OperationStats {
                 node_pkh.clone().into(),
                 OperationNodeStats {
                     received: vec![stats],
-                    sent: vec![],
+                    ..Default::default()
                 },
             );
         }
@@ -143,8 +143,72 @@ impl OperationStats {
             self.nodes.insert(
                 node_pkh.clone().into(),
                 OperationNodeStats {
-                    received: vec![],
                     sent: vec![stats],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_requested(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_requested.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_requested: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_received(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_received.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_received: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_requested_remote(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_requested_remote.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_requested_remote: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_sent(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_sent.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_sent: vec![time],
+                    ..Default::default()
                 },
             );
         }
@@ -159,13 +223,23 @@ pub enum OperationValidationResult {
     BranchDelayed,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationNodeStats {
     pub received: Vec<OperationNodeCurrentHeadStats>,
     pub sent: Vec<OperationNodeCurrentHeadStats>,
+
+    /// Timestamps when we have requested content of this operation from peer.
+    pub content_requested: Vec<u64>,
+    /// Timestamps when we have received content of this operation from peer.
+    pub content_received: Vec<u64>,
+
+    /// Timestamps when peer has requested content of this operation from us.
+    pub content_requested_remote: Vec<u64>,
+    /// Timestamps when we have sent content of this operation to peer.
+    pub content_sent: Vec<u64>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationNodeCurrentHeadStats {
     pub time: u64,
     pub block_level: i32,
