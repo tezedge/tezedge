@@ -13,6 +13,7 @@ use std::vec;
 
 use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
+use shell_automaton::mempool::OperationKind;
 use shell_automaton::service::storage_service::ActionGraph;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
@@ -704,9 +705,11 @@ pub type OperationsStats = HashMap<String, OperationStats>;
 
 #[derive(Serialize)]
 pub struct OperationStats {
+    kind: Option<OperationKind>,
     /// Minimum time when we saw this operation. Latencies are measured
     /// from this point.
     min_time: u64,
+    validation_started: Option<u64>,
     validation_result: Option<(u64, shell_automaton::mempool::OperationValidationResult)>,
     nodes: HashMap<String, OperationNodeStats>,
 }
@@ -745,13 +748,28 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .await?
         .into_iter()
         .map(|(op_hash, op_stats)| {
-            let min_time = op_stats.min_time.unwrap_or(0);
+            let start_time = op_stats
+                .nodes
+                .iter()
+                .find(|(_, v)| v.received.get(0).or_else(|| v.sent.get(0)).is_some())
+                .map(|(_, v)| {
+                    v.received
+                        .get(0)
+                        .or_else(|| v.sent.get(0))
+                        .map_or(0, |v| v.block_timestamp)
+                })
+                .and_then(|v| (v as u64).checked_mul(1_000_000_000))
+                .unwrap_or(0);
 
             let op_stats = OperationStats {
-                min_time,
+                kind: op_stats.kind,
+                min_time: op_stats.min_time.unwrap_or(0),
+                validation_started: op_stats
+                    .validation_started
+                    .map(|t| t.checked_sub(start_time).unwrap_or(0)),
                 validation_result: op_stats
                     .validation_result
-                    .map(|(time, result)| (time.checked_sub(min_time).unwrap_or(0), result)),
+                    .map(|(time, result)| (time.checked_sub(start_time).unwrap_or(0), result)),
                 nodes: op_stats
                     .nodes
                     .into_iter()
@@ -763,7 +781,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                                     .received
                                     .into_iter()
                                     .map(|stats| OperationNodeCurrentHeadStats {
-                                        latency: stats.time.checked_sub(min_time).unwrap_or(0),
+                                        latency: stats.time.checked_sub(start_time).unwrap_or(0),
                                         block_level: stats.block_level,
                                         block_timestamp: stats.block_timestamp,
                                     })
@@ -772,7 +790,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                                     .sent
                                     .into_iter()
                                     .map(|stats| OperationNodeCurrentHeadStats {
-                                        latency: stats.time.checked_sub(min_time).unwrap_or(0),
+                                        latency: stats.time.checked_sub(start_time).unwrap_or(0),
                                         block_level: stats.block_level,
                                         block_timestamp: stats.block_timestamp,
                                     })
@@ -780,22 +798,22 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                                 content_requested: stats
                                     .content_requested
                                     .into_iter()
-                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .map(|t| t.checked_sub(start_time).unwrap_or(0))
                                     .collect(),
                                 content_received: stats
                                     .content_received
                                     .into_iter()
-                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .map(|t| t.checked_sub(start_time).unwrap_or(0))
                                     .collect(),
                                 content_requested_remote: stats
                                     .content_requested_remote
                                     .into_iter()
-                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .map(|t| t.checked_sub(start_time).unwrap_or(0))
                                     .collect(),
                                 content_sent: stats
                                     .content_sent
                                     .into_iter()
-                                    .map(|t| t.checked_sub(min_time).unwrap_or(0))
+                                    .map(|t| t.checked_sub(start_time).unwrap_or(0))
                                     .collect(),
                             },
                         )

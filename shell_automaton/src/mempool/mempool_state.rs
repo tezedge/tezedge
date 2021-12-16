@@ -90,7 +90,9 @@ pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
+    pub kind: Option<OperationKind>,
     pub min_time: Option<u64>,
+    pub validation_started: Option<u64>,
     pub validation_result: Option<(u64, OperationValidationResult)>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
@@ -98,10 +100,23 @@ pub struct OperationStats {
 impl OperationStats {
     pub fn new() -> Self {
         Self {
+            kind: None,
             min_time: None,
+            validation_started: None,
             validation_result: None,
             nodes: HashMap::new(),
         }
+    }
+
+    /// Sets operation kind if not already set.
+    pub fn set_kind_with<F: Fn() -> OperationKind>(&mut self, f: F) {
+        if self.kind.is_none() {
+            self.kind = Some(f());
+        }
+    }
+
+    pub fn validation_started(&mut self, time: u64) {
+        self.validation_started = Some(time);
     }
 
     pub fn received_in_current_head(
@@ -166,7 +181,13 @@ impl OperationStats {
         }
     }
 
-    pub fn content_received(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+    pub fn content_received(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        time: u64,
+        op_content: &[u8],
+    ) {
+        self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
         self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
 
         if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
@@ -244,4 +265,69 @@ pub struct OperationNodeCurrentHeadStats {
     pub time: u64,
     pub block_level: i32,
     pub block_timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum OperationKind {
+    Endorsement,
+    SeedNonceRevelation,
+    DoubleEndorsement,
+    DoubleBaking,
+    Activation,
+    Proposals,
+    Ballot,
+    Reveal,
+    Transaction,
+    Origination,
+    Delegation,
+    RegisterConstant,
+    Unknown,
+}
+
+impl OperationKind {
+    fn get_tag_bytes(bytes: &[u8]) -> Option<&[u8]> {
+        bytes
+            .iter()
+            .position(|b| b & 0x80 == 0)
+            .map(|i| &bytes[0..(i + 1)])
+    }
+
+    pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
+        // var value = BigInteger.Zero;
+
+        let tag_bytes = match Self::get_tag_bytes(bytes) {
+            Some(v) => v,
+            None => return Self::Unknown,
+        };
+
+        let mut tag: u16 = 0;
+
+        for b in tag_bytes.iter().rev().cloned() {
+            tag = match tag.checked_shl(7) {
+                Some(v) => v,
+                None => return Self::Unknown,
+            };
+            tag |= (b & 0x7F) as u16;
+        }
+
+        Self::from_tag(tag)
+    }
+
+    pub fn from_tag(tag: u16) -> Self {
+        match tag {
+            0 => Self::Endorsement,
+            1 => Self::SeedNonceRevelation,
+            2 => Self::DoubleEndorsement,
+            3 => Self::DoubleBaking,
+            4 => Self::Activation,
+            5 => Self::Proposals,
+            6 => Self::Ballot,
+            107 => Self::Reveal,
+            108 => Self::Transaction,
+            109 => Self::Origination,
+            110 => Self::Delegation,
+            111 => Self::RegisterConstant,
+            _ => Self::Unknown,
+        }
+    }
 }

@@ -361,6 +361,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
+        Action::MempoolValidateStart(content) => {
+            let op_hash = match content.operation.message_typed_hash() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+            mempool_state
+                .operation_stats
+                .entry(op_hash)
+                .or_insert(OperationStats::new())
+                .validation_started(action.time_as_nanos());
+        }
         Action::PeerMessageReadSuccess(content) => {
             let peer = match state
                 .peers
@@ -417,7 +428,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .operation_stats
                         .entry(op_hash)
                         .or_insert(OperationStats::new())
-                        .content_received(peer_pkh, time);
+                        .content_received(peer_pkh, time, msg.operation().data());
                 }
                 _ => return,
             };
