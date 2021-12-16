@@ -363,6 +363,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::PeerMessageReadSuccess(content) => {
             match content.message.message() {
                 PeerMessage::CurrentHead(msg) => {
+                    let time = action.time_as_nanos();
                     let block_header = msg.current_block_header();
                     let mempool = msg.current_mempool();
                     let op_hash_iter = mempool
@@ -370,34 +371,22 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .iter()
                         .chain(mempool.known_valid())
                         .cloned();
-                    for op_hash in op_hash_iter {
-                        let stats = mempool_state
-                            .operation_stats
-                            .entry(op_hash.clone().into())
-                            .or_insert(OperationStats::new());
-                        if let Some(peer) = state.peers.get(&content.address) {
-                            if let Some(pkh) = peer.public_key_hash() {
-                                let time = action.time_as_nanos();
 
-                                if let Some(stats) = stats.nodes.get_mut(pkh) {
-                                    stats.received.push(OperationNodeCurrentHeadStats {
-                                        time,
-                                        block_level: block_header.level(),
-                                        block_timestamp: block_header.timestamp(),
-                                    });
-                                } else {
-                                    stats.nodes.insert(
-                                        pkh.clone().into(),
-                                        OperationNodeStats {
-                                            received: vec![OperationNodeCurrentHeadStats {
-                                                time,
-                                                block_level: block_header.level(),
-                                                block_timestamp: block_header.timestamp(),
-                                            }],
-                                            sent: vec![],
+                    if let Some(peer) = state.peers.get(&content.address) {
+                        if let Some(pkh) = peer.public_key_hash() {
+                            for op_hash in op_hash_iter {
+                                mempool_state
+                                    .operation_stats
+                                    .entry(op_hash.into())
+                                    .or_insert(OperationStats::new())
+                                    .received_in_current_head(
+                                        pkh,
+                                        OperationNodeCurrentHeadStats {
+                                            time,
+                                            block_level: block_header.level(),
+                                            block_timestamp: block_header.timestamp(),
                                         },
                                     );
-                                }
                             }
                         }
                     }
@@ -439,31 +428,19 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 let pkh = &peer.public_key_hash;
 
                 for op_hash in op_hash_iter {
-                    let stats = state
+                    state
                         .mempool
                         .operation_stats
-                        .entry(op_hash.clone().into())
-                        .or_insert(OperationStats::new());
-
-                    if let Some(stats) = stats.nodes.get_mut(pkh) {
-                        stats.sent.push(OperationNodeCurrentHeadStats {
-                            time,
-                            block_level: block_header.level(),
-                            block_timestamp: block_header.timestamp(),
-                        });
-                    } else {
-                        stats.nodes.insert(
-                            pkh.clone().into(),
-                            OperationNodeStats {
-                                received: vec![],
-                                sent: vec![OperationNodeCurrentHeadStats {
-                                    time,
-                                    block_level: block_header.level(),
-                                    block_timestamp: block_header.timestamp(),
-                                }],
+                        .entry(op_hash.into())
+                        .or_insert(OperationStats::new())
+                        .sent_in_current_head(
+                            pkh,
+                            OperationNodeCurrentHeadStats {
+                                time,
+                                block_level: block_header.level(),
+                                block_timestamp: block_header.timestamp(),
                             },
                         );
-                    }
                 }
             }
             _ => return,

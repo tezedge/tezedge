@@ -739,16 +739,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .await?
         .into_iter()
         .map(|(op_hash, op_stats)| {
-            let min_time = op_stats.nodes.iter().fold(u64::MAX, |mut r, (_, stats)| {
-                if let Some(min_sent) = stats.sent.iter().map(|x| x.time).min() {
-                    r = r.min(min_sent);
-                }
-                if let Some(min_received) = stats.received.iter().map(|x| x.time).min() {
-                    r = r.min(min_received);
-                }
-                r
-            });
-            let min_time = if min_time == u64::MAX { 0 } else { min_time };
+            let min_time = op_stats.min_time.unwrap_or(0);
 
             let op_stats = OperationStats {
                 min_time,

@@ -89,6 +89,8 @@ pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
+    /// First time we saw this operation in the current head.
+    pub min_time: Option<u64>,
     pub validation_result: Option<(u64, OperationValidationResult)>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
@@ -96,8 +98,55 @@ pub struct OperationStats {
 impl OperationStats {
     pub fn new() -> Self {
         Self {
+            min_time: None,
             validation_result: None,
             nodes: HashMap::new(),
+        }
+    }
+
+    pub fn received_in_current_head(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        stats: OperationNodeCurrentHeadStats,
+    ) {
+        self.min_time = Some(
+            self.min_time
+                .map_or(stats.time, |time| time.min(stats.time)),
+        );
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.received.push(stats);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    received: vec![stats],
+                    sent: vec![],
+                },
+            );
+        }
+    }
+
+    pub fn sent_in_current_head(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        stats: OperationNodeCurrentHeadStats,
+    ) {
+        self.min_time = Some(
+            self.min_time
+                .map_or(stats.time, |time| time.min(stats.time)),
+        );
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.sent.push(stats);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    received: vec![],
+                    sent: vec![stats],
+                },
+            );
         }
     }
 }
