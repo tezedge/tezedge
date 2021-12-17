@@ -154,6 +154,7 @@ pub struct MempoolSendAction {
     pub address: SocketAddr,
     pub ignore_empty_mempool: bool,
     pub send_pending: bool,
+    pub send_empty_mempool_for_debugging: bool,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {

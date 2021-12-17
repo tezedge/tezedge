@@ -179,6 +179,8 @@ where
                         address: *address,
                         ignore_empty_mempool: false,
                         send_pending: true,
+                        // TODO(vlad): remove for production
+                        send_empty_mempool_for_debugging: true,
                     });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -414,6 +416,7 @@ where
                     address,
                     ignore_empty_mempool: *ignore_empty_mempool,
                     send_pending: *send_pending,
+                    send_empty_mempool_for_debugging: false,
                 });
             }
         }
@@ -432,6 +435,7 @@ where
             address,
             ignore_empty_mempool,
             send_pending,
+            send_empty_mempool_for_debugging,
         }) => {
             let head_state = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
@@ -446,21 +450,25 @@ where
                 None => return,
             };
 
-            let known_valid = store
-                .state()
-                .mempool
-                .validated_operations
-                .ops
-                .iter()
-                .filter_map(|(hash, _)| {
-                    if !peer.seen_operations.contains(&hash.0) {
-                        Some(hash.0.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            let pending = if *send_pending {
+            let known_valid = if *send_empty_mempool_for_debugging {
+                vec![]
+            } else {
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .ops
+                    .iter()
+                    .filter_map(|(hash, _)| {
+                        if !peer.seen_operations.contains(&hash.0) {
+                            Some(hash.0.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let pending = if *send_pending && !*send_empty_mempool_for_debugging {
                 store
                     .state()
                     .mempool
