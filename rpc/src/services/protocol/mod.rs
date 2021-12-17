@@ -751,30 +751,39 @@ pub(crate) async fn preapply_block(
 ) -> Result<serde_json::value::Value, RpcServiceError> {
     let block_storage = BlockStorage::new(env.persistent_storage());
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
-    let (block_header, (predecessor_block_metadata_hash, predecessor_ops_metadata_hash)) =
-        match block_storage.get(&block_hash)? {
-            Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
-                Some(block_header_additional_data) => {
-                    (block_header, block_header_additional_data.into())
-                }
-                None => {
-                    return Err(RpcServiceError::NoDataFoundError {
-                        reason: format!(
-                            "No block additioanl data found for hash: {}",
-                            block_hash.to_base58_check()
-                        ),
-                    })
-                }
-            },
+    let (
+        block_header,
+        (predecessor_block_metadata_hash, predecessor_ops_metadata_hash),
+        predecessor_max_operations_ttl,
+    ) = match block_storage.get(&block_hash)? {
+        Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
+            Some(block_header_additional_data) => {
+                let predecessor_max_operations_ttl =
+                    block_header_additional_data.max_operations_ttl() as i32;
+                (
+                    block_header,
+                    block_header_additional_data.into(),
+                    predecessor_max_operations_ttl,
+                )
+            }
             None => {
                 return Err(RpcServiceError::NoDataFoundError {
                     reason: format!(
-                        "No block header found for hash: {}",
+                        "No block additional data found for hash: {}",
                         block_hash.to_base58_check()
                     ),
                 })
             }
-        };
+        },
+        None => {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: format!(
+                    "No block header found for hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            })
+        }
+    };
 
     // create request to ffi
     let request = HelpersPreapplyBlockRequest {
@@ -786,6 +795,7 @@ pub(crate) async fn preapply_block(
         },
         predecessor_block_metadata_hash,
         predecessor_ops_metadata_hash,
+        predecessor_max_operations_ttl,
     };
 
     // TODO: retry?
