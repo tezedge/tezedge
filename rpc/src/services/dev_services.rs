@@ -708,7 +708,8 @@ pub struct OperationStats {
     kind: Option<OperationKind>,
     /// Minimum time when we saw this operation. Latencies are measured
     /// from this point.
-    min_time: u64,
+    min_time: Option<u64>,
+    first_block_timestamp: Option<u64>,
     validation_started: Option<i128>,
     validation_result: Option<(i128, shell_automaton::mempool::OperationValidationResult)>,
     nodes: HashMap<String, OperationNodeStats>,
@@ -749,21 +750,15 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .into_iter()
         .map(|(op_hash, op_stats)| {
             let start_time = op_stats
-                .nodes
-                .iter()
-                .find(|(_, v)| v.received.get(0).or_else(|| v.sent.get(0)).is_some())
-                .map(|(_, v)| {
-                    v.received
-                        .get(0)
-                        .or_else(|| v.sent.get(0))
-                        .map_or(0, |v| v.block_timestamp)
-                })
-                .and_then(|v| (v as i128).checked_mul(1_000_000_000))
-                .unwrap_or(0);
+                .first_block_timestamp
+                // convert from seconds to nanoseconds.
+                .and_then(|v| v.checked_mul(1_000_000_000))
+                .unwrap_or(0) as i128;
 
             let op_stats = OperationStats {
                 kind: op_stats.kind,
-                min_time: op_stats.min_time.unwrap_or(0),
+                min_time: op_stats.min_time,
+                first_block_timestamp: op_stats.first_block_timestamp,
                 validation_started: op_stats
                     .validation_started
                     .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),

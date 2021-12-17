@@ -92,6 +92,7 @@ pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
     pub min_time: Option<u64>,
+    pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
     pub validation_result: Option<(u64, OperationValidationResult)>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
@@ -102,6 +103,7 @@ impl OperationStats {
         Self {
             kind: None,
             min_time: None,
+            first_block_timestamp: None,
             validation_started: None,
             validation_result: None,
             nodes: HashMap::new(),
@@ -128,6 +130,11 @@ impl OperationStats {
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),
         );
+        if self.first_block_timestamp.is_none() {
+            if stats.block_timestamp >= 0 {
+                self.first_block_timestamp = Some(stats.block_timestamp as u64);
+            }
+        }
 
         if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
             node_stats.received.push(stats);
