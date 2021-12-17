@@ -28,8 +28,8 @@ use crate::{
 
 use super::{
     mempool_actions::{
-        BlockAppliedAction, MempoolFlushAction, MempoolAskCurrentHeadAction,
-        MempoolBroadcastAction, MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction,
+        BlockAppliedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
+        MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolFlushAction,
         MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
         MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
         MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
@@ -93,6 +93,7 @@ where
                 ProtocolAction::OperationValidated(response) => {
                     store.dispatch(MempoolBroadcastAction {
                         ignore_empty_mempool: true,
+                        send_pending: false,
                     });
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
@@ -177,6 +178,7 @@ where
                     store.dispatch(MempoolSendAction {
                         address: *address,
                         ignore_empty_mempool: false,
+                        send_pending: true,
                     });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -245,6 +247,7 @@ where
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         ignore_empty_mempool: false,
+                        send_pending: false,
                     });
                 }
             }
@@ -403,12 +406,14 @@ where
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
             ignore_empty_mempool,
+            send_pending,
         }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
                     ignore_empty_mempool: *ignore_empty_mempool,
+                    send_pending: *send_pending,
                 });
             }
         }
@@ -426,6 +431,7 @@ where
         Action::MempoolSend(MempoolSendAction {
             address,
             ignore_empty_mempool,
+            send_pending,
         }) => {
             let head_state = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
@@ -454,16 +460,20 @@ where
                     }
                 })
                 .collect::<Vec<_>>();
-            let pending = store
-                .state()
-                .mempool
-                .pending_operations
-                .iter()
-                .filter(|(hash, op)| {
-                    !peer.seen_operations.contains(&hash.0) && head_state.hash.eq(op.branch())
-                })
-                .map(|(hash, _)| hash.0.clone())
-                .collect::<Vec<_>>();
+            let pending = if *send_pending {
+                store
+                    .state()
+                    .mempool
+                    .pending_operations
+                    .iter()
+                    .filter(|(hash, op)| {
+                        !peer.seen_operations.contains(&hash.0) && head_state.hash.eq(op.branch())
+                    })
+                    .map(|(hash, _)| hash.0.clone())
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
             let mempool = Mempool::new(known_valid.clone(), pending.clone());
             if mempool.is_empty() && *ignore_empty_mempool {
                 return;
