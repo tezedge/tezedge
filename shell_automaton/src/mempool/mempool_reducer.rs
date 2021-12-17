@@ -223,7 +223,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             address,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            mempool_state.pending_full_content
+            mempool_state
+                .pending_full_content
                 .extend(peer.requesting_full_content.drain());
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. }) => {

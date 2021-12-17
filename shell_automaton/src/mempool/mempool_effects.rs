@@ -401,9 +401,7 @@ where
                 });
             }
         }
-        Action::MempoolBroadcast(MempoolBroadcastAction {
-            send_operations,
-        }) => {
+        Action::MempoolBroadcast(MempoolBroadcastAction { send_operations }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
@@ -444,10 +442,25 @@ where
 
             // TODO(vlad): for debug
             let debug = true;
-            let known_valid = if debug {
-                vec![]
-            } else if !*requested_explicitly {
-                vec![]
+            let known_valid = if *requested_explicitly {
+                if debug {
+                    vec![]
+                } else {
+                    store
+                        .state()
+                        .mempool
+                        .validated_operations
+                        .applied
+                        .iter()
+                        .filter_map(|v| {
+                            if !peer.seen_operations.contains(&v.hash) {
+                                Some(v.hash.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                }
             } else {
                 store
                     .state()
@@ -465,9 +478,7 @@ where
                     .collect::<Vec<_>>()
             };
             // TODO(vlad):
-            let pending = if *requested_explicitly {
-                vec![]
-            } else {
+            let pending = if *requested_explicitly && !debug {
                 store
                     .state()
                     .mempool
@@ -478,6 +489,8 @@ where
                     })
                     .map(|(hash, _)| hash.0.clone())
                     .collect::<Vec<_>>()
+            } else {
+                vec![]
             };
             let mempool = if *send_operations {
                 let mempool = Mempool::new(known_valid.clone(), pending.clone());
