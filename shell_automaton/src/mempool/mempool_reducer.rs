@@ -211,22 +211,22 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
                 if !known {
                     ops.push(hash.clone());
-                    peer.requesting_full_content.insert(hash.clone());
-                    // TODO(vlad): Probably this needs to be outside of
-                    // this `if`?
-                    // of course peer knows about it, because he sent us it
-                    peer.seen_operations.insert(hash);
+                    if !mempool_state.pending_full_content.contains(&hash) {
+                        peer.requesting_full_content.insert(hash.clone());
+                    }
                 }
+                // of course peer knows about it, because he sent us it
+                peer.seen_operations.insert(hash);
             }
         }
         Action::MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction {
             address,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            peer.pending_full_content
+            mempool_state.pending_full_content
                 .extend(peer.requesting_full_content.drain());
         }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { address, operation }) => {
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. }) => {
             let operation_hash = match operation.message_typed_hash() {
                 Ok(v) => v,
                 Err(err) => {
@@ -236,9 +236,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     return;
                 }
             };
-            let peer = mempool_state.peer_state.entry(*address).or_default();
 
-            if !peer.pending_full_content.remove(&operation_hash) {
+            if !mempool_state.pending_full_content.remove(&operation_hash) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 

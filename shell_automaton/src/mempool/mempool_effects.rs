@@ -93,7 +93,6 @@ where
                 ProtocolAction::OperationValidated(response) => {
                     store.dispatch(MempoolBroadcastAction {
                         ignore_empty_mempool: true,
-                        send_pending: false,
                     });
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
@@ -178,9 +177,7 @@ where
                     store.dispatch(MempoolSendAction {
                         address: *address,
                         ignore_empty_mempool: false,
-                        send_pending: true,
-                        // TODO(vlad): remove for production
-                        send_empty_mempool_for_debugging: true,
+                        requested_explicitly: true,
                     });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -200,7 +197,6 @@ where
                 }
                 PeerMessage::Operation(ref op) => {
                     store.dispatch(MempoolOperationRecvDoneAction {
-                        address: *address,
                         operation: op.clone().into(),
                     });
                 }
@@ -249,7 +245,6 @@ where
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         ignore_empty_mempool: false,
-                        send_pending: false,
                     });
                 }
             }
@@ -383,7 +378,7 @@ where
                 message: Arc::new(GetOperationsMessage::new(ops).into()),
             });
         }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. })
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
             store.dispatch(MempoolValidateStartAction {
                 operation: operation.clone(),
@@ -408,15 +403,13 @@ where
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
             ignore_empty_mempool,
-            send_pending,
         }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
                     ignore_empty_mempool: *ignore_empty_mempool,
-                    send_pending: *send_pending,
-                    send_empty_mempool_for_debugging: false,
+                    requested_explicitly: false,
                 });
             }
         }
@@ -434,8 +427,7 @@ where
         Action::MempoolSend(MempoolSendAction {
             address,
             ignore_empty_mempool,
-            send_pending,
-            send_empty_mempool_for_debugging,
+            requested_explicitly,
         }) => {
             let head_state = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
@@ -450,7 +442,8 @@ where
                 None => return,
             };
 
-            let known_valid = if *send_empty_mempool_for_debugging {
+            // TODO(vlad): for debug
+            let known_valid = if *requested_explicitly {
                 vec![]
             } else {
                 store
@@ -468,7 +461,10 @@ where
                     })
                     .collect::<Vec<_>>()
             };
-            let pending = if *send_pending && !*send_empty_mempool_for_debugging {
+            // TODO(vlad):
+            let pending = if *requested_explicitly {
+                vec![]
+            } else {
                 store
                     .state()
                     .mempool
@@ -479,8 +475,6 @@ where
                     })
                     .map(|(hash, _)| hash.0.clone())
                     .collect::<Vec<_>>()
-            } else {
-                vec![]
             };
             let mempool = Mempool::new(known_valid.clone(), pending.clone());
             if mempool.is_empty() && *ignore_empty_mempool {

@@ -31,6 +31,8 @@ pub struct MempoolState {
     pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
+    // we sent GetOperations and pending full content of those operations
+    pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
@@ -81,8 +83,6 @@ pub struct ValidatedOperations {
 pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
     pub(super) requesting_full_content: HashSet<OperationHash>,
-    // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
 }

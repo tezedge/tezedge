@@ -58,7 +58,6 @@ impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
 /// Take the operation received from the peer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
-    pub address: SocketAddr,
     pub operation: Operation,
 }
 
@@ -153,8 +152,7 @@ impl EnablingCondition<State> for MempoolUnregisterOperationsStreamsAction {
 pub struct MempoolSendAction {
     pub address: SocketAddr,
     pub ignore_empty_mempool: bool,
-    pub send_pending: bool,
-    pub send_empty_mempool_for_debugging: bool,
+    pub requested_explicitly: bool,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {
@@ -179,7 +177,6 @@ impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {
     pub ignore_empty_mempool: bool,
-    pub send_pending: bool,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastAction {
