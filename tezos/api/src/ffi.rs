@@ -682,6 +682,7 @@ pub struct HelpersPreapplyBlockRequest {
     pub protocol_rpc_request: ProtocolRpcRequest,
     pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
     pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub predecessor_max_operations_ttl: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

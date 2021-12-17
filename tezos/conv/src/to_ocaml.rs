@@ -326,6 +326,7 @@ impl_to_ocaml_record! {
         protocol_rpc_request: OCamlProtocolRpcRequest,
         predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
         predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+        predecessor_max_operations_ttl: OCamlInt,
     }
 }
 
