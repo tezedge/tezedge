@@ -276,6 +276,8 @@ pub enum OperationKind {
     Activation,
     Proposals,
     Ballot,
+    EndorsementWithSlot,
+    FailingNoop,
     Reveal,
     Transaction,
     Origination,
@@ -285,35 +287,11 @@ pub enum OperationKind {
 }
 
 impl OperationKind {
-    fn get_tag_bytes(bytes: &[u8]) -> Option<&[u8]> {
-        bytes
-            .iter()
-            .position(|b| b & 0x80 == 0)
-            .map(|i| &bytes[0..(i + 1)])
-    }
-
     pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
-        // var value = BigInteger.Zero;
-
-        let tag_bytes = match Self::get_tag_bytes(bytes) {
-            Some(v) => v,
-            None => return Self::Unknown,
-        };
-
-        let mut tag: u16 = 0;
-
-        for b in tag_bytes.iter().rev().cloned() {
-            tag = match tag.checked_shl(7) {
-                Some(v) => v,
-                None => return Self::Unknown,
-            };
-            tag |= (b & 0x7F) as u16;
-        }
-
-        Self::from_tag(tag)
+        Self::from_tag(bytes[0])
     }
 
-    pub fn from_tag(tag: u16) -> Self {
+    pub fn from_tag(tag: u8) -> Self {
         match tag {
             0 => Self::Endorsement,
             1 => Self::SeedNonceRevelation,
@@ -322,6 +300,8 @@ impl OperationKind {
             4 => Self::Activation,
             5 => Self::Proposals,
             6 => Self::Ballot,
+            10 => Self::EndorsementWithSlot,
+            17 => Self::FailingNoop,
             107 => Self::Reveal,
             108 => Self::Transaction,
             109 => Self::Origination,
