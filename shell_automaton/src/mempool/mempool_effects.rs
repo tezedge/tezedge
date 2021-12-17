@@ -92,7 +92,7 @@ where
                 }
                 ProtocolAction::OperationValidated(response) => {
                     store.dispatch(MempoolBroadcastAction {
-                        ignore_empty_mempool: true,
+                        send_operations: true,
                     });
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
@@ -176,7 +176,7 @@ where
                     }
                     store.dispatch(MempoolSendAction {
                         address: *address,
-                        ignore_empty_mempool: false,
+                        send_operations: true,
                         requested_explicitly: true,
                     });
                 }
@@ -244,7 +244,7 @@ where
                 });
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
-                        ignore_empty_mempool: false,
+                        send_operations: false,
                     });
                 }
             }
@@ -402,13 +402,13 @@ where
             }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
-            ignore_empty_mempool,
+            send_operations,
         }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
-                    ignore_empty_mempool: *ignore_empty_mempool,
+                    send_operations: *send_operations,
                     requested_explicitly: false,
                 });
             }
@@ -426,7 +426,7 @@ where
         }
         Action::MempoolSend(MempoolSendAction {
             address,
-            ignore_empty_mempool,
+            send_operations,
             requested_explicitly,
         }) => {
             let head_state = match store.state().mempool.local_head_state.clone() {
@@ -443,7 +443,10 @@ where
             };
 
             // TODO(vlad): for debug
-            let known_valid = if *requested_explicitly {
+            let debug = true;
+            let known_valid = if debug {
+                vec![]
+            } else if !*requested_explicitly {
                 vec![]
             } else {
                 store
@@ -476,10 +479,15 @@ where
                     .map(|(hash, _)| hash.0.clone())
                     .collect::<Vec<_>>()
             };
-            let mempool = Mempool::new(known_valid.clone(), pending.clone());
-            if mempool.is_empty() && *ignore_empty_mempool {
-                return;
-            }
+            let mempool = if *send_operations {
+                let mempool = Mempool::new(known_valid.clone(), pending.clone());
+                if mempool.is_empty() {
+                    return;
+                }
+                mempool
+            } else {
+                Mempool::default()
+            };
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
                 head_state.header.clone(),
