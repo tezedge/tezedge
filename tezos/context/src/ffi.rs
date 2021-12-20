@@ -834,7 +834,7 @@ ocaml_export! {
 
     fn tezedge_timing_set_protocol(
         rt,
-        protocol_hash: OCamlRef<Option<OCamlProtocolHash>>,
+        protocol_hash: OCamlRef<OCamlProtocolHash>,
     ) {
         timings::set_protocol(rt, protocol_hash);
         OCaml::unit()

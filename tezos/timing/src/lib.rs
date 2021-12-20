@@ -275,7 +275,7 @@ pub enum TimingMessage {
         /// is used to get `timestamp`) is not.
         instant: Instant,
     },
-    SetProtocol(Option<InlinedProtocolHash>),
+    SetProtocol(InlinedProtocolHash),
     SetOperation(Option<InlinedOperationHash>),
     Checkout {
         context_hash: InlinedContextHash,
@@ -984,12 +984,7 @@ impl Timing {
         Ok(())
     }
 
-    fn set_current_protocol(&mut self, protocol_hash: &Option<InlinedProtocolHash>) {
-        let protocol_hash = match protocol_hash {
-            Some(protocol_hash) => protocol_hash,
-            None => return,
-        };
-
+    fn set_current_protocol(&mut self, protocol_hash: &InlinedProtocolHash) {
         let protocol = match self.protocol_tables.get(protocol_hash).copied() {
             Some(protocol) => protocol,
             None => return,
