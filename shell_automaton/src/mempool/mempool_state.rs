@@ -89,6 +89,11 @@ pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
+    /// First time we saw this operation in the current head.
+    pub kind: Option<OperationKind>,
+    pub min_time: Option<u64>,
+    pub first_block_timestamp: Option<u64>,
+    pub validation_started: Option<u64>,
     pub validation_result: Option<(u64, OperationValidationResult)>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
@@ -96,8 +101,144 @@ pub struct OperationStats {
 impl OperationStats {
     pub fn new() -> Self {
         Self {
+            kind: None,
+            min_time: None,
+            first_block_timestamp: None,
+            validation_started: None,
             validation_result: None,
             nodes: HashMap::new(),
+        }
+    }
+
+    /// Sets operation kind if not already set.
+    pub fn set_kind_with<F: Fn() -> OperationKind>(&mut self, f: F) {
+        if self.kind.is_none() {
+            self.kind = Some(f());
+        }
+    }
+
+    pub fn validation_started(&mut self, time: u64) {
+        self.validation_started = Some(time);
+    }
+
+    pub fn received_in_current_head(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        stats: OperationNodeCurrentHeadStats,
+    ) {
+        self.min_time = Some(
+            self.min_time
+                .map_or(stats.time, |time| time.min(stats.time)),
+        );
+        if self.first_block_timestamp.is_none() {
+            if stats.block_timestamp >= 0 {
+                self.first_block_timestamp = Some(stats.block_timestamp as u64);
+            }
+        }
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.received.push(stats);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    received: vec![stats],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn sent_in_current_head(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        stats: OperationNodeCurrentHeadStats,
+    ) {
+        self.min_time = Some(
+            self.min_time
+                .map_or(stats.time, |time| time.min(stats.time)),
+        );
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.sent.push(stats);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    sent: vec![stats],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_requested(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_requested.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_requested: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_received(
+        &mut self,
+        node_pkh: &CryptoboxPublicKeyHash,
+        time: u64,
+        op_content: &[u8],
+    ) {
+        self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_received.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_received: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_requested_remote(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_requested_remote.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_requested_remote: vec![time],
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn content_sent(&mut self, node_pkh: &CryptoboxPublicKeyHash, time: u64) {
+        self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
+
+        if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
+            node_stats.content_sent.push(time);
+        } else {
+            self.nodes.insert(
+                node_pkh.clone().into(),
+                OperationNodeStats {
+                    content_sent: vec![time],
+                    ..Default::default()
+                },
+            );
         }
     }
 }
@@ -110,15 +251,72 @@ pub enum OperationValidationResult {
     BranchDelayed,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationNodeStats {
     pub received: Vec<OperationNodeCurrentHeadStats>,
     pub sent: Vec<OperationNodeCurrentHeadStats>,
+
+    /// Timestamps when we have requested content of this operation from peer.
+    pub content_requested: Vec<u64>,
+    /// Timestamps when we have received content of this operation from peer.
+    pub content_received: Vec<u64>,
+
+    /// Timestamps when peer has requested content of this operation from us.
+    pub content_requested_remote: Vec<u64>,
+    /// Timestamps when we have sent content of this operation to peer.
+    pub content_sent: Vec<u64>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationNodeCurrentHeadStats {
     pub time: u64,
     pub block_level: i32,
     pub block_timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum OperationKind {
+    Endorsement,
+    SeedNonceRevelation,
+    DoubleEndorsement,
+    DoubleBaking,
+    Activation,
+    Proposals,
+    Ballot,
+    EndorsementWithSlot,
+    FailingNoop,
+    Reveal,
+    Transaction,
+    Origination,
+    Delegation,
+    RegisterConstant,
+    Unknown,
+}
+
+impl OperationKind {
+    pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
+        bytes
+            .get(0)
+            .map_or(Self::Unknown, |tag| Self::from_tag(*tag))
+    }
+
+    pub fn from_tag(tag: u8) -> Self {
+        match tag {
+            0 => Self::Endorsement,
+            1 => Self::SeedNonceRevelation,
+            2 => Self::DoubleEndorsement,
+            3 => Self::DoubleBaking,
+            4 => Self::Activation,
+            5 => Self::Proposals,
+            6 => Self::Ballot,
+            10 => Self::EndorsementWithSlot,
+            17 => Self::FailingNoop,
+            107 => Self::Reveal,
+            108 => Self::Transaction,
+            109 => Self::Origination,
+            110 => Self::Delegation,
+            111 => Self::RegisterConstant,
+            _ => Self::Unknown,
+        }
+    }
 }
