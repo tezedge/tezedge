@@ -48,8 +48,10 @@ pub struct State {
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
 
+    #[serde(skip)]
     pub mempool: MempoolState,
 
+    #[serde(skip)]
     pub rights: RightsState,
 
     pub paused_loops: PausedLoopsState,
