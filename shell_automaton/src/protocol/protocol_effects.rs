@@ -11,7 +11,7 @@ where
 {
     match &action.action {
         Action::WakeupEvent(_) => {
-            if let Ok(action) = store.service.protocol().try_recv() {
+            while let Ok(action) = store.service.protocol().try_recv() {
                 store.dispatch(action);
             }
         }
