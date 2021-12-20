@@ -218,7 +218,7 @@ impl DirEntry {
     /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
     ///
     /// If this dir_entry is an inlined blob, this will return `None`.
-    fn object_hash_id_impl(
+    fn object_hash_id(
         &self,
         store: &mut ContextKeyValueStore,
         storage: &Storage,
@@ -250,41 +250,16 @@ impl DirEntry {
                         strings,
                     )?
                 };
+
+                if let Some(hash_id) = hash_id {
+                    let mut inner = self.inner.get();
+                    inner.set_object_hash_id(hash_id.as_u64());
+                    self.inner.set(inner);
+                };
+
                 Ok(hash_id)
             }
         }
-    }
-
-    /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
-    ///
-    /// If this dir_entry is an inlined blob, this will return `None`.
-    pub fn object_hash_id(
-        &self,
-        store: &mut ContextKeyValueStore,
-        storage: &Storage,
-        strings: &StringInterner,
-    ) -> Result<Option<HashId>, HashingError> {
-        let hash_id = match self.object_hash_id_impl(store, storage, strings)? {
-            Some(hash_id) => hash_id,
-            None => return Ok(None),
-        };
-
-        let new_hash_id = store.make_hash_id_ready_for_commit(hash_id)?;
-
-        if new_hash_id.as_u64() & 0xFFFFFFFFFFFF != new_hash_id.as_u64() {
-            // more than 48 bits
-            let a = hash_id.as_u64();
-            let b = new_hash_id.as_u64();
-            println!(
-                "HASH_ID={:?}/{:x?}/{:064b} NEW_HASH_ID={:?}/{:x?}/{:064b}",
-                a, a, a, b, b, b
-            );
-        }
-
-        let mut inner = self.inner.get();
-        inner.set_object_hash_id(new_hash_id.as_u64());
-        self.inner.set(inner);
-        Ok(Some(new_hash_id))
     }
 
     pub fn get_inlined_blob<'a>(&self, storage: &'a Storage) -> Option<Blob<'a>> {

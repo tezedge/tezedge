@@ -49,6 +49,7 @@ fn serialize_shaped_directory(
     dir: &[(StringId, DirEntryId)],
     output: &mut Vec<u8>,
     storage: &Storage,
+    repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError> {
     let mut nblobs_inlined: usize = 0;
@@ -69,7 +70,7 @@ fn serialize_shaped_directory(
     for (_, dir_entry_id) in dir {
         let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
 
-        let hash_id: u64 = dir_entry.hash_id().map(|h| h.as_u64()).unwrap_or(0);
+        let hash_id = dir_entry.hash_id();
         let kind = dir_entry.dir_entry_kind();
 
         let blob_inline = dir_entry.get_inlined_blob(storage);
@@ -88,7 +89,7 @@ fn serialize_shaped_directory(
 
             output.write_all(&blob_inline)?;
         } else {
-            serialize_hash_id(hash_id, output, stats)?;
+            serialize_hash_id(hash_id, output, repository, stats)?;
         }
     }
 
@@ -110,7 +111,7 @@ fn serialize_directory(
     let mut blobs_length: usize = 0;
 
     if let Some(shape_id) = repository.make_shape(dir)? {
-        return serialize_shaped_directory(shape_id, dir, output, storage, stats);
+        return serialize_shaped_directory(shape_id, dir, output, storage, repository, stats);
     };
 
     let header: [u8; 1] = ObjectHeader::new()
@@ -124,7 +125,7 @@ fn serialize_directory(
 
         let dir_entry = storage.get_dir_entry(*dir_entry_id)?;
 
-        let hash_id: u64 = dir_entry.hash_id().map(|h| h.as_u64()).unwrap_or(0);
+        let hash_id = dir_entry.hash_id();
         let kind = dir_entry.dir_entry_kind();
 
         let blob_inline = dir_entry.get_inlined_blob(storage);
@@ -162,7 +163,7 @@ fn serialize_directory(
 
             output.write_all(&blob_inline)?;
         } else {
-            serialize_hash_id(hash_id, output, stats)?;
+            serialize_hash_id(hash_id, output, repository, stats)?;
         }
     }
 
@@ -232,15 +233,11 @@ pub fn serialize_object(
                 .into_bytes();
             output.write_all(&header)?;
 
-            let parent_hash_id = commit
-                .parent_commit_ref
-                .and_then(|p| p.hash_id_opt())
-                .map(|h| h.as_u64())
-                .unwrap_or(0);
-            serialize_hash_id(parent_hash_id, output, stats)?;
+            let parent_hash_id = commit.parent_commit_ref.and_then(|p| p.hash_id_opt());
+            serialize_hash_id(parent_hash_id, output, repository, stats)?;
 
-            let root_hash_id = commit.root_ref.hash_id().as_u64();
-            serialize_hash_id(root_hash_id, output, stats)?;
+            let root_hash_id = commit.root_ref.hash_id();
+            serialize_hash_id(root_hash_id, output, repository, stats)?;
 
             output.write_all(&commit.time.to_ne_bytes())?;
 
@@ -304,9 +301,8 @@ fn serialize_inode(
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
-                let hash_id = hash_id.as_u64();
 
-                serialize_hash_id(hash_id, output, stats)?;
+                serialize_hash_id(hash_id, output, repository, stats)?;
             }
 
             batch.push((hash_id, Arc::from(output.as_slice())));
