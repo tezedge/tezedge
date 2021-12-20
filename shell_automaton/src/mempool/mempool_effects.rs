@@ -441,7 +441,7 @@ where
             };
 
             // TODO(vlad): for debug
-            let debug = true;
+            let debug = false;
             let known_valid = if *requested_explicitly {
                 if debug {
                     vec![]

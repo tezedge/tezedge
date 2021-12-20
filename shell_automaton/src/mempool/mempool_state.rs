@@ -77,8 +77,6 @@ pub struct ValidatedOperations {
     pub refused: Vec<Errored>,
 }
 
-// TODO(vlad): `pending_full_content` should be global set to avoid request the same operation
-// for multiple peers
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
