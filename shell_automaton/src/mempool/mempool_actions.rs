@@ -58,7 +58,6 @@ impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
 /// Take the operation received from the peer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
-    pub address: SocketAddr,
     pub operation: Operation,
 }
 
@@ -152,7 +151,8 @@ impl EnablingCondition<State> for MempoolUnregisterOperationsStreamsAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolSendAction {
     pub address: SocketAddr,
-    pub ignore_empty_mempool: bool,
+    pub send_operations: bool,
+    pub requested_explicitly: bool,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {
@@ -176,7 +176,7 @@ impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {
-    pub ignore_empty_mempool: bool,
+    pub send_operations: bool,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastAction {
@@ -244,21 +244,11 @@ pub struct MempoolFlushAction {}
 
 impl EnablingCondition<State> for MempoolFlushAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
-    }
-}
-
-/// NOTE: this action is not specific to mempool, may be handled elsewhere
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BranchChangedAction {}
-
-impl EnablingCondition<State> for BranchChangedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
+        if let Some(state) = &state.mempool.local_head_state {
+            state.ops_removed && state.prevalidator_ready
+        } else {
+            false
+        }
     }
 }
 

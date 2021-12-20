@@ -40,7 +40,7 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 use crate::peer::handshaking::*;
 
 use crate::mempool::{
-    BlockAppliedAction, BranchChangedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
+    BlockAppliedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
     MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolFlushAction,
     MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
     MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
@@ -281,7 +281,6 @@ pub enum Action {
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
     MempoolFlush(MempoolFlushAction),
 
-    BranchChanged(BranchChangedAction),
     BlockApplied(BlockAppliedAction),
 
     RightsGetEndorsingRights(RightsGetEndorsingRightsAction),

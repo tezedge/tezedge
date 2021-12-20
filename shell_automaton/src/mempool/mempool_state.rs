@@ -27,10 +27,12 @@ pub struct MempoolState {
     // operation streams requested by baker
     pub(super) operation_streams: Vec<OperationStream>,
     // the current head applied
-    pub local_head_state: Option<(BlockHeader, BlockHash)>,
+    pub local_head_state: Option<HeadState>,
     pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: HashMap<SocketAddr, PeerState>,
+    // we sent GetOperations and pending full content of those operations
+    pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
@@ -40,6 +42,16 @@ pub struct MempoolState {
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
     pub operation_stats: OperationsStats,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HeadState {
+    pub(super) header: BlockHeader,
+    pub(super) hash: BlockHash,
+    // operations included in the head already removed
+    pub(super) ops_removed: bool,
+    // prevalidator for the head is created
+    pub(super) prevalidator_ready: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -65,14 +77,10 @@ pub struct ValidatedOperations {
     pub refused: Vec<Errored>,
 }
 
-// TODO(vlad): `pending_full_content` should be global set to avoid request the same operation
-// for multiple peers
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
     pub(super) requesting_full_content: HashSet<OperationHash>,
-    // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
 }
