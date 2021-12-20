@@ -18,8 +18,8 @@ use super::{
     MempoolFlushAction, MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
     MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRemoveAppliedOperationsAction,
     MempoolRpcRespondAction, MempoolSendAction, MempoolUnregisterOperationsStreamsAction,
-    MempoolValidateWaitPrevalidatorAction, OperationNodeCurrentHeadStats, OperationNodeStats,
-    OperationStats, OperationValidationResult,
+    MempoolValidateWaitPrevalidatorAction, OperationNodeCurrentHeadStats, OperationStats,
+    OperationValidationResult,
 };
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -373,6 +373,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .validation_started(action.time_as_nanos());
         }
         Action::PeerMessageReadSuccess(content) => {
+            if mempool_state.running_since.is_none() {
+                return;
+            }
+
             let peer = match state
                 .peers
                 .get(&content.address)
@@ -434,6 +438,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::PeerMessageWriteInit(content) => {
+            if mempool_state.running_since.is_none() {
+                return;
+            }
+
             match content.message.message() {
                 PeerMessage::CurrentHead(_)
                 | PeerMessage::GetOperations(_)
@@ -443,6 +451,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             update_operation_sent_stats(state, content.address, action.time_as_nanos());
         }
         Action::PeerMessageWriteNext(content) => {
+            if mempool_state.running_since.is_none() {
+                return;
+            }
+
             update_operation_sent_stats(state, content.address, action.time_as_nanos());
         }
         _ => (),
