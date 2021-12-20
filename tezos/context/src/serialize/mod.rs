@@ -11,6 +11,7 @@ use tezos_timing::SerializeStats;
 use thiserror::Error;
 
 use crate::{
+    hash::HashingError,
     kv_store::HashId,
     persistent::DBError,
     working_tree::{
@@ -210,6 +211,11 @@ pub enum SerializationError {
     },
     #[error("Missing Offset")]
     MissingOffset,
+    #[error("Hashing Error: {error}")]
+    HashingError {
+        #[from]
+        error: HashingError,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -306,11 +312,17 @@ pub fn deserialize_hash_id(data: &[u8]) -> Result<(Option<HashId>, usize), Deser
     }
 }
 
-pub fn serialize_hash_id(
-    hash_id: u64,
+pub fn serialize_hash_id_impl(
+    hash_id: Option<HashId>,
     output: &mut Vec<u8>,
+    repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError> {
+    let hash_id = match hash_id {
+        Some(hash_id) => repository.make_hash_id_ready_for_commit(hash_id)?.as_u64(),
+        None => 0,
+    };
+
     stats.highest_hash_id = stats.highest_hash_id.max(hash_id);
 
     if hash_id & FULL_31_BITS == hash_id {
@@ -336,4 +348,17 @@ pub fn serialize_hash_id(
         // MSB to determine if the HashId is compact or not
         Err(SerializationError::HashIdTooBig)
     }
+}
+
+pub fn serialize_hash_id<T>(
+    hash_id: T,
+    output: &mut Vec<u8>,
+    repository: &mut ContextKeyValueStore,
+    stats: &mut SerializeStats,
+) -> Result<(), SerializationError>
+where
+    T: Into<Option<HashId>>,
+{
+    let hash_id: Option<HashId> = hash_id.into();
+    serialize_hash_id_impl(hash_id, output, repository, stats)
 }

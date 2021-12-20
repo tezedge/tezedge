@@ -23,7 +23,10 @@ use thiserror::Error;
 
 use crate::{
     chunks::ChunkedVec,
+    hash::HashingError,
     kv_store::{index_map::IndexMap, HashId},
+    working_tree::ObjectReference,
+    ContextKeyValueStore,
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
@@ -398,6 +401,7 @@ pub struct PointerToInodeInner {
     hash_id: B48,
     is_commited: bool,
     inode_id: B31,
+    /// Set to `0` when the offset is not set
     offset: B64,
 }
 
@@ -430,12 +434,14 @@ impl PointerToInode {
                     .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(true)
                     .with_inode_id(inode_id.0)
-                    .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0)), //.with_offset(0),
+                    .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0)),
             ),
         }
     }
 
     pub fn with_offset(self, offset: u64) -> Self {
+        debug_assert_ne!(offset, 0);
+
         let mut inner = self.inner.get();
         inner.set_offset(offset);
         self.inner.set(inner);
@@ -450,11 +456,34 @@ impl PointerToInode {
         InodeId(inode_id)
     }
 
-    pub fn hash_id(&self) -> Option<HashId> {
-        let inner = self.inner.get();
-        let hash_id = inner.hash_id();
+    pub fn hash_id(
+        &self,
+        storage: &Storage,
+        repository: &ContextKeyValueStore,
+    ) -> Result<Option<HashId>, HashingError> {
+        let mut inner = self.inner.get();
 
-        HashId::new(hash_id)
+        if let Some(hash_id) = HashId::new(inner.hash_id()) {
+            return Ok(Some(hash_id));
+        };
+
+        let offset = match self.get_offset() {
+            Some(offset) => offset,
+            None => return Ok(None),
+        };
+
+        let hash_id = match storage.offsets_to_hash_id.get(&offset) {
+            Some(hash_id) => *hash_id,
+            None => {
+                let object_ref = ObjectReference::new(None, Some(offset));
+                repository.get_hash_id(object_ref)?
+            }
+        };
+
+        inner.set_hash_id(hash_id.as_u64());
+        self.inner.set(inner);
+
+        Ok(Some(hash_id))
     }
 
     pub fn set_hash_id(&self, hash_id: Option<HashId>) {
@@ -465,15 +494,23 @@ impl PointerToInode {
     }
 
     pub fn set_offset(&self, offset: AbsoluteOffset) {
+        debug_assert_ne!(offset.as_u64(), 0);
+
         let mut inner = self.inner.get();
         inner.set_offset(offset.as_u64());
 
         self.inner.set(inner);
     }
 
-    pub fn offset(&self) -> AbsoluteOffset {
+    pub fn get_offset(&self) -> Option<AbsoluteOffset> {
         let inner = self.inner.get();
-        inner.offset().into()
+        let offset: u64 = inner.offset();
+
+        if offset != 0 {
+            Some(offset.into())
+        } else {
+            None
+        }
     }
 
     pub fn is_commited(&self) -> bool {

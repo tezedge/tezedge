@@ -82,6 +82,63 @@ pub fn context_set_get_commit(
 }
 
 #[test]
+pub fn test_context_hash_from_working_tree_persistent() -> Result<(), anyhow::Error> {
+    context_hash_from_working_tree(
+        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        "__context:test_context_hash_from_working_tree_persistent",
+    )
+}
+
+#[test]
+pub fn test_context_hash_from_working_tree_memory() -> Result<(), anyhow::Error> {
+    context_hash_from_working_tree(
+        ContextKvStoreConfiguration::InMem,
+        "__context:test_context_hash_from_working_tree_memory",
+    )
+}
+
+pub fn context_hash_from_working_tree(
+    backend: ContextKvStoreConfiguration,
+    tmp_dir: &str,
+) -> Result<(), anyhow::Error> {
+    // prepare temp storage
+    let tmp_storage = TmpStorage::create_to_out_dir(tmp_dir).expect("Storage error");
+    let persistent_storage = tmp_storage.storage();
+
+    // init block storage (because of commit)
+    let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
+    let block_storage = BlockStorage::new(&persistent_storage);
+    block_storage.put_block_header(&block)?;
+
+    // context
+    let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
+        backend,
+        ipc_socket_path: None,
+    })
+    .unwrap();
+
+    // Enough to create inodes
+    for index in 0..1000 {
+        context = context.add(
+            &context_key!(format!("data/rolls/owner/current/index/{}", index)),
+            &[1, 2, 3, 4, 5, 6],
+        )?;
+    }
+
+    // Create 'temporary' hashes
+    context
+        .hash("tezos".to_string(), "hello".to_string(), 123)
+        .unwrap();
+
+    // Created hashes must be commited, this must not panic
+    context
+        .commit("Tezos".to_string(), "Genesis".to_string(), 0)
+        .unwrap();
+
+    Ok(())
+}
+
+#[test]
 pub fn test_context_delete_and_remove_persistent() -> Result<(), anyhow::Error> {
     context_delete_and_remove(
         ContextKvStoreConfiguration::OnDisk("".to_string()),

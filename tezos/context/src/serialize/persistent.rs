@@ -186,6 +186,7 @@ fn serialize_shaped_directory(
     offset: AbsoluteOffset,
     output: &mut Vec<u8>,
     storage: &Storage,
+    repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError> {
     use SerializationError::*;
@@ -198,7 +199,7 @@ fn serialize_shaped_directory(
     // Replaced by ObjectHeader
     output.write_all(&[0, 0])?;
 
-    serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
+    serialize_hash_id(object_hash_id, output, repository, stats)?;
 
     let shape_id = shape_id.as_u32();
     output.write_all(&shape_id.to_le_bytes())?;
@@ -311,6 +312,7 @@ fn serialize_directory_or_shape(
             offset,
             output,
             storage,
+            repository,
             stats,
         )
     } else {
@@ -334,7 +336,7 @@ fn serialize_directory(
     offset: AbsoluteOffset,
     output: &mut Vec<u8>,
     storage: &Storage,
-    _repository: &mut ContextKeyValueStore,
+    repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
     strings: &StringInterner,
 ) -> Result<(), SerializationError> {
@@ -349,7 +351,7 @@ fn serialize_directory(
     // Replaced by ObjectHeader
     output.write_all(&[0, 0])?;
 
-    serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
+    serialize_hash_id(object_hash_id, output, repository, stats)?;
 
     for (key_id, dir_entry_id) in dir {
         let key = strings.get_str(*key_id)?;
@@ -471,7 +473,7 @@ pub fn serialize_object(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
+            serialize_hash_id(object_hash_id, output, repository, stats)?;
             output.write_all(blob.as_ref())?;
 
             write_object_header(output, start, ObjectTag::Blob);
@@ -482,7 +484,7 @@ pub fn serialize_object(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
+            serialize_hash_id(object_hash_id, output, repository, stats)?;
 
             let author_length = match commit.author.len() {
                 length if length <= 0xFF => ObjectLength::OneByte,
@@ -509,13 +511,13 @@ pub fn serialize_object(
             output.write_all(&header)?;
 
             if let Some(parent) = commit.parent_commit_ref {
-                serialize_hash_id(parent.hash_id().as_u64(), output, stats)?;
+                serialize_hash_id(parent.hash_id(), output, repository, stats)?;
                 serialize_offset(output, parent_relative_offset, parent_offset_length, stats)?;
             };
 
-            let root_hash_id = commit.root_ref.hash_id().as_u64();
+            let root_hash_id = commit.root_ref.hash_id();
 
-            serialize_hash_id(root_hash_id, output, stats)?;
+            serialize_hash_id(root_hash_id, output, repository, stats)?;
             serialize_offset(output, root_relative_offset, root_offset_length, stats)?;
 
             output.write_all(&commit.time.to_le_bytes())?;
@@ -593,18 +595,20 @@ impl PointersOffsetsHeader {
     fn from_pointers(
         object_offset: AbsoluteOffset,
         pointers: &[Option<PointerToInode>; 32],
-    ) -> Self {
+    ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
         for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
-            let p_offset = pointer.offset();
+            let p_offset = pointer
+                .get_offset()
+                .ok_or(SerializationError::MissingOffset)?;
 
             let (_, offset_length) = get_relative_offset(object_offset, p_offset);
 
             bitfield.set(index, offset_length);
         }
 
-        bitfield
+        Ok(bitfield)
     }
 
     fn to_bytes(&self) -> [u8; 8] {
@@ -645,7 +649,7 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -675,7 +679,7 @@ fn serialize_inode(
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
 
-            serialize_hash_id(object_hash_id.as_u64(), output, stats)?;
+            serialize_hash_id(object_hash_id, output, repository, stats)?;
 
             output.write_all(&depth.to_le_bytes())?;
             output.write_all(&nchildren.to_le_bytes())?;
@@ -683,12 +687,14 @@ fn serialize_inode(
             let bitfield = PointersHeader::from(pointers);
             output.write_all(&bitfield.to_bytes())?;
 
-            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers);
+            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let (relative_offset, offset_length) =
-                    get_relative_offset(offset, pointer.offset());
+                let pointer_offset = pointer
+                    .get_offset()
+                    .ok_or(SerializationError::MissingOffset)?;
+                let (relative_offset, offset_length) = get_relative_offset(offset, pointer_offset);
 
                 serialize_offset(output, relative_offset, offset_length, stats)?;
             }
@@ -1213,7 +1219,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1221,7 +1227,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "bab",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1229,7 +1235,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1566,7 +1572,7 @@ mod tests {
                     _ => panic!(),
                 }
 
-                assert_eq!(pointer.offset(), offsets[index]);
+                assert_eq!(pointer.get_offset().unwrap(), offsets[index]);
             }
         } else {
             panic!()
@@ -1648,7 +1654,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1665,7 +1671,7 @@ mod tests {
             &mut batch,
             &mut older_objects,
             &mut repo,
-            Some(0.into()),
+            Some(1.into()),
         )
         .unwrap();
 
@@ -1684,35 +1690,36 @@ mod tests {
 
     #[test]
     fn test_hash_id() {
+        let mut repo = Persistent::try_new(None).expect("failed to create context");
         let mut output = Vec::with_capacity(10);
         let mut stats = Default::default();
 
-        let number = 10101;
+        let number = HashId::new(10101).unwrap();
 
-        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
         let (hash_id, size) = deserialize_hash_id(&output).unwrap();
         assert_eq!(output.len(), 4);
-        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(hash_id.unwrap(), number);
         assert_eq!(size, 4);
 
         output.clear();
 
-        let number = (u32::MAX as u64) + 10;
+        let number = HashId::new((u32::MAX as u64) + 10).unwrap();
 
-        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
         let (hash_id, size) = deserialize_hash_id(&output).unwrap();
         assert_eq!(output.len(), 6);
-        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(hash_id.unwrap(), number);
         assert_eq!(size, 6);
 
         output.clear();
 
-        let number = u32::MAX as u64;
+        let number = HashId::new(u32::MAX as u64).unwrap();
 
-        serialize_hash_id(number, &mut output, &mut stats).unwrap();
+        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
         let (hash_id, size) = deserialize_hash_id(&output).unwrap();
         assert_eq!(output.len(), 6);
-        assert_eq!(hash_id.unwrap().as_u64(), number);
+        assert_eq!(hash_id.unwrap(), number);
         assert_eq!(size, 6);
     }
 

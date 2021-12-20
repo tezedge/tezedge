@@ -187,7 +187,7 @@ fn hash_long_inode(
 
                     hasher.update(&[index]);
 
-                    let hash_id = match pointer.hash_id() {
+                    let hash_id = match pointer.hash_id(storage, store)? {
                         Some(hash_id) => hash_id,
                         None => {
                             let inode_id = pointer.inode_id();
@@ -715,7 +715,7 @@ mod tests {
                             dir_id,
                             &key,
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
-                                .with_offset(0.into()),
+                                .with_offset(1.into()),
                             &mut strings,
                         )
                         .unwrap();
@@ -728,7 +728,7 @@ mod tests {
                             dir_id,
                             &key,
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
-                                .with_offset(0.into()),
+                                .with_offset(1.into()),
                             &mut strings,
                         )
                         .unwrap();
