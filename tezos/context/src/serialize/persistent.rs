@@ -1219,7 +1219,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1227,7 +1227,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "bab",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1235,7 +1235,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1654,7 +1654,7 @@ mod tests {
             .dir_insert(
                 dir_id,
                 "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(0.into()),
+                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
             )
             .unwrap();
@@ -1671,7 +1671,7 @@ mod tests {
             &mut batch,
             &mut older_objects,
             &mut repo,
-            Some(0.into()),
+            Some(1.into()),
         )
         .unwrap();
 

@@ -715,7 +715,7 @@ mod tests {
                             dir_id,
                             &key,
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
-                                .with_offset(0.into()),
+                                .with_offset(1.into()),
                             &mut strings,
                         )
                         .unwrap();
@@ -728,7 +728,7 @@ mod tests {
                             dir_id,
                             &key,
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
-                                .with_offset(0.into()),
+                                .with_offset(1.into()),
                             &mut strings,
                         )
                         .unwrap();

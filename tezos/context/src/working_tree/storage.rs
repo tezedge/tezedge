@@ -401,8 +401,8 @@ pub struct PointerToInodeInner {
     hash_id: B48,
     is_commited: bool,
     inode_id: B31,
-    is_offset_available: bool,
-    offset: B63,
+    /// Set to `0` when the offset is not set
+    offset: B64,
 }
 
 #[derive(Clone, Debug)]
@@ -418,7 +418,6 @@ impl PointerToInode {
                     .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(false)
                     .with_inode_id(inode_id.0)
-                    .with_is_offset_available(false)
                     .with_offset(0),
             ),
         }
@@ -435,16 +434,16 @@ impl PointerToInode {
                     .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(true)
                     .with_inode_id(inode_id.0)
-                    .with_is_offset_available(offset.is_some())
                     .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0)),
             ),
         }
     }
 
     pub fn with_offset(self, offset: u64) -> Self {
+        debug_assert_ne!(offset, 0);
+
         let mut inner = self.inner.get();
         inner.set_offset(offset);
-        inner.set_is_offset_available(true);
         self.inner.set(inner);
 
         self
@@ -495,17 +494,20 @@ impl PointerToInode {
     }
 
     pub fn set_offset(&self, offset: AbsoluteOffset) {
+        debug_assert_ne!(offset.as_u64(), 0);
+
         let mut inner = self.inner.get();
         inner.set_offset(offset.as_u64());
-        inner.set_is_offset_available(true);
 
         self.inner.set(inner);
     }
 
     pub fn get_offset(&self) -> Option<AbsoluteOffset> {
         let inner = self.inner.get();
-        if inner.is_offset_available() {
-            Some(inner.offset().into())
+        let offset: u64 = inner.offset();
+
+        if offset != 0 {
+            Some(offset.into())
         } else {
             None
         }
