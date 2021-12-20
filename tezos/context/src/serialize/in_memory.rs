@@ -300,7 +300,7 @@ fn serialize_inode(
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 serialize_hash_id(hash_id, output, repository, stats)?;
             }
@@ -309,7 +309,7 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -1031,7 +1031,7 @@ mod tests {
 
             for (index, pointer) in pointers.iter().enumerate() {
                 let pointer = pointer.as_ref().unwrap();
-                let hash_id = pointer.hash_id().unwrap();
+                let hash_id = pointer.hash_id(&storage, &repo).unwrap().unwrap();
                 assert_eq!(hash_id.as_u64() as usize, index + 1);
 
                 let inode = storage.get_inode(pointer.inode_id()).unwrap();

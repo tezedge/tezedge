@@ -595,18 +595,20 @@ impl PointersOffsetsHeader {
     fn from_pointers(
         object_offset: AbsoluteOffset,
         pointers: &[Option<PointerToInode>; 32],
-    ) -> Self {
+    ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
         for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
-            let p_offset = pointer.offset();
+            let p_offset = pointer
+                .get_offset()
+                .ok_or(SerializationError::MissingOffset)?;
 
             let (_, offset_length) = get_relative_offset(object_offset, p_offset);
 
             bitfield.set(index, offset_length);
         }
 
-        bitfield
+        Ok(bitfield)
     }
 
     fn to_bytes(&self) -> [u8; 8] {
@@ -647,7 +649,7 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let hash_id = pointer.hash_id().ok_or(MissingHashId)?;
+                let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -685,12 +687,14 @@ fn serialize_inode(
             let bitfield = PointersHeader::from(pointers);
             output.write_all(&bitfield.to_bytes())?;
 
-            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers);
+            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let (relative_offset, offset_length) =
-                    get_relative_offset(offset, pointer.offset());
+                let pointer_offset = pointer
+                    .get_offset()
+                    .ok_or(SerializationError::MissingOffset)?;
+                let (relative_offset, offset_length) = get_relative_offset(offset, pointer_offset);
 
                 serialize_offset(output, relative_offset, offset_length, stats)?;
             }
@@ -1568,7 +1572,7 @@ mod tests {
                     _ => panic!(),
                 }
 
-                assert_eq!(pointer.offset(), offsets[index]);
+                assert_eq!(pointer.get_offset().unwrap(), offsets[index]);
             }
         } else {
             panic!()

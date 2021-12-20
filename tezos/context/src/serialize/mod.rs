@@ -11,6 +11,7 @@ use tezos_timing::SerializeStats;
 use thiserror::Error;
 
 use crate::{
+    hash::HashingError,
     kv_store::HashId,
     persistent::DBError,
     working_tree::{
@@ -210,6 +211,11 @@ pub enum SerializationError {
     },
     #[error("Missing Offset")]
     MissingOffset,
+    #[error("Hashing Error: {error}")]
+    HashingError {
+        #[from]
+        error: HashingError,
+    },
 }
 
 #[derive(Debug, Error)]
