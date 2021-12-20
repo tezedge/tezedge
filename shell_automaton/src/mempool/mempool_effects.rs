@@ -446,6 +446,19 @@ where
                 if debug {
                     vec![]
                 } else {
+                    let delayed_endorsements = store
+                        .state()
+                        .mempool
+                        .validated_operations
+                        .branch_delayed
+                        .iter()
+                        .filter_map(|v| {
+                            if v.is_endorsement? && !peer.seen_operations.contains(&v.hash) {
+                                Some(v.hash.clone())
+                            } else {
+                                None
+                            }
+                        });
                     store
                         .state()
                         .mempool
@@ -459,6 +472,7 @@ where
                                 None
                             }
                         })
+                        .chain(delayed_endorsements)
                         .collect::<Vec<_>>()
                 }
             } else {
