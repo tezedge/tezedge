@@ -33,7 +33,7 @@ use crate::{
 };
 use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
 use tezos_conv::{
-    OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlProtocolHash,
     OCamlTezosContextTezEdgeStorageConfiguration,
 };
 
@@ -832,6 +832,14 @@ ocaml_export! {
         OCaml::unit()
     }
 
+    fn tezedge_timing_set_protocol(
+        rt,
+        protocol_hash: OCamlRef<Option<OCamlProtocolHash>>,
+    ) {
+        timings::set_protocol(rt, protocol_hash);
+        OCaml::unit()
+    }
+
     fn tezedge_timing_checkout(
         rt,
         context_hash: OCamlRef<OCamlContextHash>,
@@ -957,6 +965,7 @@ pub fn initialize_callbacks() {
         );
         initialize_tezedge_timing_callbacks(
             tezedge_timing_set_block,
+            tezedge_timing_set_protocol,
             tezedge_timing_checkout,
             tezedge_timing_set_operation,
             tezedge_timing_commit,
