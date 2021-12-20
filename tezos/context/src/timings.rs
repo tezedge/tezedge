@@ -59,13 +59,10 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
     }
 }
 
-pub fn set_protocol(rt: &OCamlRuntime, protocol_hash: OCamlRef<Option<OCamlProtocolHash>>) {
+pub fn set_protocol(rt: &OCamlRuntime, protocol_hash: OCamlRef<OCamlProtocolHash>) {
     let hash = rt.get(protocol_hash);
 
-    let protocol_hash = hash.to_option().map(|h| {
-        let bytes = hash_as_bytes(h);
-        InlinedProtocolHash::from(bytes)
-    });
+    let protocol_hash = InlinedProtocolHash::from(hash_as_bytes(hash));
 
     if let Err(e) = send_msg(TimingMessage::SetProtocol(protocol_hash)) {
         eprintln!("Timing set_block hook error = {:?}", e);
