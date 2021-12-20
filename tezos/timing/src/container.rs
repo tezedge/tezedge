@@ -44,6 +44,8 @@ pub struct InlinedContextHash(InlinedHash);
 pub struct InlinedOperationHash(InlinedHash);
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InlinedBlockHash(InlinedHash);
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InlinedProtocolHash(InlinedHash);
 
 macro_rules! inlined_hash_impl {
     ($hash:ident) => {
@@ -72,6 +74,7 @@ macro_rules! inlined_hash_impl {
 inlined_hash_impl!(InlinedContextHash);
 inlined_hash_impl!(InlinedOperationHash);
 inlined_hash_impl!(InlinedBlockHash);
+inlined_hash_impl!(InlinedProtocolHash);
 
 #[derive(Debug)]
 pub enum InlinedString {

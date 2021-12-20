@@ -13,8 +13,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString};
-use crypto::hash::BlockHash;
+use container::{
+    InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedProtocolHash, InlinedString,
+};
+use crypto::hash::ProtocolHash;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
 use static_assertions::assert_eq_size;
@@ -86,34 +88,34 @@ impl Protocol {
 
 pub const STATS_ALL_PROTOCOL: &str = "_all_";
 
-const BLOCK_GENESIS: &str = "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2";
-const BLOCK_BOOTSTRAP: &str = "BLSqrcLvFtqVCx8WSqkVJypW2kAVRM3eEj2BHgBsB6kb24NqYev";
-const BLOCK_ALPHA1: &str = "BMMmnb2LoJQs3PjvhysXAgK2pAjJE71hoqXFCs6u85xUH3KrRqa";
-const BLOCK_ALPHA2: &str = "BLYbRjXpmDUF6VisMLYcmagP7KLbUrwyYqkTA3puiRjs6YPM2gA";
-const BLOCK_ALPHA3: &str = "BLMqRYnvd2KF11awHweGzShLYDfQoPUfDWVnQgmxg53iX6dcE89";
-const BLOCK_ATHENS_A: &str = "BMWyM6dcDsbsDjcD8iUJYa166mEAFpw9yori2ofSPooBmFqv6uC";
-const BLOCK_BABYLON: &str = "BLu2kYLJuELGnxqeX1DCKWsnAy6kM3Qii563Ja9nkPtqy3iSCaf";
-const BLOCK_CARTHAGE: &str = "BLTZgaJ7cohaD1D7sno334wEVU83s2G7FQvpp1SN6EzHdQTVQsM";
-const BLOCK_DELPHI: &str = "BM5fVxrUeoHJ8pLZNzdDwgW656MnWJMciJYGFvTF6ysj9pT4wi6";
-const BLOCK_EDO: &str = "BKpJVfDq5BkSPQpJFiJumZxnWs7GM9zZJjRkScaoqWLSCUDYMdJ";
-const BLOCK_FLORENCE: &str = "BMTcukHJeJpDoABwNVkhqeFM9JcDv29GCqpcgohY2Qcy8kXM9Uw";
-const BLOCK_GRANADA: &str = "BLzEHPYwpqWSDfu28saTkAUxZ7WnPkNxe8Epg5NfixBfQv7KRUN";
-const BLOCK_HANGZHOU: &str = "BL4S6iH3vQ1Fds3eLopNgRJAd76VVYfa9RgcXB5p2ePRChUo9nP";
+const PROTO_HASH_GENESIS: &str = "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";
+const PROTO_HASH_BOOTSTRAP: &str = "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P";
+const PROTO_HASH_ALPHA1: &str = "PtCJ7pwoxe8JasnHY8YonnLYjcVHmhiARPJvqcC6VfHT5s8k8sY";
+const PROTO_HASH_ALPHA2: &str = "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt";
+const PROTO_HASH_ALPHA3: &str = "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP";
+const PROTO_HASH_ATHENS_A: &str = "Pt24m4xiPbLDhVgVfABUjirbmda3yohdN82Sp9FeuAXJ4eV9otd";
+const PROTO_HASH_BABYLON: &str = "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS";
+const PROTO_HASH_CARTHAGE: &str = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb";
+const PROTO_HASH_DELPHI: &str = "PsDELPH1Kxsxt8f9eWbxQeRxkjfbxoqM52jvs5Y5fBxWWh4ifpo";
+const PROTO_HASH_EDO: &str = "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA";
+const PROTO_HASH_FLORENCE: &str = "PsFLorenaUUuikDWvMDr6fGBRG8kt3e3D3fHoXK1j1BFRxeSH4i";
+const PROTO_HASH_GRANADA: &str = "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV";
+const PROTO_HASH_HANGZHOU: &str = "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx";
 
 const PROTOCOLS: &[(&str, Protocol)] = &[
-    (BLOCK_GENESIS, Protocol::Genesis),     // block 0
-    (BLOCK_BOOTSTRAP, Protocol::Bootstrap), // block 1
-    (BLOCK_ALPHA1, Protocol::Alpha1),       // block 2
-    (BLOCK_ALPHA2, Protocol::Alpha2),       // block 28_083
-    (BLOCK_ALPHA3, Protocol::Alpha3),       // block 204_762
-    (BLOCK_ATHENS_A, Protocol::AthensA),    // block 458_753
-    (BLOCK_BABYLON, Protocol::Babylon),     // block 655_361
-    (BLOCK_CARTHAGE, Protocol::Carthage),   // block 851_969
-    (BLOCK_DELPHI, Protocol::Delphi),       // block 1_212_417
-    (BLOCK_EDO, Protocol::Edo),             // block 1_343_489
-    (BLOCK_FLORENCE, Protocol::Florence),   // block 1_466_368
-    (BLOCK_GRANADA, Protocol::Granada),     // block 1_589_248
-    (BLOCK_HANGZHOU, Protocol::Hangzhou),   // block 1_916_929
+    (PROTO_HASH_GENESIS, Protocol::Genesis),
+    (PROTO_HASH_BOOTSTRAP, Protocol::Bootstrap),
+    (PROTO_HASH_ALPHA1, Protocol::Alpha1),
+    (PROTO_HASH_ALPHA2, Protocol::Alpha2),
+    (PROTO_HASH_ALPHA3, Protocol::Alpha3),
+    (PROTO_HASH_ATHENS_A, Protocol::AthensA),
+    (PROTO_HASH_BABYLON, Protocol::Babylon),
+    (PROTO_HASH_CARTHAGE, Protocol::Carthage),
+    (PROTO_HASH_DELPHI, Protocol::Delphi),
+    (PROTO_HASH_EDO, Protocol::Edo),
+    (PROTO_HASH_FLORENCE, Protocol::Florence),
+    (PROTO_HASH_GRANADA, Protocol::Granada),
+    (PROTO_HASH_HANGZHOU, Protocol::Hangzhou),
 ];
 
 #[derive(Debug)]
@@ -273,6 +275,7 @@ pub enum TimingMessage {
         /// is used to get `timestamp`) is not.
         instant: Instant,
     },
+    SetProtocol(Option<InlinedProtocolHash>),
     SetOperation(Option<InlinedOperationHash>),
     Checkout {
         context_hash: InlinedContextHash,
@@ -562,7 +565,7 @@ struct Timing {
     block_stats: HashMap<String, QueryStats>,
     /// Global statistics
     global: GlobalStatistics,
-    protocol_tables: HashMap<InlinedBlockHash, Protocol>,
+    protocol_tables: HashMap<InlinedProtocolHash, Protocol>,
     current_protocol: Option<Protocol>,
     stats_per_protocol: HashMap<Protocol, GlobalStatistics>,
 }
@@ -627,12 +630,15 @@ impl TimingChannel {
     }
 }
 
-fn make_protocol_table() -> HashMap<InlinedBlockHash, Protocol> {
+fn make_protocol_table() -> HashMap<InlinedProtocolHash, Protocol> {
     let mut table = HashMap::default();
 
     for (hash, protocol) in PROTOCOLS {
-        let block_hash = BlockHash::from_base58_check(hash).unwrap();
-        table.insert(InlinedBlockHash::from(block_hash.0.as_slice()), *protocol);
+        let protocol_hash = ProtocolHash::from_base58_check(hash).unwrap();
+        table.insert(
+            InlinedProtocolHash::from(protocol_hash.0.as_slice()),
+            *protocol,
+        );
     }
 
     table
@@ -783,6 +789,10 @@ impl Timing {
                 timestamp,
                 instant,
             } => self.set_current_block(sql, block_hash, timestamp, instant, transaction),
+            TimingMessage::SetProtocol(protocol_hash) => {
+                self.set_current_protocol(&protocol_hash);
+                Ok(())
+            }
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(sql, operation_hash)
             }
@@ -957,8 +967,6 @@ impl Timing {
             })?;
         }
 
-        self.set_current_protocol(&block_hash);
-
         Self::set_current(sql, block_hash, &mut self.current_block, "blocks")?;
 
         if let Some(transaction) = transaction.take() {
@@ -976,13 +984,13 @@ impl Timing {
         Ok(())
     }
 
-    fn set_current_protocol(&mut self, block_hash: &Option<InlinedBlockHash>) {
-        let block_hash = match block_hash {
-            Some(block_hash) => block_hash,
+    fn set_current_protocol(&mut self, protocol_hash: &Option<InlinedProtocolHash>) {
+        let protocol_hash = match protocol_hash {
+            Some(protocol_hash) => protocol_hash,
             None => return,
         };
 
-        let protocol = match self.protocol_tables.get(&block_hash).copied() {
+        let protocol = match self.protocol_tables.get(protocol_hash).copied() {
             Some(protocol) => protocol,
             None => return,
         };

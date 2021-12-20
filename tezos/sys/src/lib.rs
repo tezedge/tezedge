@@ -54,6 +54,7 @@ extern "C" {
 
     pub fn initialize_tezedge_timing_callbacks(
         tezedge_timing_set_block: unsafe extern "C" fn(isize) -> isize,
+        tezedge_timing_set_protocol: unsafe extern "C" fn(isize) -> isize,
         tezedge_timing_checkout: unsafe extern "C" fn(isize, f64, f64) -> isize,
         tezedge_timing_set_operation: unsafe extern "C" fn(isize) -> isize,
         tezedge_timing_commit: unsafe extern "C" fn(isize, f64, f64) -> isize,
