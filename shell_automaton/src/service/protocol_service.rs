@@ -96,7 +96,7 @@ impl ProtocolService for ProtocolServiceDefault {
         self.responses
             .try_recv()
             .map(|(response, id)| {
-                let handle = self.tasks.remove(id);
+                let handle = self.tasks.try_remove(id);
                 let _ = handle; // it is already done
                 response
             })
