@@ -13,7 +13,7 @@ use std::vec;
 
 use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
-use shell_automaton::mempool::OperationKind;
+use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::storage_service::ActionGraph;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
@@ -716,6 +716,7 @@ pub struct OperationStats {
         shell_automaton::mempool::OperationValidationResult,
         u64,
     )>,
+    validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
 }
 
@@ -737,6 +738,15 @@ pub struct OperationNodeCurrentHeadStats {
     latency: i128,
     block_level: i32,
     block_timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationValidationStats {
+    started: Option<i128>,
+    finished: Option<i128>,
+    preapply_duration: Option<u64>,
+    current_head_level: Option<i32>,
+    result: Option<OperationValidationResult>,
 }
 
 pub(crate) async fn get_shell_automaton_mempool_operation_stats(
@@ -773,6 +783,21 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                         dur,
                     )
                 }),
+                validations: op_stats
+                    .validations
+                    .into_iter()
+                    .map(|v| OperationValidationStats {
+                        started: v
+                            .started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        finished: v
+                            .finished
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_duration: v.preapply_duration,
+                        current_head_level: v.current_head_level,
+                        result: v.result,
+                    })
+                    .collect(),
                 nodes: op_stats
                     .nodes
                     .into_iter()

@@ -41,6 +41,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     .prevalidator_ready = true;
             }
             ProtocolAction::OperationValidated(result) => {
+                let current_head_level = mempool_state
+                    .local_head_state
+                    .as_ref()
+                    .map(|v| v.header.level());
                 mempool_state.prevalidator = Some(result.prevalidator.clone());
                 for v in &result.result.applied {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
@@ -55,8 +59,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                OperationValidationResult::Applied,
                                 result.prevalidation_time,
+                                current_head_level,
+                                OperationValidationResult::Applied,
                             );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
@@ -76,8 +81,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                OperationValidationResult::Refused,
                                 result.prevalidation_time,
+                                current_head_level,
+                                OperationValidationResult::Refused,
                             );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
@@ -100,8 +106,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                OperationValidationResult::BranchRefused,
                                 result.prevalidation_time,
+                                current_head_level,
+                                OperationValidationResult::BranchRefused,
                             );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
@@ -124,8 +131,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                OperationValidationResult::BranchDelayed,
                                 result.prevalidation_time,
+                                current_head_level,
+                                OperationValidationResult::BranchDelayed,
                             );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
@@ -378,11 +386,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 Ok(v) => v,
                 Err(_) => return,
             };
+            let current_head_level = mempool_state
+                .local_head_state
+                .as_ref()
+                .map(|v| v.header.level());
             mempool_state
                 .operation_stats
                 .entry(op_hash)
                 .or_insert(OperationStats::new())
-                .validation_started(action.time_as_nanos());
+                .validation_started(action.time_as_nanos(), current_head_level);
         }
         Action::PeerMessageReadSuccess(content) => {
             if mempool_state.running_since.is_none() {
