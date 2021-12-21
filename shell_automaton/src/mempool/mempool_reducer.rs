@@ -31,7 +31,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
     match &action.action {
         Action::Protocol(act) => match act {
-            ProtocolAction::PrevalidatorForMempoolReady(prevalidator) => {
+            ProtocolAction::PrevalidatorReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
                 // unwrap is safe, cannot have prevalidator and haven't `local_head_state`
                 mempool_state

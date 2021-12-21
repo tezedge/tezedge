@@ -25,6 +25,10 @@ impl ProtocolService for ProtocolServiceDummy {
         let _ = request;
     }
 
+    fn validate_operation_for_prevalidation(&mut self, request: ValidateOperationRequest) {
+        let _ = request;
+    }
+
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
         let _ = request;
     }

@@ -87,7 +87,7 @@ where
         }
         Action::Protocol(act) => {
             match act {
-                ProtocolAction::PrevalidatorForMempoolReady(_) => {
+                ProtocolAction::PrevalidatorReady(_) => {
                     store.dispatch(MempoolFlushAction {});
                 }
                 ProtocolAction::OperationValidated(response) => {
@@ -238,7 +238,7 @@ where
                 store
                     .service()
                     .protocol()
-                    .begin_construction_for_mempool(req);
+                    .begin_construction_for_prevalidation(req);
                 store.dispatch(kv_operations::StorageOperationsGetAction {
                     key: hash.clone().into(),
                 });
@@ -394,7 +394,7 @@ where
                 store
                     .service()
                     .protocol()
-                    .validate_operation_for_mempool(validate_req);
+                    .validate_operation_for_prevalidation(validate_req);
             } else {
                 store.dispatch(MempoolValidateWaitPrevalidatorAction {
                     operation: operation.clone(),
