@@ -132,6 +132,9 @@ impl ProtocolService for ProtocolServiceDefault {
     }
 
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
+        // Abort all prevalidation tasks as they are no longer relevant.
+        self.tasks.drain().for_each(|task| task.abort());
+
         self.spawn(|connection| async move {
             connection
                 .lock()
