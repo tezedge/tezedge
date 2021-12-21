@@ -53,8 +53,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .operation_stats
                             .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
-                            .validation_result =
-                            Some((action.time_as_nanos(), OperationValidationResult::Applied));
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                OperationValidationResult::Applied,
+                                result.prevalidation_time,
+                            );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
@@ -71,8 +74,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .operation_stats
                             .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
-                            .validation_result =
-                            Some((action.time_as_nanos(), OperationValidationResult::Refused));
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                OperationValidationResult::Refused,
+                                result.prevalidation_time,
+                            );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
@@ -92,10 +98,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .operation_stats
                             .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
-                            .validation_result = Some((
-                            action.time_as_nanos(),
-                            OperationValidationResult::BranchRefused,
-                        ));
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                OperationValidationResult::BranchRefused,
+                                result.prevalidation_time,
+                            );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
@@ -115,10 +122,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .operation_stats
                             .entry(v.hash.clone().into())
                             .or_insert_with(|| OperationStats::new())
-                            .validation_result = Some((
-                            action.time_as_nanos(),
-                            OperationValidationResult::BranchDelayed,
-                        ));
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                OperationValidationResult::BranchDelayed,
+                                result.prevalidation_time,
+                            );
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);

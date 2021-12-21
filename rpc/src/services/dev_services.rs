@@ -711,7 +711,11 @@ pub struct OperationStats {
     min_time: Option<u64>,
     first_block_timestamp: Option<u64>,
     validation_started: Option<i128>,
-    validation_result: Option<(i128, shell_automaton::mempool::OperationValidationResult)>,
+    validation_result: Option<(
+        i128,
+        shell_automaton::mempool::OperationValidationResult,
+        u64,
+    )>,
     nodes: HashMap<String, OperationNodeStats>,
 }
 
@@ -762,9 +766,13 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                 validation_started: op_stats
                     .validation_started
                     .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
-                validation_result: op_stats
-                    .validation_result
-                    .map(|(t, result)| ((t as i128).checked_sub(start_time).unwrap_or(0), result)),
+                validation_result: op_stats.validation_result.map(|(t, result, dur)| {
+                    (
+                        (t as i128).checked_sub(start_time).unwrap_or(0),
+                        result,
+                        dur,
+                    )
+                }),
                 nodes: op_stats
                     .nodes
                     .into_iter()

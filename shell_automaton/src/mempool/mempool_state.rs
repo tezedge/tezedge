@@ -94,7 +94,8 @@ pub struct OperationStats {
     pub min_time: Option<u64>,
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
-    pub validation_result: Option<(u64, OperationValidationResult)>,
+    /// (time_validation_finished, validation_result, prevalidation_duration)
+    pub validation_result: Option<(u64, OperationValidationResult, u64)>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
 
@@ -118,7 +119,22 @@ impl OperationStats {
     }
 
     pub fn validation_started(&mut self, time: u64) {
-        self.validation_started = Some(time);
+        if self.validation_started.is_none() {
+            self.validation_started = Some(time);
+        }
+    }
+
+    pub fn validation_finished(
+        &mut self,
+        time: u64,
+        result: OperationValidationResult,
+        prevalidation_time: f64,
+    ) {
+        if self.validation_result.is_none() {
+            // Convert seconds float to
+            let dur = (prevalidation_time * 1_000_000_000.0) as u64;
+            self.validation_result = Some((time, result, dur));
+        }
     }
 
     pub fn received_in_current_head(
