@@ -166,6 +166,7 @@ pub struct ValidateOperationRequest {
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub result: ValidateOperationResult,
+    pub prevalidation_time: f64,
 }
 
 pub type OperationProtocolDataJson = String;

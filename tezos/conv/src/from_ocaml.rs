@@ -195,6 +195,7 @@ impl_from_ocaml_record! {
     OCamlValidateOperationResponse => ValidateOperationResponse {
         prevalidator: OCamlPrevalidatorWrapper,
         result: OCamlValidateOperationResult,
+        prevalidation_time: OCamlFloat,
     }
 }
 
