@@ -46,8 +46,16 @@ impl HashesContainer {
 
     pub fn commited(&mut self) {
         self.first_index += self.commiting.len();
-        self.working_tree.clear();
-        self.commiting.clear();
+        if self.working_tree.capacity() > 1000 {
+            self.working_tree = IndexMap::with_chunk_capacity(1000);
+        } else {
+            self.working_tree.clear();
+        }
+        if self.commiting.capacity() > 1000 {
+            self.commiting = IndexMap::with_chunk_capacity(1000);
+        } else {
+            self.commiting.clear();
+        }
         self.is_commiting = false;
     }
 

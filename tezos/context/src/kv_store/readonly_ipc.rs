@@ -21,7 +21,7 @@ use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable};
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
-use crate::working_tree::storage::{DirEntryId, Storage};
+use crate::working_tree::storage::{DirEntryId, InodeId, Storage};
 use crate::working_tree::string_interner::{StringId, StringInterner};
 use crate::working_tree::working_tree::{PostCommitData, WorkingTree};
 use crate::working_tree::{Object, ObjectReference};
@@ -141,12 +141,11 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         strings: &mut StringInterner,
     ) -> Result<Object, DBError> {
         self.get_object_bytes(object_ref, &mut storage.data)?;
-
         let bytes = std::mem::take(&mut storage.data);
 
         let object_header: ObjectHeader = ObjectHeader::from_bytes([bytes[0]; 1]);
 
-        let result = if object_header.get_persistent() {
+        let result = if object_header.get_is_persistent() {
             persistent::deserialize_object(&bytes, object_ref.offset(), storage, strings, self)
         } else {
             in_memory::deserialize_object(&bytes, storage, strings, self)
@@ -157,11 +156,41 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         result.map_err(Into::into)
     }
 
+    fn get_inode(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<InodeId, DBError> {
+        self.get_object_bytes(object_ref, &mut storage.data)?;
+        let object_bytes = std::mem::take(&mut storage.data);
+
+        let object_header: ObjectHeader = ObjectHeader::from_bytes([object_bytes[0]; 1]);
+
+        let result = if object_header.get_is_persistent() {
+            persistent::deserialize_inode(
+                &object_bytes,
+                object_ref.offset(),
+                storage,
+                self,
+                strings,
+            )
+        } else {
+            in_memory::deserialize_inode(&object_bytes, storage, strings, self)
+        };
+
+        storage.data = object_bytes;
+
+        result.map_err(Into::into)
+    }
+
     fn get_object_bytes<'a>(
         &self,
         object_ref: ObjectReference,
         buffer: &'a mut Vec<u8>,
     ) -> Result<&'a [u8], DBError> {
+        buffer.clear();
+
         if let Some(hash_id) = object_ref
             .hash_id_opt()
             .and_then(|h| h.get_in_working_tree().ok()?)
