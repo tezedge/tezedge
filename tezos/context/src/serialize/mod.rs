@@ -82,7 +82,7 @@ impl ObjectHeader {
         self.length()
     }
 
-    pub fn get_persistent(&self) -> bool {
+    pub fn get_is_persistent(&self) -> bool {
         self.is_persistent()
     }
 }
@@ -216,6 +216,8 @@ pub enum SerializationError {
         #[from]
         error: HashingError,
     },
+    #[error("InodeId is missing")]
+    MissingInodeId,
 }
 
 #[derive(Debug, Error)]

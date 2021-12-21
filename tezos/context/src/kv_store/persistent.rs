@@ -35,7 +35,7 @@ use crate::{
     },
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
-        storage::{DirEntryId, Storage},
+        storage::{DirEntryId, InodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, WorkingTree},
         Object, ObjectReference,
@@ -677,8 +677,8 @@ impl KeyValueStoreBackend for Persistent {
         strings: &mut StringInterner,
     ) -> Result<Object, DBError> {
         self.get_object_bytes(object_ref, &mut storage.data)?;
-
         let object_bytes = std::mem::take(&mut storage.data);
+
         let result = persistent::deserialize_object(
             &object_bytes,
             object_ref.offset(),
@@ -691,11 +691,34 @@ impl KeyValueStoreBackend for Persistent {
         result.map_err(Into::into)
     }
 
+    fn get_inode(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<InodeId, DBError> {
+        self.get_object_bytes(object_ref, &mut storage.data)?;
+        let object_bytes = std::mem::take(&mut storage.data);
+
+        let result = persistent::deserialize_inode(
+            &object_bytes,
+            object_ref.offset(),
+            storage,
+            self,
+            strings,
+        );
+        storage.data = object_bytes;
+
+        result.map_err(Into::into)
+    }
+
     fn get_object_bytes<'a>(
         &self,
         object_ref: ObjectReference,
         buffer: &'a mut Vec<u8>,
     ) -> Result<&'a [u8], DBError> {
+        buffer.clear();
+
         self.get_object_bytes(object_ref, buffer)
             .map_err(Into::into)
     }
