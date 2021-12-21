@@ -59,7 +59,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                result.prevalidation_time,
+                                result.validate_operation_started_at,
+                                result.validate_operation_ended_at,
                                 current_head_level,
                                 OperationValidationResult::Applied,
                             );
@@ -81,7 +82,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                result.prevalidation_time,
+                                result.validate_operation_started_at,
+                                result.validate_operation_ended_at,
                                 current_head_level,
                                 OperationValidationResult::Refused,
                             );
@@ -106,7 +108,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                result.prevalidation_time,
+                                result.validate_operation_started_at,
+                                result.validate_operation_ended_at,
                                 current_head_level,
                                 OperationValidationResult::BranchRefused,
                             );
@@ -131,7 +134,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(|| OperationStats::new())
                             .validation_finished(
                                 action.time_as_nanos(),
-                                result.prevalidation_time,
+                                result.validate_operation_started_at,
+                                result.validate_operation_ended_at,
                                 current_head_level,
                                 OperationValidationResult::BranchDelayed,
                             );

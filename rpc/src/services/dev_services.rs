@@ -714,7 +714,8 @@ pub struct OperationStats {
     validation_result: Option<(
         i128,
         shell_automaton::mempool::OperationValidationResult,
-        u64,
+        i128,
+        i128,
     )>,
     validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
@@ -744,7 +745,8 @@ pub struct OperationNodeCurrentHeadStats {
 pub struct OperationValidationStats {
     started: Option<i128>,
     finished: Option<i128>,
-    preapply_duration: Option<u64>,
+    preapply_started: Option<i128>,
+    preapply_ended: Option<i128>,
     current_head_level: Option<i32>,
     result: Option<OperationValidationResult>,
 }
@@ -776,13 +778,20 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                 validation_started: op_stats
                     .validation_started
                     .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
-                validation_result: op_stats.validation_result.map(|(t, result, dur)| {
-                    (
-                        (t as i128).checked_sub(start_time).unwrap_or(0),
-                        result,
-                        dur,
-                    )
-                }),
+                validation_result: op_stats.validation_result.map(
+                    |(t, result, preapply_started, preapply_ended)| {
+                        (
+                            (t as i128).checked_sub(start_time).unwrap_or(0),
+                            result,
+                            (preapply_started as i128)
+                                .checked_sub(start_time)
+                                .unwrap_or(0),
+                            (preapply_ended as i128)
+                                .checked_sub(start_time)
+                                .unwrap_or(0),
+                        )
+                    },
+                ),
                 validations: op_stats
                     .validations
                     .into_iter()
@@ -793,7 +802,12 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                         finished: v
                             .finished
                             .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
-                        preapply_duration: v.preapply_duration,
+                        preapply_started: v
+                            .preapply_started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_ended: v
+                            .preapply_ended
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
                         current_head_level: v.current_head_level,
                         result: v.result,
                     })

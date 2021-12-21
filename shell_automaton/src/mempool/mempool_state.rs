@@ -95,7 +95,7 @@ pub struct OperationStats {
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
     /// (time_validation_finished, validation_result, prevalidation_duration)
-    pub validation_result: Option<(u64, OperationValidationResult, u64)>,
+    pub validation_result: Option<(u64, OperationValidationResult, u64, u64)>,
     pub validations: Vec<OperationValidationStats>,
     pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
 }
@@ -126,7 +126,8 @@ impl OperationStats {
             self.validations.push(OperationValidationStats {
                 started: Some(time),
                 finished: None,
-                preapply_duration: None,
+                preapply_started: None,
+                preapply_ended: None,
                 current_head_level,
                 result: None,
             });
@@ -136,14 +137,17 @@ impl OperationStats {
     pub fn validation_finished(
         &mut self,
         time: u64,
-        preapply_duration: f64,
+        preapply_started: f64,
+        preapply_ended: f64,
         current_head_level: Option<i32>,
         result: OperationValidationResult,
     ) {
         if self.validation_result.is_none() {
             // Convert seconds float to
-            let preapply_duration = (preapply_duration * 1_000_000_000.0) as u64;
-            self.validation_result = Some((time, result, preapply_duration));
+            let preapply_started = (preapply_started * 1_000_000_000.0) as u64;
+            let preapply_ended = (preapply_ended * 1_000_000_000.0) as u64;
+            self.validation_result = Some((time, result, preapply_started, preapply_ended));
+
             match self
                 .validations
                 .last_mut()
@@ -152,14 +156,16 @@ impl OperationStats {
             {
                 Some(v) => {
                     v.finished = Some(time);
-                    v.preapply_duration = Some(preapply_duration);
+                    v.preapply_started = Some(preapply_started);
+                    v.preapply_ended = Some(preapply_ended);
                     v.result = Some(result);
                 }
                 None => {
                     self.validations.push(OperationValidationStats {
                         started: None,
                         finished: Some(time),
-                        preapply_duration: Some(preapply_duration),
+                        preapply_started: Some(preapply_started),
+                        preapply_ended: Some(preapply_ended),
                         current_head_level,
                         result: Some(result),
                     });
@@ -294,7 +300,8 @@ impl OperationStats {
 pub struct OperationValidationStats {
     pub started: Option<u64>,
     pub finished: Option<u64>,
-    pub preapply_duration: Option<u64>,
+    pub preapply_started: Option<u64>,
+    pub preapply_ended: Option<u64>,
     pub current_head_level: Option<i32>,
     pub result: Option<OperationValidationResult>,
 }
