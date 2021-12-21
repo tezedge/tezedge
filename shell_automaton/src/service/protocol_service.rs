@@ -34,7 +34,7 @@ pub struct ProtocolServiceDefault {
 
 impl ProtocolServiceDefault {
     pub fn new(mio_waker: Arc<mio::Waker>, api: Arc<ProtocolRunnerApi>) -> Self {
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, rx) = mpsc::channel(1024);
         ProtocolServiceDefault {
             api,
             connection: Arc::default(),
