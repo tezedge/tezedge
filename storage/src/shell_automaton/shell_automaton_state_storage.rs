@@ -34,9 +34,10 @@ impl ShellAutomatonStateStorage {
     where
         T: Encoder,
     {
-        self.kv
-            .put(action_id, &state_snapshot.encode()?)
-            .map_err(StorageError::from)
+        return Ok(());
+        // self.kv
+        //     .put(action_id, &state_snapshot.encode()?)
+        //     .map_err(StorageError::from)
     }
 
     #[inline]

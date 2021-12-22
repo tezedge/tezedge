@@ -220,11 +220,7 @@ impl StorageServiceDefault {
                 .collect(),
         );
 
-        let mut action_metas = action_meta_storage
-            .get_stats()
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| ShellAutomatonActionsStats::new());
+        let mut action_metas = ShellAutomatonActionsStats::new();
 
         while let Ok(req) = channel.recv() {
             let result = match req.payload {
