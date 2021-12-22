@@ -164,6 +164,19 @@ impl EnablingCondition<State> for MempoolSendAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolSendValidatedAction {
+    pub address: SocketAddr,
+}
+
+impl EnablingCondition<State> for MempoolSendValidatedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        // TODO(vlad):
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolAskCurrentHeadAction {}
 
 impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
@@ -203,6 +216,7 @@ pub struct MempoolBroadcastDoneAction {
     pub address: SocketAddr,
     pub known_valid: Vec<OperationHash>,
     pub pending: Vec<OperationHash>,
+    pub cleanup_known_valid: bool,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastDoneAction {

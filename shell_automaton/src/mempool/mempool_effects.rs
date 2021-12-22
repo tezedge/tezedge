@@ -27,16 +27,7 @@ use crate::{
 };
 
 use super::{
-    mempool_actions::{
-        BlockAppliedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
-        MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolFlushAction,
-        MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
-        MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
-        MempoolOperationRecvDoneAction, MempoolRecvDoneAction,
-        MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
-        MempoolUnregisterOperationsStreamsAction, MempoolValidateStartAction,
-        MempoolValidateWaitPrevalidatorAction,
-    },
+    mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
 };
 
@@ -91,9 +82,10 @@ where
                     store.dispatch(MempoolFlushAction {});
                 }
                 ProtocolAction::OperationValidated(response) => {
-                    store.dispatch(MempoolBroadcastAction {
-                        send_operations: true,
-                    });
+                    let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+                    for address in addresses {
+                        store.dispatch(MempoolSendValidatedAction { address });
+                    }
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
                     for rpc_id in ids {
@@ -422,6 +414,39 @@ where
                 });
             }
         }
+        Action::MempoolSendValidated(MempoolSendValidatedAction { address }) => {
+            let head_state = match store.state().mempool.local_head_state.clone() {
+                Some(v) => v,
+                None => {
+                    // should always have current head here
+                    // TODO(vlad): should be forbidden by enabling condition
+                    return;
+                }
+            };
+            let peer = match store.state().mempool.peer_state.get(&address) {
+                Some(v) => v,
+                None => return,
+            };
+
+            let known_valid = peer.known_valid_to_send.clone();
+            let message = CurrentHeadMessage::new(
+                store.state().config.chain_id.clone(),
+                head_state.header.clone(),
+                Mempool::new(known_valid.clone(), vec![]),
+            );
+            let message = Arc::new(PeerMessageResponse::from(message));
+
+            store.dispatch(PeerMessageWriteInitAction {
+                address: address.clone(),
+                message,
+            });
+            store.dispatch(MempoolBroadcastDoneAction {
+                address: address.clone(),
+                pending: vec![],
+                known_valid,
+                cleanup_known_valid: true,
+            });
+        }
         Action::MempoolSend(MempoolSendAction {
             address,
             send_operations,
@@ -530,6 +555,7 @@ where
                 address: address.clone(),
                 pending,
                 known_valid,
+                cleanup_known_valid: false,
             });
         }
         _ => (),

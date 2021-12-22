@@ -39,16 +39,7 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
-use crate::mempool::{
-    BlockAppliedAction, MempoolAskCurrentHeadAction, MempoolBroadcastAction,
-    MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction, MempoolFlushAction,
-    MempoolGetOperationsAction, MempoolGetPendingOperationsAction,
-    MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
-    MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRegisterOperationsStreamAction,
-    MempoolRemoveAppliedOperationsAction, MempoolRpcRespondAction, MempoolSendAction,
-    MempoolUnregisterOperationsStreamsAction, MempoolValidateStartAction,
-    MempoolValidateWaitPrevalidatorAction,
-};
+use crate::mempool::mempool_actions::*;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -273,6 +264,7 @@ pub enum Action {
     MempoolRegisterOperationsStream(MempoolRegisterOperationsStreamAction),
     MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction),
     MempoolSend(MempoolSendAction),
+    MempoolSendValidated(MempoolSendValidatedAction),
     MempoolAskCurrentHead(MempoolAskCurrentHeadAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
