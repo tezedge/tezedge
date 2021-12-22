@@ -43,6 +43,7 @@ use crate::storage::{
     kv_block_meta::effects as kv_block_meta_effects, kv_constants::effects as kv_constants_effects,
     kv_cycle_eras::effects as kv_cycle_eras_effects,
     kv_cycle_meta::effects as kv_cycle_meta_effects,
+    kv_operations::effects as kv_operations_effects,
 };
 
 use crate::rpc::rpc_effects;
@@ -132,4 +133,5 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_constants_effects(store, action);
     kv_cycle_eras_effects(store, action);
     kv_cycle_meta_effects(store, action);
+    kv_operations_effects(store, action);
 }

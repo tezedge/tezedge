@@ -40,6 +40,7 @@ use crate::storage::{
     kv_block_meta::reducer as kv_block_meta_reducer, kv_constants::reducer as kv_constants_reducer,
     kv_cycle_eras::reducer as kv_cycle_eras_reducer,
     kv_cycle_meta::reducer as kv_cycle_meta_reducer,
+    kv_operations::reducer as kv_operations_reducer,
 };
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -93,6 +94,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         kv_constants_reducer,
         kv_cycle_eras_reducer,
         kv_cycle_meta_reducer,
+        kv_operations_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer
