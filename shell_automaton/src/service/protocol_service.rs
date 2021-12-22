@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, future::Future, sync::Arc};
 
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, sync::Mutex};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 use tezos_protocol_ipc_client::{
@@ -25,6 +25,7 @@ pub trait ProtocolService {
 
 pub struct ProtocolServiceDefault {
     api: Arc<ProtocolRunnerApi>,
+    connection: Arc<Mutex<Option<ProtocolRunnerConnection>>>,
     responses: mpsc::Receiver<(ProtocolAction, usize)>,
     sender: mpsc::Sender<(ProtocolAction, usize)>,
     mio_waker: Arc<mio::Waker>,
@@ -37,6 +38,7 @@ impl ProtocolServiceDefault {
         let (tx, rx) = mpsc::channel(1024);
         ProtocolServiceDefault {
             api,
+            connection: Arc::new(Mutex::new(None)),
             responses: rx,
             sender: tx,
             mio_waker,
@@ -46,7 +48,7 @@ impl ProtocolServiceDefault {
     }
 
     // `op` takes mutex with the connection, the connection cannot be `None`, it is safe to unwrap
-    fn spawn<F>(&mut self, op: impl FnOnce(ProtocolRunnerConnection) -> F + Send + 'static)
+    fn spawn<F>(&mut self, op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static)
     where
         F: Future<Output = Result<ProtocolAction, ProtocolServiceError>> + Send,
     {
@@ -56,10 +58,11 @@ impl ProtocolServiceDefault {
         let id = self.counter;
         self.counter = self.counter.wrapping_add(1);
         let _guard = self.api.tokio_runtime.enter();
+        let cn = Arc::clone(&self.connection);
         self.tasks.insert(
             id,
             tokio::spawn(async move {
-                let action = match Self::task(&api, op).await {
+                let action = match Self::task(&api, cn, op).await {
                     Ok(response) => response,
                     Err(err) => ProtocolAction::Error(err),
                 };
@@ -71,16 +74,23 @@ impl ProtocolServiceDefault {
 
     async fn task<F>(
         api: &ProtocolRunnerApi,
-        op: impl FnOnce(ProtocolRunnerConnection) -> F + Send + 'static,
+        cn: Arc<Mutex<Option<ProtocolRunnerConnection>>>,
+        op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static,
     ) -> Result<ProtocolAction, String>
     where
         F: Future<Output = Result<ProtocolAction, ProtocolServiceError>> + Send,
     {
-        let connection = api
-            .readable_connection()
-            .await
-            .map_err(|err| err.to_string())?;
-        op(connection).await.map_err(|err| err.to_string())
+        let mut cn_lock = cn.lock().await;
+        if cn_lock.is_none() {
+            let connection = api
+                .readable_connection()
+                .await
+                .map_err(|err| err.to_string())?;
+            *cn_lock = Some(connection);
+        }
+        drop(cn_lock);
+        // the `cn` inside `op` cannot be None, because it is checked few lines above
+        op(cn).await.map_err(|err| err.to_string())
     }
 }
 
@@ -97,8 +107,13 @@ impl ProtocolService for ProtocolServiceDefault {
     }
 
     fn init_protocol_for_read(&mut self) {
-        self.spawn(|mut connection| async move {
+        self.spawn(|connection| async move {
             connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
                 .init_protocol_for_read()
                 .await
                 .map(ProtocolAction::InitProtocolDone)
@@ -109,8 +124,13 @@ impl ProtocolService for ProtocolServiceDefault {
         // Abort all prevalidation tasks as they are no longer relevant.
         // self.tasks.drain().for_each(|(_, task)| task.abort());
 
-        self.spawn(|mut connection| async move {
+        self.spawn(|connection| async move {
             connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
                 .begin_construction_for_prevalidation(request)
                 .await
                 .map(ProtocolAction::PrevalidatorReady)
@@ -118,8 +138,13 @@ impl ProtocolService for ProtocolServiceDefault {
     }
 
     fn validate_operation_for_prevalidation(&mut self, request: ValidateOperationRequest) {
-        self.spawn(|mut connection| async move {
+        self.spawn(|connection| async move {
             connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
                 .validate_operation_for_prevalidation(request)
                 .await
                 .map(ProtocolAction::OperationValidated)
@@ -130,8 +155,13 @@ impl ProtocolService for ProtocolServiceDefault {
         // Abort all prevalidation tasks as they are no longer relevant.
         // self.tasks.drain().for_each(|(_, task)| task.abort());
 
-        self.spawn(|mut connection| async move {
+        self.spawn(|connection| async move {
             connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
                 .begin_construction_for_mempool(request)
                 .await
                 .map(ProtocolAction::PrevalidatorForMempoolReady)
@@ -139,8 +169,13 @@ impl ProtocolService for ProtocolServiceDefault {
     }
 
     fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest) {
-        self.spawn(|mut connection| async move {
+        self.spawn(|connection| async move {
             connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
                 .validate_operation_for_mempool(request)
                 .await
                 .map(ProtocolAction::OperationValidated)
