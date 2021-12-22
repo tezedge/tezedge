@@ -179,9 +179,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 prevalidator_ready: false,
             });
 
-            for (_, op) in &mempool_state.pending_operations {
-                mempool_state.wait_prevalidator_operations.push(op.clone());
-            }
+            // for (_, op) in &mempool_state.pending_operations {
+            //     mempool_state.wait_prevalidator_operations.push(op.clone());
+            // }
 
             // TODO(vlad) move to separate action
             // TODO: get from protocol
