@@ -344,9 +344,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .retain(|v| !operation_hashes.contains(&v.hash));
             for op in operation_hashes {
                 mempool_state.validated_operations.ops.remove(op);
-
-                // remove operation from stats
-                mempool_state.operation_stats.remove(op);
             }
             if let Some(state) = &mut mempool_state.local_head_state {
                 state.ops_removed = true;
