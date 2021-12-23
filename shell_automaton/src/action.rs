@@ -54,8 +54,9 @@ use crate::peers::graylist::{
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
 use crate::peers::remove::PeersRemoveAction;
+
 use crate::prechecker::prechecker_actions::*;
-use crate::protocol::ProtocolAction;
+use crate::protocol::protocol_actions::*;
 
 use crate::rights::rights_actions::*;
 use crate::storage::request::{
@@ -242,7 +243,12 @@ pub enum Action {
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
 
-    Protocol(ProtocolAction),
+    ProtocolConstructStatelessPrevalidatorStart(ProtocolConstructStatelessPrevalidatorStartAction),
+    ProtocolConstructStatelessPrevalidatorDone(ProtocolConstructStatelessPrevalidatorDoneAction),
+    ProtocolConstructStatefulPrevalidatorStart(ProtocolConstructStatefulPrevalidatorStartAction),
+    ProtocolConstructStatefulPrevalidatorDone(ProtocolConstructStatefulPrevalidatorDoneAction),
+    ProtocolValidateOperationStart(ProtocolValidateOperationStartAction),
+    ProtocolValidateOperationDone(ProtocolValidateOperationDoneAction),
 
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),

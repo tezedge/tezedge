@@ -20,7 +20,7 @@ use tezos_messages::p2p::{
     },
 };
 
-use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
+use tezos_api::ffi::BeginConstructionRequest;
 
 use crate::storage::kv_operations;
 use crate::{mempool::mempool_state::OperationState, protocol::ProtocolAction, rights::Slot};
@@ -32,9 +32,10 @@ use crate::{
     },
 };
 use crate::{
-    service::{ProtocolService, RpcService},
-    Action, ActionWithMeta, Service, State,
+    peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
+    protocol::protocol_actions::*,
 };
+use crate::{service::RpcService, Action, ActionWithMeta, Service, State};
 
 use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
@@ -64,13 +65,6 @@ where
         return;
     }
     match &action.action {
-        Action::MempoolFlush(MempoolFlushAction {}) => {
-            let ops = store.state().mempool.wait_prevalidator_operations.clone();
-            for operation in ops {
-                store.dispatch(MempoolValidateStartAction { operation });
-            }
-            store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
-        }
         Action::StorageOperationsOk(kv_operations::StorageOperationsOkAction { key, value }) => {
             if store
                 .state()
@@ -85,86 +79,121 @@ where
                     .filter_map(|op| op.message_typed_hash::<OperationHash>().ok())
                     .collect();
                 store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
-                store.dispatch(MempoolFlushAction {});
-            }
-        }
-        Action::Protocol(act) => {
-            match act {
-                ProtocolAction::PrevalidatorReady(_) => {
-                    store.dispatch(MempoolFlushAction {});
-                }
-                ProtocolAction::OperationValidated(response) => {
-                    let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
-                    for address in addresses {
-                        store.dispatch(MempoolSendValidatedAction { address });
+
+                if store.state().mempool.branch_changed {
+                    let v = store
+                        .state()
+                        .mempool
+                        .validated_operations
+                        .branch_refused
+                        .clone();
+                    for v in v {
+                        if let Some(op) =
+                            store.state().mempool.validated_operations.ops.get(&v.hash)
+                        {
+                            let operation = op.clone();
+                            store.dispatch(MempoolValidateStartAction { operation });
+                        }
                     }
-                    // respond
-                    let ids = store.state().mempool.injected_rpc_ids.clone();
-                    for rpc_id in ids {
-                        store
-                            .service()
-                            .rpc()
-                            .respond(rpc_id, serde_json::Value::Null);
+                } else {
+                    let v = store
+                        .state()
+                        .mempool
+                        .validated_operations
+                        .branch_delayed
+                        .clone();
+                    for v in v {
+                        if let Some(op) =
+                            store.state().mempool.validated_operations.ops.get(&v.hash)
+                        {
+                            let operation = op.clone();
+                            store.dispatch(MempoolValidateStartAction { operation });
+                        }
                     }
-                    store.dispatch(MempoolRpcRespondAction {});
-                    let streams = store.state().mempool.operation_streams.clone();
-                    for stream in streams {
-                        let ops = &store.state().mempool.validated_operations.ops;
-                        let refused_ops = &store.state().mempool.validated_operations.refused_ops;
-                        // `ProtocolAction::OperationValidated` action can happens only
-                        // if we have a prevalidator
-                        let prevalidator = match store.state().mempool.prevalidator.as_ref() {
-                            Some(v) => v,
-                            None => return,
-                        };
-                        let prot = prevalidator.protocol.to_base58_check();
-                        let applied = if stream.applied {
-                            response.result.applied.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let refused = if stream.refused {
-                            response.result.refused.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let branch_delayed = if stream.branch_delayed {
-                            response.result.branch_delayed.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let branch_refused = if stream.branch_refused {
-                            response.result.branch_refused.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let resp = std::iter::empty()
-                            .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(
-                                refused,
-                                refused_ops,
-                                &prot,
-                            ))
-                            .chain(MonitoredOperation::collect_errored(
-                                branch_delayed,
-                                ops,
-                                &prot,
-                            ))
-                            .chain(MonitoredOperation::collect_errored(
-                                branch_refused,
-                                ops,
-                                &prot,
-                            ))
-                            .collect::<Vec<_>>();
-                        if let Ok(json) = serde_json::to_value(resp) {
-                            store
-                                .service()
-                                .rpc()
-                                .respond_stream(stream.rpc_id, Some(json));
+                    let v = store.state().mempool.validated_operations.applied.clone();
+                    for v in v {
+                        if let Some(op) =
+                            store.state().mempool.validated_operations.ops.get(&v.hash)
+                        {
+                            let operation = op.clone();
+                            store.dispatch(MempoolValidateStartAction { operation });
                         }
                     }
                 }
-                _ => {}
+
+                store.dispatch(MempoolFlushAction {});
+            }
+        }
+        Action::ProtocolValidateOperationDone(ProtocolValidateOperationDoneAction { response }) => {
+            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+            for address in addresses {
+                store.dispatch(MempoolSendValidatedAction { address });
+            }
+            // respond
+            let ids = store.state().mempool.injected_rpc_ids.clone();
+            for rpc_id in ids {
+                store
+                    .service()
+                    .rpc()
+                    .respond(rpc_id, serde_json::Value::Null);
+            }
+            store.dispatch(MempoolRpcRespondAction {});
+            let streams = store.state().mempool.operation_streams.clone();
+            for stream in streams {
+                let ops = &store.state().mempool.validated_operations.ops;
+                let refused_ops = &store.state().mempool.validated_operations.refused_ops;
+                // `ProtocolValidateOperationDone` action can happens only
+                // if we have a prevalidator
+                let prot = store
+                    .state()
+                    .protocol
+                    .validation_state
+                    .protocol()
+                    .unwrap()
+                    .to_base58_check();
+                let applied = if stream.applied {
+                    response.result.applied.as_slice()
+                } else {
+                    &[]
+                };
+                let refused = if stream.refused {
+                    response.result.refused.as_slice()
+                } else {
+                    &[]
+                };
+                let branch_delayed = if stream.branch_delayed {
+                    response.result.branch_delayed.as_slice()
+                } else {
+                    &[]
+                };
+                let branch_refused = if stream.branch_refused {
+                    response.result.branch_refused.as_slice()
+                } else {
+                    &[]
+                };
+                let resp = std::iter::empty()
+                    .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
+                    .chain(MonitoredOperation::collect_errored(
+                        refused,
+                        refused_ops,
+                        &prot,
+                    ))
+                    .chain(MonitoredOperation::collect_errored(
+                        branch_delayed,
+                        ops,
+                        &prot,
+                    ))
+                    .chain(MonitoredOperation::collect_errored(
+                        branch_refused,
+                        ops,
+                        &prot,
+                    ))
+                    .collect::<Vec<_>>();
+                let json = serde_json::to_value(resp).unwrap();
+                store
+                    .service()
+                    .rpc()
+                    .respond_stream(stream.rpc_id, Some(json));
             }
         }
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
@@ -231,17 +260,14 @@ where
             ..
         }) => {
             if store.state().mempool.running_since.is_some() {
-                let req = BeginConstructionRequest {
+                let request = BeginConstructionRequest {
                     chain_id: chain_id.clone(),
                     predecessor: block.clone(),
                     protocol_data: None,
                     predecessor_block_metadata_hash: block_metadata_hash.clone(),
                     predecessor_ops_metadata_hash: ops_metadata_hash.clone(),
                 };
-                store
-                    .service()
-                    .protocol()
-                    .begin_construction_for_prevalidation(req);
+                store.dispatch(ProtocolConstructStatelessPrevalidatorStartAction { request });
                 store.dispatch(kv_operations::StorageOperationsGetAction {
                     key: hash.clone().into(),
                 });
@@ -262,8 +288,8 @@ where
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
             let refused_ops = &store.state().mempool.validated_operations.refused_ops;
-            let prot = match &store.state().mempool.prevalidator {
-                Some(prevalidator) => prevalidator.protocol.to_base58_check(),
+            let prot = match store.state().protocol.validation_state.protocol() {
+                Some(v) => v.to_base58_check(),
                 None => return,
             };
             let applied = if act.applied {
@@ -330,7 +356,7 @@ where
         }
         Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
             let empty = MempoolOperations::default();
-            let prevalidator = match &store.state().mempool.prevalidator {
+            let protocol = match store.state().protocol.validation_state.protocol() {
                 Some(v) => v,
                 None => {
                     store.service().rpc().respond(*rpc_id, empty);
@@ -352,7 +378,7 @@ where
                 &v_ops.branch_refused,
                 &store.state().mempool.validated_operations.ops,
                 current_branch,
-                &prevalidator.protocol,
+                &protocol,
             );
             store.service().rpc().respond(*rpc_id, v);
         }
@@ -425,21 +451,9 @@ where
             }
         }
         Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
-            let mempool_state = &store.state().mempool;
-            if let Some(prevalidator) = &mempool_state.prevalidator {
-                let validate_req = ValidateOperationRequest {
-                    prevalidator: prevalidator.clone(),
-                    operation: operation.clone(),
-                };
-                store
-                    .service()
-                    .protocol()
-                    .validate_operation_for_prevalidation(validate_req);
-            } else {
-                store.dispatch(MempoolValidateWaitPrevalidatorAction {
-                    operation: operation.clone(),
-                });
-            }
+            store.dispatch(ProtocolValidateOperationStartAction {
+                operation: operation.clone(),
+            });
         }
         Action::MempoolBroadcast(MempoolBroadcastAction { send_operations }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();

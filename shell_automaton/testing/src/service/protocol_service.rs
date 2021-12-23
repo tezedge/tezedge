@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-pub use shell_automaton::{protocol::ProtocolAction, service::ProtocolService};
+pub use shell_automaton::service::{ProtocolError, ProtocolResponse, ProtocolService};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
@@ -15,8 +15,8 @@ impl ProtocolServiceDummy {
 }
 
 impl ProtocolService for ProtocolServiceDummy {
-    fn try_recv(&mut self) -> Result<ProtocolAction, ()> {
-        Err(())
+    fn try_recv(&mut self) -> Result<ProtocolResponse, ProtocolError> {
+        Err(ProtocolError::Empty)
     }
 
     fn init_protocol_for_read(&mut self) {}

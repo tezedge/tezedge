@@ -273,7 +273,7 @@ pub struct MempoolFlushAction {}
 impl EnablingCondition<State> for MempoolFlushAction {
     fn is_enabled(&self, state: &State) -> bool {
         if let Some(state) = &state.mempool.local_head_state {
-            state.ops_removed && state.prevalidator_ready
+            state.ops_removed
         } else {
             false
         }

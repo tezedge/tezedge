@@ -27,7 +27,9 @@ mod quota_service;
 pub use quota_service::{QuotaService, QuotaServiceDefault};
 
 mod protocol_service;
-pub use protocol_service::{ProtocolService, ProtocolServiceDefault};
+pub use protocol_service::{
+    ProtocolError, ProtocolResponse, ProtocolService, ProtocolServiceDefault,
+};
 
 pub trait Service: TimeService {
     type Randomness: RandomnessService;

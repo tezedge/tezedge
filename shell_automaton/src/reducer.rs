@@ -29,6 +29,7 @@ use crate::peers::graylist::peers_graylist_reducer;
 use crate::peers::remove::peers_remove_reducer;
 
 use crate::mempool::mempool_reducer;
+use crate::protocol::protocol_reducer;
 
 use crate::prechecker::prechecker_reducer;
 use crate::rights::rights_reducer;
@@ -86,6 +87,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_check_timeouts_reducer,
         peers_graylist_reducer,
         mempool_reducer,
+        protocol_reducer,
         rights_reducer,
         prechecker_reducer,
         storage_request_reducer,

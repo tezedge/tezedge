@@ -12,6 +12,7 @@ use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
 use crate::prechecker::PrecheckerState;
+use crate::protocol::ProtocolState;
 use crate::rights::RightsState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
@@ -57,6 +58,8 @@ pub struct State {
 
     pub paused_loops: PausedLoopsState,
 
+    pub protocol: ProtocolState,
+
     /// Action before the `last_action`.
     pub prev_action: ActionIdWithKind,
     pub last_action: ActionIdWithKind,
@@ -77,6 +80,8 @@ impl State {
             prechecker: PrecheckerState::default(),
 
             paused_loops: PausedLoopsState::new(),
+
+            protocol: ProtocolState::default(),
 
             prev_action: ActionIdWithKind {
                 id: ActionId::ZERO,

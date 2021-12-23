@@ -8,6 +8,9 @@
     "Seedable",
     "Tezedge",
     "shiplift",
-    "simplestakingcom"
+    "simplestakingcom",
+    "prevalidator",
+    "prevalidation",
+    "deque",
   ]
 }
