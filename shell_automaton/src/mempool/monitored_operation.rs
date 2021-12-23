@@ -95,10 +95,12 @@ fn convert_errored(
             Value::String(operation.branch().to_base58_check()),
         );
         m.insert("error".to_string(), error);
-        result.push(Value::Array(vec![
-            Value::String(v.hash.to_base58_check()),
-            serde_json::to_value(m).unwrap(),
-        ]));
+        if let Ok(json) = serde_json::to_value(m) {
+            result.push(Value::Array(vec![
+                Value::String(v.hash.to_base58_check()),
+                json,
+            ]));
+        }
     }
     result
 }

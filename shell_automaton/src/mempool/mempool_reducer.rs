@@ -29,12 +29,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::Protocol(act) => match act {
             ProtocolAction::PrevalidatorReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
-                // unwrap is safe, cannot have prevalidator and haven't `local_head_state`
-                mempool_state
-                    .local_head_state
-                    .as_mut()
-                    .unwrap()
-                    .prevalidator_ready = true;
+                if let Some(local_head_state) = mempool_state.local_head_state.as_mut() {
+                    local_head_state.prevalidator_ready = true;
+                }
             }
             ProtocolAction::OperationValidated(result) => {
                 let current_head_level = mempool_state

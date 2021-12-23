@@ -43,8 +43,10 @@ where
                 store.service().rpc().respond(*rpc_id, json);
             }
             Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
-                let json = serde_json::to_value(MempoolOperations::default()).unwrap();
-                store.service().rpc().respond(*rpc_id, json);
+                store
+                    .service()
+                    .rpc()
+                    .respond(*rpc_id, MempoolOperations::default());
             }
             _ => (),
         }
@@ -64,13 +66,12 @@ where
                 .mempool
                 .local_head_state
                 .as_ref()
-                .unwrap()
-                .hash
-                .eq(&key.0)
+                .map(|h| h.hash.eq(&key.0))
+                .unwrap_or(false)
             {
                 let operation_hashes = value
                     .iter()
-                    .map(|op| op.message_typed_hash::<OperationHash>().unwrap())
+                    .filter_map(|op| op.message_typed_hash::<OperationHash>().ok())
                     .collect();
                 store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
                 store.dispatch(MempoolFlushAction {});
@@ -101,14 +102,11 @@ where
                         let refused_ops = &store.state().mempool.validated_operations.refused_ops;
                         // `ProtocolAction::OperationValidated` action can happens only
                         // if we have a prevalidator
-                        let prot = store
-                            .state()
-                            .mempool
-                            .prevalidator
-                            .as_ref()
-                            .unwrap()
-                            .protocol
-                            .to_base58_check();
+                        let prevalidator = match store.state().mempool.prevalidator.as_ref() {
+                            Some(v) => v,
+                            None => return,
+                        };
+                        let prot = prevalidator.protocol.to_base58_check();
                         let applied = if stream.applied {
                             response.result.applied.as_slice()
                         } else {
@@ -147,11 +145,12 @@ where
                                 &prot,
                             ))
                             .collect::<Vec<_>>();
-                        let json = serde_json::to_value(resp).unwrap();
-                        store
-                            .service()
-                            .rpc()
-                            .respond_stream(stream.rpc_id, Some(json));
+                        if let Ok(json) = serde_json::to_value(resp) {
+                            store
+                                .service()
+                                .rpc()
+                                .respond_stream(stream.rpc_id, Some(json));
+                        }
                     }
                 }
                 _ => {}
@@ -313,22 +312,23 @@ where
                     &prot,
                 ))
                 .collect::<Vec<_>>();
-            let json = serde_json::to_value(resp).unwrap();
-            store.service().rpc().respond_stream(act.rpc_id, Some(json));
+            if let Ok(json) = serde_json::to_value(resp) {
+                store.service().rpc().respond_stream(act.rpc_id, Some(json));
+            }
         }
         Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
-            let empty = || serde_json::to_value(&MempoolOperations::default()).unwrap();
+            let empty = MempoolOperations::default();
             let prevalidator = match &store.state().mempool.prevalidator {
                 Some(v) => v,
                 None => {
-                    store.service().rpc().respond(*rpc_id, empty());
+                    store.service().rpc().respond(*rpc_id, empty);
                     return;
                 }
             };
             let current_branch = match &store.state().mempool.local_head_state {
                 Some(v) => &v.hash,
                 None => {
-                    store.service().rpc().respond(*rpc_id, empty());
+                    store.service().rpc().respond(*rpc_id, empty);
                     return;
                 }
             };
@@ -342,10 +342,7 @@ where
                 current_branch,
                 &prevalidator.protocol,
             );
-            store
-                .service()
-                .rpc()
-                .respond(*rpc_id, serde_json::to_value(&v).unwrap());
+            store.service().rpc().respond(*rpc_id, v);
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
@@ -357,12 +354,10 @@ where
             }
         }
         Action::MempoolGetOperations(MempoolGetOperationsAction { address }) => {
-            let peer = store
-                .state()
-                .mempool
-                .peer_state
-                .get(address)
-                .expect("enabling condition");
+            let peer = match store.state().mempool.peer_state.get(address) {
+                Some(peer) => peer,
+                None => return,
+            };
             let ops = peer.requesting_full_content.iter().cloned().collect();
             store.dispatch(MempoolMarkOperationsAsPendingAction { address: *address });
             store.dispatch(PeerMessageWriteInitAction {
