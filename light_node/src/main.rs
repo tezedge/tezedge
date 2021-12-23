@@ -592,6 +592,9 @@ fn main() {
     #[cfg(dyncov)]
     set_gcov_handler();
 
+    // For tokio-console
+    console_subscriber::init();
+
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
 

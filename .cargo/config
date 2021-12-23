@@ -1,3 +1,6 @@
 [target.x86_64-apple-darwin]
 # Required in OSX so that the compiler allows undefined symbols when linking dynamic libraries
-rustflags = ["-C", "link-args=-Wl,-undefined,dynamic_lookup"]
+rustflags = ["--cfg", "tokio_unstable", "-C", "link-args=-Wl,-undefined,dynamic_lookup"]
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
