@@ -14,8 +14,8 @@ Runs and monitors the whole or parts of the tezedge stack (node, debugger, explo
     # Run the following in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
 
-    rustup toolchain install nightly-2021-08-04
-    rustup default nightly-2021-08-04
+    rustup toolchain install 1.57
+    rustup default 1.57
 
     sudo apt install pkg-config libsodium-dev clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev libhidapi-dev libssl-dev
     ```

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::lazy::SyncLazy;
+use once_cell::sync::Lazy as SyncLazy;
 
 use parse_display::{Display, FromStr};
 use proc_macro2::Span;

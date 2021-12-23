@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-#![feature(allocator_api)]
-
 use crate::errors::EdgeKVError;
 
 pub mod datastore;

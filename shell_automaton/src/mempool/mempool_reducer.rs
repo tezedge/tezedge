@@ -12,7 +12,10 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
-use super::{mempool_state::{HeadState, OperationStream}, mempool_actions::*};
+use super::{
+    mempool_actions::*,
+    mempool_state::{HeadState, OperationStream},
+};
 use super::{OperationNodeCurrentHeadStats, OperationStats, OperationValidationResult};
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {

@@ -299,6 +299,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bencher"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfdb4953a096c551ce9ace855a604d702e6e62d77fac690575ae347571717f5"
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1602,6 +1608,7 @@ name = "ipc"
 version = "1.14.0"
 dependencies = [
  "anyhow",
+ "bencher",
  "bincode",
  "ipmpsc",
  "libc",
@@ -2255,9 +2262,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
+checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
 
 [[package]]
 name = "oorandom"
@@ -3731,6 +3738,7 @@ name = "tezos_encoding_derive"
 version = "1.14.0"
 dependencies = [
  "lazy_static",
+ "once_cell",
  "parse-display",
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -3756,6 +3764,7 @@ version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bencher",
  "bincode",
  "criterion",
  "crypto",
