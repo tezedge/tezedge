@@ -123,17 +123,22 @@ impl OperationStats {
     }
 
     pub fn validation_started(&mut self, time: u64, current_head_level: Option<i32>) {
-        if self.validation_started.is_none() {
+        if self
+            .validation_result
+            .filter(|x| x.1.is_applied())
+            .is_none()
+        {
             self.validation_started = Some(time);
-            self.validations.push(OperationValidationStats {
-                started: Some(time),
-                finished: None,
-                preapply_started: None,
-                preapply_ended: None,
-                current_head_level,
-                result: None,
-            });
+            self.validation_result = None;
         }
+        self.validations.push(OperationValidationStats {
+            started: Some(time),
+            finished: None,
+            preapply_started: None,
+            preapply_ended: None,
+            current_head_level,
+            result: None,
+        });
     }
 
     pub fn validation_finished(
@@ -144,34 +149,39 @@ impl OperationStats {
         current_head_level: Option<i32>,
         result: OperationValidationResult,
     ) {
-        if self.validation_result.is_none() {
-            // Convert seconds float to
-            let preapply_started = (preapply_started * 1_000_000_000.0) as u64;
-            let preapply_ended = (preapply_ended * 1_000_000_000.0) as u64;
-            self.validation_result = Some((time, result, preapply_started, preapply_ended));
+        // Convert seconds float to nanoseconds integer.
+        let preapply_started = (preapply_started * 1_000_000_000.0) as u64;
+        let preapply_ended = (preapply_ended * 1_000_000_000.0) as u64;
 
-            match self
-                .validations
-                .last_mut()
-                .filter(|v| v.result.is_none())
-                .filter(|v| v.current_head_level == current_head_level)
-            {
-                Some(v) => {
-                    v.finished = Some(time);
-                    v.preapply_started = Some(preapply_started);
-                    v.preapply_ended = Some(preapply_ended);
-                    v.result = Some(result);
-                }
-                None => {
-                    self.validations.push(OperationValidationStats {
-                        started: None,
-                        finished: Some(time),
-                        preapply_started: Some(preapply_started),
-                        preapply_ended: Some(preapply_ended),
-                        current_head_level,
-                        result: Some(result),
-                    });
-                }
+        if self
+            .validation_result
+            .filter(|x| x.1.is_applied())
+            .is_none()
+        {
+            self.validation_result = Some((time, result, preapply_started, preapply_ended));
+        }
+
+        match self
+            .validations
+            .last_mut()
+            .filter(|v| v.result.is_none())
+            .filter(|v| v.current_head_level == current_head_level)
+        {
+            Some(v) => {
+                v.finished = Some(time);
+                v.preapply_started = Some(preapply_started);
+                v.preapply_ended = Some(preapply_ended);
+                v.result = Some(result);
+            }
+            None => {
+                self.validations.push(OperationValidationStats {
+                    started: None,
+                    finished: Some(time),
+                    preapply_started: Some(preapply_started),
+                    preapply_ended: Some(preapply_ended),
+                    current_head_level,
+                    result: Some(result),
+                });
             }
         }
     }
@@ -314,6 +324,12 @@ pub enum OperationValidationResult {
     Refused,
     BranchRefused,
     BranchDelayed,
+}
+
+impl OperationValidationResult {
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
