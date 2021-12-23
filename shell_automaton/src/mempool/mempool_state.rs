@@ -400,4 +400,8 @@ impl OperationKind {
             _ => Self::Unknown,
         }
     }
+
+    pub fn is_endorsement(&self) -> bool {
+        matches!(self, Self::Endorsement | Self::EndorsementWithSlot)
+    }
 }

@@ -8,6 +8,7 @@ use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
+use crate::mempool::OperationKind;
 use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
@@ -164,6 +165,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state.running_since = Some(());
             }
             mempool_state.prevalidator = None;
+            let old_head_level = mempool_state
+                .local_head_state
+                .as_ref()
+                .map(|v| v.header.level());
             let changed = if let Some(old_head) = &mempool_state.local_head_state {
                 old_head.hash.ne(&block.predecessor())
             } else {
@@ -220,6 +225,56 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
             mempool_state.level_to_operation.retain(|x, _| *x >= level);
+
+            let start_level = old_head_level.unwrap_or(0);
+            let end_level = block.level();
+
+            if start_level >= end_level {
+                return;
+            }
+
+            // Remove old endorsement operations.
+            let range = start_level..end_level;
+            for (_, ops) in mempool_state.level_to_operation.range(range) {
+                for op in ops {
+                    let is_endorsement = mempool_state
+                        .validated_operations
+                        .ops
+                        .get(op)
+                        .or_else(|| mempool_state.pending_operations.get(op))
+                        .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
+                        .map(|op| OperationKind::from_operation_content_raw(&op.data()))
+                        .filter(|op_kind| op_kind.is_endorsement())
+                        .is_some();
+
+                    if !is_endorsement {
+                        continue;
+                    }
+
+                    mempool_state.pending_operations.remove(op);
+                    mempool_state.validated_operations.ops.remove(op);
+                    mempool_state.validated_operations.refused_ops.remove(op);
+                    mempool_state
+                        .validated_operations
+                        .applied
+                        .retain(|v| v.hash.ne(op));
+                    mempool_state
+                        .validated_operations
+                        .refused
+                        .retain(|v| v.hash.ne(op));
+                    mempool_state
+                        .validated_operations
+                        .branch_delayed
+                        .retain(|v| v.hash.ne(op));
+                    mempool_state
+                        .validated_operations
+                        .branch_refused
+                        .retain(|v| v.hash.ne(op));
+                    for (_, peer_state) in &mut mempool_state.peer_state {
+                        peer_state.seen_operations.remove(op);
+                    }
+                }
+            }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
