@@ -18,7 +18,7 @@ use crate::service::rpc_service::RpcId;
 pub struct MempoolState {
     // TODO(vlad): instant
     pub running_since: Option<()>,
-    // create prevalidator for any applied block, create prevalidator:
+    // 
     pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
@@ -83,6 +83,8 @@ pub struct PeerState {
     pub(super) requesting_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
+    // just validated
+    pub(super) known_valid_to_send: Vec<OperationHash>,
 }
 
 pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;

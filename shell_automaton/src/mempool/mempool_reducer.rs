@@ -12,15 +12,8 @@ use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
-use super::mempool_state::{HeadState, OperationStream};
-use super::{
-    BlockAppliedAction, MempoolBroadcastDoneAction, MempoolCleanupWaitPrevalidatorAction,
-    MempoolFlushAction, MempoolMarkOperationsAsPendingAction, MempoolOperationInjectAction,
-    MempoolOperationRecvDoneAction, MempoolRecvDoneAction, MempoolRemoveAppliedOperationsAction,
-    MempoolRpcRespondAction, MempoolSendAction, MempoolUnregisterOperationsStreamsAction,
-    MempoolValidateWaitPrevalidatorAction, OperationNodeCurrentHeadStats, OperationStats,
-    OperationValidationResult,
-};
+use super::{mempool_state::{HeadState, OperationStream}, mempool_actions::*};
+use super::{OperationNodeCurrentHeadStats, OperationStats, OperationValidationResult};
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     if state.config.disable_mempool {
@@ -31,7 +24,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
     match &action.action {
         Action::Protocol(act) => match act {
-            ProtocolAction::PrevalidatorForMempoolReady(prevalidator) => {
+            ProtocolAction::PrevalidatorReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
                 // unwrap is safe, cannot have prevalidator and haven't `local_head_state`
                 mempool_state
@@ -53,6 +46,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .ops
                             .insert(v.hash.clone().into(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
+                        for (_, peer) in &mut mempool_state.peer_state {
+                            if !peer.seen_operations.contains(&v.hash) {
+                                peer.known_valid_to_send.push(v.hash.clone());
+                            }
+                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone().into())
@@ -128,6 +126,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .validated_operations
                             .branch_delayed
                             .push(v.clone());
+                        if v.is_endorsement.unwrap_or(false) {
+                            for (_, peer) in &mut mempool_state.peer_state {
+                                if !peer.seen_operations.contains(&v.hash) {
+                                    peer.known_valid_to_send.push(v.hash.clone());
+                                }
+                            }
+                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone().into())
@@ -145,10 +150,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
             }
-            act => {
-                let _ = act;
-                // println!("{:?}", act);
-            }
+            _ => {}
         },
         Action::BlockApplied(BlockAppliedAction {
             chain_id,
@@ -163,6 +165,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if *is_bootstrapped {
                 mempool_state.running_since = Some(());
             }
+            mempool_state.prevalidator = None;
             let changed = if let Some(old_head) = &mempool_state.local_head_state {
                 old_head.hash.ne(&block.predecessor())
             } else {
@@ -176,9 +179,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 prevalidator_ready: false,
             });
 
-            for (_, op) in &mempool_state.pending_operations {
-                mempool_state.wait_prevalidator_operations.push(op.clone());
-            }
+            // for (_, op) in &mempool_state.pending_operations {
+            //     mempool_state.wait_prevalidator_operations.push(op.clone());
+            // }
 
             // TODO(vlad) move to separate action
             // TODO: get from protocol
@@ -325,11 +328,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             address,
             known_valid,
             pending,
+            cleanup_known_valid,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
             peer.seen_operations.extend(known_valid.iter().cloned());
             peer.seen_operations.extend(pending.iter().cloned());
+            if *cleanup_known_valid {
+                peer.known_valid_to_send.clear();
+            }
         }
         Action::MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction {
             operation_hashes,

@@ -1,10 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{future::Future, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
-use slab::Slab;
-use tokio::sync::{mpsc, Mutex};
+use tokio::{sync::mpsc, sync::Mutex};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 use tezos_protocol_ipc_client::{
@@ -19,6 +18,7 @@ pub trait ProtocolService {
 
     fn init_protocol_for_read(&mut self);
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest);
+    fn validate_operation_for_prevalidation(&mut self, request: ValidateOperationRequest);
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest);
     fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest);
 }
@@ -29,7 +29,8 @@ pub struct ProtocolServiceDefault {
     responses: mpsc::Receiver<(ProtocolAction, usize)>,
     sender: mpsc::Sender<(ProtocolAction, usize)>,
     mio_waker: Arc<mio::Waker>,
-    tasks: Slab<tokio::task::JoinHandle<()>>,
+    counter: usize,
+    tasks: HashMap<usize, tokio::task::JoinHandle<()>>,
 }
 
 impl ProtocolServiceDefault {
@@ -37,36 +38,38 @@ impl ProtocolServiceDefault {
         let (tx, rx) = mpsc::channel(1024);
         ProtocolServiceDefault {
             api,
-            connection: Arc::default(),
+            connection: Arc::new(Mutex::new(None)),
             responses: rx,
             sender: tx,
             mio_waker,
-            tasks: Slab::new(),
+            counter: 0,
+            tasks: HashMap::new(),
         }
     }
 
     // `op` takes mutex with the connection, the connection cannot be `None`, it is safe to unwrap
-    fn spawn<F>(
-        &mut self,
-        op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static,
-    ) where
+    fn spawn<F>(&mut self, op: impl FnOnce(Arc<Mutex<Option<ProtocolRunnerConnection>>>) -> F + Send + 'static)
+    where
         F: Future<Output = Result<ProtocolAction, ProtocolServiceError>> + Send,
     {
         let api = self.api.clone();
         let sender = self.sender.clone();
         let waker = self.mio_waker.clone();
-        let entry = self.tasks.vacant_entry();
-        let id = entry.key();
+        let id = self.counter;
+        self.counter = self.counter.wrapping_add(1);
         let _guard = self.api.tokio_runtime.enter();
         let cn = Arc::clone(&self.connection);
-        entry.insert(tokio::spawn(async move {
-            let action = match Self::task(&api, cn, op).await {
-                Ok(response) => response,
-                Err(err) => ProtocolAction::Error(err),
-            };
-            let _ = sender.send((action, id)).await;
-            let _ = waker.wake(); // cannot we handle it
-        }));
+        self.tasks.insert(
+            id,
+            tokio::spawn(async move {
+                let action = match Self::task(&api, cn, op).await {
+                    Ok(response) => response,
+                    Err(err) => ProtocolAction::Error(err),
+                };
+                let _ = sender.send((action, id)).await;
+                let _ = waker.wake(); // cannot we handle it
+            }),
+        );
     }
 
     async fn task<F>(
@@ -96,7 +99,7 @@ impl ProtocolService for ProtocolServiceDefault {
         self.responses
             .try_recv()
             .map(|(response, id)| {
-                let handle = self.tasks.try_remove(id);
+                let handle = self.tasks.remove(&id);
                 let _ = handle; // it is already done
                 response
             })
@@ -118,6 +121,9 @@ impl ProtocolService for ProtocolServiceDefault {
     }
 
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {
+        // Abort all prevalidation tasks as they are no longer relevant.
+        // self.tasks.drain().for_each(|(_, task)| task.abort());
+
         self.spawn(|connection| async move {
             connection
                 .lock()
@@ -131,9 +137,23 @@ impl ProtocolService for ProtocolServiceDefault {
         })
     }
 
+    fn validate_operation_for_prevalidation(&mut self, request: ValidateOperationRequest) {
+        self.spawn(|connection| async move {
+            connection
+                .lock()
+                .await
+                .as_mut()
+                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
+                .unwrap()
+                .validate_operation_for_prevalidation(request)
+                .await
+                .map(ProtocolAction::OperationValidated)
+        })
+    }
+
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest) {
         // Abort all prevalidation tasks as they are no longer relevant.
-        self.tasks.drain().for_each(|task| task.abort());
+        // self.tasks.drain().for_each(|(_, task)| task.abort());
 
         self.spawn(|connection| async move {
             connection

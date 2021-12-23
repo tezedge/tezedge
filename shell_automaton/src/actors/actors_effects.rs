@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::mempool::BlockAppliedAction;
+use crate::mempool::mempool_actions::BlockAppliedAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::ActorsMessageFrom;

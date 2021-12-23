@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::mempool::{
+use crate::mempool::mempool_actions::{
     MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction, MempoolOperationInjectAction,
     MempoolRegisterOperationsStreamAction, MempoolRemoveAppliedOperationsAction,
 };
