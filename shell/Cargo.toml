@@ -23,7 +23,7 @@ tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "1.12", features = ["time"] }
+tokio = { version = "1.15", features = ["full", "tracing"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
