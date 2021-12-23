@@ -9,7 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashBase58, OperationHash};
-use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
+use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
 
 use crate::service::rpc_service::RpcId;
@@ -18,8 +18,6 @@ use crate::service::rpc_service::RpcId;
 pub struct MempoolState {
     // TODO(vlad): instant
     pub running_since: Option<()>,
-    //
-    pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
     // performed rpc
@@ -35,8 +33,6 @@ pub struct MempoolState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
-    // operations that passed basic checks, are not sent because prevalidator is not ready
-    pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
@@ -63,8 +59,6 @@ pub struct HeadState {
     pub(super) hash: BlockHash,
     // operations included in the head already removed
     pub(super) ops_removed: bool,
-    // prevalidator for the head is created
-    pub(super) prevalidator_ready: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

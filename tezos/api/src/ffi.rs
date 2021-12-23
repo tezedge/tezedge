@@ -148,7 +148,7 @@ pub struct BeginApplicationResponse {
     pub result: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
