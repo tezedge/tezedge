@@ -342,7 +342,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             // ignore endorsement operation if its for the past block.
             if mempool_state.is_old_endorsement(operation) {
-                if let Some(level) = mempool_state.last_predecessor_blocks.get(operation.branch()) {
+                if let Some(level) = mempool_state
+                    .last_predecessor_blocks
+                    .get(operation.branch())
+                {
                     if let Some(ops) = mempool_state.level_to_operation.get_mut(level) {
                         ops.retain(|op| op.ne(&operation_hash));
                     }
