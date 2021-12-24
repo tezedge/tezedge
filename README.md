@@ -147,10 +147,10 @@ If you want to build from source code, you need to install this before:
     # Run the following in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
     ```
-3. Install **Rust toolchain** _(Rust nightly is required to build this project.)_
+3. Install **Rust toolchain** _(Our releases are built with 1.57.)_
     ```
-    rustup toolchain install nightly-2021-08-04
-    rustup default nightly-2021-08-04
+    rustup toolchain install 1.57
+    rustup default 1.57
     ```
 4. Install **required OS libs**
     - OpenSSL and Zlib
@@ -312,7 +312,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.13.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.14.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 

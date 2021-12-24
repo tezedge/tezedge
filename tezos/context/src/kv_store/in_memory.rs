@@ -57,12 +57,12 @@ impl HashValueStore {
         T: Into<Option<Consumer<HashId>>>,
     {
         Self {
-            hashes: IndexMap::new(),
-            values: IndexMap::new(),
+            hashes: IndexMap::with_chunk_capacity(10_000_000), // ~320MB
+            values: IndexMap::with_chunk_capacity(10_000_000), // ~80MB
             free_ids: consumer.into(),
-            new_ids: Vec::with_capacity(1024),
+            new_ids: Vec::with_capacity(1024), // ~8KB
             values_bytes: 0,
-        }
+        } // Total ~400MB
     }
 
     pub fn get_memory_usage(
@@ -102,8 +102,8 @@ impl HashValueStore {
 
     pub(crate) fn clear(&mut self) {
         *self = Self {
-            hashes: IndexMap::new(),
-            values: IndexMap::new(),
+            hashes: IndexMap::empty(),
+            values: IndexMap::empty(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
             values_bytes: 0,
@@ -259,7 +259,7 @@ impl KeyValueStoreBackend for InMemory {
         self.string_interner.extend_from(string_interner);
     }
 
-    fn get_str(&self, string_id: StringId) -> Option<&str> {
+    fn get_str(&self, string_id: StringId) -> Option<Cow<str>> {
         self.string_interner.get_str(string_id).ok()
     }
 

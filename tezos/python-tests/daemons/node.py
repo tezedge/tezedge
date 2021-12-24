@@ -64,20 +64,21 @@ class Node:
     """
 
     def __init__(
-                 self,
-                 node: str,
-                 config: dict = None,
-                 expected_pow: float = 0.0,
-                 node_dir: str = None,
-                 use_tls: Tuple[str, str] = None,
-                 params: List[str] = None,
-                 log_file: str = None,
-                 p2p_port: int = 9732,
-                 rpc_port: int = 8732,
-                 peers: List[int] = None,
-                 log_levels: Dict[str, str] = None,
-                 singleprocess: bool = False,
-                 env: Dict[str, str] = None):
+        self,
+        node: str,
+        config: dict = None,
+        expected_pow: float = 0.0,
+        node_dir: str = None,
+        use_tls: Tuple[str, str] = None,
+        params: List[str] = None,
+        log_file: str = None,
+        p2p_port: int = 9732,
+        rpc_port: int = 8732,
+        peers: List[int] = None,
+        log_levels: Dict[str, str] = None,
+        singleprocess: bool = False,
+        env: Dict[str, str] = None,
+    ):
 
         """Creates a new Popen instance for a tezos-node, and manages context.
 

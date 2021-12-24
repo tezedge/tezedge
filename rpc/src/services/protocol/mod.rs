@@ -45,6 +45,7 @@ mod proto_008;
 mod proto_008_2;
 mod proto_009;
 mod proto_010;
+mod proto_011;
 
 use cached::proc_macro::cached;
 use cached::TimedSizedCache;
@@ -239,6 +240,18 @@ pub(crate) async fn check_and_get_baking_rights(
         )
         .await
         .map_err(RightsError::from),
+        SupportedProtocol::Proto011 => proto_011::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
     }
 }
 
@@ -397,6 +410,17 @@ pub(crate) async fn check_and_get_endorsing_rights(
         )
         .await
         .map_err(RightsError::from),
+        SupportedProtocol::Proto011 => proto_011::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
     }
 }
 
@@ -531,6 +555,9 @@ pub(crate) async fn get_votes_listings(
         }
         SupportedProtocol::Proto010 => {
             proto_010::votes_service::get_votes_listings(env, &context_hash).await
+        }
+        SupportedProtocol::Proto011 => {
+            proto_011::votes_service::get_votes_listings(env, &context_hash).await
         }
     }
 }
@@ -724,30 +751,39 @@ pub(crate) async fn preapply_block(
 ) -> Result<serde_json::value::Value, RpcServiceError> {
     let block_storage = BlockStorage::new(env.persistent_storage());
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
-    let (block_header, (predecessor_block_metadata_hash, predecessor_ops_metadata_hash)) =
-        match block_storage.get(&block_hash)? {
-            Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
-                Some(block_header_additional_data) => {
-                    (block_header, block_header_additional_data.into())
-                }
-                None => {
-                    return Err(RpcServiceError::NoDataFoundError {
-                        reason: format!(
-                            "No block additioanl data found for hash: {}",
-                            block_hash.to_base58_check()
-                        ),
-                    })
-                }
-            },
+    let (
+        block_header,
+        (predecessor_block_metadata_hash, predecessor_ops_metadata_hash),
+        predecessor_max_operations_ttl,
+    ) = match block_storage.get(&block_hash)? {
+        Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
+            Some(block_header_additional_data) => {
+                let predecessor_max_operations_ttl =
+                    block_header_additional_data.max_operations_ttl() as i32;
+                (
+                    block_header,
+                    block_header_additional_data.into(),
+                    predecessor_max_operations_ttl,
+                )
+            }
             None => {
                 return Err(RpcServiceError::NoDataFoundError {
                     reason: format!(
-                        "No block header found for hash: {}",
+                        "No block additional data found for hash: {}",
                         block_hash.to_base58_check()
                     ),
                 })
             }
-        };
+        },
+        None => {
+            return Err(RpcServiceError::NoDataFoundError {
+                reason: format!(
+                    "No block header found for hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            })
+        }
+    };
 
     // create request to ffi
     let request = HelpersPreapplyBlockRequest {
@@ -759,6 +795,7 @@ pub(crate) async fn preapply_block(
         },
         predecessor_block_metadata_hash,
         predecessor_ops_metadata_hash,
+        predecessor_max_operations_ttl,
     };
 
     // TODO: retry?
@@ -972,6 +1009,10 @@ pub fn get_blocks_per_cycle(
         )?
         .blocks_per_cycle()),
         SupportedProtocol::Proto010 => Ok(serde_json::from_str::<proto_010::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto011 => Ok(serde_json::from_str::<proto_011::ProtocolConstants>(
             serialized_constants,
         )?
         .blocks_per_cycle()),

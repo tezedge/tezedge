@@ -22,3 +22,6 @@ pub use rpc_service::*;
 
 mod mio_service;
 pub use mio_service::*;
+
+mod protocol_service;
+pub use protocol_service::*;

@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-#![feature(deadline_api)]
-
 use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 
 pub mod io_error_kind;
@@ -46,9 +44,15 @@ use peers::dns_lookup::PeersDnsLookupInitAction;
 pub mod storage;
 use crate::storage::state_snapshot::create::StorageStateSnapshotCreateInitAction;
 
+pub mod mempool;
+
 pub mod rpc;
 
 pub mod actors;
+
+pub mod protocol;
+
+pub mod rights;
 
 pub mod service;
 use service::MioService;

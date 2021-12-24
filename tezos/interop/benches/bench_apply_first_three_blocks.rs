@@ -1,10 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
-extern crate test;
 
+use bencher::{benchmark_group, benchmark_main, Bencher};
 use std::time::Instant;
-use test::Bencher;
 
 use crypto::hash::ChainId;
 use tezos_api::environment::{
@@ -36,8 +34,6 @@ macro_rules! expect_response {
 
 // not a real bench, just for approximatelly measurement of applying first three blocks
 // because this is very hard to use with b.iter
-// cargo bench -- --nocapture
-#[bench]
 fn bench_apply_first_three_block(_: &mut Bencher) {
     apply_encoded_message(ProtocolMessage::ChangeRuntimeConfigurationCall(
         TezosRuntimeConfiguration {
@@ -320,3 +316,6 @@ mod common {
             .unwrap()
     }
 }
+
+benchmark_group!(benches, bench_apply_first_three_block);
+benchmark_main!(benches);

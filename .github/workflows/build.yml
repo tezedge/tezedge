@@ -19,10 +19,17 @@ jobs:
             sanitizer: address
     steps:
       - uses: actions/checkout@v2
-      - name: Setup Rust
+      - name: Setup Rust (regular)
+        if: matrix.sanitizer != 'address'
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-04
+          toolchain: 1.57
+          default: true
+      - name: Setup Rust (for sanitizer)
+        if: matrix.sanitizer == 'address'
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-12-22
           default: true
       - name: Settings for cargo in Linux
         if: matrix.sanitizer == 'address'

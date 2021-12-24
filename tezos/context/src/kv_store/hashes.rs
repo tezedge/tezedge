@@ -29,8 +29,8 @@ pub struct HashesContainer {
 impl HashesContainer {
     pub fn new(first_index: usize) -> Self {
         Self {
-            working_tree: IndexMap::with_capacity(1000),
-            commiting: IndexMap::new(),
+            working_tree: IndexMap::with_chunk_capacity(1000),
+            commiting: IndexMap::with_chunk_capacity(1000),
             is_commiting: false,
             first_index,
         }
@@ -51,8 +51,12 @@ impl HashesContainer {
         self.is_commiting = false;
     }
 
-    pub fn get_commiting(&self) -> &[ObjectHash] {
-        self.commiting.as_slice()
+    pub fn is_commiting_empty(&self) -> bool {
+        self.commiting.is_empty()
+    }
+
+    pub fn get_commiting(&self) -> impl Iterator<Item = &ObjectHash> {
+        self.commiting.iter_values()
     }
 
     pub fn total_number_of_hashes(&self) -> usize {

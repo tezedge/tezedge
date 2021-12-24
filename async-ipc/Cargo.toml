@@ -1,6 +1,6 @@
 [package]
 name = "async_ipc"
-version = "1.13.0"
+version = "1.14.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 

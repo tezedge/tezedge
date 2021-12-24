@@ -1,6 +1,6 @@
 [package]
 name = "ipc"
-version = "1.13.0"
+version = "1.14.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -15,3 +15,8 @@ serde = { version = "1.0", features = ["derive"] }
 serial_test = "0.5"
 libc = "0.2.65"
 ipmpsc = "0.4"
+bencher = "0.1.5"
+
+[[bench]]
+name = "bench_shm"
+harness = false

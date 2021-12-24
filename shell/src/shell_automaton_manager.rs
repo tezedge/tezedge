@@ -12,13 +12,15 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use shell_automaton::service::rpc_service::RpcShellAutomatonChannel;
+use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use slog::{info, o, warn, Logger};
 use storage::PersistentStorage;
 
 use crypto::hash::ChainId;
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
+
+use tezos_protocol_ipc_client::ProtocolRunnerApi;
 
 use crate::PeerConnectionThreshold;
 
@@ -27,8 +29,8 @@ pub use shell_automaton::service::actors_service::{
 };
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, RpcServiceDefault, ServiceDefault,
-    StorageServiceDefault,
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolServiceDefault,
+    RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Port, ShellAutomaton};
@@ -86,13 +88,14 @@ impl ShellAutomatonManager {
     pub fn new(
         persistent_storage: PersistentStorage,
         network_channel: NetworkChannelRef,
+        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         log: Logger,
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
         pow_target: f64,
-        _chain_id: ChainId,
-    ) -> (Self, RpcShellAutomatonChannel) {
+        chain_id: ChainId,
+    ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
             p2p_config
@@ -144,6 +147,8 @@ impl ShellAutomatonManager {
             log.new(o!("service" => "quota")),
         );
 
+        let protocol = ProtocolServiceDefault::new(mio_service.waker(), tezos_protocol_api);
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -152,6 +157,7 @@ impl ShellAutomatonManager {
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
+            protocol,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
@@ -165,6 +171,7 @@ impl ShellAutomatonManager {
             identity: (*identity).clone(),
             shell_compatibility_version: (*shell_compatibility_version).clone(),
             pow_target,
+            chain_id,
 
             check_timeouts_interval: Duration::from_millis(500),
             peer_connecting_timeout: Duration::from_secs(4),

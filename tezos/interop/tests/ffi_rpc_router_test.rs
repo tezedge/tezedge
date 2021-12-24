@@ -435,6 +435,7 @@ fn test_preapply_block() -> Result<(), anyhow::Error> {
         protocol_rpc_request: request,
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
+        predecessor_max_operations_ttl: 120,
     };
 
     let response = helpers_preapply_block(request)?;

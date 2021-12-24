@@ -6,24 +6,42 @@ use std::{
     io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
     process,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use thiserror::Error;
+
+enum LockFileStatus {
+    Removed,
+    SamePID,
+}
 
 #[derive(Debug, Error)]
 pub enum LockDatabaseError {
     #[error("IOError {0}")]
     IOError(#[from] std::io::Error),
     #[error("Database already locked by {pid} ({path})")]
-    AlreadyLocked { path: PathBuf, pid: String },
+    AlreadyLocked {
+        path: PathBuf,
+        pid: String,
+        self_pid: String,
+    },
 }
 
 pub struct Lock {
     path: PathBuf,
 }
 
+// Number of instantiated `Lock`
+static NACTIVE_LOCK: AtomicUsize = AtomicUsize::new(0);
+
 impl Drop for Lock {
     fn drop(&mut self) {
+        if NACTIVE_LOCK.fetch_sub(1, Ordering::SeqCst) > 0 {
+            // Do not delete the file when there are other `Lock`
+            return;
+        }
+
         if let Err(e) = std::fs::remove_file(&self.path) {
             eprintln!("Failed to remove database lock file: {:?}", e);
         };
@@ -33,39 +51,45 @@ impl Drop for Lock {
 impl Lock {
     pub fn try_lock(base_path: &str) -> Result<Self, LockDatabaseError> {
         std::fs::create_dir_all(&base_path)?;
+
         let path = PathBuf::from(base_path).join("lock");
+        Self::create_lock_file(path.as_path())?;
 
-        let mut lock_file = Self::create_lock_file(path.as_path())?;
-
-        let pid = process::id().to_string();
-
-        lock_file.write_all(pid.as_bytes())?;
-        lock_file.sync_all()?;
+        NACTIVE_LOCK.fetch_add(1, Ordering::SeqCst);
 
         Ok(Self { path })
     }
 
-    fn create_lock_file(path: &Path) -> Result<std::fs::File, LockDatabaseError> {
+    fn create_lock_file(path: &Path) -> Result<(), LockDatabaseError> {
         loop {
-            let file = OpenOptions::new().write(true).create_new(true).open(path);
+            match OpenOptions::new().write(true).create_new(true).open(path) {
+                Ok(mut lock_file) => {
+                    // The file has been succesfully created, write our PID
+                    let pid = process::id().to_string();
 
-            let error = match file {
-                Ok(file) => return Ok(file),
-                Err(e) => e,
-            };
-
-            match error.kind() {
-                ErrorKind::AlreadyExists => {
-                    Self::remove_zombie_lock(path)?;
+                    lock_file.write_all(pid.as_bytes())?;
+                    lock_file.sync_all()?;
+                    return Ok(());
                 }
-                _ => return Err(error.into()),
-            }
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                    match Self::remove_zombie_lock(path)? {
+                        LockFileStatus::SamePID => {
+                            // Our process already locked the file
+                            return Ok(());
+                        }
+                        LockFileStatus::Removed => {
+                            // Re-run the loop to lock the file
+                        }
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            };
         }
     }
 
     /// Open the existing lock file, read the PID and remove the file
     /// if the PID is not alive
-    fn remove_zombie_lock(path: &Path) -> Result<(), LockDatabaseError> {
+    fn remove_zombie_lock(path: &Path) -> Result<LockFileStatus, LockDatabaseError> {
         // At this point the file exists, we need to check if the PID it
         // contains is still alive
 
@@ -80,7 +104,7 @@ impl Lock {
             Ok(file) => file,
             Err(e) => {
                 return match e.kind() {
-                    ErrorKind::NotFound => Ok(()), // Another process removed the file
+                    ErrorKind::NotFound => Ok(LockFileStatus::Removed), // Another process removed the file
                     _ => Err(e.into()),
                 };
             }
@@ -92,20 +116,26 @@ impl Lock {
 
         if pid.is_empty() {
             // Another process created the file but hasn't written its PID yet
-            return Ok(());
+            // Consider the file removed.
+            return Ok(LockFileStatus::Removed);
+        }
+
+        if pid == std::process::id().to_string() {
+            return Ok(LockFileStatus::SamePID);
         }
 
         if Self::is_pid_alive(&pid) {
             return Err(LockDatabaseError::AlreadyLocked {
                 path: path.to_owned(),
                 pid,
+                self_pid: std::process::id().to_string(),
             });
         }
 
         // The PID belongs to a dead process, remove the lock file
         std::fs::remove_file(path)?;
 
-        Ok(())
+        Ok(LockFileStatus::Removed)
     }
 
     #[cfg(target_os = "linux")]

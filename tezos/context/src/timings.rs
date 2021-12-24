@@ -4,9 +4,15 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ocaml_interop::*;
-use tezos_conv::{from_ocaml::hash_as_bytes, OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
+use tezos_conv::{
+    from_ocaml::hash_as_bytes, OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+    OCamlProtocolHash,
+};
 use tezos_timing::{
-    container::{InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedString},
+    container::{
+        InlinedBlockHash, InlinedContextHash, InlinedOperationHash, InlinedProtocolHash,
+        InlinedString,
+    },
     BlockMemoryUsage, ChannelError, Query, TimingMessage, TIMING_CHANNEL,
 };
 
@@ -49,6 +55,16 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
         timestamp,
         instant,
     }) {
+        eprintln!("Timing set_block hook error = {:?}", e);
+    }
+}
+
+pub fn set_protocol(rt: &OCamlRuntime, protocol_hash: OCamlRef<OCamlProtocolHash>) {
+    let hash = rt.get(protocol_hash);
+
+    let protocol_hash = InlinedProtocolHash::from(hash_as_bytes(hash));
+
+    if let Err(e) = send_msg(TimingMessage::SetProtocol(protocol_hash)) {
         eprintln!("Timing set_block hook error = {:?}", e);
     }
 }

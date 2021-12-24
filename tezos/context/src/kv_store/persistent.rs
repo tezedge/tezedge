@@ -8,6 +8,10 @@ use std::{
 #[cfg(test)]
 use std::sync::Arc;
 
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use crypto::hash::ContextHash;
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
@@ -16,7 +20,10 @@ use crate::{
     hash::OBJECT_HASH_LEN,
     initializer::IndexInitializationError,
     persistent::{
-        file::{get_persistent_base_path, File, FileType},
+        file::{
+            get_persistent_base_path, File, TAG_BIG_STRINGS, TAG_COMMIT_INDEX, TAG_DATA,
+            TAG_HASHES, TAG_SHAPE, TAG_SHAPE_INDEX, TAG_SIZES, TAG_STRINGS,
+        },
         get_commit_hash,
         lock::Lock,
         DBError, Flushable, KeyValueStoreBackend, Persistable,
@@ -39,19 +46,24 @@ use crate::{
 use super::{hashes::HashesContainer, HashId, VacantObjectHash};
 
 const FIRST_READ_OBJECT_LENGTH: usize = 4096;
+const SIZES_NUMBER_OF_LINES: usize = 10;
+const SIZES_HASH_BYTES_LENGTH: usize = 32;
+/// Include the commit counter + the size of all files
+const SIZES_REST_BYTES_LENGTH: usize = 64;
+const SIZES_BYTES_PER_LINE: usize = SIZES_HASH_BYTES_LENGTH + SIZES_REST_BYTES_LENGTH;
 
 pub struct Persistent {
     /// Concatenation of all objects
     ///
     /// See `serialize::persistent`
-    data_file: File,
+    data_file: File<{ TAG_DATA }>,
     /// Store shapes.
     ///
     /// File format:
     /// Concatenation of `StringId` (u32):
     /// [StringId(0), StringId(9), StringId(3), StringId(33), ..]
     ///
-    shape_file: File,
+    shape_file: File<{ TAG_SHAPE }>,
     /// Store shapes indexes.
     ///
     /// File format:
@@ -61,7 +73,7 @@ pub struct Persistent {
     /// In this example, and with the documentation of `shape_file`, the first
     /// shape (start: 0, end: 2) would be composed of the StringId `0`, `9` and `3`
     ///
-    shape_index_file: File,
+    shape_index_file: File<{ TAG_SHAPE_INDEX }>,
     /// Store commit indexes.
     ///
     /// File format:
@@ -70,7 +82,7 @@ pub struct Persistent {
     /// For each commit, we store its `HashId`, its offset in `data_file` and its
     /// context hash
     ///
-    commit_index_file: File,
+    commit_index_file: File<{ TAG_COMMIT_INDEX }>,
     /// Store small strings.
     ///
     /// File format:
@@ -79,13 +91,13 @@ pub struct Persistent {
     /// The strings 'z' and 'abc' would be written as:
     /// [1, 'z', 3, 'a', 'b', 'c']
     ///
-    strings_file: File,
+    strings_file: File<{ TAG_STRINGS }>,
     /// Store bigs strings
     ///
     /// File format:
     /// [[length (u32), string (nbytes)], [..], ..]
     ///
-    big_strings_file: File,
+    big_strings_file: File<{ TAG_BIG_STRINGS }>,
 
     hashes: Hashes,
     shapes: DirectoryShapes,
@@ -96,6 +108,14 @@ pub struct Persistent {
     // We keep the lock file here to invoke its destructor
     #[allow(dead_code)]
     lock_file: Lock,
+    /// Counter incrementing on every commit
+    commit_counter: u64,
+    /// Store all the other files sizes
+    ///
+    /// File format:
+    /// [Hash of the following bytes, commit counter, file 1 size, file 2 size, .., file X size]
+    /// This repeats 10 times
+    sizes_file: File<{ TAG_SIZES }>,
 }
 
 impl NotGarbageCollected for Persistent {}
@@ -119,14 +139,14 @@ struct Hashes {
     ///
     /// [ObjectHash (32 bytes), ObjectHash (32 bytes), ..]
     ///
-    hashes_file: File,
+    hashes_file: File<{ TAG_HASHES }>,
     /// Vector used to copy hashes from `Self::in_memory` and being able to
     /// write all hashes into the file in a single `File::append` call
     in_memory_bytes: Vec<u8>,
 }
 
 impl Hashes {
-    fn try_new(hashes_file: File) -> Self {
+    fn try_new(hashes_file: File<{ TAG_HASHES }>) -> Self {
         let hash_index = hashes_file.offset().as_u64() - hashes_file.start();
 
         debug_assert_eq!(hash_index as usize % OBJECT_HASH_LEN, 0);
@@ -173,12 +193,12 @@ impl Hashes {
     }
 
     fn commit(&mut self) -> Result<(), std::io::Error> {
-        let in_memory = self.in_memory.get_commiting();
-
-        if in_memory.is_empty() {
+        if self.in_memory.is_commiting_empty() {
             self.in_memory.commited();
             return Ok(());
         }
+
+        let in_memory = self.in_memory.get_commiting();
 
         // Copy all hashes into the flat vector `Self::in_memory_bytes`
         self.in_memory_bytes.clear();
@@ -200,14 +220,27 @@ impl Persistent {
 
         let lock_file = Lock::try_lock(&base_path)?;
 
-        let data_file = File::try_new(&base_path, FileType::Data)?;
-        let mut shape_file = File::try_new(&base_path, FileType::ShapeDirectories)?;
-        let mut shape_index_file = File::try_new(&base_path, FileType::ShapeDirectoriesIndex)?;
-        let commit_index_file = File::try_new(&base_path, FileType::CommitIndex)?;
-        let mut strings_file = File::try_new(&base_path, FileType::Strings)?;
-        let mut big_strings_file = File::try_new(&base_path, FileType::BigStrings)?;
+        let sizes_file = File::<{ TAG_SIZES }>::try_new(&base_path)?;
+        let list_sizes = FileSizes::make_list_from_file(&sizes_file);
 
-        let hashes_file = File::try_new(&base_path, FileType::Hashes)?;
+        let mut data_file = File::<{ TAG_DATA }>::try_new(&base_path)?;
+        let mut shape_file = File::<{ TAG_SHAPE }>::try_new(&base_path)?;
+        let mut shape_index_file = File::<{ TAG_SHAPE_INDEX }>::try_new(&base_path)?;
+        let mut commit_index_file = File::<{ TAG_COMMIT_INDEX }>::try_new(&base_path)?;
+        let mut strings_file = File::<{ TAG_STRINGS }>::try_new(&base_path)?;
+        let mut big_strings_file = File::<{ TAG_BIG_STRINGS }>::try_new(&base_path)?;
+        let mut hashes_file = File::<{ TAG_HASHES }>::try_new(&base_path)?;
+
+        let commit_counter = Self::truncate_files_with_correct_sizes(
+            list_sizes.as_ref().map(|s| s.as_ref()),
+            &mut data_file,
+            &mut shape_file,
+            &mut shape_index_file,
+            &mut commit_index_file,
+            &mut strings_file,
+            &mut big_strings_file,
+            &mut hashes_file,
+        )?;
 
         let shapes = DirectoryShapes::deserialize(&mut shape_file, &mut shape_index_file)?;
         let string_interner =
@@ -226,7 +259,53 @@ impl Persistent {
             string_interner,
             context_hashes,
             lock_file,
+            commit_counter,
+            sizes_file,
         })
+    }
+
+    fn truncate_files_with_correct_sizes(
+        list_sizes: Option<&[FileSizes]>,
+        data_file: &mut File<{ TAG_DATA }>,
+        shape_file: &mut File<{ TAG_SHAPE }>,
+        shape_index_file: &mut File<{ TAG_SHAPE_INDEX }>,
+        commit_index_file: &mut File<{ TAG_COMMIT_INDEX }>,
+        strings_file: &mut File<{ TAG_STRINGS }>,
+        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+        hashes_file: &mut File<{ TAG_HASHES }>,
+    ) -> Result<u64, IndexInitializationError> {
+        let list_sizes = match list_sizes {
+            Some(list) => list,
+            None => return Ok(0), // New database
+        };
+
+        for sizes in list_sizes.iter().rev() {
+            if data_file.offset().as_u64() < sizes.data_size
+                || shape_file.offset().as_u64() < sizes.shape_size
+                || shape_index_file.offset().as_u64() < sizes.shape_index_size
+                || commit_index_file.offset().as_u64() < sizes.commit_index_size
+                || strings_file.offset().as_u64() < sizes.strings_size
+                || big_strings_file.offset().as_u64() < sizes.big_strings_size
+                || hashes_file.offset().as_u64() < sizes.hashes_size
+            {
+                // The actual file is smaller than what is in our `sizes.db` file
+                // Go to the previous commit
+                continue;
+            }
+
+            data_file.truncate(sizes.data_size)?;
+            shape_file.truncate(sizes.shape_size)?;
+            shape_index_file.truncate(sizes.shape_index_size)?;
+            commit_index_file.truncate(sizes.commit_index_size)?;
+            strings_file.truncate(sizes.strings_size)?;
+            big_strings_file.truncate(sizes.big_strings_size)?;
+            hashes_file.truncate(sizes.hashes_size)?;
+
+            return Ok(sizes.commit_counter + 1);
+        }
+
+        // If we reach here, it means that none of the sizes in `sizes.db` are correct
+        Err(IndexInitializationError::InvalidSizesOfFiles)
     }
 
     pub fn get_object_bytes<'a>(
@@ -301,13 +380,150 @@ impl Persistent {
         self.hashes.hashes_file.sync()?;
         self.commit_index_file.sync()?;
 
+        self.update_sizes_to_disk()?;
+
         Ok(())
+    }
+
+    fn update_sizes_to_disk(&mut self) -> Result<(), std::io::Error> {
+        // Gather all the file sizes + counter in a `Vec<u8>`
+        let file_sizes = self.get_file_sizes();
+        let file_sizes_bytes = serialize_file_sizes(&file_sizes);
+
+        // Compute the hash of `file_sizes_bytes`
+        let mut hasher = VarBlake2b::new(SIZES_HASH_BYTES_LENGTH).unwrap();
+        hasher.update(&file_sizes_bytes);
+        let hash = hasher.finalize_boxed();
+
+        debug_assert_eq!(hash.len(), SIZES_HASH_BYTES_LENGTH);
+
+        // Write them to disk
+        self.write_sizes_to_disk(&hash, &file_sizes_bytes)?;
+
+        // Increment the counter
+        self.commit_counter = self.commit_counter.wrapping_add(1);
+
+        Ok(())
+    }
+
+    fn get_file_sizes(&self) -> FileSizes {
+        FileSizes {
+            commit_counter: self.commit_counter,
+            data_size: self.data_file.offset().as_u64(),
+            shape_size: self.shape_file.offset().as_u64(),
+            shape_index_size: self.shape_index_file.offset().as_u64(),
+            commit_index_size: self.commit_index_file.offset().as_u64(),
+            strings_size: self.strings_file.offset().as_u64(),
+            hashes_size: self.hashes.hashes_file.offset().as_u64(),
+            big_strings_size: self.big_strings_file.offset().as_u64(),
+        }
+    }
+
+    fn write_sizes_to_disk(
+        &mut self,
+        hash: &[u8],
+        file_sizes: &[u8],
+    ) -> Result<(), std::io::Error> {
+        let counter = self.commit_counter;
+
+        // We need to find the offset to write in the file.
+        let offset = counter % SIZES_NUMBER_OF_LINES as u64;
+        let offset = offset * SIZES_BYTES_PER_LINE as u64;
+        let offset = offset + self.sizes_file.start();
+
+        self.sizes_file.write_all_at(hash, offset.into())?;
+        self.sizes_file
+            .write_all_at(file_sizes, (offset + SIZES_HASH_BYTES_LENGTH as u64).into())?;
+        self.sizes_file.sync()
+    }
+}
+
+fn serialize_file_sizes(file_sizes: &FileSizes) -> Vec<u8> {
+    let mut output = Vec::with_capacity(SIZES_REST_BYTES_LENGTH);
+
+    output.extend_from_slice(&file_sizes.commit_counter.to_le_bytes());
+    output.extend_from_slice(&file_sizes.data_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.shape_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.shape_index_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.commit_index_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.strings_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.hashes_size.to_le_bytes());
+    output.extend_from_slice(&file_sizes.big_strings_size.to_le_bytes());
+
+    debug_assert_eq!(output.len(), SIZES_REST_BYTES_LENGTH);
+
+    output
+}
+
+#[derive(Debug)]
+struct FileSizes {
+    commit_counter: u64,
+    data_size: u64,
+    shape_size: u64,
+    shape_index_size: u64,
+    commit_index_size: u64,
+    strings_size: u64,
+    hashes_size: u64,
+    big_strings_size: u64,
+}
+
+impl FileSizes {
+    fn make_list_from_file(file: &File<{ TAG_SIZES }>) -> Option<Vec<FileSizes>> {
+        if file.offset().as_u64() == file.start() {
+            // The file is empty, we just started a new database
+            return None;
+        }
+
+        let mut list_sizes = Vec::with_capacity(SIZES_NUMBER_OF_LINES);
+
+        let mut start = file.start();
+        let eof = file.offset().as_u64();
+
+        let mut line_bytes: [u8; SIZES_BYTES_PER_LINE] = [0; SIZES_BYTES_PER_LINE];
+
+        while start < eof {
+            if file.read_exact_at(&mut line_bytes, start.into()).is_err() {
+                break;
+            }
+            start += SIZES_BYTES_PER_LINE as u64;
+
+            let (hash_in_file, rest) = line_bytes.split_at(SIZES_HASH_BYTES_LENGTH);
+
+            let mut hasher = VarBlake2b::new(SIZES_HASH_BYTES_LENGTH).unwrap();
+            hasher.update(rest);
+            let computed_hash = hasher.finalize_boxed();
+
+            debug_assert_eq!(computed_hash.len(), SIZES_HASH_BYTES_LENGTH);
+
+            if &*computed_hash != hash_in_file {
+                // The hashes don't match, ignore this line
+                continue;
+            }
+
+            // Lots of unwrap here, they never fail: the slice `rest` is 64 bytes long
+            let sizes = FileSizes {
+                commit_counter: u64::from_le_bytes(rest[0..8].try_into().unwrap()),
+                data_size: u64::from_le_bytes(rest[8..16].try_into().unwrap()),
+                shape_size: u64::from_le_bytes(rest[16..24].try_into().unwrap()),
+                shape_index_size: u64::from_le_bytes(rest[24..32].try_into().unwrap()),
+                commit_index_size: u64::from_le_bytes(rest[32..40].try_into().unwrap()),
+                strings_size: u64::from_le_bytes(rest[40..48].try_into().unwrap()),
+                hashes_size: u64::from_le_bytes(rest[48..56].try_into().unwrap()),
+                big_strings_size: u64::from_le_bytes(rest[56..64].try_into().unwrap()),
+            };
+
+            list_sizes.push(sizes);
+        }
+
+        list_sizes.sort_unstable_by_key(|sizes| sizes.commit_counter);
+
+        Some(list_sizes)
     }
 }
 
 fn deserialize_hashes(
-    hashes_file: File,
-    commit_index_file: &File,
+    hashes_file: File<{ TAG_HASHES }>,
+    commit_index_file: &File<{ TAG_COMMIT_INDEX }>,
 ) -> Result<(Hashes, Map<u64, ObjectReference>), DeserializationError> {
     let hashes = Hashes::try_new(hashes_file);
     let mut context_hashes: Map<u64, ObjectReference> = Default::default();
@@ -446,7 +662,7 @@ impl KeyValueStoreBackend for Persistent {
         self.shapes.make_shape(dir).map_err(Into::into)
     }
 
-    fn get_str(&self, string_id: StringId) -> Option<&str> {
+    fn get_str(&self, string_id: StringId) -> Option<Cow<str>> {
         self.string_interner.get_str(string_id).ok()
     }
 
@@ -567,9 +783,9 @@ mod tests {
     // Make sure that the commit index is correctly serialized & deserialized
     #[test]
     fn test_commit_index() {
-        let hashes_file = File::try_new("test_commit_index", FileType::Hashes).unwrap();
+        let hashes_file = File::<{ TAG_HASHES }>::try_new("test_commit_index").unwrap();
         let mut commit_index_file =
-            File::try_new("test_commit_index", FileType::CommitIndex).unwrap();
+            File::<{ TAG_COMMIT_INDEX }>::try_new("test_commit_index").unwrap();
 
         let bytes =
             serialize_context_hash(HashId::new(101).unwrap(), 102.into(), &vec![3; 32]).unwrap();

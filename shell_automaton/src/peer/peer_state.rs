@@ -214,4 +214,11 @@ impl Peer {
             PeerStatus::Disconnected => None,
         }
     }
+
+    pub fn public_key_hash(&self) -> Option<&CryptoboxPublicKeyHash> {
+        match &self.status {
+            PeerStatus::Handshaked(peer) => Some(&peer.public_key_hash),
+            _ => None,
+        }
+    }
 }

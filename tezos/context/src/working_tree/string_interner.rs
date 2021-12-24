@@ -4,13 +4,17 @@
 //! Implementation of string interning used to implement hash-consing for context path fragments.
 //! This avoids un-necessary duplication of strings, saving memory.
 
-use std::{collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
+use std::{borrow::Cow, collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
 
-use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use tezos_timing::StringsMemoryUsage;
 
-use crate::{persistent::file::File, serialize::DeserializationError, Map};
+use crate::{
+    chunks::{ChunkedString, ChunkedVec},
+    persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
+    serialize::DeserializationError,
+    Map,
+};
 
 use super::storage::StorageError;
 
@@ -19,7 +23,7 @@ pub(crate) const STRING_INTERN_THRESHOLD: usize = 30;
 const FULL_31_BITS: usize = 0x7FFFFFFF;
 const FULL_5_BITS: usize = 0x1F;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringId {
     /// | 1 bit  |  31 bits |
     /// |--------|----------|
@@ -81,12 +85,23 @@ pub struct SerializeStrings {
     pub strings: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 struct BigStrings {
     hashes: Map<u64, u32>,
-    strings: String,
-    offsets: Vec<(u32, u32)>,
+    strings: ChunkedString,
+    offsets: ChunkedVec<(u32, u32)>,
     to_serialize_index: usize,
+}
+
+impl Default for BigStrings {
+    fn default() -> Self {
+        Self {
+            hashes: Map::default(),
+            strings: ChunkedString::with_chunk_capacity(64 * 1024 * 1024), // ~67MB
+            offsets: ChunkedVec::with_chunk_capacity(128 * 1024),          // ~1MB
+            to_serialize_index: 0,
+        } // Total ~68MB
+    }
 }
 
 impl PartialEq for BigStrings {
@@ -107,19 +122,17 @@ impl BigStrings {
             return *offset;
         }
 
-        let start = self.strings.len();
-        self.strings.push_str(s);
-        let end = self.strings.len();
+        let (start, length) = self.strings.push_str(s);
+        let end = start + length;
 
-        let index = self.offsets.len() as u32;
-        self.offsets.push((start as u32, end as u32));
+        let index = self.offsets.push((start as u32, end as u32)) as u32;
 
         self.hashes.insert(hashed, index);
 
         index
     }
 
-    fn get_str(&self, index: usize) -> Option<&str> {
+    fn get_str(&self, index: usize) -> Option<Cow<str>> {
         let (start, end) = self.offsets.get(index).copied()?;
         self.strings.get(start as usize..end as usize)
     }
@@ -131,25 +144,22 @@ impl BigStrings {
 
         debug_assert!(self.strings.len() < other.strings.len());
         // Append the missing chunk into Self
-        let self_len = self.strings.len();
-        self.strings.push_str(&other.strings[self_len..]);
+        self.strings.extend_from(&other.strings);
         debug_assert_eq!(self.strings, other.strings);
 
         debug_assert!(self.offsets.len() < other.offsets.len());
         // Append the missing chunk into Self
-        let self_len = self.offsets.len();
-
-        self.offsets.extend_from_slice(&other.offsets[self_len..]);
+        self.offsets.extend_from(&other.offsets);
         debug_assert_eq!(self.offsets, other.offsets);
     }
 
     fn serialize_big_strings(&mut self, output: &mut SerializeStrings) {
         let start = self.to_serialize_index;
 
-        for (start, end) in &self.offsets[start..] {
+        for (start, end) in self.offsets.iter_from(start) {
             let start = *start as usize;
             let end = *end as usize;
-            let string = &self.strings[start..end];
+            let string = self.strings.get(start..end).unwrap();
 
             let length: u32 = string.len() as u32;
 
@@ -160,7 +170,9 @@ impl BigStrings {
         self.to_serialize_index = self.offsets.len();
     }
 
-    fn deserialize(big_strings_file: &mut File) -> Result<Self, DeserializationError> {
+    fn deserialize(
+        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+    ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
 
         let mut result = Self::default();
@@ -196,7 +208,7 @@ impl BigStrings {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct StringInterner {
     /// `Map` of hash of the string to their `StringId`
     /// We don't use `HashMap<String, StringId>` because the map would
@@ -204,12 +216,23 @@ pub struct StringInterner {
     string_to_offset: Map<u64, StringId>,
     /// Concatenation of all strings < STRING_INTERN_THRESHOLD.
     /// This is never cleared/deallocated
-    all_strings: String,
+    all_strings: ChunkedString,
     /// List of `StringId` that needs to be commited
     pub all_strings_to_serialize: Vec<StringId>,
     /// Concatenation of big strings. This is cleared/deallocated
     /// before every checkouts
     big_strings: BigStrings,
+}
+
+impl Default for StringInterner {
+    fn default() -> Self {
+        Self {
+            string_to_offset: Map::default(),
+            all_strings: ChunkedString::with_chunk_capacity(512 * 1024), // ~512KB
+            all_strings_to_serialize: Vec::new(),
+            big_strings: BigStrings::default(),
+        } // Total ~69MB
+    }
 }
 
 impl PartialEq for StringInterner {
@@ -247,8 +270,7 @@ impl StringInterner {
             debug_assert!(self.all_strings.len() < other.all_strings.len());
 
             // Append the missing chunk into Self
-            let self_len = self.all_strings.len();
-            self.all_strings.push_str(&other.all_strings[self_len..]);
+            self.all_strings.extend_from(&other.all_strings);
 
             self.all_strings_to_serialize
                 .extend_from_slice(&other.all_strings_to_serialize);
@@ -276,12 +298,12 @@ impl StringInterner {
             return *string_id;
         }
 
-        let index: u32 = self.all_strings.len() as u32;
-        let length: u32 = s.len() as u32;
+        let (index, length) = self.all_strings.push_str(s);
 
         assert_eq!(index & !0x3FFFFFF, 0);
 
-        self.all_strings.push_str(s);
+        let index = index as u32;
+        let length = length as u32;
 
         let string_id = StringId {
             bits: index << 5 | length,
@@ -295,7 +317,7 @@ impl StringInterner {
         string_id
     }
 
-    pub fn get_str(&self, string_id: StringId) -> Result<&str, StorageError> {
+    pub fn get_str(&self, string_id: StringId) -> Result<Cow<str>, StorageError> {
         if string_id.is_big() {
             return self
                 .big_strings
@@ -335,15 +357,14 @@ impl StringInterner {
         for id in &self.all_strings_to_serialize {
             let (start, end) = id.get_start_end();
 
-            let string = self.all_strings[start..end].as_bytes();
+            let string = self.all_strings.get(start..end).unwrap();
+            let string = string.as_bytes();
 
             let length = string.len();
             let length: u8 = length.try_into().unwrap(); // never fail, the string is less than 30 bytes
 
             output.strings.push(length);
-            output
-                .strings
-                .extend_from_slice(self.all_strings[start..end].as_bytes());
+            output.strings.extend_from_slice(string);
         }
 
         self.all_strings_to_serialize.clear();
@@ -354,8 +375,8 @@ impl StringInterner {
     }
 
     pub fn deserialize(
-        strings_file: &mut File,
-        big_strings_file: &mut File,
+        strings_file: &mut File<{ TAG_STRINGS }>,
+        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
         let mut result = Self::default();

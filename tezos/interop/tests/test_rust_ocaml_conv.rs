@@ -1,7 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
-extern crate test;
 
 use std::convert::{TryFrom, TryInto};
 
@@ -394,6 +392,8 @@ fn test_begin_construction_request_conv() {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         predecessor: BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap(),
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {

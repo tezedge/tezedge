@@ -13,13 +13,14 @@ use std::vec;
 
 use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
+use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::storage_service::ActionGraph;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use shell_automaton::service::rpc_service::RpcResponse as RpcShellAutomatonMsg;
+use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use shell_automaton::ActionId;
 use storage::cycle_eras_storage::CycleEra;
 use storage::database::backend::BoxedSliceKV;
@@ -698,4 +699,177 @@ pub(crate) async fn get_shell_automaton_actions_graph(
             })
         })
         .collect())
+}
+
+pub type OperationsStats = HashMap<String, OperationStats>;
+
+#[derive(Serialize)]
+pub struct OperationStats {
+    kind: Option<OperationKind>,
+    /// Minimum time when we saw this operation. Latencies are measured
+    /// from this point.
+    min_time: Option<u64>,
+    first_block_timestamp: Option<u64>,
+    validation_started: Option<i128>,
+    validation_result: Option<(
+        i128,
+        shell_automaton::mempool::OperationValidationResult,
+        i128,
+        i128,
+    )>,
+    validations: Vec<OperationValidationStats>,
+    nodes: HashMap<String, OperationNodeStats>,
+}
+
+#[derive(Serialize)]
+pub struct OperationNodeStats {
+    received: Vec<OperationNodeCurrentHeadStats>,
+    sent: Vec<OperationNodeCurrentHeadStats>,
+
+    content_requested: Vec<i128>,
+    content_received: Vec<i128>,
+
+    content_requested_remote: Vec<i128>,
+    content_sent: Vec<i128>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationNodeCurrentHeadStats {
+    /// Latency from first time we have seen that operation.
+    latency: i128,
+    block_level: i32,
+    block_timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationValidationStats {
+    started: Option<i128>,
+    finished: Option<i128>,
+    preapply_started: Option<i128>,
+    preapply_ended: Option<i128>,
+    current_head_level: Option<i32>,
+    result: Option<OperationValidationResult>,
+}
+
+pub(crate) async fn get_shell_automaton_mempool_operation_stats(
+    env: &RpcServiceEnvironment,
+) -> Result<OperationsStats, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetMempoolOperationStats { channel: tx })
+        .await;
+
+    let result = rx
+        .await?
+        .into_iter()
+        .map(|(op_hash, op_stats)| {
+            let start_time = op_stats
+                .first_block_timestamp
+                // convert from seconds to nanoseconds.
+                .and_then(|v| v.checked_mul(1_000_000_000))
+                .unwrap_or(0) as i128;
+
+            let op_stats = OperationStats {
+                kind: op_stats.kind,
+                min_time: op_stats.min_time,
+                first_block_timestamp: op_stats.first_block_timestamp,
+                validation_started: op_stats
+                    .validation_started
+                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                validation_result: op_stats.validation_result.map(
+                    |(t, result, preapply_started, preapply_ended)| {
+                        (
+                            (t as i128).checked_sub(start_time).unwrap_or(0),
+                            result,
+                            (preapply_started as i128)
+                                .checked_sub(start_time)
+                                .unwrap_or(0),
+                            (preapply_ended as i128)
+                                .checked_sub(start_time)
+                                .unwrap_or(0),
+                        )
+                    },
+                ),
+                validations: op_stats
+                    .validations
+                    .into_iter()
+                    .map(|v| OperationValidationStats {
+                        started: v
+                            .started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        finished: v
+                            .finished
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_started: v
+                            .preapply_started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_ended: v
+                            .preapply_ended
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        current_head_level: v.current_head_level,
+                        result: v.result,
+                    })
+                    .collect(),
+                nodes: op_stats
+                    .nodes
+                    .into_iter()
+                    .map(|(k, stats)| {
+                        (
+                            k.to_base58_check(),
+                            OperationNodeStats {
+                                received: stats
+                                    .received
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: (stats.time as i128)
+                                            .checked_sub(start_time)
+                                            .unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                                sent: stats
+                                    .sent
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: (stats.time as i128)
+                                            .checked_sub(start_time)
+                                            .unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                                content_requested: stats
+                                    .content_requested
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_received: stats
+                                    .content_received
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_requested_remote: stats
+                                    .content_requested_remote
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_sent: stats
+                                    .content_sent
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+
+            (op_hash.to_base58_check(), op_stats)
+        })
+        .collect();
+
+    Ok(result)
 }

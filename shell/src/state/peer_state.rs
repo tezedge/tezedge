@@ -9,7 +9,6 @@ use crypto::hash::{BlockHash, OperationHash};
 use networking::PeerId;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
-use tezos_messages::p2p::encoding::prelude::MetadataMessage;
 
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
@@ -21,8 +20,6 @@ const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = limits::MEMPOOL_MAX_OPERATIONS;
 pub struct PeerState {
     /// PeerId identification (actor_ref + public key)
     pub(crate) peer_id: Arc<PeerId>,
-    /// Has peer enabled mempool
-    pub(crate) mempool_enabled: bool,
     /// Is bootstrapped flag
     pub(crate) is_bootstrapped: bool,
 
@@ -57,14 +54,9 @@ pub struct PeerState {
 }
 
 impl PeerState {
-    pub fn new(
-        peer_id: Arc<PeerId>,
-        peer_metadata: &MetadataMessage,
-        limits: DataQueuesLimits,
-    ) -> Self {
+    pub fn new(peer_id: Arc<PeerId>, limits: DataQueuesLimits) -> Self {
         PeerState {
             peer_id,
-            mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
             queues: Arc::new(DataQueues::new(limits)),
             missing_operations_for_blocks: HashMap::default(),

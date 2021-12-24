@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::time::{Duration, SystemTime};
+use std::{
+    convert::TryFrom,
+    time::{Duration, SystemTime},
+};
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
-    hash::{CryptoboxPublicKeyHash, HashTrait},
+    hash::{ChainId, CryptoboxPublicKeyHash, HashTrait},
     proof_of_work::ProofOfWork,
 };
 use tezos_identity::Identity;
@@ -47,6 +50,7 @@ pub struct Config {
     pub pow_target: f64,
     pub identity: Identity,
     pub shell_compatibility_version: ShellCompatibilityVersion,
+    pub chain_id: ChainId,
 
     /// How often to check for timeouts.
     ///
@@ -115,6 +119,7 @@ pub fn default_config() -> Config {
             vec![0, 1],
             vec![1],
         ),
+        chain_id: ChainId::try_from("NetXdQprcVkpaWU").unwrap(),
 
         check_timeouts_interval: Duration::from_millis(100),
         peer_connecting_timeout: Duration::from_secs(4),
@@ -155,6 +160,7 @@ pub fn test_config() -> Config {
             vec![0],
             vec![1],
         ),
+        chain_id: ChainId::try_from("NetXz969SFaFn8k").unwrap(),
 
         check_timeouts_interval: Duration::from_millis(100),
         peer_connecting_timeout: Duration::from_secs(4),

@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly-2021-08-04
+            toolchain: 1.57
             default: true
             override: true
       - uses: actions-rs/audit-check@v1

@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop"
-version = "1.13.0"
+version = "1.14.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -28,6 +28,7 @@ crypto = { path = "../../crypto" }
 tezos_interop = { path = "../interop" }
 serial_test = "0.5"
 criterion = "0.3"
+bencher = "0.1.5"
 anyhow = "1.0"
 assert-json-diff = "2"
 strum = "0.20"
@@ -39,4 +40,12 @@ slog-term = "2.8"
 
 [[bench]]
 name = "interop_benchmark"
+harness = false
+
+[[bench]]
+name = "bench_ocaml"
+harness = false
+
+[[bench]]
+name = "bench_apply_first_three_blocks"
 harness = false

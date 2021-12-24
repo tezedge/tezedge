@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "async_ipc"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -297,6 +297,12 @@ name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
+
+[[package]]
+name = "bencher"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfdb4953a096c551ce9ace855a604d702e6e62d77fac690575ae347571717f5"
 
 [[package]]
 name = "bincode"
@@ -727,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "crypto"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "base58",
@@ -864,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "db-checker"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "clap",
  "edgekv",
@@ -952,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "edgekv"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "bincode",
  "chrono",
@@ -1197,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_ack_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1206,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_advertise_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1215,7 +1221,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_block_header_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1224,7 +1230,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_connection_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1233,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_branch_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1242,7 +1248,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_head_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1251,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_metadata_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1260,7 +1266,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operation_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1269,7 +1275,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operations_for_blocks_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1278,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_peer_response_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1287,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_protocol_message"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1599,9 +1605,10 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
+ "bencher",
  "bincode",
  "ipmpsc",
  "libc",
@@ -1804,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "light-node"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "async_ipc",
  "clap",
@@ -1862,7 +1869,7 @@ dependencies = [
 
 [[package]]
 name = "logging"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "chrono",
  "libflate",
@@ -2008,7 +2015,7 @@ dependencies = [
 
 [[package]]
 name = "monitoring"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "crypto",
  "erased-serde",
@@ -2049,7 +2056,7 @@ dependencies = [
 
 [[package]]
 name = "networking"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -2255,9 +2262,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
+checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
 
 [[package]]
 name = "oorandom"
@@ -2514,7 +2521,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-runner"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "clap",
  "crypto",
@@ -2721,6 +2728,14 @@ dependencies = [
 [[package]]
 name = "redux-rs"
 version = "0.1.0"
+source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0-1#4303b957d24fbc932c532ea7f8704ca6b0125f65"
+dependencies = [
+ "serde 1.0.130",
+]
+
+[[package]]
+name = "redux-rs"
+version = "0.1.0"
 source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.11.0#594a29e8e9a78ad9a2651fcaa4528957b27d7def"
 dependencies = [
  "serde 1.0.130",
@@ -2809,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
@@ -2845,6 +2860,7 @@ dependencies = [
  "tezos_timing",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "url",
 ]
 
@@ -2925,7 +2941,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3116,7 +3132,7 @@ dependencies = [
 
 [[package]]
 name = "shell"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "async_ipc",
@@ -3158,8 +3174,9 @@ dependencies = [
 
 [[package]]
 name = "shell_automaton"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
+ "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
  "bincode",
  "bytes",
  "crypto",
@@ -3171,7 +3188,7 @@ dependencies = [
  "mio",
  "networking",
  "rand 0.7.3",
- "redux-rs",
+ "redux-rs 0.1.0 (git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.11.0)",
  "rmp",
  "rmp-serde",
  "serde 1.0.130",
@@ -3182,23 +3199,28 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezedge-actor-system",
+ "tezos_api",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
+ "tezos_protocol_ipc_client",
  "thiserror",
  "tokio",
 ]
 
 [[package]]
 name = "shell_automaton_testing"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "bytes",
  "crypto",
  "networking",
+ "redux-rs 0.1.0 (git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0-1)",
  "serde 1.0.130",
+ "serde_json",
  "shell_automaton",
  "storage",
+ "tezos_api",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
@@ -3206,7 +3228,7 @@ dependencies = [
 
 [[package]]
 name = "shell_integration"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "crypto",
@@ -3400,7 +3422,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3589,7 +3611,7 @@ dependencies = [
 
 [[package]]
 name = "tezos-sys"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "colored",
  "fs_extra",
@@ -3602,7 +3624,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_api"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3625,7 +3647,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "blake2",
@@ -3659,7 +3681,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context_api"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "chrono",
  "crypto",
@@ -3674,7 +3696,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context_ipc_client"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "async_ipc",
  "crypto",
@@ -3685,7 +3707,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_conv"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "crypto",
  "ocaml-interop",
@@ -3697,7 +3719,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -3713,9 +3735,10 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "lazy_static",
+ "once_cell",
  "parse-display",
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -3724,7 +3747,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3737,10 +3760,11 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bencher",
  "bincode",
  "criterion",
  "crypto",
@@ -3766,7 +3790,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_lib_storage_ffi"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "ocaml-interop",
  "tempfile",
@@ -3776,7 +3800,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3807,7 +3831,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_protocol_ipc_client"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "async_ipc",
  "crypto",
@@ -3823,7 +3847,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_protocol_ipc_messages"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "crypto",
  "serde 1.0.130",
@@ -3835,14 +3859,14 @@ dependencies = [
 
 [[package]]
 name = "tezos_spsc"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "tezos_timing"
-version = "1.13.0"
+version = "1.14.0"
 dependencies = [
  "crypto",
  "rusqlite",

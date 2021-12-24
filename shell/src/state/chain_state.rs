@@ -56,7 +56,7 @@ pub(crate) mod bootstrap_constants {
     pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
 
     /// We tries to apply downloaded blocks in batch to speedup and save resources
-    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 100;
+    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 1;
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {

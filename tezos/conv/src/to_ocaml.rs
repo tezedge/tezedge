@@ -272,6 +272,8 @@ impl_to_ocaml_record! {
         chain_id: OCamlChainId,
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
         protocol_data: Option<OCamlBytes>,
+        predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 
@@ -324,6 +326,7 @@ impl_to_ocaml_record! {
         protocol_rpc_request: OCamlProtocolRpcRequest,
         predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
         predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+        predecessor_max_operations_ttl: OCamlInt,
     }
 }
 

@@ -1,596 +1,596 @@
 [
   {
-    "id": 455708,
+    "id": 498517,
     "name": "libtezos-ffi-centos8.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/b377d8988c8f1238ab9aa9711666e6e5/libtezos-ffi-centos8.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/b377d8988c8f1238ab9aa9711666e6e5/libtezos-ffi-centos8.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/bbf73f775130b8fe0422528c43ada5dc/libtezos-ffi-centos8.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/bbf73f775130b8fe0422528c43ada5dc/libtezos-ffi-centos8.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455709,
+    "id": 498518,
     "name": "libtezos-ffi-centos8.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/82b6765b201cc05864106f8a3e2c1ad0/libtezos-ffi-centos8.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/82b6765b201cc05864106f8a3e2c1ad0/libtezos-ffi-centos8.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/3ad7d83dda328a1f5daddcc59f0aadda/libtezos-ffi-centos8.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3ad7d83dda328a1f5daddcc59f0aadda/libtezos-ffi-centos8.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455696,
+    "id": 498505,
     "name": "libtezos-ffi-debian10.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f2f741d9b1172513631252d08b2fdb19/libtezos-ffi-debian10.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f2f741d9b1172513631252d08b2fdb19/libtezos-ffi-debian10.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/2983e450651a9fc20b94cde9ff907cb2/libtezos-ffi-debian10.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/2983e450651a9fc20b94cde9ff907cb2/libtezos-ffi-debian10.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455697,
+    "id": 498506,
     "name": "libtezos-ffi-debian10.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/3c1a9e0c0d9a7a64162c04aef3c01c48/libtezos-ffi-debian10.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3c1a9e0c0d9a7a64162c04aef3c01c48/libtezos-ffi-debian10.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/3a053f6397de4bbf690d3ba7ce286c5b/libtezos-ffi-debian10.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3a053f6397de4bbf690d3ba7ce286c5b/libtezos-ffi-debian10.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455689,
+    "id": 498498,
     "name": "libtezos-ffi-debian9.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/fbb751d252a993d349c76107d6ae0889/libtezos-ffi-debian9.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/fbb751d252a993d349c76107d6ae0889/libtezos-ffi-debian9.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/9f74961ba302e729f0bdec6b1b75b7c1/libtezos-ffi-debian9.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/9f74961ba302e729f0bdec6b1b75b7c1/libtezos-ffi-debian9.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455690,
+    "id": 498499,
     "name": "libtezos-ffi-debian9.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/9f1f598e21bf60019620123b79493651/libtezos-ffi-debian9.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/9f1f598e21bf60019620123b79493651/libtezos-ffi-debian9.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/e82f9d51302dc28b265fe5af16b8df6d/libtezos-ffi-debian9.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/e82f9d51302dc28b265fe5af16b8df6d/libtezos-ffi-debian9.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455663,
+    "id": 498472,
     "name": "libtezos-ffi-headers.tar.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/28b1511b63c8bc4196f4592aeb18a197/libtezos-ffi-headers.tar.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/28b1511b63c8bc4196f4592aeb18a197/libtezos-ffi-headers.tar.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/f696d40e9ae2eb28745387f6a4af07fc/libtezos-ffi-headers.tar.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f696d40e9ae2eb28745387f6a4af07fc/libtezos-ffi-headers.tar.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455664,
+    "id": 498473,
     "name": "libtezos-ffi-headers.tar.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/8420a23ecffb71c53c2be9f6c75ec182/libtezos-ffi-headers.tar.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8420a23ecffb71c53c2be9f6c75ec182/libtezos-ffi-headers.tar.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/4b539242fe23147db2c4cd7492379c9c/libtezos-ffi-headers.tar.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/4b539242fe23147db2c4cd7492379c9c/libtezos-ffi-headers.tar.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455714,
+    "id": 498523,
     "name": "libtezos-ffi-macos.dylib.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/41511b19b4c8e8ac4f682a74738bbf41/libtezos-ffi-macos.dylib.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/41511b19b4c8e8ac4f682a74738bbf41/libtezos-ffi-macos.dylib.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5b450417f97d71eed9d851bd6144b43e/libtezos-ffi-macos.dylib.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5b450417f97d71eed9d851bd6144b43e/libtezos-ffi-macos.dylib.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455715,
+    "id": 498524,
     "name": "libtezos-ffi-macos.dylib.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/57db61d49b69a23a8891dd5c045f8db2/libtezos-ffi-macos.dylib.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/57db61d49b69a23a8891dd5c045f8db2/libtezos-ffi-macos.dylib.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/7c149aec04d0dbd9607798279da23657/libtezos-ffi-macos.dylib.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/7c149aec04d0dbd9607798279da23657/libtezos-ffi-macos.dylib.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455702,
+    "id": 498511,
     "name": "libtezos-ffi-opensuse15.1.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/de0d3e6b3102be239f292438fbaabb97/libtezos-ffi-opensuse15.1.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/de0d3e6b3102be239f292438fbaabb97/libtezos-ffi-opensuse15.1.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/8982d0ad1c57542863c8f16b941d9c84/libtezos-ffi-opensuse15.1.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8982d0ad1c57542863c8f16b941d9c84/libtezos-ffi-opensuse15.1.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455703,
+    "id": 498512,
     "name": "libtezos-ffi-opensuse15.1.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/74a213287a3b9ab1ee12f6f34e803b78/libtezos-ffi-opensuse15.1.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/74a213287a3b9ab1ee12f6f34e803b78/libtezos-ffi-opensuse15.1.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/342d59862b23ec26496d6ec70935143a/libtezos-ffi-opensuse15.1.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/342d59862b23ec26496d6ec70935143a/libtezos-ffi-opensuse15.1.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455657,
+    "id": 498463,
     "name": "libtezos-ffi-ubuntu16.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/996959231dbf8c564157580167b7e487/libtezos-ffi-ubuntu16.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/996959231dbf8c564157580167b7e487/libtezos-ffi-ubuntu16.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/e4cf462d86bfc84032e75935b7eaf160/libtezos-ffi-ubuntu16.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/e4cf462d86bfc84032e75935b7eaf160/libtezos-ffi-ubuntu16.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455658,
+    "id": 498464,
     "name": "libtezos-ffi-ubuntu16.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/bfbaefe87067bdfbcd1a50068c095e54/libtezos-ffi-ubuntu16.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/bfbaefe87067bdfbcd1a50068c095e54/libtezos-ffi-ubuntu16.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/453c15356059e9747c7649263101d341/libtezos-ffi-ubuntu16.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/453c15356059e9747c7649263101d341/libtezos-ffi-ubuntu16.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455665,
+    "id": 498474,
     "name": "libtezos-ffi-ubuntu18.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/68f32f604880aca71e027fbae87d7458/libtezos-ffi-ubuntu18.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/68f32f604880aca71e027fbae87d7458/libtezos-ffi-ubuntu18.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/1e0d6e8d9c58720a89bdd931798dcf79/libtezos-ffi-ubuntu18.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/1e0d6e8d9c58720a89bdd931798dcf79/libtezos-ffi-ubuntu18.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455666,
+    "id": 498475,
     "name": "libtezos-ffi-ubuntu18.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/e740dc34f755dea575f5f2e957c63683/libtezos-ffi-ubuntu18.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/e740dc34f755dea575f5f2e957c63683/libtezos-ffi-ubuntu18.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5296aadfe88f68a19d7811ba57707145/libtezos-ffi-ubuntu18.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5296aadfe88f68a19d7811ba57707145/libtezos-ffi-ubuntu18.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455671,
+    "id": 498480,
     "name": "libtezos-ffi-ubuntu19.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/934d53974c8685346847e58427b929de/libtezos-ffi-ubuntu19.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/934d53974c8685346847e58427b929de/libtezos-ffi-ubuntu19.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/8b37ee31055f6c31921bbafe377ba677/libtezos-ffi-ubuntu19.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8b37ee31055f6c31921bbafe377ba677/libtezos-ffi-ubuntu19.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455672,
+    "id": 498481,
     "name": "libtezos-ffi-ubuntu19.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/b73c46085fe0dfc8046e7bb60effb071/libtezos-ffi-ubuntu19.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/b73c46085fe0dfc8046e7bb60effb071/libtezos-ffi-ubuntu19.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/3dbfb9c76dbe72a5a18b8a6fd8c4cc4f/libtezos-ffi-ubuntu19.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3dbfb9c76dbe72a5a18b8a6fd8c4cc4f/libtezos-ffi-ubuntu19.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455677,
+    "id": 498486,
     "name": "libtezos-ffi-ubuntu20.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/3697285b4ac069652dc1e2aff5f4feea/libtezos-ffi-ubuntu20.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3697285b4ac069652dc1e2aff5f4feea/libtezos-ffi-ubuntu20.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/326902e0ef6d6ceac8229532870ba5ed/libtezos-ffi-ubuntu20.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/326902e0ef6d6ceac8229532870ba5ed/libtezos-ffi-ubuntu20.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455678,
+    "id": 498487,
     "name": "libtezos-ffi-ubuntu20.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/8c36cc9482723998817fff7f1f432f5f/libtezos-ffi-ubuntu20.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8c36cc9482723998817fff7f1f432f5f/libtezos-ffi-ubuntu20.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/90ee3c3faf6544702e848138a740f901/libtezos-ffi-ubuntu20.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/90ee3c3faf6544702e848138a740f901/libtezos-ffi-ubuntu20.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455683,
+    "id": 498492,
     "name": "libtezos-ffi-ubuntu21.so.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/7ab748d398a97cdece6f408bdfdb00f2/libtezos-ffi-ubuntu21.so.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/7ab748d398a97cdece6f408bdfdb00f2/libtezos-ffi-ubuntu21.so.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/61b5e16e252c48de3ef7c858a61c12a6/libtezos-ffi-ubuntu21.so.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/61b5e16e252c48de3ef7c858a61c12a6/libtezos-ffi-ubuntu21.so.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455684,
+    "id": 498493,
     "name": "libtezos-ffi-ubuntu21.so.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/2f1002ae9c26baef9d9595c4ec03a4d4/libtezos-ffi-ubuntu21.so.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/2f1002ae9c26baef9d9595c4ec03a4d4/libtezos-ffi-ubuntu21.so.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/e1b27345773306de3cfc81a9a69138a8/libtezos-ffi-ubuntu21.so.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/e1b27345773306de3cfc81a9a69138a8/libtezos-ffi-ubuntu21.so.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455655,
+    "id": 498461,
     "name": "sapling-output.params",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/41171c12090ca2b3bafeb6f472889988/sapling-output.params",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/41171c12090ca2b3bafeb6f472889988/sapling-output.params",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/c385279ea752a4820f48ac02540f8b3e/sapling-output.params",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/c385279ea752a4820f48ac02540f8b3e/sapling-output.params",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455656,
+    "id": 498462,
     "name": "sapling-output.params.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/dd7b1b5550b4d9e857d3fea7747d6534/sapling-output.params.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/dd7b1b5550b4d9e857d3fea7747d6534/sapling-output.params.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/6f71befeada79d8d4b8c37bb3a17335d/sapling-output.params.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6f71befeada79d8d4b8c37bb3a17335d/sapling-output.params.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455653,
+    "id": 498459,
     "name": "sapling-spend.params",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f1deacc567e2e54cdd3d82e9cfa6b208/sapling-spend.params",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f1deacc567e2e54cdd3d82e9cfa6b208/sapling-spend.params",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/8381b1a217a3b5473e052aac4bcefaaa/sapling-spend.params",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8381b1a217a3b5473e052aac4bcefaaa/sapling-spend.params",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455654,
+    "id": 498460,
     "name": "sapling-spend.params.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/4d38e9ac91e413dc6b461e6245fc9b05/sapling-spend.params.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/4d38e9ac91e413dc6b461e6245fc9b05/sapling-spend.params.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/39ac8866120c184d36d73872a2217ffd/sapling-spend.params.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/39ac8866120c184d36d73872a2217ffd/sapling-spend.params.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455712,
+    "id": 498521,
     "name": "tezos-admin-client-centos8.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/8c27ccf3b955d926ca790bb0a7a32470/tezos-admin-client-centos8.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8c27ccf3b955d926ca790bb0a7a32470/tezos-admin-client-centos8.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/7dc06a4b562a968652e92d707e851d2f/tezos-admin-client-centos8.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/7dc06a4b562a968652e92d707e851d2f/tezos-admin-client-centos8.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455713,
+    "id": 498522,
     "name": "tezos-admin-client-centos8.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/ba89d98c7cb3b1f1ade3fdb57dd7e497/tezos-admin-client-centos8.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/ba89d98c7cb3b1f1ade3fdb57dd7e497/tezos-admin-client-centos8.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/b2529fa0a0976d1a0f974650bf88a3e4/tezos-admin-client-centos8.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/b2529fa0a0976d1a0f974650bf88a3e4/tezos-admin-client-centos8.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455700,
+    "id": 498509,
     "name": "tezos-admin-client-debian10.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/c8b60d257345c11b0cc834b50a1b2c64/tezos-admin-client-debian10.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/c8b60d257345c11b0cc834b50a1b2c64/tezos-admin-client-debian10.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/eada344785e32729105d25e91bfe21f5/tezos-admin-client-debian10.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/eada344785e32729105d25e91bfe21f5/tezos-admin-client-debian10.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455701,
+    "id": 498510,
     "name": "tezos-admin-client-debian10.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/23f7af3c6d8c10b93ff7707a658697d2/tezos-admin-client-debian10.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/23f7af3c6d8c10b93ff7707a658697d2/tezos-admin-client-debian10.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/1c7fd29a4454fb18d1ceec45b7536e94/tezos-admin-client-debian10.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/1c7fd29a4454fb18d1ceec45b7536e94/tezos-admin-client-debian10.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455693,
+    "id": 498503,
     "name": "tezos-admin-client-debian9.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f649ec4e126d048f8348b80d03823025/tezos-admin-client-debian9.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f649ec4e126d048f8348b80d03823025/tezos-admin-client-debian9.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/a723eb78c937925fa8c0e34873313726/tezos-admin-client-debian9.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/a723eb78c937925fa8c0e34873313726/tezos-admin-client-debian9.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455695,
+    "id": 498504,
     "name": "tezos-admin-client-debian9.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/62f76c84f310b7c48f227703f8b34459/tezos-admin-client-debian9.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/62f76c84f310b7c48f227703f8b34459/tezos-admin-client-debian9.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/9477b8d5a16e5b90c127d65ba9e0d931/tezos-admin-client-debian9.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/9477b8d5a16e5b90c127d65ba9e0d931/tezos-admin-client-debian9.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455718,
+    "id": 498527,
     "name": "tezos-admin-client-macos.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/d435a919bcb9c9014b4fc8ae2cf8e722/tezos-admin-client-macos.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/d435a919bcb9c9014b4fc8ae2cf8e722/tezos-admin-client-macos.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/6642c6db431eae1f083cae77fecbe461/tezos-admin-client-macos.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6642c6db431eae1f083cae77fecbe461/tezos-admin-client-macos.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455719,
+    "id": 498528,
     "name": "tezos-admin-client-macos.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/7dffaaf555443e7b4ca26f447e2ccadb/tezos-admin-client-macos.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/7dffaaf555443e7b4ca26f447e2ccadb/tezos-admin-client-macos.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/3f593e804ba5e3603cfd913877235ef9/tezos-admin-client-macos.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3f593e804ba5e3603cfd913877235ef9/tezos-admin-client-macos.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455706,
+    "id": 498515,
     "name": "tezos-admin-client-opensuse15.1.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/0c508a66c3e13b18bb775a55fff38b0b/tezos-admin-client-opensuse15.1.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/0c508a66c3e13b18bb775a55fff38b0b/tezos-admin-client-opensuse15.1.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/4e64587c3c59ac032b96e6656f47f1fb/tezos-admin-client-opensuse15.1.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/4e64587c3c59ac032b96e6656f47f1fb/tezos-admin-client-opensuse15.1.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455707,
+    "id": 498516,
     "name": "tezos-admin-client-opensuse15.1.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f8c0e7cc538b97c052524f2217dc0d58/tezos-admin-client-opensuse15.1.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f8c0e7cc538b97c052524f2217dc0d58/tezos-admin-client-opensuse15.1.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/df774536490d2fc92164c4347d2115fe/tezos-admin-client-opensuse15.1.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/df774536490d2fc92164c4347d2115fe/tezos-admin-client-opensuse15.1.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455661,
+    "id": 498470,
     "name": "tezos-admin-client-ubuntu16.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/eb964e33629ad94b85345b8cebfa1e0d/tezos-admin-client-ubuntu16.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/eb964e33629ad94b85345b8cebfa1e0d/tezos-admin-client-ubuntu16.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/6e9334ec86efa589474fc17d1c9c2bd9/tezos-admin-client-ubuntu16.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6e9334ec86efa589474fc17d1c9c2bd9/tezos-admin-client-ubuntu16.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455662,
+    "id": 498471,
     "name": "tezos-admin-client-ubuntu16.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/bcbbb195011102e845331b60b1463aa6/tezos-admin-client-ubuntu16.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/bcbbb195011102e845331b60b1463aa6/tezos-admin-client-ubuntu16.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/e3a8d73d98792c2758c550cfc43f700e/tezos-admin-client-ubuntu16.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/e3a8d73d98792c2758c550cfc43f700e/tezos-admin-client-ubuntu16.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455669,
+    "id": 498478,
     "name": "tezos-admin-client-ubuntu18.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/ac1ba669a4f07228dd423b9aa835f972/tezos-admin-client-ubuntu18.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/ac1ba669a4f07228dd423b9aa835f972/tezos-admin-client-ubuntu18.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/0e99f6ebd5b8d8e07cd9327d46ac8c04/tezos-admin-client-ubuntu18.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/0e99f6ebd5b8d8e07cd9327d46ac8c04/tezos-admin-client-ubuntu18.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455670,
+    "id": 498479,
     "name": "tezos-admin-client-ubuntu18.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/6d69553d67b80cdb637e0df6675c9eb0/tezos-admin-client-ubuntu18.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6d69553d67b80cdb637e0df6675c9eb0/tezos-admin-client-ubuntu18.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/66b608a40dc709f636286d94fa640b18/tezos-admin-client-ubuntu18.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/66b608a40dc709f636286d94fa640b18/tezos-admin-client-ubuntu18.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455675,
+    "id": 498484,
     "name": "tezos-admin-client-ubuntu19.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/6b425dff8c78e3f01940c5528e71914d/tezos-admin-client-ubuntu19.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6b425dff8c78e3f01940c5528e71914d/tezos-admin-client-ubuntu19.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/58e819da3d48a86ba8395ebb056bc96a/tezos-admin-client-ubuntu19.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/58e819da3d48a86ba8395ebb056bc96a/tezos-admin-client-ubuntu19.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455676,
+    "id": 498485,
     "name": "tezos-admin-client-ubuntu19.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/47cbc472e742db1403fe9199dd941b0a/tezos-admin-client-ubuntu19.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/47cbc472e742db1403fe9199dd941b0a/tezos-admin-client-ubuntu19.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5c7e023b30883217a07d00746ecdb397/tezos-admin-client-ubuntu19.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5c7e023b30883217a07d00746ecdb397/tezos-admin-client-ubuntu19.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455681,
+    "id": 498490,
     "name": "tezos-admin-client-ubuntu20.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/352c7a4f0e4cae9c5abd08c741cb1b11/tezos-admin-client-ubuntu20.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/352c7a4f0e4cae9c5abd08c741cb1b11/tezos-admin-client-ubuntu20.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/d6ee7338f2893509cbb7e37767ccd547/tezos-admin-client-ubuntu20.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/d6ee7338f2893509cbb7e37767ccd547/tezos-admin-client-ubuntu20.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455682,
+    "id": 498491,
     "name": "tezos-admin-client-ubuntu20.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/c46b2b0d20666153ea9599d7b1a947c7/tezos-admin-client-ubuntu20.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/c46b2b0d20666153ea9599d7b1a947c7/tezos-admin-client-ubuntu20.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/d8c168ad7322fe26d6afdd7b7055c26d/tezos-admin-client-ubuntu20.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/d8c168ad7322fe26d6afdd7b7055c26d/tezos-admin-client-ubuntu20.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455687,
+    "id": 498496,
     "name": "tezos-admin-client-ubuntu21.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/76cd1fea0abaf6b6bf2806c3eb11b7ff/tezos-admin-client-ubuntu21.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/76cd1fea0abaf6b6bf2806c3eb11b7ff/tezos-admin-client-ubuntu21.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/bfdf26762f46bf3644b043446607dac7/tezos-admin-client-ubuntu21.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/bfdf26762f46bf3644b043446607dac7/tezos-admin-client-ubuntu21.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455688,
+    "id": 498497,
     "name": "tezos-admin-client-ubuntu21.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/280298d3c6654e02e10f6b3abbbeab85/tezos-admin-client-ubuntu21.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/280298d3c6654e02e10f6b3abbbeab85/tezos-admin-client-ubuntu21.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/781bd5188e7c3805a43e951008da0f3b/tezos-admin-client-ubuntu21.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/781bd5188e7c3805a43e951008da0f3b/tezos-admin-client-ubuntu21.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455710,
+    "id": 498519,
     "name": "tezos-client-centos8.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/994c257353665c59cd9921c2f9b0f44e/tezos-client-centos8.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/994c257353665c59cd9921c2f9b0f44e/tezos-client-centos8.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5ff39d05ab475cbc482815713851ccef/tezos-client-centos8.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5ff39d05ab475cbc482815713851ccef/tezos-client-centos8.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455711,
+    "id": 498520,
     "name": "tezos-client-centos8.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/373d785f2543cea010634a75a47baf35/tezos-client-centos8.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/373d785f2543cea010634a75a47baf35/tezos-client-centos8.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/0e73a78bbaf0273d6518810bb8c8fb5a/tezos-client-centos8.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/0e73a78bbaf0273d6518810bb8c8fb5a/tezos-client-centos8.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455698,
+    "id": 498507,
     "name": "tezos-client-debian10.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/fbc56874ebb969231ba4cfe87cb5fdd1/tezos-client-debian10.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/fbc56874ebb969231ba4cfe87cb5fdd1/tezos-client-debian10.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/b87450fa12c5a70f9e75eb7812229111/tezos-client-debian10.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/b87450fa12c5a70f9e75eb7812229111/tezos-client-debian10.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455699,
+    "id": 498508,
     "name": "tezos-client-debian10.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/3af82e7b4052aab21db8a7564c46ab4c/tezos-client-debian10.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3af82e7b4052aab21db8a7564c46ab4c/tezos-client-debian10.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/883a114181c7eaf437b59dc8ebabb52c/tezos-client-debian10.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/883a114181c7eaf437b59dc8ebabb52c/tezos-client-debian10.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455691,
+    "id": 498501,
     "name": "tezos-client-debian9.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/4efc25b678ba1f0effa32e134440d6c1/tezos-client-debian9.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/4efc25b678ba1f0effa32e134440d6c1/tezos-client-debian9.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/528063bd4027f4bc118de5cd86c04b68/tezos-client-debian9.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/528063bd4027f4bc118de5cd86c04b68/tezos-client-debian9.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455692,
+    "id": 498502,
     "name": "tezos-client-debian9.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/7170a996c4f4cf6d261ac8c28a25f467/tezos-client-debian9.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/7170a996c4f4cf6d261ac8c28a25f467/tezos-client-debian9.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/22495fa8fe668d143e60fecc5a12e689/tezos-client-debian9.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/22495fa8fe668d143e60fecc5a12e689/tezos-client-debian9.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455716,
+    "id": 498525,
     "name": "tezos-client-macos.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/4569d7efb59e435175715ae0941b1263/tezos-client-macos.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/4569d7efb59e435175715ae0941b1263/tezos-client-macos.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/02e7d0a28ec998ec43bf1c16d6237e3a/tezos-client-macos.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/02e7d0a28ec998ec43bf1c16d6237e3a/tezos-client-macos.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455717,
+    "id": 498526,
     "name": "tezos-client-macos.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/6720f81c63dd4b5798c99e1a10d181af/tezos-client-macos.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/6720f81c63dd4b5798c99e1a10d181af/tezos-client-macos.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/250314c124110fbf3d2e3388637d64f2/tezos-client-macos.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/250314c124110fbf3d2e3388637d64f2/tezos-client-macos.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455704,
+    "id": 498513,
     "name": "tezos-client-opensuse15.1.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/62fb4585315623ce7615c4d2c1e507fd/tezos-client-opensuse15.1.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/62fb4585315623ce7615c4d2c1e507fd/tezos-client-opensuse15.1.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/ecdb7432cafd3a4fd8ceb2b50bc6d25a/tezos-client-opensuse15.1.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/ecdb7432cafd3a4fd8ceb2b50bc6d25a/tezos-client-opensuse15.1.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455705,
+    "id": 498514,
     "name": "tezos-client-opensuse15.1.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f6e0eee69e2958efe61c44d27b507c44/tezos-client-opensuse15.1.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f6e0eee69e2958efe61c44d27b507c44/tezos-client-opensuse15.1.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/06c640af9db7477512303d862263e779/tezos-client-opensuse15.1.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/06c640af9db7477512303d862263e779/tezos-client-opensuse15.1.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455659,
+    "id": 498466,
     "name": "tezos-client-ubuntu16.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/ccd4903d4ad1de09c491f7541cab0997/tezos-client-ubuntu16.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/ccd4903d4ad1de09c491f7541cab0997/tezos-client-ubuntu16.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5ee9223fe1e086629c1a74fb0f0e80a0/tezos-client-ubuntu16.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5ee9223fe1e086629c1a74fb0f0e80a0/tezos-client-ubuntu16.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455660,
+    "id": 498467,
     "name": "tezos-client-ubuntu16.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/c28223f8f77664f0954b67b0d128773b/tezos-client-ubuntu16.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/c28223f8f77664f0954b67b0d128773b/tezos-client-ubuntu16.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/97d3320b5519424a377fa11b8f7cbd1f/tezos-client-ubuntu16.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/97d3320b5519424a377fa11b8f7cbd1f/tezos-client-ubuntu16.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455667,
+    "id": 498476,
     "name": "tezos-client-ubuntu18.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/19279783dca54374b474764091221c23/tezos-client-ubuntu18.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/19279783dca54374b474764091221c23/tezos-client-ubuntu18.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/873233bd04bc5b0da467600f565a13a4/tezos-client-ubuntu18.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/873233bd04bc5b0da467600f565a13a4/tezos-client-ubuntu18.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455668,
+    "id": 498477,
     "name": "tezos-client-ubuntu18.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/507259ebd593974063fce93b7c9da672/tezos-client-ubuntu18.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/507259ebd593974063fce93b7c9da672/tezos-client-ubuntu18.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/3f1e24c19b3ab377dae21a80f6bfc451/tezos-client-ubuntu18.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/3f1e24c19b3ab377dae21a80f6bfc451/tezos-client-ubuntu18.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455673,
+    "id": 498482,
     "name": "tezos-client-ubuntu19.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/a718a9d9b7f57ccb03f6573198e3cae2/tezos-client-ubuntu19.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/a718a9d9b7f57ccb03f6573198e3cae2/tezos-client-ubuntu19.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/339d7c16f02c4738f781f5df19944430/tezos-client-ubuntu19.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/339d7c16f02c4738f781f5df19944430/tezos-client-ubuntu19.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455674,
+    "id": 498483,
     "name": "tezos-client-ubuntu19.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/bd7cc41e8d26221b20734d8f549c09ed/tezos-client-ubuntu19.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/bd7cc41e8d26221b20734d8f549c09ed/tezos-client-ubuntu19.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/ee555eb6755d577625538943d2c5c96c/tezos-client-ubuntu19.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/ee555eb6755d577625538943d2c5c96c/tezos-client-ubuntu19.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455679,
+    "id": 498488,
     "name": "tezos-client-ubuntu20.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/8675f658f45da4074d67f3293b5b77a8/tezos-client-ubuntu20.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/8675f658f45da4074d67f3293b5b77a8/tezos-client-ubuntu20.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/9abda10393debc09a6c5d50dd791ada9/tezos-client-ubuntu20.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/9abda10393debc09a6c5d50dd791ada9/tezos-client-ubuntu20.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455680,
+    "id": 498489,
     "name": "tezos-client-ubuntu20.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/2c64bcf3267e73bbe716c7e4bdb45a9f/tezos-client-ubuntu20.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/2c64bcf3267e73bbe716c7e4bdb45a9f/tezos-client-ubuntu20.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/998388eb628541dfd7766015c8a8108f/tezos-client-ubuntu20.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/998388eb628541dfd7766015c8a8108f/tezos-client-ubuntu20.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455685,
+    "id": 498494,
     "name": "tezos-client-ubuntu21.gz",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/f86dfdd5bee59d59666b8f70f150be8b/tezos-client-ubuntu21.gz",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/f86dfdd5bee59d59666b8f70f150be8b/tezos-client-ubuntu21.gz",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/5aee6155f3561e0a4e8e70fccccf3001/tezos-client-ubuntu21.gz",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/5aee6155f3561e0a4e8e70fccccf3001/tezos-client-ubuntu21.gz",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   },
   {
-    "id": 455686,
+    "id": 498495,
     "name": "tezos-client-ubuntu21.gz.sha256",
-    "url": "https://gitlab.com/tezedge/tezos/uploads/dbfafbe6bba29e1311a927963ad4f17d/tezos-client-ubuntu21.gz.sha256",
-    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/dbfafbe6bba29e1311a927963ad4f17d/tezos-client-ubuntu21.gz.sha256",
+    "url": "https://gitlab.com/tezedge/tezos/uploads/9db5bdba198d9ed7ee6ed283b8211562/tezos-client-ubuntu21.gz.sha256",
+    "direct_asset_url": "https://gitlab.com/tezedge/tezos/uploads/9db5bdba198d9ed7ee6ed283b8211562/tezos-client-ubuntu21.gz.sha256",
     "external": false,
     "link_type": "other",
-    "git_tag": "v1.8.4-v10.3"
+    "git_tag": "v1.9.8-v11.0"
   }
 ]

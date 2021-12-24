@@ -300,7 +300,7 @@ where
                     PeerChunkReadState::PendingBody { buffer, size } => size - buffer.len(),
                     _ => return finish(store, address, PeerIOLoopResult::NotReady),
                 };
-                debug_assert!(bytes_to_read > 0);
+                // debug_assert!(bytes_to_read > 0);
 
                 match mio_peer.read(bytes_to_read) {
                     Ok(bytes) if bytes.len() > 0 => {

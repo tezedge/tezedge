@@ -125,7 +125,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         Ok(None)
     }
 
-    fn get_str(&self, _: StringId) -> Option<&str> {
+    fn get_str(&self, _: StringId) -> Option<Cow<str>> {
         // Readonly protocol runner doesn't have the `StringInterner`.
         None
     }

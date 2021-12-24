@@ -1,7 +1,10 @@
 [package]
 name = "shell_automaton"
-version = "1.13.0"
+version = "1.14.0"
 edition = "2018"
+
+[dev-dependencies]
+assert-json-diff = { git = "https://github.com/tezedge/assert-json-diff.git", tag = "v2.0.1-public-diff-module" }
 
 [dependencies]
 bytes = "1.0.1"
@@ -34,3 +37,5 @@ networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
+tezos_api = { path = "../tezos/api" }
