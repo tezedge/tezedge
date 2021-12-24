@@ -30,6 +30,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+### Performance
+
+- Nothing.
+
+## [1.14.0] - 2021-12-24
+
+### Fixed
+
+- In Rust implementation of persisted context storage, commits now
+  behave as an atomic operations.
+
+### Changed
+
+- Switch default Rust toolchain to stable **Rust 1.57** version.
+- Rewrote and moved mempool implementation from actor system to new state
+  machine architecture.
+
+### Added
+
+- Compatibility with Hangzhou protocol.
+- Rpc to get accumulated mempool operation statistics.
+
+### Performance
+
+- Optimized Rust implementation of persisted context storage.
 
 ## [1.13.0] - 2021-12-01
 
@@ -634,7 +659,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/tezedge/tezedge/releases/v1.14.0
 [1.13.0]: https://github.com/tezedge/tezedge/releases/v1.13.0
 [1.12.0]: https://github.com/tezedge/tezedge/releases/v1.12.0
 [1.11.0]: https://github.com/tezedge/tezedge/releases/v1.11.0
