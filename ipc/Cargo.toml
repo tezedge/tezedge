@@ -15,3 +15,8 @@ serde = { version = "1.0", features = ["derive"] }
 serial_test = "0.5"
 libc = "0.2.65"
 ipmpsc = "0.4"
+bencher = "0.1.5"
+
+[[bench]]
+name = "bench_shm"
+harness = false

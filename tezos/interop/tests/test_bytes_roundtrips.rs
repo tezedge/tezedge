@@ -1,7 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
-extern crate test;
 
 use std::convert::TryFrom;
 
@@ -298,49 +296,4 @@ fn assert_eq_operations(
         let operation_0_0 = &operations_list_0[0];
         assert_eq!(OPERATION, hex::encode(operation_0_0));
     }
-}
-
-// run as: cargo bench --tests --nocapture
-mod benches {
-    use test::Bencher;
-
-    use crate::*;
-
-    macro_rules! bench_test {
-        ($test_name:ident, $f:expr) => {
-            #[bench]
-            fn $test_name(b: &mut Bencher) {
-                common::init_test_runtime();
-
-                let mut counter = 0;
-                let mut counter_failed = 0;
-                b.iter(|| {
-                    counter += 1;
-                    let result: Result<(), anyhow::Error> = $f(counter);
-                    if let Err(_) = result {
-                        counter_failed += 1;
-                    }
-                });
-                assert_eq!(0, counter_failed);
-            }
-        };
-    }
-
-    bench_test!(bench_test_chain_id_roundtrip, test_chain_id_roundtrip);
-    bench_test!(
-        bench_test_block_header_roundtrip,
-        test_block_header_roundtrip
-    );
-    bench_test!(
-        bench_test_block_header_with_hash_roundtrip,
-        test_block_header_with_hash_roundtrip
-    );
-    bench_test!(
-        bench_test_block_header_struct_roundtrip,
-        test_block_header_struct_roundtrip
-    );
-    bench_test!(
-        bench_test_operations_list_list_roundtrip_one,
-        test_operations_list_list_roundtrip_for_bench
-    );
 }

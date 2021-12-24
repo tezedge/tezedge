@@ -1,7 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
-extern crate test;
 
 use std::convert::{TryFrom, TryInto};
 

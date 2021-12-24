@@ -1,10 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
 
-extern crate test;
-
-use test::Bencher;
+use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use ocaml_interop::{ocaml, OCamlRuntime, ToOCaml};
 
@@ -21,7 +18,6 @@ fn ocaml_fn_echo(arg: String) -> OCamlCallResult<String> {
     })
 }
 
-#[bench]
 fn bench_ocaml_echo(b: &mut Bencher) {
     // Run one dummy task so ocaml runtime is started. We do not want to measure
     // runtime startup time but only a time of a method call.
@@ -29,3 +25,6 @@ fn bench_ocaml_echo(b: &mut Bencher) {
 
     b.iter(|| futures::executor::block_on(ocaml_fn_echo("Hello world!".into())));
 }
+
+benchmark_group!(benches, bench_ocaml_echo);
+benchmark_main!(benches);

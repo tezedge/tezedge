@@ -6,7 +6,7 @@ RUN apt-get install -y openssl libssl-dev zlib1g
 
 USER appuser
 
-ARG rust_toolchain="nightly-2021-08-04"
+ARG rust_toolchain="1.57"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y
 ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1

@@ -147,10 +147,10 @@ If you want to build from source code, you need to install this before:
     # Run the following in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
     ```
-3. Install **Rust toolchain** _(Rust nightly is required to build this project.)_
+3. Install **Rust toolchain** _(Our releases are built with 1.57.)_
     ```
-    rustup toolchain install nightly-2021-08-04
-    rustup default nightly-2021-08-04
+    rustup toolchain install 1.57
+    rustup default 1.57
     ```
 4. Install **required OS libs**
     - OpenSSL and Zlib

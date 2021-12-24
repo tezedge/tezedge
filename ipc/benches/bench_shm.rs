@@ -1,14 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
 
-extern crate test;
-
+use bencher::Bencher;
 use std::io;
 use std::thread;
 use std::time::Duration;
-use test::Bencher;
 
+use bencher::benchmark_group;
+use bencher::benchmark_main;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +37,6 @@ fn rand_file_name() -> String {
     path.as_os_str().to_str().unwrap().to_string()
 }
 
-#[bench]
 fn bench_shm(b: &mut Bencher) {
     use ipmpsc::*;
     let name_parent = rand_file_name();
@@ -76,7 +74,6 @@ fn bench_shm(b: &mut Bencher) {
     });
 }
 
-#[bench]
 fn bench_uds(b: &mut Bencher) {
     let sock_path = temp_sock();
 
@@ -115,3 +112,6 @@ fn bench_uds(b: &mut Bencher) {
         }
     });
 }
+
+benchmark_group!(benches, bench_shm, bench_uds);
+benchmark_main!(benches);

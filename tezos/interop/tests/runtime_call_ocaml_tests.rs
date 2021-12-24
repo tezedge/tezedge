@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use ocaml_interop::OCamlRuntime;
 use tezos_interop::runtime::{self, OCamlBlockPanic};
 
