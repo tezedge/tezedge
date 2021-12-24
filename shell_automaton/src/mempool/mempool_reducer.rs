@@ -161,9 +161,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO(vlad) move to separate action
             // TODO: get from protocol
             const TTL: i32 = 120;
-            if block.level() < TTL {
-                return;
-            }
 
             if config.chain_id.ne(chain_id) {
                 return;
@@ -209,7 +206,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             //     mempool_state.wait_prevalidator_operations.push(op.clone());
             // }
 
-            let level = block.level() - TTL;
+            let level = block.level().saturating_sub(TTL);
 
             // `drain_filter` is unstable for now
             for (_, ops) in mempool_state.level_to_operation.range(..level) {
