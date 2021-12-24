@@ -21,7 +21,9 @@ pub trait RpcService {
     fn try_recv(&mut self) -> Result<(RpcRequest, RpcId), RpcRecvError>;
 
     /// Respond on the request, `json` is `None` means close the stream
-    fn respond(&mut self, call_id: RpcId, json: serde_json::Value);
+    fn respond<J>(&mut self, call_id: RpcId, json: J)
+    where
+        J: Serialize;
 
     /// Try to receive a request from rpc, but response is expected to be stream
     fn try_recv_stream(&mut self) -> Result<(RpcRequestStream, RpcId), RpcRecvError>;
@@ -143,9 +145,19 @@ impl RpcService for RpcServiceDefault {
         Ok((msg, id))
     }
 
-    fn respond(&mut self, call_id: RpcId, json: serde_json::Value) {
+    fn respond<J>(&mut self, call_id: RpcId, json: J)
+    where
+        J: Serialize,
+    {
         if let Some(sender) = self.outgoing.remove(&call_id) {
-            let _ = sender.send(json);
+            match serde_json::to_value(json) {
+                Ok(json) => {
+                    let _ = sender.send(json);
+                }
+                Err(err) => {
+                    let _ = sender.send(serde_json::json!({"error": err.to_string()}));
+                }
+            }
         }
     }
 
