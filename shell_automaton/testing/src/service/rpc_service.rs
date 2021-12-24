@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use serde::Serialize;
+
 pub use shell_automaton::service::rpc_service::{
     RpcId, RpcRecvError, RpcRequest, RpcRequestStream, RpcService,
 };
@@ -19,7 +21,10 @@ impl RpcService for RpcServiceDummy {
         Err(RpcRecvError::Empty)
     }
 
-    fn respond(&mut self, call_id: RpcId, json: serde_json::Value) {
+    fn respond<J>(&mut self, call_id: RpcId, json: J)
+    where
+        J: Serialize,
+    {
         let _ = (call_id, json);
     }
 
