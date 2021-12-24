@@ -41,7 +41,20 @@ pub struct MempoolState {
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
+    /// Last 120 (TTL) predecessor blocks.
+    pub last_predecessor_blocks: HashMap<HashBase58<BlockHash>, i32>,
+
     pub operation_stats: OperationsStats,
+}
+
+impl MempoolState {
+    /// Is endorsement for already applied block or not.
+    pub fn is_old_endorsement(&self, operation: &Operation) -> bool {
+        OperationKind::from_operation_content_raw(operation.data()).is_endorsement()
+            && self
+                .last_predecessor_blocks
+                .contains_key(operation.branch())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

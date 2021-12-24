@@ -158,6 +158,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             is_bootstrapped,
             ..
         }) => {
+            // TODO(vlad) move to separate action
+            // TODO: get from protocol
+            const TTL: i32 = 120;
+            if block.level() < TTL {
+                return;
+            }
+
             if config.chain_id.ne(chain_id) {
                 return;
             }
@@ -174,6 +181,22 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             } else {
                 false
             };
+
+            // update last 120 predecessor blocks map.
+            if let Some(pred) = mempool_state.local_head_state.as_ref() {
+                let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
+                last_predecessor_blocks.insert(pred.hash.clone().into(), pred.header.level());
+                if last_predecessor_blocks.len() as i32 > TTL {
+                    if let Some((oldest, _)) = last_predecessor_blocks
+                        .iter()
+                        .min_by(|(_, l0), (_, l1)| l0.cmp(l1))
+                    {
+                        let oldest = oldest.clone();
+                        last_predecessor_blocks.remove(&oldest);
+                    }
+                }
+            }
+
             mempool_state.branch_changed = changed;
             mempool_state.local_head_state = Some(HeadState {
                 header: block.clone(),
@@ -186,12 +209,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             //     mempool_state.wait_prevalidator_operations.push(op.clone());
             // }
 
-            // TODO(vlad) move to separate action
-            // TODO: get from protocol
-            const TTL: i32 = 120;
-            if block.level() < TTL {
-                return;
-            }
             let level = block.level() - TTL;
 
             // `drain_filter` is unstable for now
@@ -321,6 +338,16 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             if !mempool_state.pending_full_content.remove(&operation_hash) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
+            }
+
+            // ignore endorsement operation if its for the past block.
+            if mempool_state.is_old_endorsement(operation) {
+                if let Some(level) = mempool_state.last_predecessor_blocks.get(operation.branch()) {
+                    if let Some(ops) = mempool_state.level_to_operation.get_mut(level) {
+                        ops.retain(|op| op.ne(&operation_hash));
+                    }
+                    return;
+                }
             }
 
             mempool_state
