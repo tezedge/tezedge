@@ -823,8 +823,15 @@ fn _handle_apply_block_request(
                 // now we need to analyse error:
                 // 1. or if protocol_runner just failed (OOM killer, some unexpected ipc error, ...) and restart could be enougth
                 // 2. or if we need to stop the batch processing and report wrong batch without restarting
-                let need_to_restart_context =
-                    matches!(&e, ApplyBlockBatchError::ProtocolServiceError { .. });
+                let need_to_restart_context = match &e {
+                    ApplyBlockBatchError::ProtocolServiceError { reason } => {
+                        // For context hash mismatch errors for which the cache was enabled, we
+                        // will retry again as-is without reinitialization. Currently, because of a bug in the
+                        // protocol cache implementation this sometimes happens.
+                        !reason.is_cache_context_hash_mismatch_error()
+                    }
+                    _ => false,
+                };
 
                 // callback for handling failed batch
                 let handle_as_failed =
