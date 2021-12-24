@@ -139,45 +139,42 @@ pub async fn mempool_monitor_operations(
     make_json_stream_response(stream)
 }
 
-// TODO: TE-685
-// pub async fn blocks(
-//     _: Request<Body>,
-//     params: Params,
-//     query: Query,
-//     env: Arc<RpcServiceEnvironment>,
-// ) -> ServiceResult {
-//     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-//     let length = query.get_str("length").unwrap_or("0");
-//     let head_param = query.get_str("head").unwrap_or("head");
-//     // TODO: mutliparameter
-//     let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
-//     // TODO: implement min_date query arg
+pub async fn blocks(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let length = query.get_str("length").unwrap_or("0");
+    let head_param = query
+        .get("head")
+        .cloned()
+        .unwrap_or(vec!["head".to_string()]);
+    let head_param = if head_param.is_empty() {
+        vec!["head".to_string()]
+    } else {
+        head_param
+    };
+    let mut hashes = Vec::with_capacity(head_param.len());
+    for head_param in head_param {
+        hashes.push(parse_block_hash_or_fail!(&chain_id, &head_param, &env));
+    }
+    let min_date = query.get_str("min_date").unwrap_or("0");
 
-//     // Quick hack to handle the normal case that is not working right now (returns an empty array
-//     // instead of an array with the hash of the head)
-//     if head_param == "head" {
-//         return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
-//     }
+    // TODO: This can be implemented in a more optimised and cleaner way
+    // Note: Need to investigate the "more heads per level" variant
 
-//     // TODO: This can be implemented in a more optimised and cleaner way
-//     // Note: Need to investigate the "more heads per level" variant
+    let block_hashes = base_services::get_blocks(
+        chain_id,
+        hashes,
+        length.parse::<usize>()?,
+        min_date.parse::<i64>()?,
+        env.persistent_storage(),
+    );
 
-//     let block_hashes = base_services::get_block_hashes(
-//         chain_id,
-//         head,
-//         None,
-//         length.parse::<usize>()?,
-//         env.persistent_storage(),
-//     )
-//     .map(|hashes| {
-//         hashes
-//             .iter()
-//             .map(|block| block.to_base58_check())
-//             .collect::<Vec<String>>()
-//     });
-
-//     result_to_json_response(block_hashes, env.log())
-// }
+    result_to_json_response(block_hashes, env.log())
+}
 
 pub async fn chains_block_id(
     _: Request<Body>,
