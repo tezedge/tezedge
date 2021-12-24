@@ -372,6 +372,9 @@ where
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
+            if store.state().mempool.is_old_endorsement(operation) {
+                return;
+            }
             store.dispatch(MempoolValidateStartAction {
                 operation: operation.clone(),
             });
