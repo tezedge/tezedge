@@ -5,11 +5,17 @@
 # stop on first error
 set -e
 
-warn_if_not_using_recommended_rust() {
-  RUSTC_TOOLCHAIN_VERSION="1.57"
+export RUSTC_TOOLCHAIN_VERSION="1.57"
 
-  EXPECTED_RUSTC_VERSION=$(date -d "$RUSTC_TOOLCHAIN_VERSION -1 day" +"%Y-%m-%d")
+warn_if_not_using_recommended_rust() {
+  EXPECTED_RUSTC_VERSION=$RUSTC_TOOLCHAIN_VERSION
   RUSTC_VERSION=$(rustc --version)
+
+  # If longer than 8 chars then it is a date, handle accordingly.
+  # The date from the result of `rustc --version` for nightly versions is one day before
+  if [[ "${#RUSTC_TOOLCHAIN_VERSION}" -gt 8 ]]; then
+    EXPECTED_RUSTC_VERSION=$(date -d "$RUSTC_TOOLCHAIN_VERSION -1 day" +"%Y-%m-%d")
+  fi
 
   if [[ "${RUSTC_VERSION}" != *"${EXPECTED_RUSTC_VERSION}"* ]]; then
     echo -e "\e[33mWarning:\e[0m please use supported rust toolchain version \e[97m$RUSTC_TOOLCHAIN_VERSION\e[0m."
@@ -49,12 +55,14 @@ configure_env_variables() {
         shift
         ;;
       --fuzz)
+        export RUSTC_TOOLCHAIN_VERSION="2021-12-22"
         export RUSTFLAGS="-Zprofile -C force-frame-pointers --cfg dyncov"
         export PROFILE="fuzz"
         export CARGO_PROFILE_ARG="-Z unstable-options --profile=fuzz"
         shift
         ;;
       --addrsanitizer)
+        export RUSTC_TOOLCHAIN_VERSION="2021-12-22"
         export RUSTFLAGS="-Z sanitizer=address"
         export CARGO_BUILD_TARGET="x86_64-unknown-linux-gnu"
         export PROFILE="debug"
@@ -205,24 +213,24 @@ run_sandbox() {
 case $1 in
 
   node)
-    warn_if_not_using_recommended_rust
     configure_env_variables --debug
+    warn_if_not_using_recommended_rust
     print_configuration
     build_all
     run_node "$@"
     ;;
 
   node-saddr)
-    warn_if_not_using_recommended_rust
     configure_env_variables --debug --addrsanitizer
+    warn_if_not_using_recommended_rust
     print_configuration
     build_all
     run_node "$@"
     ;;
 
   release)
-    warn_if_not_using_recommended_rust
     configure_env_variables --release
+    warn_if_not_using_recommended_rust
     print_configuration
     build_all
     run_node "$@"
@@ -230,16 +238,16 @@ case $1 in
 
   fuzz)
     rm -f ./target/fuzz/deps/*.gcda
-    warn_if_not_using_recommended_rust
     configure_env_variables --fuzz
+    warn_if_not_using_recommended_rust
     print_configuration
     build_all
     run_node "$@"
     ;;
 
   sandbox)
-    warn_if_not_using_recommended_rust
     configure_env_variables --release
+    warn_if_not_using_recommended_rust
     print_configuration
     build_all
     run_sandbox "$@"
