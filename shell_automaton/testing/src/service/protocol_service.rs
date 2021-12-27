@@ -19,8 +19,6 @@ impl ProtocolService for ProtocolServiceDummy {
         Err(ProtocolError::Empty)
     }
 
-    fn init_protocol_for_read(&mut self) {}
-
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {
         let _ = request;
     }

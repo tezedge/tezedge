@@ -69,7 +69,6 @@ where
                     Err(ProtocolError::Empty) => break,
                     Err(ProtocolError::Disconnected) => break, // TODO: log error
                     Err(ProtocolError::Internal(_)) => (),     // TODO: log error
-                    Ok(ProtocolResponse::InitProtocolDone(_)) => (), // unused
                     Ok(ProtocolResponse::PrevalidatorForMempoolReady(prevalidator)) => {
                         store.dispatch(ProtocolConstructStatefulPrevalidatorDoneAction {
                             prevalidator,
