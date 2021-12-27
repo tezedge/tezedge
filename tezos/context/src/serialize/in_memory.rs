@@ -321,7 +321,7 @@ fn serialize_inode(
                     continue;
                 }
 
-                let inode_id = pointer.inode_id();
+                let inode_id = pointer.inode_id().ok_or(MissingInodeId)?;
                 serialize_inode(
                     inode_id,
                     output,
@@ -565,7 +565,7 @@ pub fn deserialize_object(
             })))
         }
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(&data[1..], storage, strings, repository)?;
+            let inode = deserialize_inode_pointers(&data[1..])?;
             let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(inode_id.into()))
@@ -573,12 +573,7 @@ pub fn deserialize_object(
     }
 }
 
-fn deserialize_inode_pointers(
-    data: &[u8],
-    storage: &mut Storage,
-    strings: &mut StringInterner,
-    repository: &ContextKeyValueStore,
-) -> Result<Inode, DeserializationError> {
+fn deserialize_inode_pointers(data: &[u8]) -> Result<Inode, DeserializationError> {
     use DeserializationError::*;
 
     let mut pos = 0;
@@ -607,17 +602,9 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        let mut output = Vec::with_capacity(1000);
-
-        let object_ref = ObjectReference::new(Some(hash_id.ok_or(MissingHash)?), None);
-        let data = repository
-            .get_object_bytes(object_ref, &mut output)
-            .map_err(Box::new)?;
-        let inode_id = deserialize_inode(data, storage, strings, repository)?;
-
         pointers[index as usize] = Some(PointerToInode::new_commited(
             Some(hash_id.ok_or(MissingHash)?),
-            inode_id,
+            None,
             None,
         ));
     }
@@ -643,7 +630,7 @@ pub fn deserialize_inode(
 
     match header.tag_or_err().map_err(|_| UnknownID)? {
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(&data[1..], storage, strings, repository)?;
+            let inode = deserialize_inode_pointers(&data[1..])?;
             storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
@@ -806,6 +793,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(1), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -814,6 +802,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(2), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -822,6 +811,7 @@ mod tests {
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(3), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -844,8 +834,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &strings).unwrap(),
-                storage.get_owned_dir(object, &strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();
@@ -863,6 +853,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(1), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -871,6 +862,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(2), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -879,6 +871,7 @@ mod tests {
                 "0aa",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(3), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -901,8 +894,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &strings).unwrap(),
-                storage.get_owned_dir(object, &strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();
@@ -1033,12 +1026,6 @@ mod tests {
                 let pointer = pointer.as_ref().unwrap();
                 let hash_id = pointer.hash_id(&storage, &repo).unwrap().unwrap();
                 assert_eq!(hash_id.as_u64() as usize, index + 1);
-
-                let inode = storage.get_inode(pointer.inode_id()).unwrap();
-                match inode {
-                    Inode::Directory(dir_id) => assert!(dir_id.is_empty()),
-                    _ => panic!(),
-                }
             }
         } else {
             panic!()
@@ -1059,6 +1046,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(1), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1067,6 +1055,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(2), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1075,6 +1064,7 @@ mod tests {
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 DirEntry::new_commited(DirEntryKind::Blob, HashId::new(3), None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1097,12 +1087,14 @@ mod tests {
 
         let new_inode_id =
             deserialize_inode(&batch[0].1, &mut storage, &mut strings, &repo).unwrap();
-        let new_inode = storage.get_inode(new_inode_id).unwrap();
+        let new_inode = storage.get_inode(new_inode_id).unwrap().clone();
 
         if let Inode::Directory(new_dir_id) = new_inode {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &strings).unwrap(),
-                storage.get_owned_dir(*new_dir_id, &strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage
+                    .get_owned_dir(new_dir_id, &mut strings, &repo)
+                    .unwrap()
             )
         }
 
@@ -1134,6 +1126,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, blob_hash_id, None),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1157,8 +1150,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &strings).unwrap(),
-                storage.get_owned_dir(object, &strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();

@@ -28,7 +28,7 @@ use crate::{
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
-        storage::{DirEntryId, Storage},
+        storage::{DirEntryId, InodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, WorkingTree},
         Object, ObjectReference,
@@ -271,6 +271,16 @@ impl KeyValueStoreBackend for InMemory {
     ) -> Result<Object, DBError> {
         let object_bytes = self.get_value(object_ref.hash_id())?.unwrap_or(&[]);
         in_memory::deserialize_object(object_bytes, storage, strings, self).map_err(Into::into)
+    }
+
+    fn get_inode(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<InodeId, DBError> {
+        let object_bytes = self.get_value(object_ref.hash_id())?.unwrap_or(&[]);
+        in_memory::deserialize_inode(&object_bytes, storage, strings, self).map_err(Into::into)
     }
 
     fn get_object_bytes<'a>(

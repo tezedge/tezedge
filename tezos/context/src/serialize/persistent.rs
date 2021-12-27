@@ -658,7 +658,7 @@ fn serialize_inode(
                     continue;
                 }
 
-                let inode_id = pointer.inode_id();
+                let inode_id = pointer.inode_id().ok_or(MissingInodeId)?;
                 let offset = serialize_inode(
                     inode_id,
                     output,
@@ -957,23 +957,7 @@ pub fn deserialize_object(
 ) -> Result<Object, DeserializationError> {
     use DeserializationError::*;
 
-    let header = bytes.get(0).copied().ok_or(UnexpectedEOF)?;
-    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
-
-    let (header_nbytes, object_length) = read_object_length(bytes, &header)?;
-
-    let bytes = bytes
-        .get(header_nbytes..object_length)
-        .ok_or(UnexpectedEOF)?;
-
-    let (object_hash_id, nbytes) = deserialize_hash_id(bytes)?;
-
-    storage
-        .offsets_to_hash_id
-        .insert(object_offset, object_hash_id.ok_or(MissingOffset)?);
-
-    let bytes = bytes.get(nbytes..).ok_or(UnexpectedEOF)?;
-    let mut pos = 0;
+    let (header, bytes) = deserialize_object_header(bytes, object_offset, storage)?;
 
     match header.tag_or_err().map_err(|_| UnknownID)? {
         ObjectTag::Directory => {
@@ -988,13 +972,14 @@ pub fn deserialize_object(
             .map(Object::Blob)
             .map_err(Into::into),
         ObjectTag::InodePointers => {
-            let inode =
-                deserialize_inode_pointers(bytes, object_offset, storage, repository, strings)?;
+            let inode = deserialize_inode_pointers(bytes, object_offset)?;
             let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(inode_id.into()))
         }
         ObjectTag::Commit => {
+            let mut pos = 0;
+
             let header = bytes.get(pos).ok_or(UnexpectedEOF)?;
             let header = CommitHeader::from_bytes([*header; 1]);
 
@@ -1081,9 +1066,6 @@ pub fn deserialize_object(
 fn deserialize_inode_pointers(
     data: &[u8],
     object_offset: AbsoluteOffset,
-    storage: &mut Storage,
-    repository: &ContextKeyValueStore,
-    strings: &mut StringInterner,
 ) -> Result<Inode, DeserializationError> {
     use DeserializationError::*;
 
@@ -1112,8 +1094,6 @@ fn deserialize_inode_pointers(
 
     let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-    let mut object_bytes = Vec::with_capacity(1000);
-
     for (index, pointer_index) in indexes_iter.enumerate() {
         let offset_length = offsets_header.get(index);
         let (absolute_offset, nbytes) =
@@ -1121,18 +1101,9 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        let object_ref = ObjectReference::new(None, Some(absolute_offset));
-        let data = repository
-            .get_object_bytes(object_ref, &mut object_bytes)
-            .map_err(Box::new)?;
-
-        let inode_id = deserialize_inode(data, absolute_offset, storage, repository, strings)?;
-
-        object_bytes.clear();
-
         pointers[pointer_index as usize] = Some(PointerToInode::new_commited(
             None,
-            inode_id,
+            None,
             Some(absolute_offset),
         ));
     }
@@ -1145,6 +1116,31 @@ fn deserialize_inode_pointers(
     })
 }
 
+fn deserialize_object_header<'a>(
+    data: &'a [u8],
+    object_offset: AbsoluteOffset,
+    storage: &mut Storage,
+) -> Result<(ObjectHeader, &'a [u8]), DeserializationError> {
+    use DeserializationError::*;
+
+    let header = data.get(0).copied().ok_or(UnexpectedEOF)?;
+    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
+
+    let (header_nbytes, object_length) = read_object_length(data, &header)?;
+    let data = data
+        .get(header_nbytes..object_length)
+        .ok_or(UnexpectedEOF)?;
+
+    let (object_hash_id, nbytes) = deserialize_hash_id(data)?;
+    storage
+        .offsets_to_hash_id
+        .insert(object_offset, object_hash_id.ok_or(MissingOffset)?);
+
+    let data = data.get(nbytes..).ok_or(UnexpectedEOF)?;
+
+    Ok((header, data))
+}
+
 pub fn deserialize_inode(
     data: &[u8],
     object_offset: AbsoluteOffset,
@@ -1154,19 +1150,11 @@ pub fn deserialize_inode(
 ) -> Result<InodeId, DeserializationError> {
     use DeserializationError::*;
 
-    let header = data.get(0).copied().ok_or(UnexpectedEOF)?;
-    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
-
-    let (header_nbytes, _) = read_object_length(data, &header)?;
-    let data = data.get(header_nbytes..).ok_or(UnexpectedEOF)?;
-
-    let (_, nbytes) = deserialize_hash_id(data)?;
-    let data = data.get(nbytes..).ok_or(UnexpectedEOF)?;
+    let (header, data) = deserialize_object_header(data, object_offset, storage)?;
 
     match header.tag_or_err().map_err(|_| UnknownID)? {
         ObjectTag::InodePointers => {
-            let inode =
-                deserialize_inode_pointers(data, object_offset, storage, repository, strings)?;
+            let inode = deserialize_inode_pointers(data, object_offset)?;
             storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
@@ -1177,7 +1165,8 @@ pub fn deserialize_inode(
         }
         ObjectTag::ShapedDirectory => {
             let dir_id =
-                deserialize_shaped_directory(data, object_offset, storage, repository, strings)?;
+                deserialize_shaped_directory(data, object_offset, storage, repository, strings)
+                    .unwrap();
             storage
                 .add_inode(Inode::Directory(dir_id))
                 .map_err(Into::into)
@@ -1221,6 +1210,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1229,6 +1219,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1237,6 +1228,7 @@ mod tests {
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1260,8 +1252,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings).unwrap(),
-                storage.get_owned_dir(object, &mut strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();
@@ -1276,6 +1268,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1284,6 +1277,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1292,6 +1286,7 @@ mod tests {
                 "0aa",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1318,8 +1313,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings).unwrap(),
-                storage.get_owned_dir(object, &mut strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();
@@ -1334,6 +1329,7 @@ mod tests {
                 "a1",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1342,6 +1338,7 @@ mod tests {
                 "bab1",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1350,6 +1347,7 @@ mod tests {
                 "0aa1",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1376,8 +1374,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings).unwrap(),
-                storage.get_owned_dir(object, &mut strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();
@@ -1514,7 +1512,7 @@ mod tests {
 
             pointers[index] = Some(PointerToInode::new_commited(
                 Some(hash_id),
-                inode_value_id,
+                Some(inode_value_id),
                 Some(offset),
             ));
         }
@@ -1565,13 +1563,6 @@ mod tests {
 
             for (index, pointer) in pointers.iter().enumerate() {
                 let pointer = pointer.as_ref().unwrap();
-
-                let inode = storage.get_inode(pointer.inode_id()).unwrap();
-                match inode {
-                    Inode::Directory(dir_id) => assert!(dir_id.is_empty()),
-                    _ => panic!(),
-                }
-
                 assert_eq!(pointer.get_offset().unwrap(), offsets[index]);
             }
         } else {
@@ -1587,6 +1578,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1595,6 +1587,7 @@ mod tests {
                 "bab",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
         let dir_id = storage
@@ -1603,6 +1596,7 @@ mod tests {
                 "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1622,12 +1616,14 @@ mod tests {
 
         let new_inode_id =
             deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
-        let new_inode = storage.get_inode(new_inode_id).unwrap();
+        let new_inode = storage.get_inode(new_inode_id).unwrap().clone();
 
         if let Inode::Directory(new_dir_id) = new_inode {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings).unwrap(),
-                storage.get_owned_dir(*new_dir_id, &mut strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage
+                    .get_owned_dir(new_dir_id, &mut strings, &repo)
+                    .unwrap()
             )
         }
     }
@@ -1656,6 +1652,7 @@ mod tests {
                 "a",
                 DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
                 &mut strings,
+                &repo,
             )
             .unwrap();
 
@@ -1680,8 +1677,8 @@ mod tests {
 
         if let Object::Directory(object) = object {
             assert_eq!(
-                storage.get_owned_dir(dir_id, &strings).unwrap(),
-                storage.get_owned_dir(object, &strings).unwrap()
+                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
             )
         } else {
             panic!();

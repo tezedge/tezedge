@@ -171,15 +171,20 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
-                let storage = root.index.storage.borrow();
-                let strings = root.index.string_interner.borrow();
+                let mut storage = root.index.storage.borrow_mut();
+                let mut strings = root.index.string_interner.borrow_mut();
 
-                let dir = match storage.dir_to_vec_sorted(*dir_id, &strings) {
-                    Ok(dir) => dir,
-                    Err(e) => {
-                        eprintln!("TreeWalkerLevel `dir_to_vec_sorted` error='{:?}'", e);
-                        Vec::new()
+                let dir = if let Some(repo) = root.index.repository.read().ok() {
+                    match storage.dir_to_vec_sorted(*dir_id, &mut strings, &*repo) {
+                        Ok(dir) => dir,
+                        Err(e) => {
+                            eprintln!("TreeWalkerLevel `dir_to_vec_sorted` error='{:?}'", e);
+                            Vec::new()
+                        }
                     }
+                } else {
+                    eprintln!("TreeWalkerLevel Failed to lock repository");
+                    Vec::new()
                 };
 
                 let dir_vec: Vec<(String, DirEntryId)> = dir
@@ -620,10 +625,11 @@ impl WorkingTree {
         let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
         let mut strings = self.index.string_interner.borrow_mut();
+        let repository = self.index.repository.read()?;
         let dir_id = self.find_or_create_directory(root, key, &mut storage, &mut strings)?;
 
         // It's important to get the directory sorted here
-        let dir_entry = storage.dir_to_vec_sorted(dir_id, &strings)?;
+        let dir_entry = storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository)?;
 
         let dir_entry_length = dir_entry.len();
         let length = length.unwrap_or(dir_entry_length).min(dir_entry_length);
@@ -936,9 +942,12 @@ impl WorkingTree {
             return Ok(Object::Directory(self.get_root_directory()));
         }
 
+        let repository = self.index.repository.read()?;
         let dir_id = match new_dir_entry {
-            None => storage.dir_remove(dir_id, last, strings)?,
-            Some(new_dir_entry) => storage.dir_insert(dir_id, last, new_dir_entry, strings)?,
+            None => storage.dir_remove(dir_id, last, strings, &*repository)?,
+            Some(new_dir_entry) => {
+                storage.dir_insert(dir_id, last, new_dir_entry, strings, &*repository)?
+            }
         };
 
         if dir_id.is_empty() {

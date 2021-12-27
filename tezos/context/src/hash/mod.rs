@@ -61,6 +61,8 @@ pub enum HashingError {
     BlobNotFound,
     #[error("StorageIdError: {error:?}")]
     StorageIdError { error: StorageError },
+    #[error("Missing InodeId")]
+    MissingInodeId,
 }
 
 impl From<DBError> for HashingError {
@@ -190,7 +192,8 @@ fn hash_long_inode(
                     let hash_id = match pointer.hash_id(storage, store)? {
                         Some(hash_id) => hash_id,
                         None => {
-                            let inode_id = pointer.inode_id();
+                            let inode_id =
+                                pointer.inode_id().ok_or(HashingError::MissingInodeId)?;
                             let inode = storage.get_inode(inode_id)?;
                             let hash_id = hash_long_inode(inode, store, storage, strings)?;
                             pointer.set_hash_id(Some(hash_id));
@@ -534,7 +537,7 @@ mod tests {
         let dir_entry = DirEntry::new(DirEntryKind::Blob, Object::Blob(blob_id));
 
         let dummy_dir = storage
-            .dir_insert(dummy_dir, "a", dir_entry, &mut strings)
+            .dir_insert(dummy_dir, "a", dir_entry, &mut strings, repo)
             .unwrap();
 
         // hexademical representation of above directory:
@@ -624,13 +627,13 @@ mod tests {
     }
 
     #[test]
-    fn test_dir_entry_hashes() {
+    fn test_dir_entry_hashes_memory() {
         let mut repo = InMemory::try_new().expect("failed to create in-memory context");
         test_type_hashes("nodes.json.gz", &mut repo, in_memory::serialize_object);
     }
 
     #[test]
-    fn test_inode_hashes() {
+    fn test_inode_hashes_memory() {
         let mut repo = InMemory::try_new().expect("failed to create in-memory context");
         test_type_hashes("inodes.json.gz", &mut repo, in_memory::serialize_object);
     }
@@ -694,11 +697,12 @@ mod tests {
                 names.insert(binding.name.clone());
 
                 dir_id = storage
-                    .dir_insert(dir_id, binding.name.as_str(), dir_entry, &mut strings)
+                    .dir_insert(dir_id, binding.name.as_str(), dir_entry, &mut strings, repo)
                     .unwrap();
 
                 assert!(storage
-                    .dir_find_dir_entry(dir_id, binding.name.as_str(), &strings)
+                    .dir_find_dir_entry(dir_id, binding.name.as_str(), &mut strings, repo)
+                    .unwrap()
                     .is_some());
             }
 
@@ -717,6 +721,7 @@ mod tests {
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
                                 .with_offset(1.into()),
                             &mut strings,
+                            repo,
                         )
                         .unwrap();
                     let a = dir_id;
@@ -730,6 +735,7 @@ mod tests {
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
                                 .with_offset(1.into()),
                             &mut strings,
+                            repo,
                         )
                         .unwrap();
                     let b = dir_id;
@@ -740,11 +746,15 @@ mod tests {
                 // Remove the elements we just inserted
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
-                    dir_id = storage.dir_remove(dir_id, &key, &strings).unwrap();
+                    dir_id = storage
+                        .dir_remove(dir_id, &key, &mut strings, repo)
+                        .unwrap();
                     let a = dir_id;
 
                     // Remove the same key twice
-                    dir_id = storage.dir_remove(dir_id, &key, &strings).unwrap();
+                    dir_id = storage
+                        .dir_remove(dir_id, &key, &mut strings, repo)
+                        .unwrap();
                     let b = dir_id;
 
                     // The 2nd remove should not modify the existing inode or create a new one
@@ -821,6 +831,11 @@ mod tests {
                 match object {
                     Object::Directory(new_dir) => {
                         if let Some(inode_id) = new_dir.get_inode_id() {
+                            // Force to read the full inodes in repo
+                            storage
+                                .dir_to_vec_unsorted(new_dir, &mut strings, repo)
+                                .unwrap();
+
                             // Remove existing hash ids from all the inodes children,
                             // to force recomputation of the hash.
                             storage.inodes_drop_hash_ids(inode_id);
