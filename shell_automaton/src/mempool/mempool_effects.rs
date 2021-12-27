@@ -389,25 +389,6 @@ where
         Action::PrecheckerPrecheckOperationResponse(
             PrecheckerPrecheckOperationResponseAction { response },
         ) => {
-            //
-            match response {
-                PrecheckerPrecheckOperationResponse::Applied(applied) => Some(&applied.hash),
-                PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
-                    Some(&prevalidate.hash)
-                }
-                _ => None,
-            }
-            .and_then(|operation_hash| {
-                store
-                    .state
-                    .get()
-                    .mempool
-                    .pending_operations
-                    .get(operation_hash)
-                    .cloned()
-            })
-            .map(|operation| store.dispatch(MempoolValidateStartAction { operation }));
-
             match response {
                 PrecheckerPrecheckOperationResponse::Applied(_)
                 | PrecheckerPrecheckOperationResponse::Refused(_) => {
