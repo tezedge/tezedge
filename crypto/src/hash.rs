@@ -34,6 +34,7 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
+    pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
 }
 
@@ -211,6 +212,7 @@ define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
+define_hash!(Ed25519Signature);
 define_hash!(Signature);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
@@ -250,6 +252,8 @@ pub enum HashType {
     PublicKeySecp256k1,
     // "\003\178\139\127" (* p2pk(55) *)
     PublicKeyP256,
+    // "\009\245\205\134\018" (* edsig(99) *)
+    Ed25519Signature,
     // "\004\130\043" (* sig(96) *)
     Signature,
 }
@@ -276,6 +280,7 @@ impl HashType {
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
+            HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
         }
     }
@@ -299,7 +304,7 @@ impl HashType {
             | HashType::ContractTz2Hash
             | HashType::ContractTz3Hash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
-            HashType::Signature => 64,
+            HashType::Ed25519Signature | HashType::Signature => 64,
         }
     }
 
@@ -309,7 +314,11 @@ impl HashType {
             Err(FromBytesError::InvalidSize)
         } else {
             let mut hash = Vec::with_capacity(self.base58check_prefix().len() + data.len());
-            hash.extend(self.base58check_prefix());
+            if matches!(self, Self::Signature) && data == &[0; Self::Ed25519Signature.size()] {
+                hash.extend(Self::Ed25519Signature.base58check_prefix());
+            } else {
+                hash.extend(self.base58check_prefix());
+            }
             hash.extend(data);
             hash.to_base58check()
                 // currently the error is returned if the input lenght exceeds 128 bytes
@@ -323,6 +332,21 @@ impl HashType {
     /// Convert string representation of the hash to bytes form.
     pub fn b58check_to_hash(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
         let mut hash = data.from_base58check()?;
+        if let HashType::Signature = self {
+            // zero signature is represented as Ed25519 signature
+            if hash.len()
+                == HashType::Ed25519Signature.size()
+                    + HashType::Ed25519Signature.base58check_prefix().len()
+            {
+                let (prefix, hash) =
+                    hash.split_at(HashType::Ed25519Signature.base58check_prefix().len());
+                if prefix == HashType::Ed25519Signature.base58check_prefix()
+                    && hash == &[0; HashType::Ed25519Signature.size()]
+                {
+                    return Ok(hash.to_vec());
+                }
+            }
+        }
         let expected_len = self.size() + self.base58check_prefix().len();
         if expected_len != hash.len() {
             return Err(FromBase58CheckError::MismatchedLength {
