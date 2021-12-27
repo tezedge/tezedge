@@ -741,18 +741,13 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
         PeerMessage::CurrentHead(msg) => {
             let block_header = msg.current_block_header();
             let mempool = msg.current_mempool();
-            let op_hash_iter = mempool
-                .pending()
-                .iter()
-                .chain(mempool.known_valid())
-                .cloned();
             let pkh = &peer.public_key_hash;
 
-            for op_hash in op_hash_iter {
+            for op_hash in mempool.known_valid() {
                 state
                     .mempool
                     .operation_stats
-                    .entry(op_hash.into())
+                    .entry(op_hash.clone().into())
                     .or_insert(OperationStats::new())
                     .sent_in_current_head(
                         pkh,
