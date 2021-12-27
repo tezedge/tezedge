@@ -23,16 +23,13 @@ use tezos_messages::p2p::{
 use tezos_api::ffi::BeginConstructionRequest;
 
 use crate::storage::kv_operations;
-use crate::{mempool::mempool_state::OperationState, protocol::ProtocolAction, rights::Slot};
+use crate::{mempool::mempool_state::OperationState, rights::Slot};
 use crate::{
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::prechecker_actions::{
         PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
         PrecheckerPrecheckOperationResponseAction,
     },
-};
-use crate::{
-    peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     protocol::protocol_actions::*,
 };
 use crate::{service::RpcService, Action, ActionWithMeta, Service, State};
@@ -147,7 +144,7 @@ where
                 let prot = store
                     .state()
                     .protocol
-                    .validation_state
+                    .operation_validation_state
                     .protocol()
                     .unwrap()
                     .to_base58_check();
@@ -288,7 +285,7 @@ where
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
             let refused_ops = &store.state().mempool.validated_operations.refused_ops;
-            let prot = match store.state().protocol.validation_state.protocol() {
+            let prot = match store.state().protocol.operation_validation_state.protocol() {
                 Some(v) => v.to_base58_check(),
                 None => return,
             };
@@ -356,7 +353,7 @@ where
         }
         Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
             let empty = MempoolOperations::default();
-            let protocol = match store.state().protocol.validation_state.protocol() {
+            let protocol = match store.state().protocol.operation_validation_state.protocol() {
                 Some(v) => v,
                 None => {
                     store.service().rpc().respond(*rpc_id, empty);

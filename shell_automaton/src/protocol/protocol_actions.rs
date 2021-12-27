@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tezos_api::ffi::{BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationResponse};
 use tezos_messages::p2p::encoding::operation::Operation;
 
-use super::protocol_state::ValidationState;
+use super::protocol_state::OperationValidationState;
 use crate::{EnablingCondition, State};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -16,9 +16,9 @@ pub struct ProtocolConstructStatefulPrevalidatorStartAction {
 
 impl EnablingCondition<State> for ProtocolConstructStatefulPrevalidatorStartAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol.validation_state {
+        match &state.protocol.operation_validation_state {
             // construction is already in progress
-            ValidationState::NotReady { .. } => false,
+            OperationValidationState::WaitingPrevalidator { .. } => false,
             _ => true,
         }
     }
@@ -31,8 +31,9 @@ pub struct ProtocolConstructStatefulPrevalidatorDoneAction {
 
 impl EnablingCondition<State> for ProtocolConstructStatefulPrevalidatorDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol.validation_state {
-            ValidationState::NotReady { .. } | ValidationState::Initial => true,
+        match &state.protocol.operation_validation_state {
+            OperationValidationState::WaitingPrevalidator { .. }
+            | OperationValidationState::Initial => true,
             _ => false,
         }
     }
@@ -45,9 +46,9 @@ pub struct ProtocolConstructStatelessPrevalidatorStartAction {
 
 impl EnablingCondition<State> for ProtocolConstructStatelessPrevalidatorStartAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol.validation_state {
+        match &state.protocol.operation_validation_state {
             // construction is already in progress
-            ValidationState::NotReady { .. } => false,
+            OperationValidationState::WaitingPrevalidator { .. } => false,
             _ => true,
         }
     }
@@ -60,8 +61,9 @@ pub struct ProtocolConstructStatelessPrevalidatorDoneAction {
 
 impl EnablingCondition<State> for ProtocolConstructStatelessPrevalidatorDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol.validation_state {
-            ValidationState::NotReady { .. } | ValidationState::Initial => true,
+        match &state.protocol.operation_validation_state {
+            OperationValidationState::WaitingPrevalidator { .. }
+            | OperationValidationState::Initial => true,
             _ => false,
         }
     }
@@ -87,8 +89,8 @@ pub struct ProtocolValidateOperationDoneAction {
 impl EnablingCondition<State> for ProtocolValidateOperationDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
-            &state.protocol.validation_state,
-            ValidationState::Validating { .. }
+            &state.protocol.operation_validation_state,
+            OperationValidationState::ValidatingOperation { .. }
         )
     }
 }

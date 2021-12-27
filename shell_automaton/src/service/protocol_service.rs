@@ -86,7 +86,9 @@ impl ProtocolServiceDefault {
                                 .await
                                 .map(ProtocolResponse::OperationValidated),
                         };
-                        let _ = response_tx.send(response.map_err(ProtocolError::Internal)).await;
+                        let _ = response_tx
+                            .send(response.map_err(ProtocolError::Internal))
+                            .await;
                         let _ = mio_waker.wake();
                     }
                 })

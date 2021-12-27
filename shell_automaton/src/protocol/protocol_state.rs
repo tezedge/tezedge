@@ -11,7 +11,7 @@ use tezos_messages::p2p::encoding::operation::Operation;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolState {
-    pub validation_state: ValidationState,
+    pub operation_validation_state: OperationValidationState,
     // queue to validate
     pub operations_to_validate: VecDeque<Operation>,
     // endorsements should go first
@@ -21,7 +21,7 @@ pub struct ProtocolState {
 impl Default for ProtocolState {
     fn default() -> Self {
         ProtocolState {
-            validation_state: ValidationState::Initial,
+            operation_validation_state: OperationValidationState::Initial,
             // how many operations could be in the block?
             operations_to_validate: VecDeque::with_capacity(256),
             endorsements_to_validate: VecDeque::with_capacity(256),
@@ -30,35 +30,35 @@ impl Default for ProtocolState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ValidationState {
+pub enum OperationValidationState {
     // mempool just started, no prevalidator created yet
     Initial,
     // creating a new prevalidator, should not validate operations in this state
-    // should wait until the prevalidator created
-    NotReady {
+    // if an operation arrived when in this state, the operation should be enqueued
+    WaitingPrevalidator {
         protocol: ProtocolHash,
     },
-    // has a prevalidator
-    Ready {
+    // the prevalidator is ready, but the is no operation to validate
+    WaitingOperations {
         prevalidator: PrevalidatorWrapper,
-        // whether prevalidator is stateful or stateless
+        // whether the prevalidator is stateful or stateless
         stateful: bool,
     },
-    // validation is in progress
-    Validating {
+    // there is an operation to validate
+    ValidatingOperation {
         prevalidator: PrevalidatorWrapper,
         operation: Operation,
         stateful: bool,
     },
 }
 
-impl ValidationState {
+impl OperationValidationState {
     pub fn protocol(&self) -> Option<ProtocolHash> {
         match self {
-            ValidationState::Initial => None,
-            ValidationState::NotReady { protocol } => Some(protocol.clone()),
-            ValidationState::Ready { prevalidator, .. }
-            | ValidationState::Validating { prevalidator, .. } => {
+            OperationValidationState::Initial => None,
+            OperationValidationState::WaitingPrevalidator { protocol } => Some(protocol.clone()),
+            OperationValidationState::WaitingOperations { prevalidator, .. }
+            | OperationValidationState::ValidatingOperation { prevalidator, .. } => {
                 Some(prevalidator.protocol.clone())
             }
         }

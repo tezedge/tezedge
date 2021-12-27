@@ -4,7 +4,7 @@
 use crate::{Action, ActionWithMeta, Service, State, Store};
 
 use super::protocol_actions::*;
-use super::protocol_state::ValidationState;
+use super::protocol_state::OperationValidationState;
 use crate::service::{ProtocolError, ProtocolResponse, ProtocolService};
 
 use tezos_api::ffi::ValidateOperationRequest;
@@ -13,51 +13,10 @@ pub fn protocol_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    fn is_empty_queue(state: &State) -> bool {
+    fn is_queue_empty(state: &State) -> bool {
         state.protocol.endorsements_to_validate.is_empty()
             && state.protocol.operations_to_validate.is_empty()
     }
-
-    fn continue_validation<S>(store: &mut Store<S>)
-    where
-        S: Service,
-    {
-        match &store.state().protocol.validation_state {
-            ValidationState::Validating {
-                prevalidator,
-                operation,
-                stateful,
-            } => {
-                let request = ValidateOperationRequest {
-                    prevalidator: prevalidator.clone(),
-                    operation: operation.clone(),
-                };
-                if *stateful {
-                    store
-                        .service()
-                        .protocol()
-                        .validate_operation_for_mempool(request)
-                } else {
-                    store
-                        .service()
-                        .protocol()
-                        .validate_operation_for_prevalidation(request)
-                }
-            }
-            _ => (),
-        }
-    }
-
-    // TODO(vlad): remove it
-    // if matches!(
-    //     &action.action,
-    //     | Action::ProtocolConstructStatelessPrevalidatorStart(_)
-    //     | Action::ProtocolConstructStatelessPrevalidatorDone(_)
-    //     | Action::ProtocolValidateOperationStart(_)
-    //     | Action::ProtocolValidateOperationDone(_)
-    // ) {
-    //     println!("{:?}", action);
-    // }
 
     match &action.action {
         Action::WakeupEvent(_) => {
@@ -90,23 +49,83 @@ where
             }
         }
         Action::ProtocolConstructStatefulPrevalidatorStart(action) => {
+            // here is asynchronous call to the protocol runner,
+            // the response will be dispatched in `Action::WakeupEvent`
+            // in `ProtocolResponse::PrevalidatorForMempoolReady`
             store
                 .service()
                 .protocol()
                 .begin_construction_for_mempool(action.request.clone());
         }
         Action::ProtocolConstructStatelessPrevalidatorStart(action) => {
+            // here is asynchronous call to the protocol runner,
+            // the response will be dispatched in `Action::WakeupEvent`
+            // in `ProtocolResponse::PrevalidatorReady`
             store
                 .service()
                 .protocol()
                 .begin_construction_for_prevalidation(action.request.clone());
         }
         Action::ProtocolConstructStatefulPrevalidatorDone(_)
-        | Action::ProtocolConstructStatelessPrevalidatorDone(_) => continue_validation(store),
-        Action::ProtocolValidateOperationStart(_) if is_empty_queue(store.state()) => {
-            continue_validation(store)
+        | Action::ProtocolConstructStatelessPrevalidatorDone(_)
+        | Action::ProtocolValidateOperationDone(_) => {
+            match &store.state().protocol.operation_validation_state {
+                OperationValidationState::ValidatingOperation {
+                    prevalidator,
+                    operation,
+                    stateful,
+                } => {
+                    let request = ValidateOperationRequest {
+                        prevalidator: prevalidator.clone(),
+                        operation: operation.clone(),
+                    };
+                    // here is asynchronous call to the protocol runner,
+                    // the response will be dispatched in `Action::WakeupEvent`
+                    // in `ProtocolResponse::OperationValidated`
+                    if *stateful {
+                        store
+                            .service()
+                            .protocol()
+                            .validate_operation_for_mempool(request)
+                    } else {
+                        store
+                            .service()
+                            .protocol()
+                            .validate_operation_for_prevalidation(request)
+                    }
+                }
+                _ => (),
+            }
         }
-        Action::ProtocolValidateOperationDone(_) => continue_validation(store),
+        Action::ProtocolValidateOperationStart(_) if is_queue_empty(store.state()) => {
+            match &store.state().protocol.operation_validation_state {
+                OperationValidationState::ValidatingOperation {
+                    prevalidator,
+                    operation,
+                    stateful,
+                } => {
+                    let request = ValidateOperationRequest {
+                        prevalidator: prevalidator.clone(),
+                        operation: operation.clone(),
+                    };
+                    // here is asynchronous call to the protocol runner,
+                    // the response will be dispatched in `Action::WakeupEvent`
+                    // in `ProtocolResponse::OperationValidated`
+                    if *stateful {
+                        store
+                            .service()
+                            .protocol()
+                            .validate_operation_for_mempool(request)
+                    } else {
+                        store
+                            .service()
+                            .protocol()
+                            .validate_operation_for_prevalidation(request)
+                    }
+                }
+                _ => (),
+            }
+        }
         _ => (),
     }
 }

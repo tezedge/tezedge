@@ -5,7 +5,7 @@ use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::{Action, ActionWithMeta, State};
 
-use super::protocol_state::ValidationState;
+use super::protocol_state::OperationValidationState;
 
 pub fn protocol_reducer(state: &mut State, action: &ActionWithMeta) {
     enum QueueSide {
@@ -36,18 +36,20 @@ pub fn protocol_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::ProtocolConstructStatefulPrevalidatorStart(_)
         | Action::ProtocolConstructStatelessPrevalidatorStart(_) => {
-            let new = match &state.protocol.validation_state {
-                ValidationState::Initial => ValidationState::Initial,
-                ValidationState::Ready { prevalidator, .. } => ValidationState::NotReady {
-                    protocol: prevalidator.protocol.clone(),
-                },
-                ValidationState::NotReady { protocol } => {
+            let new = match &state.protocol.operation_validation_state {
+                OperationValidationState::Initial => OperationValidationState::Initial,
+                OperationValidationState::WaitingOperations { prevalidator, .. } => {
+                    OperationValidationState::WaitingPrevalidator {
+                        protocol: prevalidator.protocol.clone(),
+                    }
+                }
+                OperationValidationState::WaitingPrevalidator { protocol } => {
                     // unreachable
-                    ValidationState::NotReady {
+                    OperationValidationState::WaitingPrevalidator {
                         protocol: protocol.clone(),
                     }
                 }
-                ValidationState::Validating {
+                OperationValidationState::ValidatingOperation {
                     prevalidator,
                     operation,
                     ..
@@ -55,71 +57,78 @@ pub fn protocol_reducer(state: &mut State, action: &ActionWithMeta) {
                     let protocol = prevalidator.protocol.clone();
                     let operation = operation.clone();
                     enqueue(state, QueueSide::Front, operation);
-                    ValidationState::NotReady { protocol }
+                    OperationValidationState::WaitingPrevalidator { protocol }
                 }
             };
-            state.protocol.validation_state = new;
+            state.protocol.operation_validation_state = new;
         }
         Action::ProtocolConstructStatefulPrevalidatorDone(action) => {
             if let Some(operation) = dequeue(state) {
-                state.protocol.validation_state = ValidationState::Validating {
-                    prevalidator: action.prevalidator.clone(),
-                    operation,
-                    stateful: true,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::ValidatingOperation {
+                        prevalidator: action.prevalidator.clone(),
+                        operation,
+                        stateful: true,
+                    };
             } else {
-                state.protocol.validation_state = ValidationState::Ready {
-                    prevalidator: action.prevalidator.clone(),
-                    stateful: true,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::WaitingOperations {
+                        prevalidator: action.prevalidator.clone(),
+                        stateful: true,
+                    };
             }
         }
         Action::ProtocolConstructStatelessPrevalidatorDone(action) => {
             if let Some(operation) = dequeue(state) {
-                state.protocol.validation_state = ValidationState::Validating {
-                    prevalidator: action.prevalidator.clone(),
-                    operation,
-                    stateful: false,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::ValidatingOperation {
+                        prevalidator: action.prevalidator.clone(),
+                        operation,
+                        stateful: false,
+                    };
             } else {
-                state.protocol.validation_state = ValidationState::Ready {
-                    prevalidator: action.prevalidator.clone(),
-                    stateful: false,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::WaitingOperations {
+                        prevalidator: action.prevalidator.clone(),
+                        stateful: false,
+                    };
             }
         }
         Action::ProtocolValidateOperationStart(action) => {
             let operation = action.operation.clone();
-            match &state.protocol.validation_state {
-                ValidationState::Ready {
+            match &state.protocol.operation_validation_state {
+                OperationValidationState::WaitingOperations {
                     stateful,
                     prevalidator,
                 } => {
-                    state.protocol.validation_state = ValidationState::Validating {
-                        prevalidator: prevalidator.clone(),
-                        operation,
-                        stateful: *stateful,
-                    };
+                    state.protocol.operation_validation_state =
+                        OperationValidationState::ValidatingOperation {
+                            prevalidator: prevalidator.clone(),
+                            operation,
+                            stateful: *stateful,
+                        };
                 }
                 _ => enqueue(state, QueueSide::Back, action.operation.clone()),
             }
         }
         Action::ProtocolValidateOperationDone(action) => {
-            let stateful = match &state.protocol.validation_state {
-                ValidationState::Validating { stateful, .. } => *stateful,
+            let stateful = match &state.protocol.operation_validation_state {
+                OperationValidationState::ValidatingOperation { stateful, .. } => *stateful,
                 _ => return, // the action is not allowed in such state
             };
             if let Some(operation) = dequeue(state) {
-                state.protocol.validation_state = ValidationState::Validating {
-                    prevalidator: action.response.prevalidator.clone(),
-                    operation,
-                    stateful,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::ValidatingOperation {
+                        prevalidator: action.response.prevalidator.clone(),
+                        operation,
+                        stateful,
+                    };
             } else {
-                state.protocol.validation_state = ValidationState::Ready {
-                    prevalidator: action.response.prevalidator.clone(),
-                    stateful,
-                };
+                state.protocol.operation_validation_state =
+                    OperationValidationState::WaitingOperations {
+                        prevalidator: action.response.prevalidator.clone(),
+                        stateful,
+                    };
             }
         }
         _ => {}
