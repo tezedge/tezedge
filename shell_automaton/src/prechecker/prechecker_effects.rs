@@ -5,7 +5,7 @@ use std::convert::TryInto;
 
 use crypto::blake2b;
 use slog::error;
-use tezos_messages::p2p::binary_message::BinaryWrite;
+use tezos_messages::{p2p::binary_message::BinaryWrite, protocol::SupportedProtocol};
 
 use crate::{
     mempool::mempool_actions::{MempoolOperationDecodedAction, MempoolRecvDoneAction},
@@ -91,7 +91,10 @@ where
             }) = prechecker_state_operations.get(key)
             {
                 // TODO use proper protocol to parse operation
-                match OperationDecodedContents::parse(&operation_binary_encoding) {
+                match OperationDecodedContents::parse(
+                    &operation_binary_encoding,
+                    SupportedProtocol::Proto011,
+                ) {
                     Ok(contents) => {
                         store.dispatch(PrecheckerOperationDecodedAction {
                             key: key.clone(),
@@ -242,16 +245,13 @@ where
                 let block_hash = operation_decoded_contents.branch();
                 let chain_id = &store.state.get().config.chain_id;
                 use super::EndorsementValidator;
-                let validation_result = match operation_decoded_contents {
-                    OperationDecodedContents::Proto010(operation) => operation
-                        .validate_endorsement(
-                            operation_binary_encoding,
-                            chain_id,
-                            block_hash,
-                            endorsing_rights,
-                            log,
-                        ),
-                };
+                let validation_result = operation_decoded_contents.validate_endorsement(
+                    operation_binary_encoding,
+                    chain_id,
+                    block_hash,
+                    endorsing_rights,
+                    log,
+                );
 
                 match validation_result {
                     Ok(Applied { protocol_data }) => {

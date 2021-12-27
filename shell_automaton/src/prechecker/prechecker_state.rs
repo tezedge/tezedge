@@ -10,9 +10,12 @@ use crypto::{
 };
 use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
-use tezos_messages::p2p::{
-    binary_message::BinaryRead,
-    encoding::{block_header::Level, operation::Operation},
+use tezos_messages::{
+    p2p::{
+        binary_message::BinaryRead,
+        encoding::{block_header::Level, operation::Operation},
+    },
+    protocol::SupportedProtocol,
 };
 
 use crate::rights::{Delegate, EndorsingRights, EndorsingRightsError};
@@ -69,12 +72,14 @@ pub struct PrevalidatorEndorsementWithSlotOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum OperationDecodedContents {
     Proto010(tezos_messages::protocol::proto_010::operation::Operation),
+    Proto011(tezos_messages::protocol::proto_011::operation::Operation),
 }
 
 impl OperationDecodedContents {
     pub(super) fn endorsement_level(&self) -> Option<Level> {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.endorsement_level(),
+            OperationDecodedContents::Proto011(operation) => operation.endorsement_level(),
         }
     }
 }
@@ -159,15 +164,30 @@ pub enum PrecheckerValidationError {
 }
 
 impl OperationDecodedContents {
-    pub(super) fn parse(encoded: &[u8]) -> Result<Self, BinaryReaderError> {
-        let decoded =
-            tezos_messages::protocol::proto_010::operation::Operation::from_bytes(encoded)?;
-        Ok(Self::Proto010(decoded))
+    pub(super) fn parse(
+        encoded: &[u8],
+        proto: SupportedProtocol,
+    ) -> Result<Self, BinaryReaderError> {
+        Ok(match proto {
+            SupportedProtocol::Proto010 => Self::Proto010(
+                tezos_messages::protocol::proto_010::operation::Operation::from_bytes(encoded)?,
+            ),
+            SupportedProtocol::Proto011 => Self::Proto010(
+                tezos_messages::protocol::proto_011::operation::Operation::from_bytes(encoded)?,
+            ),
+            _ => {
+                return Err(BinaryReaderError::Error(format!(
+                    "Unsupported protocol `{:?}`",
+                    proto
+                )))
+            }
+        })
     }
 
     pub(super) fn branch(&self) -> &BlockHash {
         match self {
             OperationDecodedContents::Proto010(op) => &op.branch.0,
+            OperationDecodedContents::Proto011(op) => &op.branch.0,
         }
     }
 
@@ -185,6 +205,7 @@ impl OperationDecodedContents {
     pub(super) fn as_json(&self) -> serde_json::Value {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.as_json(),
+            OperationDecodedContents::Proto011(operation) => operation.as_json(),
         }
     }
 }

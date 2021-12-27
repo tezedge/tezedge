@@ -15,6 +15,8 @@ use tezos_messages::{
 
 use crate::rights::{Delegate, EndorsingRights};
 
+use super::OperationDecodedContents;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum EndorsementValidationError {
     #[error("Invalid endorsement wrapper")]
@@ -118,6 +120,34 @@ pub(super) trait EndorsementValidator {
         rights: &EndorsingRights,
         log: &Logger,
     ) -> Result<Applied, Refused>;
+}
+
+impl EndorsementValidator for OperationDecodedContents {
+    fn validate_endorsement(
+        &self,
+        binary_signed_operation: &[u8],
+        chain_id: &ChainId,
+        block_hash: &BlockHash,
+        rights: &EndorsingRights,
+        log: &Logger,
+    ) -> Result<Applied, Refused> {
+        match self {
+            OperationDecodedContents::Proto010(operation) => operation.validate_endorsement(
+                binary_signed_operation,
+                chain_id,
+                block_hash,
+                rights,
+                log,
+            ),
+            OperationDecodedContents::Proto011(operation) => operation.validate_endorsement(
+                binary_signed_operation,
+                chain_id,
+                block_hash,
+                rights,
+                log,
+            ),
+        }
+    }
 }
 
 impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Operation {
