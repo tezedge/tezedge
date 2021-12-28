@@ -46,14 +46,14 @@ pub(crate) fn get_blocks(
     limit: usize,
     min_date: i64,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<Vec<BlockHash>>, RpcServiceError> {
+) -> Result<Vec<Vec<String>>, RpcServiceError> {
     let mut response = Vec::with_capacity(block_hashes.len());
     for hash in block_hashes {
         let r = BlockStorage::new(persistent_storage)
             .get_multiple_without_json(&hash, limit)?
             .into_iter()
             .filter(|b| b.header.timestamp() >= min_date)
-            .map(|b| b.hash)
+            .map(|b| b.hash.to_base58_check())
             .collect::<Vec<_>>();
         response.push(r);
     }
