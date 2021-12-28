@@ -649,15 +649,27 @@ const DEFAULT_INODES_CAPACITY: usize = 32 * 1024;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~4MB
-            temp_dir: Vec::with_capacity(256),                                          // 2KB
-            blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // 128KB
-            nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~3MB
-            inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~20MB
-            data: Vec::with_capacity(100_000),                                          // ~97KB
+            directories: ChunkedVec::with_chunk_capacity_on_disk(1000, 1), // ~4MB
+            temp_dir: Vec::with_capacity(256),                             // 2KB
+            blobs: ChunkedVec::with_chunk_capacity_on_disk(1000, 1),       // 128KB
+            nodes: IndexMap::with_chunk_capacity_on_disk(1000, 1),         // ~3MB
+            inodes: IndexMap::with_chunk_capacity_on_disk(1000, 1),        // ~20MB
+            data: Vec::with_capacity(100_000),                             // ~97KB
             offsets_to_hash_id: HashMap::default(),
         } // Total ~27MB
     }
+
+    // pub fn new() -> Self {
+    //     Self {
+    //         directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~4MB
+    //         temp_dir: Vec::with_capacity(256),                                          // 2KB
+    //         blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // 128KB
+    //         nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~3MB
+    //         inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~20MB
+    //         data: Vec::with_capacity(100_000),                                          // ~97KB
+    //         offsets_to_hash_id: HashMap::default(),
+    //     } // Total ~27MB
+    // }
 
     pub fn memory_usage(&self, strings: &StringInterner) -> StorageMemoryUsage {
         let nodes_cap = self.nodes.capacity();

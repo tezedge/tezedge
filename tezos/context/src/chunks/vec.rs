@@ -9,45 +9,10 @@ use std::{
 
 use super::{mmap::MmappedVec, Chunk, DEFAULT_LIST_LENGTH};
 
-// #[derive(Debug)]
-// struct OurMmap<T> {
-//     mmap: MmapMut,
-//     _phantom: PhantomData<T>,
-// }
-
-// impl<T> OurMmap<T> {
-//     fn get(&self, index: usize) -> &T {
-//         let slice: &[u8] = &self.mmap;
-//         let slice: &[T] = unsafe { std::mem::transmute(slice) };
-
-//         &slice[index]
-//     }
-
-//     fn get_mut(&mut self, index: usize) -> &mut T {
-//         let slice: &mut [u8] = &mut self.mmap;
-//         let slice: &mut [T] = unsafe { std::mem::transmute(slice) };
-
-//         &mut slice[index]
-//     }
-
-//     // fn get_mut_slice(&mut self, start: usize, length: usize) -> &mut [T] {
-//     //     let slice: &mut [u8] = &mut self.mmap;
-//     //     let slice: &mut [T] = unsafe { std::mem::transmute(slice) };
-
-//     // }
-// }
-
 #[derive(Debug)]
 enum ChunkEnum<T> {
-    InMemory {
-        inner: Vec<T>,
-    },
-    OnDisk {
-        mmap: MmappedVec<T>,
-        // mmap: OurMmap<T>,
-        // file: std::fs::File,
-        // offset: usize,
-    },
+    InMemory { inner: Vec<T> },
+    OnDisk { mmap: MmappedVec<T> },
 }
 
 impl<T> std::ops::Deref for ChunkEnum<T> {
@@ -57,6 +22,15 @@ impl<T> std::ops::Deref for ChunkEnum<T> {
         match self {
             ChunkEnum::InMemory { inner } => &inner,
             ChunkEnum::OnDisk { mmap } => &mmap,
+        }
+    }
+}
+
+impl<T> std::ops::DerefMut for ChunkEnum<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            ChunkEnum::InMemory { inner } => inner,
+            ChunkEnum::OnDisk { mmap } => mmap,
         }
     }
 }
@@ -93,6 +67,18 @@ impl<T> std::ops::Deref for ChunkEnum<T> {
 // }
 
 impl<T> ChunkEnum<T> {
+    fn new_in_memory(capacity: usize) -> Self {
+        Self::InMemory {
+            inner: Vec::with_capacity(capacity),
+        }
+    }
+
+    fn new_on_disk(capacity: usize) -> Self {
+        Self::OnDisk {
+            mmap: MmappedVec::with_capacity(capacity),
+        }
+    }
+
     fn push(&mut self, elem: T) {
         match self {
             ChunkEnum::InMemory { inner } => inner.push(elem),
@@ -175,6 +161,8 @@ pub struct ChunkedVec<T> {
     chunk_capacity: usize,
     /// Number of elements in the chunks
     nelems: usize,
+
+    nchunks_in_memory: Option<usize>,
 }
 
 impl<T> Index<usize> for ChunkedVec<T> {
@@ -257,8 +245,9 @@ where
 
         if our_length != other_length {
             assert!(our_length < other_length);
-            self.list_of_chunks
-                .resize_with(other_length, Default::default);
+            self.grow_list_of_chunks(other_length);
+            // self.list_of_chunks
+            //     .resize_with(other_length, Default::default);
         }
 
         let our_length = our_length.saturating_sub(1);
@@ -332,21 +321,47 @@ impl<T> ChunkedVec<T> {
             list_of_chunks: Vec::new(),
             chunk_capacity: 1_000,
             nelems: 0,
+            nchunks_in_memory: None,
         }
     }
 
     pub fn with_chunk_capacity(chunk_capacity: usize) -> Self {
         assert_ne!(chunk_capacity, 0);
 
-        let mut list_of_chunks: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
+        let mut list_of_chunks: Vec<ChunkEnum<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
 
-        let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
+        let chunk: ChunkEnum<T> = ChunkEnum::new_in_memory(chunk_capacity);
         list_of_chunks.push(chunk);
 
         Self {
             list_of_chunks,
             chunk_capacity,
             nelems: 0,
+            nchunks_in_memory: None,
+        }
+    }
+
+    pub fn with_chunk_capacity_on_disk(
+        mem_chunk_capacity: usize,
+        nchunks_in_memory: usize,
+    ) -> Self {
+        assert_ne!(mem_chunk_capacity, 0);
+
+        let mut list_of_chunks: Vec<ChunkEnum<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
+
+        let chunk = if nchunks_in_memory > 0 {
+            ChunkEnum::new_in_memory(mem_chunk_capacity)
+        } else {
+            ChunkEnum::new_on_disk(mem_chunk_capacity)
+        };
+
+        list_of_chunks.push(chunk);
+
+        Self {
+            list_of_chunks,
+            chunk_capacity: mem_chunk_capacity,
+            nelems: 0,
+            nchunks_in_memory: Some(nchunks_in_memory),
         }
     }
 
@@ -359,7 +374,7 @@ impl<T> ChunkedVec<T> {
     /// Allocates one more chunk in 2 cases:
     /// - The last chunk has reached `Self::chunk_capacity` limit
     /// - `Self::list_of_chunks` is empty
-    fn get_next_chunk(&mut self) -> &mut Chunk<T> {
+    fn get_next_chunk(&mut self) -> &mut ChunkEnum<T> {
         let chunk_capacity = self.chunk_capacity;
 
         if self
@@ -371,12 +386,47 @@ impl<T> ChunkedVec<T> {
             })
             .unwrap_or(true)
         {
-            self.list_of_chunks
-                .push(Vec::with_capacity(self.chunk_capacity));
+            let on_disk = self
+                .nchunks_in_memory
+                .as_ref()
+                .map(|max| self.list_of_chunks.len() >= *max)
+                .unwrap_or(false);
+
+            let chunk = if on_disk {
+                ChunkEnum::new_on_disk(self.chunk_capacity)
+            } else {
+                ChunkEnum::new_in_memory(self.chunk_capacity)
+            };
+
+            self.list_of_chunks.push(chunk);
         }
 
         // Never fail, we just allocated one in case it's empty
         self.list_of_chunks.last_mut().unwrap()
+    }
+
+    fn grow_list_of_chunks(&mut self, new_len: usize) {
+        let list_length = self.list_of_chunks.len();
+
+        if list_length >= new_len {
+            return;
+        }
+
+        let chunk_capacity = self.chunk_capacity;
+
+        // TODO: test this
+        if let Some(max_in_mem) = self.nchunks_in_memory {
+            if new_len > max_in_mem && max_in_mem > list_length {
+                self.list_of_chunks
+                    .resize_with(max_in_mem, || ChunkEnum::new_in_memory(chunk_capacity));
+            }
+
+            self.list_of_chunks
+                .resize_with(new_len, || ChunkEnum::new_on_disk(chunk_capacity));
+        } else {
+            self.list_of_chunks
+                .resize_with(new_len, || ChunkEnum::new_in_memory(chunk_capacity));
+        }
     }
 
     pub fn push(&mut self, elem: T) -> usize {
@@ -513,7 +563,8 @@ mod tests {
             .take(source_size)
             .collect();
 
-        let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
+        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0);
+        // let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
 
         for i in 0..source_size {
             chunks.push(i);
@@ -522,7 +573,8 @@ mod tests {
         let slice = chunks.get_slice(0..source_size).unwrap();
         assert_eq!(slice, source);
 
-        let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
+        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0);
+        // let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
 
         for sub_slice in source.chunks(extend_by) {
             chunks.extend_from_slice(sub_slice);
