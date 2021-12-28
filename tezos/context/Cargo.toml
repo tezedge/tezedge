@@ -13,6 +13,7 @@ hex = "0.4"
 lazy_static = "1.4"
 leb128 = "0.2"
 libc = "0.2.65"
+memmap2 = "0.5.0"
 modular-bitfield = "0.11"
 ocaml-interop = { version = "0.8.7", features = ["without-ocamlopt", "caml-state"] }
 serde = { version = "1.0", features = ["derive"] }

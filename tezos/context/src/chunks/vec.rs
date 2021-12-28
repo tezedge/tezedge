@@ -3,10 +3,159 @@
 
 use std::{
     borrow::Cow,
-    ops::{Index, IndexMut, Range},
+    ops::{Index, IndexMut, Range, RangeFrom},
+    slice::SliceIndex,
 };
 
-use super::{Chunk, DEFAULT_LIST_LENGTH};
+use super::{mmap::MmappedVec, Chunk, DEFAULT_LIST_LENGTH};
+
+// #[derive(Debug)]
+// struct OurMmap<T> {
+//     mmap: MmapMut,
+//     _phantom: PhantomData<T>,
+// }
+
+// impl<T> OurMmap<T> {
+//     fn get(&self, index: usize) -> &T {
+//         let slice: &[u8] = &self.mmap;
+//         let slice: &[T] = unsafe { std::mem::transmute(slice) };
+
+//         &slice[index]
+//     }
+
+//     fn get_mut(&mut self, index: usize) -> &mut T {
+//         let slice: &mut [u8] = &mut self.mmap;
+//         let slice: &mut [T] = unsafe { std::mem::transmute(slice) };
+
+//         &mut slice[index]
+//     }
+
+//     // fn get_mut_slice(&mut self, start: usize, length: usize) -> &mut [T] {
+//     //     let slice: &mut [u8] = &mut self.mmap;
+//     //     let slice: &mut [T] = unsafe { std::mem::transmute(slice) };
+
+//     // }
+// }
+
+#[derive(Debug)]
+enum ChunkEnum<T> {
+    InMemory {
+        inner: Vec<T>,
+    },
+    OnDisk {
+        mmap: MmappedVec<T>,
+        // mmap: OurMmap<T>,
+        // file: std::fs::File,
+        // offset: usize,
+    },
+}
+
+impl<T> std::ops::Deref for ChunkEnum<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ChunkEnum::InMemory { inner } => &inner,
+            ChunkEnum::OnDisk { mmap } => &mmap,
+        }
+    }
+}
+
+// impl<T> Index<usize> for ChunkEnum<T> {
+//     type Output = T;
+
+//     fn index(&self, index: usize) -> &Self::Output {
+//         match self {
+//             ChunkEnum::InMemory { inner } => &inner[index],
+//             ChunkEnum::OnDisk { mmap, .. } => &mmap[index],
+//         }
+//     }
+// }
+
+// impl<T> Index<RangeFrom<usize>> for ChunkEnum<T> {
+//     type Output = [T];
+
+//     fn index(&self, range_from: RangeFrom<usize>) -> &Self::Output {
+//         match self {
+//             ChunkEnum::InMemory { inner } => &inner[range_from],
+//             ChunkEnum::OnDisk { mmap, .. } => &mmap[range_from],
+//         }
+//     }
+// }
+
+// impl<T> IndexMut<usize> for ChunkEnum<T> {
+//     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+//         match self {
+//             ChunkEnum::InMemory { inner } => &mut inner[index],
+//             ChunkEnum::OnDisk { mmap, .. } => &mut mmap[index],
+//         }
+//     }
+// }
+
+impl<T> ChunkEnum<T> {
+    fn push(&mut self, elem: T) {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.push(elem),
+            ChunkEnum::OnDisk { mmap } => {
+                mmap.push(elem).unwrap();
+            }
+        }
+    }
+
+    // pub fn get<I>(&self, index: I) -> Option<&I::Output>
+    // where
+    //     I: SliceIndex<Self>,
+    // {
+    //     match self {
+    //         ChunkEnum::InMemory { inner } => inner.get(index),
+    //         ChunkEnum::OnDisk { mmap } => todo!(),
+    //     }
+    // }
+
+    // fn get(&self, index: usize) -> Option<&T> {
+    //     match self {
+    //         ChunkEnum::InMemory { inner } => inner.get(index),
+    //         ChunkEnum::OnDisk { mmap } => mmap.get(index),
+    //     }
+    // }
+
+    fn len(&self) -> usize {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.len(),
+            ChunkEnum::OnDisk { mmap } => mmap.len(),
+        }
+    }
+
+    fn capacity(&self) -> usize {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.capacity(),
+            ChunkEnum::OnDisk { mmap } => mmap.capacity(),
+        }
+    }
+
+    fn clear(&mut self) {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.clear(),
+            ChunkEnum::OnDisk { mmap } => mmap.clear(),
+        }
+    }
+
+    fn truncate(&mut self, len: usize) {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.truncate(len),
+            ChunkEnum::OnDisk { mmap } => mmap.truncate(len),
+        }
+    }
+}
+
+impl<T: Clone> ChunkEnum<T> {
+    fn extend_from_slice(&mut self, slice: &[T]) {
+        match self {
+            ChunkEnum::InMemory { inner } => inner.extend_from_slice(slice),
+            ChunkEnum::OnDisk { mmap } => mmap.extend_from_slice(slice).unwrap(),
+        }
+    }
+}
 
 /// Structure allocating multiple `Chunk`
 ///
@@ -19,9 +168,10 @@ use super::{Chunk, DEFAULT_LIST_LENGTH};
 /// assert_eq!(&*chunks.get_slice(start..start + length).unwrap(), &[1, 2, 3]);
 /// assert_eq!(*chunks.get(start).unwrap(), 1);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct ChunkedVec<T> {
-    list_of_chunks: Vec<Chunk<T>>,
+    // list_of_chunks: Vec<Chunk<T>>,
+    list_of_chunks: Vec<ChunkEnum<T>>,
     chunk_capacity: usize,
     /// Number of elements in the chunks
     nelems: usize,
@@ -161,6 +311,18 @@ where
             Some(Cow::Owned(slice))
         }
     }
+
+    #[cfg(test)]
+    pub fn to_single_vec(&self) -> Vec<T> {
+        let cap = self.capacity();
+        let mut vec = Vec::with_capacity(cap);
+
+        for chunk in &self.list_of_chunks {
+            vec.extend_from_slice(chunk);
+        }
+
+        vec
+    }
 }
 
 impl<T> ChunkedVec<T> {
@@ -176,13 +338,13 @@ impl<T> ChunkedVec<T> {
     pub fn with_chunk_capacity(chunk_capacity: usize) -> Self {
         assert_ne!(chunk_capacity, 0);
 
-        let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
+        let mut list_of_chunks: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
 
-        let mut list_of_vec: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
-        list_of_vec.push(chunk);
+        let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
+        list_of_chunks.push(chunk);
 
         Self {
-            list_of_chunks: list_of_vec,
+            list_of_chunks,
             chunk_capacity,
             nelems: 0,
         }
