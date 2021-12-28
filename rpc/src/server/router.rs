@@ -67,12 +67,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/chains/:chain_id/chain_id",
         shell_handler::get_chain_id,
     );
-    // TODO: TE-685
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks",
-    //     shell_handler::blocks,
-    // );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks",
+        shell_handler::blocks,
+    );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id",
