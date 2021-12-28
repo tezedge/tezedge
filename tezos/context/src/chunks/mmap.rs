@@ -1,4 +1,4 @@
-use std::{fmt::format, mem::ManuallyDrop, path::PathBuf, sync::atomic::AtomicUsize};
+use std::{fmt::format, fs::File, mem::ManuallyDrop, path::PathBuf, sync::atomic::AtomicUsize};
 
 use memmap2::MmapRaw;
 
@@ -44,20 +44,34 @@ impl<T> Drop for MmapInner<T> {
 
 static MMAP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-impl<T> MmapInner<T> {
-    fn try_new(capacity: usize) -> Result<Self, std::io::Error> {
-        let nbytes = capacity * std::mem::size_of::<T>();
-
+fn create_file() -> std::io::Result<(PathBuf, File)> {
+    loop {
         let file_path = format!(
             "working_tree_{}",
             MMAP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         );
 
-        let file = std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .write(true)
             .read(true)
             .create_new(true) // Error if the file already exist
-            .open(&file_path)?;
+            .open(&file_path)
+        {
+            Ok(file) => return Ok((file_path.into(), file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Retry with a new name
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+impl<T> MmapInner<T> {
+    fn try_new(capacity: usize) -> Result<Self, std::io::Error> {
+        let nbytes = capacity * std::mem::size_of::<T>();
+
+        let (file_path, file) = create_file()?;
 
         file.set_len(nbytes as u64)?;
 
