@@ -649,11 +649,11 @@ const DEFAULT_INODES_CAPACITY: usize = 32 * 1024;
 impl Storage {
     pub fn new() -> Self {
         Self {
-            directories: ChunkedVec::with_chunk_capacity_on_disk(1000, 1), // ~4MB
+            directories: ChunkedVec::with_chunk_capacity_on_disk(1000, 0), // ~4MB
             temp_dir: Vec::with_capacity(256),                             // 2KB
-            blobs: ChunkedVec::with_chunk_capacity_on_disk(1000, 1),       // 128KB
-            nodes: IndexMap::with_chunk_capacity_on_disk(1000, 1),         // ~3MB
-            inodes: IndexMap::with_chunk_capacity_on_disk(1000, 1),        // ~20MB
+            blobs: ChunkedVec::with_chunk_capacity_on_disk(1000, 0),       // 128KB
+            nodes: IndexMap::with_chunk_capacity_on_disk(1000, 0),         // ~3MB
+            inodes: IndexMap::with_chunk_capacity_on_disk(1000, 0),        // ~20MB
             data: Vec::with_capacity(100_000),                             // ~97KB
             offsets_to_hash_id: HashMap::default(),
         } // Total ~27MB
