@@ -1,4 +1,6 @@
-use std::{fmt::format, fs::File, mem::ManuallyDrop, path::PathBuf, sync::atomic::AtomicUsize};
+use std::{
+    fmt::format, fs::File, mem::ManuallyDrop, ops::Range, path::PathBuf, sync::atomic::AtomicUsize,
+};
 
 use memmap2::MmapRaw;
 
@@ -139,6 +141,13 @@ impl<T> std::ops::DerefMut for MmappedVec<T> {
     }
 }
 
+impl<T> Drop for MmappedVec<T> {
+    fn drop(&mut self) {
+        self.drop_in_range(0..self.length);
+        // munmap occurs in `MmapInner`
+    }
+}
+
 impl<T> MmappedVec<T> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -159,6 +168,12 @@ impl<T> MmappedVec<T> {
         Ok(())
     }
 
+    fn drop_in_range(&mut self, range: Range<usize>) {
+        let slice = &mut self.inner[range];
+        let slice: *mut [T] = slice as *mut [T];
+        unsafe { std::ptr::drop_in_place(slice) }
+    }
+
     pub fn len(&self) -> usize {
         self.length
     }
@@ -172,10 +187,16 @@ impl<T> MmappedVec<T> {
     }
 
     pub fn clear(&mut self) {
+        self.drop_in_range(0..self.length);
         self.length = 0;
     }
 
     pub fn truncate(&mut self, len: usize) {
+        if len >= self.length {
+            return;
+        }
+
+        self.drop_in_range(len..self.length);
         self.length = len;
     }
 }
