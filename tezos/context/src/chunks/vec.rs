@@ -158,10 +158,12 @@ impl<T: Clone> ChunkEnum<T> {
 pub struct ChunkedVec<T> {
     // list_of_chunks: Vec<Chunk<T>>,
     list_of_chunks: Vec<ChunkEnum<T>>,
-    chunk_capacity: usize,
+    mem_chunk_capacity: usize,
+    disk_chunk_capacity: usize,
     /// Number of elements in the chunks
     nelems: usize,
 
+    first_index_on_disk: Option<usize>,
     nchunks_in_memory: Option<usize>,
 }
 
@@ -208,12 +210,12 @@ where
     pub fn extend_from_slice(&mut self, slice: &[T]) -> (usize, usize) {
         let start = self.len();
         let slice_length = slice.len();
-        let chunk_capacity = self.chunk_capacity;
+        // let chunk_capacity = self.mem_chunk_capacity;
         let mut remaining_slice = slice;
 
         while !remaining_slice.is_empty() {
             let last_chunk = self.get_next_chunk();
-            let space_in_chunk = chunk_capacity - last_chunk.len();
+            let space_in_chunk = last_chunk.capacity() - last_chunk.len();
 
             let (slice, rest) = if remaining_slice.len() > space_in_chunk {
                 remaining_slice.split_at(space_in_chunk)
@@ -274,7 +276,7 @@ where
 
         let chunk = self.list_of_chunks.get(list_index)?;
 
-        if chunk_index + slice_length <= self.chunk_capacity {
+        if chunk_index + slice_length <= chunk.capacity() {
             chunk
                 .get(chunk_index..chunk_index + slice_length)
                 .map(Cow::Borrowed)
@@ -286,7 +288,7 @@ where
 
             while length > 0 {
                 let chunk = iter_chunk.next()?;
-                let end_in_chunk = (start_in_chunk + length).min(self.chunk_capacity);
+                let end_in_chunk = (start_in_chunk + length).min(chunk.capacity());
 
                 let part_slice = chunk.get(start_in_chunk..end_in_chunk)?;
                 slice.extend_from_slice(part_slice);
@@ -319,8 +321,10 @@ impl<T> ChunkedVec<T> {
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
-            chunk_capacity: 1_000,
+            mem_chunk_capacity: 1_000,
+            disk_chunk_capacity: 100_000,
             nelems: 0,
+            first_index_on_disk: None,
             nchunks_in_memory: None,
         }
     }
@@ -335,8 +339,10 @@ impl<T> ChunkedVec<T> {
 
         Self {
             list_of_chunks,
-            chunk_capacity,
+            mem_chunk_capacity: chunk_capacity,
+            disk_chunk_capacity: 0,
             nelems: 0,
+            first_index_on_disk: None,
             nchunks_in_memory: None,
         }
     }
@@ -344,6 +350,7 @@ impl<T> ChunkedVec<T> {
     pub fn with_chunk_capacity_on_disk(
         mem_chunk_capacity: usize,
         nchunks_in_memory: usize,
+        disk_chunk_capacity: usize,
     ) -> Self {
         assert_ne!(mem_chunk_capacity, 0);
 
@@ -352,21 +359,24 @@ impl<T> ChunkedVec<T> {
         let chunk = if nchunks_in_memory > 0 {
             ChunkEnum::new_in_memory(mem_chunk_capacity)
         } else {
-            ChunkEnum::new_on_disk(mem_chunk_capacity)
+            ChunkEnum::new_on_disk(disk_chunk_capacity)
         };
 
         list_of_chunks.push(chunk);
 
         Self {
             list_of_chunks,
-            chunk_capacity: mem_chunk_capacity,
+            mem_chunk_capacity,
+            disk_chunk_capacity,
             nelems: 0,
+            first_index_on_disk: Some(mem_chunk_capacity * nchunks_in_memory),
             nchunks_in_memory: Some(nchunks_in_memory),
         }
     }
 
     pub fn capacity(&self) -> usize {
-        self.chunk_capacity * self.list_of_chunks.len()
+        // TODO: Fix this
+        self.mem_chunk_capacity * self.list_of_chunks.len()
     }
 
     /// Returns the last chunk with space available.
@@ -375,14 +385,12 @@ impl<T> ChunkedVec<T> {
     /// - The last chunk has reached `Self::chunk_capacity` limit
     /// - `Self::list_of_chunks` is empty
     fn get_next_chunk(&mut self) -> &mut ChunkEnum<T> {
-        let chunk_capacity = self.chunk_capacity;
-
         if self
             .list_of_chunks
             .last()
             .map(|chunk| {
-                debug_assert!(chunk.len() <= chunk_capacity);
-                chunk.len() == chunk_capacity
+                debug_assert!(chunk.len() <= chunk.capacity());
+                chunk.len() == chunk.capacity()
             })
             .unwrap_or(true)
         {
@@ -393,9 +401,9 @@ impl<T> ChunkedVec<T> {
                 .unwrap_or(false);
 
             let chunk = if on_disk {
-                ChunkEnum::new_on_disk(self.chunk_capacity)
+                ChunkEnum::new_on_disk(self.disk_chunk_capacity)
             } else {
-                ChunkEnum::new_in_memory(self.chunk_capacity)
+                ChunkEnum::new_in_memory(self.mem_chunk_capacity)
             };
 
             self.list_of_chunks.push(chunk);
@@ -412,20 +420,21 @@ impl<T> ChunkedVec<T> {
             return;
         }
 
-        let chunk_capacity = self.chunk_capacity;
+        let mem_chunk_capacity = self.mem_chunk_capacity;
+        let disk_chunk_capacity = self.disk_chunk_capacity;
 
         // TODO: test this
         if let Some(max_in_mem) = self.nchunks_in_memory {
             if new_len > max_in_mem && max_in_mem > list_length {
                 self.list_of_chunks
-                    .resize_with(max_in_mem, || ChunkEnum::new_in_memory(chunk_capacity));
+                    .resize_with(max_in_mem, || ChunkEnum::new_in_memory(mem_chunk_capacity));
             }
 
             self.list_of_chunks
-                .resize_with(new_len, || ChunkEnum::new_on_disk(chunk_capacity));
+                .resize_with(new_len, || ChunkEnum::new_on_disk(disk_chunk_capacity));
         } else {
             self.list_of_chunks
-                .resize_with(new_len, || ChunkEnum::new_in_memory(chunk_capacity));
+                .resize_with(new_len, || ChunkEnum::new_in_memory(mem_chunk_capacity));
         }
     }
 
@@ -453,10 +462,38 @@ impl<T> ChunkedVec<T> {
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        // let is_on_disk = self.first_index_on_disk.map(|first| index >= first).unwrap_or(false);
+        let index_on_disk = self
+            .first_index_on_disk
+            .map(|first| index.checked_sub(first))
+            .unwrap_or(None);
 
-        (list_index, chunk_index)
+        match index_on_disk {
+            None => {
+                let list_index = index / self.mem_chunk_capacity;
+                let chunk_index = index % self.mem_chunk_capacity;
+
+                (list_index, chunk_index)
+            }
+            Some(index_on_disk) => {
+                let nchunks_in_memory = self.nchunks_in_memory.unwrap();
+                let list_index = index_on_disk / self.disk_chunk_capacity;
+                let chunk_index = index_on_disk % self.disk_chunk_capacity;
+
+                (nchunks_in_memory + list_index, chunk_index)
+            }
+        }
+
+        // if let Some(first_index_on_disk) = self.first_index_on_disk {
+        //     if index >= first_index_on_disk {
+
+        //     }
+        // };
+
+        // let list_index = index / self.mem_chunk_capacity;
+        // let chunk_index = index % self.mem_chunk_capacity;
+
+        // (list_index, chunk_index)
     }
 
     pub fn iter(&self) -> ChunkedVecIter<T> {
@@ -563,7 +600,7 @@ mod tests {
             .take(source_size)
             .collect();
 
-        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0);
+        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0, chunk_cap);
         // let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
 
         for i in 0..source_size {
@@ -573,7 +610,7 @@ mod tests {
         let slice = chunks.get_slice(0..source_size).unwrap();
         assert_eq!(slice, source);
 
-        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0);
+        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(chunk_cap, 0, chunk_cap);
         // let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
 
         for sub_slice in source.chunks(extend_by) {
