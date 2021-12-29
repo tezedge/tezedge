@@ -419,7 +419,11 @@ pub enum ApplyBlockError {
     #[error("Invalid request/response data - message: {message}!")]
     InvalidRequestResponseData { message: String },
     #[error("Context hash result mismatch, expected: {expected}, got: {actual}. Cache: {cache}")]
-    ContextHashResultMismatch { expected: String, actual: String, cache: bool },
+    ContextHashResultMismatch {
+        expected: String,
+        actual: String,
+        cache: bool,
+    },
 }
 
 // Extracts the parameters from a JSON error coming from the protocol runner like:
@@ -471,7 +475,11 @@ impl From<CallError> for ApplyBlockError {
                 ffi_error_ids::CONTEXT_HASH_RESULT_MISMATCH => {
                     let (expected, actual, cache) =
                         extract_expected_and_actual_context_hash_from_json(&trace_message);
-                    ApplyBlockError::ContextHashResultMismatch { expected, actual, cache }
+                    ApplyBlockError::ContextHashResultMismatch {
+                        expected,
+                        actual,
+                        cache,
+                    }
                 }
                 _ => ApplyBlockError::FailedToApplyBlock {
                     message: trace_message,
@@ -950,12 +958,14 @@ impl ProtocolError {
     /// Returns true if this a context hash mismatch error for which the cache was loaded
     pub fn is_cache_context_hash_mismatch_error(&self) -> bool {
         if let Self::ApplyBlockError { reason } = self {
-            matches!(reason, ApplyBlockError::ContextHashResultMismatch { cache: true, .. })
+            matches!(
+                reason,
+                ApplyBlockError::ContextHashResultMismatch { cache: true, .. }
+            )
         } else {
             false
         }
     }
-
 }
 
 #[cfg(test)]
