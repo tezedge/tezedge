@@ -376,6 +376,8 @@ impl Persistent {
 
         self.data_file.sync()?;
         self.strings_file.sync()?;
+        self.shape_file.sync()?;
+        self.shape_index_file.sync()?;
         self.big_strings_file.sync()?;
         self.hashes.hashes_file.sync()?;
         self.commit_index_file.sync()?;
