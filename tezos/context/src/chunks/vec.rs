@@ -3,16 +3,31 @@
 
 use std::{
     borrow::Cow,
-    ops::{Index, IndexMut, Range, RangeFrom},
-    slice::SliceIndex,
+    ops::{Index, IndexMut, Range},
 };
 
-use super::{mmap::MmappedVec, Chunk, DEFAULT_LIST_LENGTH};
+use super::{mmap::MmappedVec, DEFAULT_LIST_LENGTH};
 
 #[derive(Debug)]
 enum ChunkEnum<T> {
     InMemory { inner: Vec<T> },
     OnDisk { mmap: MmappedVec<T> },
+}
+
+impl<T: PartialEq> PartialEq for ChunkEnum<T> {
+    fn eq(&self, other: &Self) -> bool {
+        let ours = match self {
+            ChunkEnum::InMemory { inner } => &inner[..],
+            ChunkEnum::OnDisk { mmap } => &mmap[..],
+        };
+
+        let theirs = match other {
+            ChunkEnum::InMemory { inner } => &inner[..],
+            ChunkEnum::OnDisk { mmap } => &mmap[..],
+        };
+
+        ours.len() == theirs.len() && ours == theirs
+    }
 }
 
 impl<T> std::ops::Deref for ChunkEnum<T> {
@@ -34,37 +49,6 @@ impl<T> std::ops::DerefMut for ChunkEnum<T> {
         }
     }
 }
-
-// impl<T> Index<usize> for ChunkEnum<T> {
-//     type Output = T;
-
-//     fn index(&self, index: usize) -> &Self::Output {
-//         match self {
-//             ChunkEnum::InMemory { inner } => &inner[index],
-//             ChunkEnum::OnDisk { mmap, .. } => &mmap[index],
-//         }
-//     }
-// }
-
-// impl<T> Index<RangeFrom<usize>> for ChunkEnum<T> {
-//     type Output = [T];
-
-//     fn index(&self, range_from: RangeFrom<usize>) -> &Self::Output {
-//         match self {
-//             ChunkEnum::InMemory { inner } => &inner[range_from],
-//             ChunkEnum::OnDisk { mmap, .. } => &mmap[range_from],
-//         }
-//     }
-// }
-
-// impl<T> IndexMut<usize> for ChunkEnum<T> {
-//     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-//         match self {
-//             ChunkEnum::InMemory { inner } => &mut inner[index],
-//             ChunkEnum::OnDisk { mmap, .. } => &mut mmap[index],
-//         }
-//     }
-// }
 
 impl<T> ChunkEnum<T> {
     fn new_in_memory(capacity: usize) -> Self {
@@ -148,6 +132,22 @@ pub struct ChunkedVec<T> {
 
     first_index_on_disk: Option<usize>,
     nchunks_in_memory: Option<usize>,
+}
+
+impl<T: PartialEq> PartialEq for ChunkedVec<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.list_of_chunks.len() != other.list_of_chunks.len() {
+            return false;
+        }
+
+        for (ours, theirs) in self.list_of_chunks.iter().zip(&other.list_of_chunks) {
+            if ours != theirs {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl<T> Index<usize> for ChunkedVec<T> {
@@ -284,18 +284,6 @@ where
 
             Some(Cow::Owned(slice))
         }
-    }
-
-    #[cfg(test)]
-    pub fn to_single_vec(&self) -> Vec<T> {
-        let cap = self.capacity();
-        let mut vec = Vec::with_capacity(cap);
-
-        for chunk in &self.list_of_chunks {
-            vec.extend_from_slice(chunk);
-        }
-
-        vec
     }
 }
 

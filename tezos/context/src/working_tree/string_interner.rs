@@ -151,8 +151,7 @@ impl BigStrings {
         // Append the missing chunk into Self
         self.offsets.extend_from(&other.offsets);
 
-        #[cfg(test)]
-        assert_eq!(self.offsets.to_single_vec(), other.offsets.to_single_vec());
+        debug_assert_eq!(self.offsets, other.offsets);
     }
 
     fn serialize_big_strings(&mut self, output: &mut SerializeStrings) {

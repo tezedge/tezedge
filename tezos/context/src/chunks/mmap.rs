@@ -162,16 +162,18 @@ impl<T> MmappedVec<T> {
             return Err(MmappedError::Full);
         }
 
-        let ref_item = &mut self.inner[self.length];
+        self.write_item(self.length, element);
+        self.length += 1;
 
+        Ok(())
+    }
+
+    fn write_item(&mut self, index: usize, element: T) {
+        let ref_item = &mut self.inner[index];
         unsafe {
             // Write to memory without running the destructor of `self.inner[self.length]`
             std::ptr::write(ref_item, element);
         }
-
-        self.length += 1;
-
-        Ok(())
     }
 
     fn drop_in_range(&mut self, range: Range<usize>) {
@@ -209,9 +211,18 @@ impl<T> MmappedVec<T> {
 
 impl<T: Clone> MmappedVec<T> {
     pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), MmappedError> {
-        for item in slice {
-            self.push(item.clone())?;
+        let start = self.length;
+        let end = start + slice.len();
+
+        if end > self.capacity {
+            return Err(MmappedError::Full);
         }
+
+        for (index, item) in slice.iter().enumerate() {
+            self.write_item(start + index, item.clone());
+        }
+
+        self.length += slice.len();
 
         Ok(())
     }
