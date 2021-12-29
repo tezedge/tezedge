@@ -88,23 +88,6 @@ impl<T> ChunkEnum<T> {
         }
     }
 
-    // pub fn get<I>(&self, index: I) -> Option<&I::Output>
-    // where
-    //     I: SliceIndex<Self>,
-    // {
-    //     match self {
-    //         ChunkEnum::InMemory { inner } => inner.get(index),
-    //         ChunkEnum::OnDisk { mmap } => todo!(),
-    //     }
-    // }
-
-    // fn get(&self, index: usize) -> Option<&T> {
-    //     match self {
-    //         ChunkEnum::InMemory { inner } => inner.get(index),
-    //         ChunkEnum::OnDisk { mmap } => mmap.get(index),
-    //     }
-    // }
-
     fn len(&self) -> usize {
         match self {
             ChunkEnum::InMemory { inner } => inner.len(),
@@ -416,22 +399,23 @@ impl<T> ChunkedVec<T> {
     fn grow_list_of_chunks(&mut self, new_len: usize) {
         let list_length = self.list_of_chunks.len();
 
-        if list_length >= new_len {
+        if new_len < list_length {
             return;
         }
 
         let mem_chunk_capacity = self.mem_chunk_capacity;
         let disk_chunk_capacity = self.disk_chunk_capacity;
 
-        // TODO: test this
         if let Some(max_in_mem) = self.nchunks_in_memory {
-            if new_len > max_in_mem && max_in_mem > list_length {
+            while self.list_of_chunks.len() < max_in_mem.min(new_len) {
                 self.list_of_chunks
-                    .resize_with(max_in_mem, || ChunkEnum::new_in_memory(mem_chunk_capacity));
+                    .push(ChunkEnum::new_in_memory(mem_chunk_capacity));
             }
 
-            self.list_of_chunks
-                .resize_with(new_len, || ChunkEnum::new_on_disk(disk_chunk_capacity));
+            while self.list_of_chunks.len() < new_len {
+                self.list_of_chunks
+                    .push(ChunkEnum::new_on_disk(disk_chunk_capacity));
+            }
         } else {
             self.list_of_chunks
                 .resize_with(new_len, || ChunkEnum::new_in_memory(mem_chunk_capacity));
@@ -462,38 +446,27 @@ impl<T> ChunkedVec<T> {
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
-        // let is_on_disk = self.first_index_on_disk.map(|first| index >= first).unwrap_or(false);
-        let index_on_disk = self
+        match self
             .first_index_on_disk
             .map(|first| index.checked_sub(first))
-            .unwrap_or(None);
-
-        match index_on_disk {
+            .unwrap_or(None)
+        {
             None => {
+                // The index is in memory
                 let list_index = index / self.mem_chunk_capacity;
                 let chunk_index = index % self.mem_chunk_capacity;
 
                 (list_index, chunk_index)
             }
             Some(index_on_disk) => {
-                let nchunks_in_memory = self.nchunks_in_memory.unwrap();
+                // The index is on disk
+                let nchunks_in_memory = self.nchunks_in_memory.unwrap_or(0);
                 let list_index = index_on_disk / self.disk_chunk_capacity;
                 let chunk_index = index_on_disk % self.disk_chunk_capacity;
 
                 (nchunks_in_memory + list_index, chunk_index)
             }
         }
-
-        // if let Some(first_index_on_disk) = self.first_index_on_disk {
-        //     if index >= first_index_on_disk {
-
-        //     }
-        // };
-
-        // let list_index = index / self.mem_chunk_capacity;
-        // let chunk_index = index % self.mem_chunk_capacity;
-
-        // (list_index, chunk_index)
     }
 
     pub fn iter(&self) -> ChunkedVecIter<T> {
@@ -550,11 +523,31 @@ impl<T> ChunkedVec<T> {
         };
         self.nelems = 0;
     }
+
+    #[cfg(test)]
+    fn nchunks_mem_disk(&self) -> (usize, usize) {
+        let mut in_mem = 0;
+        let mut on_disk = 0;
+
+        for chunk in &self.list_of_chunks {
+            match chunk {
+                ChunkEnum::InMemory { .. } => in_mem += 1,
+                ChunkEnum::OnDisk { .. } => on_disk += 1,
+            }
+        }
+
+        assert_eq!(in_mem + on_disk, self.list_of_chunks.len());
+
+        (in_mem, on_disk)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::iter::successors;
+    use std::{
+        iter::successors,
+        sync::atomic::{AtomicUsize, Ordering::Relaxed},
+    };
 
     use super::*;
 
@@ -578,6 +571,144 @@ mod tests {
             Cow::Borrowed(s) => assert_eq!(s, &[6, 7]),
             Cow::Owned(_) => panic!("must be borrowed"),
         }
+    }
+
+    #[test]
+    fn test_chunked_push() {
+        let mut chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(3, 2, 3);
+
+        chunks.extend_from_slice(&[1]);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.extend_from_slice(&[2, 3]);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.extend_from_slice(&[4, 5, 6]);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 0));
+
+        chunks.extend_from_slice(&[7]);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 1));
+
+        chunks.extend_from_slice(&[8, 9, 10, 11, 12]);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 2));
+
+        chunks.extend_from_slice(&[13]);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 3));
+    }
+
+    #[test]
+    fn test_chunked_grow() {
+        let mut chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(3, 2, 3);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.grow_list_of_chunks(1);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.grow_list_of_chunks(2);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 0));
+
+        chunks.grow_list_of_chunks(3);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 1));
+
+        chunks.grow_list_of_chunks(5);
+        assert_eq!(chunks.nchunks_mem_disk(), (2, 3));
+
+        let mut chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(3, 5, 3);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.grow_list_of_chunks(3);
+        assert_eq!(chunks.nchunks_mem_disk(), (3, 0));
+
+        chunks.grow_list_of_chunks(4);
+        assert_eq!(chunks.nchunks_mem_disk(), (4, 0));
+
+        chunks.grow_list_of_chunks(5);
+        assert_eq!(chunks.nchunks_mem_disk(), (5, 0));
+
+        chunks.grow_list_of_chunks(8);
+        assert_eq!(chunks.nchunks_mem_disk(), (5, 3));
+
+        let mut chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(3, 5, 3);
+        assert_eq!(chunks.nchunks_mem_disk(), (1, 0));
+
+        chunks.grow_list_of_chunks(8);
+        assert_eq!(chunks.nchunks_mem_disk(), (5, 3));
+
+        chunks.grow_list_of_chunks(7); // Doesn't modify the list, because it's smaller
+        assert_eq!(chunks.nchunks_mem_disk(), (5, 3));
+    }
+
+    #[test]
+    fn test_chunked_indexes() {
+        let chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(10, 0, 3);
+        assert_eq!(chunks.get_indexes_at(2), (0, 2));
+        assert_eq!(chunks.get_indexes_at(3), (1, 0));
+        assert_eq!(chunks.get_indexes_at(4), (1, 1));
+        assert_eq!(chunks.get_indexes_at(5), (1, 2));
+        assert_eq!(chunks.get_indexes_at(6), (2, 0));
+        assert_eq!(chunks.get_indexes_at(13), (4, 1));
+
+        let chunks: ChunkedVec<usize> = ChunkedVec::with_chunk_capacity_on_disk(3, 5, 4);
+        assert_eq!(chunks.get_indexes_at(14), (4, 2));
+        assert_eq!(chunks.get_indexes_at(15), (5, 0));
+        assert_eq!(chunks.get_indexes_at(16), (5, 1));
+        assert_eq!(chunks.get_indexes_at(18), (5, 3));
+        assert_eq!(chunks.get_indexes_at(19), (6, 0));
+        assert_eq!(chunks.get_indexes_at(22), (6, 3));
+        assert_eq!(chunks.get_indexes_at(23), (7, 0));
+        assert_eq!(chunks.get_indexes_at(26), (7, 3));
+        assert_eq!(chunks.get_indexes_at(27), (8, 0));
+    }
+
+    #[test]
+    fn test_chunked_drop_on_disk() {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        struct Elem {
+            inner: usize,
+        }
+
+        impl Clone for Elem {
+            fn clone(&self) -> Self {
+                Self::new(self.inner)
+            }
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                COUNTER.fetch_sub(1, Relaxed);
+            }
+        }
+
+        impl Elem {
+            fn new(inner: usize) -> Self {
+                COUNTER.fetch_add(1, Relaxed);
+                Self { inner }
+            }
+        }
+
+        let mut chunks = ChunkedVec::with_chunk_capacity_on_disk(10, 0, 2);
+
+        chunks.push(Elem::new(1));
+        assert_eq!(COUNTER.load(Relaxed), 1);
+
+        chunks.extend_from_slice(&[Elem::new(2), Elem::new(3), Elem::new(4)]);
+        assert_eq!(COUNTER.load(Relaxed), 4);
+
+        chunks.remove_last_nelems(2);
+        assert_eq!(COUNTER.load(Relaxed), 2);
+
+        chunks.clear();
+        assert_eq!(COUNTER.load(Relaxed), 0);
+
+        chunks.push(Elem::new(1));
+        assert_eq!(COUNTER.load(Relaxed), 1);
+
+        chunks[0] = Elem::new(2);
+        assert_eq!(COUNTER.load(Relaxed), 1);
+
+        std::mem::drop(chunks);
+        assert_eq!(COUNTER.load(Relaxed), 0);
     }
 
     #[test]

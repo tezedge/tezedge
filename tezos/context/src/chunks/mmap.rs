@@ -162,7 +162,13 @@ impl<T> MmappedVec<T> {
             return Err(MmappedError::Full);
         }
 
-        self.inner[self.length] = element;
+        let ref_item = &mut self.inner[self.length];
+
+        unsafe {
+            // Write to memory without running the destructor of `self.inner[self.length]`
+            std::ptr::write(ref_item, element);
+        }
+
         self.length += 1;
 
         Ok(())
@@ -203,15 +209,9 @@ impl<T> MmappedVec<T> {
 
 impl<T: Clone> MmappedVec<T> {
     pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), MmappedError> {
-        let start = self.length;
-        let end = start + slice.len();
-
-        if end > self.capacity {
-            return Err(MmappedError::Full);
+        for item in slice {
+            self.push(item.clone())?;
         }
-
-        self.inner[start..end].clone_from_slice(slice);
-        self.length += slice.len();
 
         Ok(())
     }
