@@ -360,8 +360,8 @@ name: corr/octez-tezedge-connection-with-different-networks-each
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   FROM_BLOCK_HEADER: 0
@@ -494,8 +494,8 @@ name: corr/tezedge-unit-tests
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -577,8 +577,8 @@ name: corr/tezedge-integration-tests
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -813,8 +813,8 @@ name: corr/replay-009-florence
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: florencenet
@@ -988,8 +988,8 @@ name: corr/octez-python-tests-applied-to-tezedge-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _010
@@ -1810,8 +1810,8 @@ steps:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1829,8 +1829,8 @@ name: corr/octez-python-tests-applied-to-tezedge-alpha
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _alpha
@@ -2085,8 +2085,8 @@ name: corr/tezedge-sandbox-transfer-and-baking-007-carthage
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2325,8 +2325,8 @@ name: corr/sandbox-launcher-rpc-server-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2495,8 +2495,8 @@ name: corr/sandbox-launcher-rpc-server-011-hangzhou
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2667,8 +2667,8 @@ name: corr/tezedge-with-octez-baker-endorser-010-granada
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2995,8 +2995,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: delphinet
@@ -3232,8 +3232,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: edo2net
@@ -3459,8 +3459,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-009-florencenet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: florencenet
@@ -3686,8 +3686,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-010-granadanet
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: granadanet
@@ -3917,8 +3917,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-mainnet
 trigger:
   branch:
     # TODO: disabled for now because of the RPC test getting stuck in the rights RPC call
-    - x_master
-    - x_develop
+    - master
+    - develop
 
 environment:
   NETWORK: mainnet
@@ -3974,7 +3974,7 @@ steps:
 # just run octez 3 mainnet snapshoted nodes
 - name: octez-node-mainnet-run-1
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-1
@@ -3990,7 +3990,7 @@ steps:
 
 - name: octez-node-mainnet-run-2
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-2
@@ -4006,7 +4006,7 @@ steps:
 
 - name: octez-node-mainnet-run-3
   user: root
-  image: tezos/tezos:v11-release
+  image: tezos/tezos:v10-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-3

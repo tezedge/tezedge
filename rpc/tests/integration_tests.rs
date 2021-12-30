@@ -409,12 +409,12 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         .expect("test failed");
 
     // lets run rpsc, which doeas not depend on block/level
-    test_rpc_compare_json("config/network/user_activated_upgrades")
-        .await
-        .expect("test failed");
-    test_rpc_compare_json("config/network/user_activated_protocol_overrides")
-        .await
-        .expect("test failed");
+    //test_rpc_compare_json("config/network/user_activated_upgrades")
+    //    .await
+    //    .expect("test failed");
+    //test_rpc_compare_json("config/network/user_activated_protocol_overrides")
+    //    .await
+    //    .expect("test failed");
 
     // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
