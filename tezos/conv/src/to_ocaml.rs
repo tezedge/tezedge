@@ -11,8 +11,8 @@ use crate::{
     OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
-    OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
-    OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
+    OCamlTezosContextStorageConfiguration, OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlTezosRuntimeConfiguration, OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
 };
 
 use super::{
@@ -42,6 +42,7 @@ use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
     TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use tezos_protocol_ipc_messages::{
@@ -104,11 +105,18 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_record! {
+    TezosContextTezedgeOnDiskBackendOptions => OCamlTezosContextTezedgeOnDiskBackendOptions {
+        base_path: String,
+        startup_check: bool,
+    }
+}
+
 impl_to_ocaml_variant! {
     ContextKvStoreConfiguration => OCamlContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
-        ContextKvStoreConfiguration::OnDisk(path: String),
+        ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
 
