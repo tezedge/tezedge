@@ -97,7 +97,7 @@ impl<'a> VacantObjectHash<'a> {
         }
     }
 
-    pub(crate) fn write_with<F>(self, fun: F) -> HashId
+    pub fn write_with<F>(self, fun: F) -> HashId
     where
         F: FnOnce(&mut ObjectHash),
     {

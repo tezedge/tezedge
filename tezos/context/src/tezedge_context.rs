@@ -122,6 +122,19 @@ impl TezedgeIndex {
         }
     }
 
+    pub fn with_storage(
+        repository: Arc<RwLock<ContextKeyValueStore>>,
+        storage: Rc<RefCell<Storage>>,
+        string_interner: Rc<RefCell<Option<StringInterner>>>,
+    ) -> Self {
+        Self {
+            patch_context: Default::default(),
+            repository,
+            storage,
+            string_interner,
+        }
+    }
+
     pub fn get_string_interner(&self) -> Result<RefMut<StringInterner>, DBError> {
         // When the context is reloaded/restarted, the existings strings (found the the db file)
         // are in the repository.
@@ -146,6 +159,28 @@ impl TezedgeIndex {
 
         // Do not fail, we just replace the `Option`
         Ok(RefMut::map(strings, |s| s.as_mut().unwrap()))
+    }
+
+    pub fn fetch_commit_from_context_hash(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<Commit>, ContextError> {
+        let object_ref = {
+            let repository = self.repository.read()?;
+
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => return Ok(None),
+            }
+        };
+
+        let mut storage = self.storage.borrow_mut();
+        let mut strings = self.get_string_interner()?;
+
+        match self.fetch_commit(object_ref, &mut storage, &mut strings)? {
+            Some(commit) => Ok(Some(commit)),
+            None => Ok(None),
+        }
     }
 
     fn with_deallocation(&self) -> TezedgeIndexWithDeallocation {
@@ -187,8 +222,8 @@ impl TezedgeIndex {
         strings: &mut StringInterner,
     ) -> Result<Object, MerkleError> {
         match self.fetch_object(object_ref, storage, strings)? {
-            None => Err(MerkleError::ObjectNotFound { object_ref }),
             Some(object) => Ok(object),
+            None => Err(MerkleError::ObjectNotFound { object_ref }),
         }
     }
 
@@ -971,6 +1006,7 @@ impl ShellContextApi for TezedgeContext {
             None,
             None,
             false,
+            false,
         )?;
 
         get_commit_hash(commit_ref, &*repository)
@@ -1115,7 +1151,7 @@ mod tests {
 
         let context2 = context.delete(&["m", "n", "o"]).unwrap();
         assert!(context.mem(&["m", "n", "o"]).unwrap());
-        assert!(context2.mem(&["m", "n", "o"]).unwrap() == false);
+        assert!(!context2.mem(&["m", "n", "o"]).unwrap());
 
         assert!(context.mem_tree(&["a"]));
 

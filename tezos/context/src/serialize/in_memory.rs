@@ -971,7 +971,7 @@ mod tests {
 
         let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-        for index in 0..pointers.len() {
+        for (index, pointer) in pointers.iter_mut().enumerate() {
             let inode_value = Inode::Directory(DirectoryId::empty());
             let inode_value_id = storage.add_inode(inode_value).unwrap();
 
@@ -980,7 +980,7 @@ mod tests {
             repo.write_batch(vec![(hash_id, Arc::new(ObjectHeader::new().into_bytes()))])
                 .unwrap();
 
-            pointers[index] = Some(PointerToInode::new(Some(hash_id), inode_value_id));
+            *pointer = Some(PointerToInode::new(Some(hash_id), inode_value_id));
         }
 
         let inode = Inode::Pointers {
