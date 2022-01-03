@@ -38,6 +38,13 @@ impl<K, V> IndexMap<K, V> {
         }
     }
 
+    pub fn with_chunk_capacity_on_disk(cap: usize, nchunks_in_memory: usize) -> Self {
+        Self {
+            entries: ChunkedVec::with_chunk_capacity_on_disk(cap, nchunks_in_memory, cap + 3),
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }

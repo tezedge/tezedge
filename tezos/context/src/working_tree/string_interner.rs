@@ -85,7 +85,7 @@ pub struct SerializeStrings {
     pub strings: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct BigStrings {
     hashes: Map<u64, u32>,
     strings: ChunkedString,
@@ -150,6 +150,7 @@ impl BigStrings {
         debug_assert!(self.offsets.len() < other.offsets.len());
         // Append the missing chunk into Self
         self.offsets.extend_from(&other.offsets);
+
         debug_assert_eq!(self.offsets, other.offsets);
     }
 
@@ -208,7 +209,7 @@ impl BigStrings {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct StringInterner {
     /// `Map` of hash of the string to their `StringId`
     /// We don't use `HashMap<String, StringId>` because the map would
@@ -244,17 +245,17 @@ impl PartialEq for StringInterner {
 impl Eq for StringInterner {}
 
 impl StringInterner {
-    pub fn clone_after_reload(&mut self, other: &Self) {
-        if self == other {
-            return;
-        }
+    // pub fn clone_after_reload(&mut self, other: &Self) {
+    //     if self == other {
+    //         return;
+    //     }
 
-        if !self.all_strings.is_empty() {
-            eprintln!("StringInterner::clone_after_reload should be executed with empty self");
-        }
+    //     if !self.all_strings.is_empty() {
+    //         eprintln!("StringInterner::clone_after_reload should be executed with empty self");
+    //     }
 
-        *self = other.clone();
-    }
+    //     *self = other.clone();
+    // }
 
     /// This extends `Self::all_strings` and `Self::string_to_offset` from `other`.
     ///

@@ -1016,6 +1016,14 @@ impl KeyValueStoreBackend for Persistent {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_sizes() {
+        let file = File::<TAG_SIZES>::try_new("/tmp/").unwrap();
+        let sizes = FileSizes::make_list_from_file(&file);
+
+        println!("SIZES={:#?}", sizes);
+    }
+
     // Make sure that the commit index is correctly serialized & deserialized
     #[test]
     fn test_commit_index() {
