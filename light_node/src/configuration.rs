@@ -26,7 +26,7 @@ use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
     ContextKvStoreConfiguration, PatchContext, SupportedContextKeyValueStore,
     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
 
 #[derive(Debug, Clone)]
@@ -256,6 +256,12 @@ pub fn tezos_app() -> App<'static, 'static> {
                     }
                 }
             }))
+        .arg(Arg::with_name("context-integrity-check")
+            .long("context-integrity-check")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or not the integrity check on persistent tezedge context"))
         .arg(Arg::with_name("identity-file")
             .long("identity-file")
             .global(true)
@@ -1072,6 +1078,13 @@ impl Environment {
                             e
                         )
                     });
+
+                let startup_check = args
+                    .value_of("context-integrity-check")
+                    .unwrap_or("false")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool");
+
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
@@ -1080,10 +1093,13 @@ impl Environment {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
                         SupportedContextKeyValueStore::OnDisk => {
                             ContextKvStoreConfiguration::OnDisk(
-                                get_final_path(&tezos_data_dir, "context".into())
-                                    .into_os_string()
-                                    .into_string()
-                                    .unwrap(),
+                                TezosContextTezedgeOnDiskBackendOptions {
+                                    base_path: get_final_path(&tezos_data_dir, "context".into())
+                                        .into_os_string()
+                                        .into_string()
+                                        .unwrap(),
+                                    startup_check,
+                                },
                             )
                         }
                     })

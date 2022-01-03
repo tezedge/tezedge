@@ -117,7 +117,7 @@ pub struct Persistent {
     /// [Hash of the following bytes, commit counter, file 1 size, file 2 size, .., file X size]
     /// This repeats 10 times
     sizes_file: File<{ TAG_SIZES }>,
-    enable_checksum: bool,
+    startup_check: bool,
 }
 
 impl NotGarbageCollected for Persistent {}
@@ -219,7 +219,7 @@ impl Hashes {
 impl Persistent {
     pub fn try_new(
         db_path: Option<&str>,
-        enable_checksum: bool,
+        startup_check: bool,
     ) -> Result<Persistent, IndexInitializationError> {
         let base_path = get_persistent_base_path(db_path);
 
@@ -250,7 +250,7 @@ impl Persistent {
             lock_file,
             commit_counter: Default::default(),
             sizes_file,
-            enable_checksum,
+            startup_check,
         })
     }
 
@@ -263,7 +263,7 @@ impl Persistent {
         strings_file: &mut File<{ TAG_STRINGS }>,
         big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
         hashes_file: &mut File<{ TAG_HASHES }>,
-        enable_checksum: bool,
+        startup_check: bool,
     ) -> Result<u64, IndexInitializationError> {
         let list_sizes = match list_sizes {
             Some(list) => list,
@@ -325,7 +325,7 @@ hashes_file={:?}, in sizes.db={:?}",
             // Compute the checksum of each file
             // We start with smaller files to fail early
 
-            if enable_checksum {
+            if startup_check {
                 if strings_file.update_checksum_until(sizes.strings_size)? != sizes.strings_checksum
                 {
                     elog!(
@@ -543,7 +543,7 @@ hashes_file={:?}, in sizes.db={:?}",
             &mut self.strings_file,
             &mut self.big_strings_file,
             &mut self.hashes.hashes_file,
-            self.enable_checksum,
+            self.startup_check,
         )?;
 
         // Clone the `File` to deserialize them in other threads

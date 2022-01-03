@@ -10,13 +10,18 @@ use storage::{BlockHeaderWithHash, BlockStorage};
 use tezos_context::initializer::{initialize_tezedge_context, ContextKvStoreConfiguration};
 use tezos_context::{context_key, ContextError, TezedgeContext};
 use tezos_context::{IndexApi, ProtocolContextApi, ShellContextApi};
-use tezos_context_api::{ContextKey, TezosContextTezEdgeStorageConfiguration};
+use tezos_context_api::{
+    ContextKey, TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
+};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 #[test]
 pub fn test_context_set_get_commit_persistent() -> Result<(), anyhow::Error> {
     context_set_get_commit(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_set_get_commit_persistent",
     )
 }
@@ -84,7 +89,10 @@ pub fn context_set_get_commit(
 #[test]
 pub fn test_context_hash_from_working_tree_persistent() -> Result<(), anyhow::Error> {
     context_hash_from_working_tree(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_hash_from_working_tree_persistent",
     )
 }
@@ -141,7 +149,10 @@ pub fn context_hash_from_working_tree(
 #[test]
 pub fn test_context_delete_and_remove_persistent() -> Result<(), anyhow::Error> {
     context_delete_and_remove(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_delete_and_remove_persistent",
     )
 }
@@ -321,7 +332,10 @@ fn ctx_copy(
 #[test]
 pub fn test_context_copy_persistent() -> Result<(), anyhow::Error> {
     context_copy(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_copy_persistent",
     )
 }
