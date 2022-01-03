@@ -11,7 +11,7 @@ use super::{Chunk, DEFAULT_LIST_LENGTH};
 /// Structure allocating multiple `Chunk`
 ///
 /// Example:
-/// ```
+/// ```no_run
 /// use tezos_context::chunks::ChunkedVec;
 ///
 /// let mut chunks = ChunkedVec::with_chunk_capacity(1000);

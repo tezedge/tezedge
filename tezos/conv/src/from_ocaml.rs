@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 use crate::{
     OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
-    OCamlInitProtocolContextResult, OCamlNodeMessage,
+    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
@@ -36,7 +36,10 @@ use tezos_api::ffi::{
     TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
+use tezos_context_api::{
+    ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezedgeOnDiskBackendOptions,
+};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
 use tezos_protocol_ipc_messages::NodeMessage;
 
@@ -92,11 +95,18 @@ unsafe impl FromOCaml<OCamlChainId> for ChainId {
     }
 }
 
+impl_from_ocaml_record! {
+    OCamlTezosContextTezedgeOnDiskBackendOptions => TezosContextTezedgeOnDiskBackendOptions {
+        base_path: String,
+        startup_check: bool,
+    }
+}
+
 impl_from_ocaml_variant! {
     OCamlContextKvStoreConfiguration => ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
-        ContextKvStoreConfiguration::OnDisk(path: String),
+        ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
 

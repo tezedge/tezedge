@@ -208,8 +208,8 @@ impl DirectoryShapes {
     }
 
     pub fn deserialize(
-        shapes_file: &mut File<{ TAG_SHAPE }>,
-        shapes_index_file: &mut File<{ TAG_SHAPE_INDEX }>,
+        shapes_file: File<{ TAG_SHAPE }>,
+        shapes_index_file: File<{ TAG_SHAPE_INDEX }>,
     ) -> Result<Self, DeserializationError> {
         let mut result = Self::default();
         let mut string_id_bytes = [0u8; 4];

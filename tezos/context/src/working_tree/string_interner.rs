@@ -171,7 +171,7 @@ impl BigStrings {
     }
 
     fn deserialize(
-        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+        big_strings_file: File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
 
@@ -375,8 +375,8 @@ impl StringInterner {
     }
 
     pub fn deserialize(
-        strings_file: &mut File<{ TAG_STRINGS }>,
-        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+        strings_file: File<{ TAG_STRINGS }>,
+        big_strings_file: File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
         let mut result = Self::default();

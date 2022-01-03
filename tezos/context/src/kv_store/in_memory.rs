@@ -204,6 +204,10 @@ impl Persistable for InMemory {
 }
 
 impl KeyValueStoreBackend for InMemory {
+    fn reload_database(&mut self) -> Result<(), DBError> {
+        Ok(())
+    }
+
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
         self.contains(hash_id)
     }
