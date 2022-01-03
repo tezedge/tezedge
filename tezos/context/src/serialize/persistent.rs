@@ -179,6 +179,7 @@ fn serialize_offset(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn serialize_shaped_directory(
     shape_id: DirectoryShapeId,
     dir: &[(StringId, DirEntryId)],
@@ -497,7 +498,14 @@ pub fn serialize_object(
 
             let (is_parent_exist, (parent_relative_offset, parent_offset_length)) =
                 match commit.parent_commit_ref {
-                    Some(parent) => (true, get_relative_offset(offset, parent.offset())),
+                    Some(parent) if parent.offset_opt().is_some() => {
+                        (true, get_relative_offset(offset, parent.offset()))
+                    }
+                    Some(_) => {
+                        // When creating a snapshot, the parent does have a `HashId` but doesn't
+                        // have an offset
+                        (true, (0.into(), RelativeOffsetLength::OneByte))
+                    }
                     None => (false, (0.into(), RelativeOffsetLength::OneByte)),
                 };
 
@@ -589,7 +597,7 @@ impl PointersOffsetsHeader {
     /// Sets bits to zero at `index`
     #[cfg(test)]
     fn clear(&mut self, index: usize) {
-        self.bitfield = self.bitfield & !(0b11 << (index * 2));
+        self.bitfield &= !(0b11 << (index * 2));
     }
 
     fn from_pointers(
@@ -1181,6 +1189,7 @@ mod tests {
 
     use tezos_timing::SerializeStats;
 
+    use crate::kv_store::persistent::PersistentConfiguration;
     use crate::persistent::KeyValueStoreBackend;
     use crate::working_tree::string_interner::StringInterner;
     use crate::{
@@ -1193,7 +1202,12 @@ mod tests {
     fn test_serialize() {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
-        let mut repo = Persistent::try_new(None, true).unwrap();
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .unwrap();
         let mut stats = SerializeStats::default();
         let mut batch = Vec::new();
         let mut older_objects = Vec::new();
@@ -1490,7 +1504,7 @@ mod tests {
 
         let mut pointers: [Option<PointerToInode>; 32] = Default::default();
 
-        for index in 0..pointers.len() {
+        for (index, pointer) in pointers.iter_mut().enumerate() {
             let inode_value = Inode::Directory(DirectoryId::empty());
             let inode_value_id = storage.add_inode(inode_value).unwrap();
 
@@ -1510,7 +1524,7 @@ mod tests {
 
             offsets.push(offset);
 
-            pointers[index] = Some(PointerToInode::new_commited(
+            *pointer = Some(PointerToInode::new_commited(
                 Some(hash_id),
                 Some(inode_value_id),
                 Some(offset),
@@ -1547,7 +1561,7 @@ mod tests {
             .unwrap();
 
         let new_inode_id =
-            deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
+            deserialize_inode(inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
         let new_inode = storage.get_inode(new_inode_id).unwrap();
 
         if let Inode::Pointers {
@@ -1615,7 +1629,7 @@ mod tests {
             .unwrap();
 
         let new_inode_id =
-            deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
+            deserialize_inode(inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
         let new_inode = storage.get_inode(new_inode_id).unwrap().clone();
 
         if let Inode::Directory(new_dir_id) = new_inode {
@@ -1630,7 +1644,12 @@ mod tests {
 
     #[test]
     fn test_serialize_empty_blob() {
-        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create context");
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
@@ -1687,7 +1706,12 @@ mod tests {
 
     #[test]
     fn test_hash_id() {
-        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create context");
         let mut output = Vec::with_capacity(10);
         let mut stats = Default::default();
 

@@ -17,6 +17,7 @@ members = [
     "tezos/context",
     "tezos/context-api",
     "tezos/context-ipc-client",
+    "tezos/context-tool",
     "tezos/protocol-ipc-client",
     "tezos/protocol-ipc-messages",
     "tezos/spsc",
