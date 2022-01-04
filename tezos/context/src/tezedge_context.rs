@@ -15,6 +15,7 @@ use ocaml_interop::BoxRoot;
 use tezos_context_api::StringDirectoryMap;
 use tezos_timing::{BlockMemoryUsage, ContextMemoryUsage};
 
+use crate::working_tree::working_tree::FoldOrder;
 use crate::{
     hash::ObjectHash,
     kv_store::HashId,
@@ -968,8 +969,9 @@ impl ProtocolContextApi for TezedgeContext {
         &self,
         depth: Option<FoldDepth>,
         key: &ContextKey,
+        order: FoldOrder,
     ) -> Result<TreeWalker, ContextError> {
-        Ok(self.tree.fold_iter(depth, key)?)
+        Ok(self.tree.fold_iter(depth, key, order)?)
     }
 
     fn get_merkle_root(&self) -> Result<ObjectHash, ContextError> {

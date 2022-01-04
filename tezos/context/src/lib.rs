@@ -163,6 +163,7 @@ pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
 use tezos_timing::ContextMemoryUsage;
+use working_tree::working_tree::FoldOrder;
 use working_tree::working_tree::{FoldDepth, TreeWalker, WorkingTree};
 
 use crate::gc::GarbageCollector;
@@ -207,6 +208,7 @@ where
         &self,
         depth: Option<FoldDepth>,
         key: &ContextKey,
+        order: FoldOrder,
     ) -> Result<TreeWalker, ContextError>;
 
     fn get_merkle_root(&self) -> Result<ObjectHash, ContextError>;

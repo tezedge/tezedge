@@ -4,7 +4,7 @@
 use ocaml_interop::{impl_from_ocaml_polymorphic_variant, impl_from_ocaml_variant, OCamlInt};
 use tezos_timing::QueryKind;
 
-use crate::working_tree::working_tree::FoldDepth;
+use crate::working_tree::working_tree::{FoldDepth, FoldOrder};
 
 pub struct OCamlQueryKind;
 
@@ -15,6 +15,13 @@ impl_from_ocaml_polymorphic_variant! {
         Lt(n: OCamlInt) => FoldDepth::Lt(n),
         Ge(n: OCamlInt) => FoldDepth::Ge(n),
         Gt(n: OCamlInt) => FoldDepth::Gt(n),
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    FoldOrder {
+        Sorted => FoldOrder::Sorted,
+        Undefined => FoldOrder::Undefined,
     }
 }
 
