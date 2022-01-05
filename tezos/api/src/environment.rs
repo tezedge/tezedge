@@ -53,6 +53,7 @@ pub enum TezosEnvironment {
     Florencenet,
     Granadanet,
     Hangzhounet,
+    Ithacanet,
 }
 
 impl TezosEnvironment {
@@ -79,6 +80,7 @@ impl TezosEnvironment {
             TezosEnvironment::Florencenet => vec!["florencenet", "florence"],
             TezosEnvironment::Granadanet => vec!["granadanet", "granada"],
             TezosEnvironment::Hangzhounet => vec!["hangzhounet", "hangzhou"],
+            TezosEnvironment::Ithacanet => vec!["ithacanet", "ithaca"],
         }
     }
 
@@ -113,6 +115,7 @@ impl TezosEnvironment {
             TezosEnvironment::Florencenet => None,
             TezosEnvironment::Granadanet => None,
             TezosEnvironment::Hangzhounet => None,
+            TezosEnvironment::Ithacanet => None,
         }
     }
 
@@ -503,6 +506,35 @@ pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfigura
                 (
                     8191_i32,
                     "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx".to_string(),
+                ),
+            ],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuYLienS3Xdt5c1vfRX1ibMxQuvfM67ByhJ9nmRYYKGAAoTq1UC" }"#.to_string(),
+        }),
+    });
+
+    env.insert(TezosEnvironment::Ithacanet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2022-01-25T15:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis1db77eJNeJ9".to_string(),
+            protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "ithacanet.teztnets.xyz".to_string(),
+            "ithacanet.smartpy.io".to_string(),
+            "ithacanet.kaml.fr".to_string(),
+            "ithacanet.boot.ecadinfra.com".to_string(),
+        ],
+        version: "TEZOS_ITHACANET_2022-01-25T15:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![
+                (
+                    8191_i32,
+                    "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A".to_string(),
                 ),
             ],
             user_activated_protocol_overrides: vec![],
