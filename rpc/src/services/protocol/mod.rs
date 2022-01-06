@@ -46,6 +46,7 @@ mod proto_008_2;
 mod proto_009;
 mod proto_010;
 mod proto_011;
+mod proto_012;
 
 use cached::proc_macro::cached;
 use cached::TimedSizedCache;
@@ -252,6 +253,18 @@ pub(crate) async fn check_and_get_baking_rights(
         )
         .await
         .map_err(RightsError::from),
+        SupportedProtocol::Proto012 => proto_012::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
     }
 }
 
@@ -421,6 +434,17 @@ pub(crate) async fn check_and_get_endorsing_rights(
         )
         .await
         .map_err(RightsError::from),
+        SupportedProtocol::Proto012 => proto_012::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            &cycle_meta_storage,
+            env,
+        )
+        .await
+        .map_err(RightsError::from),
     }
 }
 
@@ -558,6 +582,9 @@ pub(crate) async fn get_votes_listings(
         }
         SupportedProtocol::Proto011 => {
             proto_011::votes_service::get_votes_listings(env, &context_hash).await
+        }
+        SupportedProtocol::Proto012 => {
+            proto_012::votes_service::get_votes_listings(env, &context_hash).await
         }
     }
 }
@@ -1013,6 +1040,10 @@ pub fn get_blocks_per_cycle(
         )?
         .blocks_per_cycle()),
         SupportedProtocol::Proto011 => Ok(serde_json::from_str::<proto_011::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto012 => Ok(serde_json::from_str::<proto_012::ProtocolConstants>(
             serialized_constants,
         )?
         .blocks_per_cycle()),
