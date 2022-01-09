@@ -57,6 +57,7 @@ const FULL_4_BITS: usize = 0xF;
 /// during testing/fuzzing
 const BLOB_INLINED_RANGE: RangeInclusive<usize> = 1..=7;
 
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DirectoryId {
     /// Note: Must fit in DirEntryInner.object_id (61 bits)
@@ -400,6 +401,25 @@ impl TryFrom<usize> for InodeId {
 }
 
 #[bitfield]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub struct PointersId {
+    start: B32,
+    bitfield: B32,
+}
+
+impl PointersId {
+    fn get_index(&self) -> usize {
+        self.start() as usize
+    }
+
+    fn get_index_for_ptr(&self, ptr_index: usize) -> usize {
+        // TODO: Shifting `Self::bitfield`
+
+        self.start() as usize
+    }
+}
+
+#[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct PointerToInodeInner {
     hash_id: B48,
@@ -410,10 +430,39 @@ pub struct PointerToInodeInner {
     offset: B63,
 }
 
+#[bitfield]
+#[derive(Clone, Copy, Debug)]
+pub struct PointerInner {
+    index: B5,
+    hash_id: B48,
+    is_commited: bool,
+    is_inode_available: bool,
+    /// This is a `DirectoryId` or an `InodeId`
+    ptr_id: B61,
+    /// Set to `0` when the offset is not set
+    offset: B63,
+    #[skip] unused: B5,
+}
+
+#[derive(Clone, Debug)]
+pub struct Pointer {
+    inner: Cell<PointerInner>,
+}
+
+impl Pointer {
+    fn find(index: usize, pointers: &[Pointer]) -> &Pointer {
+
+        todo!()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PointerToInode {
     inner: Cell<PointerToInodeInner>,
 }
+
+assert_eq_size!([u8; 18], PointerToInode);
+assert_eq_size!([u8; 18], Pointer);
 
 impl PointerToInode {
     pub fn new(hash_id: Option<HashId>, inode_id: InodeId) -> Self {
@@ -558,7 +607,8 @@ pub enum Inode {
         /// List of pointers to Inode
         /// When the pointer is `None`, it means that there is no entries
         /// under that index.
-        pointers: [Option<PointerToInode>; 32],
+        pointers: PointersId,
+        // pointers: [Option<PointerToInode>; 32],
     },
 }
 
@@ -599,6 +649,8 @@ pub struct Storage {
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
+    pointers: ChunkedVec<Pointer>,
+    // pointers: IndexMap<PointersId, Pointer>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
@@ -656,6 +708,7 @@ impl Storage {
             inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~20MB
             data: Vec::with_capacity(100_000),                                          // ~97KB
             offsets_to_hash_id: HashMap::default(),
+            pointers: ChunkedVec::with_chunk_capacity(32 * 1024),
         } // Total ~27MB
     }
 
@@ -810,6 +863,12 @@ impl Storage {
         let pointers = match self.get_inode(inode_id)? {
             Inode::Pointers { pointers, .. } => pointers,
             Inode::Directory(_) => return Err(InodePointersNotFound),
+        };
+
+        let (start, end) = pointers.get();
+        let pointers = match self.pointers.get_slice(start..end) {
+            Some(pointers) => pointers,
+            None => return Err(InodePointersNotFound),
         };
 
         let pointer = match pointers.get(pointer_index) {
@@ -1145,6 +1204,7 @@ impl Storage {
                     let inode_id = self.create_inode(depth, new_dir_id, strings)?;
                     (inode_id, true)
                 };
+
 
                 pointers[index_at_depth] = Some(PointerToInode::new(None, inode_id));
 
