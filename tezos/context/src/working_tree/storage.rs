@@ -399,17 +399,128 @@ impl TryFrom<usize> for InodeId {
     }
 }
 
+/// Describes which pointers are set and at what index.
+///
+/// `Inode::Pointers` is an array of 32 pointers.
+/// Each pointer is either set (`Some`) or not set (`None`).
+///
+/// Example:
+/// Let's say that there are 2 pointers sets in the array, at the index
+/// 1 and 7.
+/// This would be represented in this bitfield as:
+/// `0b00000000_00000000_00000000_10000010`
+///
+#[derive(Copy, Clone, Default, Debug)]
+struct PointersBitfield {
+    bitfield: u32,
+}
+
+impl PointersBitfield {
+    /// Set bit at index in the bitfield
+    fn set(&mut self, index: usize) {
+        self.bitfield |= 1 << index;
+    }
+
+    /// Get bit at index in the bitfield
+    fn get(&self, index: usize) -> bool {
+        self.bitfield & 1 << index != 0
+    }
+
+    fn get_index_for(&self, index: usize) -> Option<usize> {
+        if !self.get(index) {
+            return None;
+        }
+
+        let index = index as u32;
+
+        let bitfield = self
+            .bitfield
+            .checked_shl(32 - index)
+            .unwrap_or(0);
+
+        let index = bitfield.count_ones() as usize;
+
+        Some(index)
+    }
+
+    fn to_bytes(self) -> [u8; 4] {
+        self.bitfield.to_le_bytes()
+    }
+
+    /// Iterates on all the bit sets in the bitfield.
+    ///
+    /// The iterator returns the index of the bit.
+    fn iter(&self) -> PointersBitfieldIterator {
+        PointersBitfieldIterator {
+            bitfield: *self,
+            current: 0,
+        }
+    }
+
+    fn from_bytes(bytes: [u8; 4]) -> Self {
+        Self {
+            bitfield: u32::from_le_bytes(bytes),
+        }
+    }
+
+    /// Count number of bit set in the bitfield.
+    fn count(&self) -> u8 {
+        self.bitfield.count_ones() as u8
+    }
+}
+
+impl From<&[Option<Pointer>; 32]> for PointersBitfield {
+    fn from(pointers: &[Option<Pointer>; 32]) -> Self {
+        let mut bitfield = Self::default();
+
+        for (index, pointer) in pointers.iter().enumerate() {
+            if pointer.is_some() {
+                bitfield.set(index);
+            }
+        }
+
+        bitfield
+    }
+}
+
+/// Iterates on all the bit sets in the bitfield.
+///
+/// The iterator returns the index of the bit.
+struct PointersBitfieldIterator {
+    bitfield: PointersBitfield,
+    current: usize,
+}
+
+impl Iterator for PointersBitfieldIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for index in self.current..32 {
+            if self.bitfield.get(index) {
+                self.current = index + 1;
+                return Some(index);
+            }
+        }
+
+        None
+    }
+}
+
 // #[bitfield]
 // #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 #[derive(Debug, Clone, Copy)]
 pub struct PointersId {
     start: u32,
-    bitfield: u32,
+    bitfield: PointersBitfield,
 }
 
 impl From<(u32, &[Option<Pointer>; 32])> for PointersId {
     fn from((start, pointers): (u32, &[Option<Pointer>; 32])) -> Self {
-        todo!()
+        let bitfield = PointersBitfield::from(pointers);
+        Self {
+            start,
+            bitfield,
+        }
     }
 }
 
@@ -419,23 +530,14 @@ impl PointersId {
     }
 
     pub fn npointers(&self) -> usize {
-        self.bitfield.count_ones() as usize
+        self.bitfield.count() as usize
     }
 
     fn get_index_for_ptr(&self, ptr_index: usize) -> Option<usize> {
-        // TODO: Shifting `Self::bitfield`
-        let ptr_index: u32 = ptr_index as u32;
+        let index = self.start as usize;
+        let offset = self.bitfield.get_index_for(ptr_index)?;
 
-        let start = self.start as usize;
-
-        let bitfield = (self.bitfield >> ptr_index) << ptr_index;
-
-        println!(
-            "ptr_index={:?} start={:?} bitfield={:?} after={:?}",
-            ptr_index, start, self.bitfield, bitfield
-        );
-
-        todo!()
+        Some(index + offset)
     }
 }
 
@@ -470,11 +572,11 @@ pub struct Pointer {
     inner: Cell<PointerInner>,
 }
 
-impl Pointer {
-    fn find(index: usize, pointers: &[Pointer]) -> &Pointer {
-        todo!()
-    }
-}
+// impl Pointer {
+//     fn find(index: usize, pointers: &[Pointer]) -> &Pointer {
+//         todo!()
+//     }
+// }
 
 // #[derive(Clone, Debug)]
 // pub struct PointerToInode {
@@ -641,9 +743,37 @@ impl Pointer {
 
 assert_eq_size!([u8; 23], Option<Pointer>);
 
+pub struct InodePointersIter {
+    start: usize,
+    bitfield_iter: PointersBitfieldIterator,
+    current: usize,
+}
+
+impl InodePointersIter {
+    fn new(pointers: PointersId) -> Self {
+        Self {
+            start: pointers.get_start(),
+            bitfield_iter: pointers.bitfield.iter(),
+            current: 0,
+        }
+    }
+}
+
+impl Iterator for InodePointersIter {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_ptr_index = self.bitfield_iter.next()?;
+        let current = self.current;
+        self.current += 1;
+
+        Some((next_ptr_index, self.start + current))
+    }
+}
+
 #[derive(Debug)]
 pub struct Inode {
-    pub depth: u8,
+    pub depth: u16,
     pub nchildren: u32,
     pub pointers: PointersId,
 }
@@ -738,7 +868,8 @@ pub struct Storage {
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
 
-    pointers: ChunkedVec<Pointer>,
+
+    pub pointers: ChunkedVec<Pointer>,
     // pointers: IndexMap<PointersId, Pointer>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
@@ -948,9 +1079,20 @@ impl Storage {
         pointer_inode_id: DirectoryOrInodeId,
         // pointer_inode_id: InodeId,
     ) -> Result<(), StorageError> {
-        // use StorageError::*;
+        use StorageError::*;
 
-        todo!()
+        let inode = self.get_inode(inode_id)?;
+
+        let pointer = match self.get_pointer_at_index(inode.pointers, pointer_index) {
+            Some(pointer) => pointer,
+            None => return Err(InodePointersNotFound),
+        };
+
+        pointer.set_ptr_id(pointer_inode_id);
+
+        Ok(())
+
+        // todo!()
 
         // let pointers = match self.get_inode(inode_id)? {
         //     Inode::Pointers { pointers, .. } => pointers,
@@ -1124,7 +1266,7 @@ impl Storage {
 
     pub fn add_inode_pointers(
         &mut self,
-        depth: u8,
+        depth: u16,
         nchildren: u32,
         pointers: [Option<Pointer>; 32],
     ) -> Result<DirectoryOrInodeId, StorageError> {
@@ -1221,7 +1363,7 @@ impl Storage {
 
     fn create_inode(
         &mut self,
-        depth: u8,
+        depth: u16,
         dir_range: TempDirRange,
         strings: &StringInterner,
     ) -> Result<DirectoryOrInodeId, StorageError> {
@@ -1258,11 +1400,15 @@ impl Storage {
                     continue;
                 }
 
+                println!("INDEX={:?} RANGE={:?}", index, range);
+
                 npointers += 1;
                 let dir_or_inode_id = self.create_inode(depth + 1, range, strings)?;
 
                 pointers[index as usize] = Some(Pointer::new(None, dir_or_inode_id));
             }
+
+            println!("POINTERS={:?}", pointers);
 
             self.add_inode_pointers(depth, nchildren, pointers)
             // self.add_inode(Inode::Pointers {
@@ -1308,29 +1454,39 @@ impl Storage {
     }
 
     pub fn clone_pointers(&self, pointers: PointersId) -> [Option<Pointer>; 32] {
-        todo!()
+        let mut cloned: [Option<Pointer>; 32] = Default::default();
+
+        for (ptr_index, index) in self.iter_pointers_with_index(pointers) {
+            let pointer = self.pointers.get(index).unwrap();
+            cloned[ptr_index] = Some(pointer.clone());
+        }
+
+        cloned
     }
 
     fn get_pointer_at_index(&self, pointers: PointersId, index: usize) -> Option<&Pointer> {
-        todo!()
+        let index = pointers.get_index_for_ptr(index)?;
+        self.pointers.get(index)
     }
 
-    fn get_pointers_ref(&self, pointers: PointersId) -> &[Pointer] {
-        todo!()
+    // fn get_pointers_ref(&self, pointers: PointersId) -> &[Pointer] {
+    //     todo!()
+    // }
+
+    // // fn iter_pointers(&self, pointers: PointersId) -> impl Iterator<Item = Pointer> {
+    // pub fn iter_pointers(&self, pointers: PointersId) -> &[&Pointer] {
+    //     todo!()
+    // }
+
+    // pub fn iter_pointers_with_index(&self, pointers: PointersId) -> &[(usize, &Pointer)] {
+    pub fn iter_pointers_with_index(&self, pointers: PointersId) -> InodePointersIter {
+        InodePointersIter::new(pointers)
     }
 
-    // fn iter_pointers(&self, pointers: PointersId) -> impl Iterator<Item = Pointer> {
-    pub fn iter_pointers(&self, pointers: PointersId) -> &[&Pointer] {
-        todo!()
-    }
-
-    pub fn iter_pointers_with_index(&self, pointers: PointersId) -> &[(usize, &Pointer)] {
-        todo!()
-    }
 
     fn insert_inode(
         &mut self,
-        depth: u8,
+        depth: u16,
         ptr_id: DirectoryOrInodeId,
         key: &str,
         key_id: StringId,
@@ -1540,15 +1696,24 @@ impl Storage {
         let inode = self.get_inode(inode_id).unwrap();
 
         // TODO: Find a way to iterates, without using Cow::Owned
-        let pointers = self.get_pointers_ref(inode.pointers);
+        // let pointers = self.get_pointers_ref(inode.pointers);
 
-        for pointer in pointers.iter() {
+        for (_, index) in self.iter_pointers_with_index(inode.pointers) {
+            let pointer = self.pointers.get(index).unwrap();
             pointer.set_hash_id(None);
 
             if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
                 self.inodes_drop_hash_ids(inode_id);
             }
         }
+
+        // for pointer in pointers.iter() {
+        //     pointer.set_hash_id(None);
+
+        //     if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
+        //         self.inodes_drop_hash_ids(inode_id);
+        //     }
+        // }
 
         // if let Inode::Pointers { pointers, .. } = inode {
         //     for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
@@ -1674,7 +1839,10 @@ impl Storage {
             DirectoryOrInodeId::Inode(inode_id) => {
                 let inode = self.get_inode(inode_id)?;
 
-                for pointer in self.iter_pointers(inode.pointers) {
+                // for pointer in self.iter_pointers(inode.pointers) {
+                for (_, index) in self.iter_pointers_with_index(inode.pointers) {
+                    let pointer = self.pointers.get(index).unwrap();
+
                     // When the inode is not deserialized, ignore it
                     // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
                     // the full inode
@@ -2285,74 +2453,112 @@ mod tests {
 
     use super::*;
 
+    // #[test]
+    // fn test_storage() {
+    //     let mut storage = Storage::new();
+    //     let mut strings = StringInterner::default();
+    //     let repo = InMemory::try_new().unwrap();
+
+    //     let blob_id = storage.add_blob_by_ref(&[1]).unwrap();
+    //     let object = Object::Blob(blob_id);
+
+    //     let blob2_id = storage.add_blob_by_ref(&[2]).unwrap();
+    //     let object2 = Object::Blob(blob2_id);
+
+    //     let dir_entry1 = DirEntry::new(Blob, object.clone());
+    //     let dir_entry2 = DirEntry::new(Blob, object2.clone());
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(dir_id, "a", dir_entry1.clone(), &mut strings, &repo)
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(dir_id, "b", dir_entry2.clone(), &mut strings, &repo)
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(dir_id, "0", dir_entry1.clone(), &mut strings, &repo)
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //         &[
+    //             ("0".to_string(), dir_entry1.clone()),
+    //             ("a".to_string(), dir_entry1.clone()),
+    //             ("b".to_string(), dir_entry2.clone()),
+    //         ]
+    //     );
+    // }
+
+    // #[test]
+    // fn test_blob_id() {
+    //     let mut storage = Storage::new();
+
+    //     let slice1 = &[0xFF, 0xFF, 0xFF];
+    //     let slice2 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+    //     let slice3 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+    //     let slice4 = &[];
+
+    //     let blob1 = storage.add_blob_by_ref(slice1).unwrap();
+    //     let blob2 = storage.add_blob_by_ref(slice2).unwrap();
+    //     let blob3 = storage.add_blob_by_ref(slice3).unwrap();
+    //     let blob4 = storage.add_blob_by_ref(slice4).unwrap();
+
+    //     assert!(blob1.is_inline());
+    //     assert!(!blob2.is_inline());
+    //     assert!(blob3.is_inline());
+    //     assert!(!blob4.is_inline());
+
+    //     assert_eq!(storage.get_blob(blob1).unwrap().as_ref(), slice1);
+    //     assert_eq!(storage.get_blob(blob2).unwrap().as_ref(), slice2);
+    //     assert_eq!(storage.get_blob(blob3).unwrap().as_ref(), slice3);
+    //     assert_eq!(storage.get_blob(blob4).unwrap().as_ref(), slice4);
+    // }
+
     #[test]
-    fn test_storage() {
-        let mut storage = Storage::new();
-        let mut strings = StringInterner::default();
-        let repo = InMemory::try_new().unwrap();
+    fn test_pointers_bitfield() {
+        let mut bitfield = PointersBitfield::default();
 
-        let blob_id = storage.add_blob_by_ref(&[1]).unwrap();
-        let object = Object::Blob(blob_id);
+        bitfield.set(0);
+        bitfield.set(1);
+        bitfield.set(3);
+        bitfield.set(4);
+        bitfield.set(8);
+        bitfield.set(30);
+        bitfield.set(31);
 
-        let blob2_id = storage.add_blob_by_ref(&[2]).unwrap();
-        let object2 = Object::Blob(blob2_id);
+        assert_eq!(bitfield.get_index_for(0).unwrap(), 0);
+        assert_eq!(bitfield.get_index_for(1).unwrap(), 1);
+        assert_eq!(bitfield.get_index_for(3).unwrap(), 2);
+        assert_eq!(bitfield.get_index_for(4).unwrap(), 3);
+        assert_eq!(bitfield.get_index_for(8).unwrap(), 4);
+        assert_eq!(bitfield.get_index_for(30).unwrap(), 5);
+        assert_eq!(bitfield.get_index_for(31).unwrap(), 6);
 
-        let dir_entry1 = DirEntry::new(Blob, object.clone());
-        let dir_entry2 = DirEntry::new(Blob, object2.clone());
+        assert!(bitfield.get_index_for(15).is_none());
+        assert!(bitfield.get_index_for(29).is_none());
 
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(dir_id, "a", dir_entry1.clone(), &mut strings, &repo)
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(dir_id, "b", dir_entry2.clone(), &mut strings, &repo)
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(dir_id, "0", dir_entry1.clone(), &mut strings, &repo)
-            .unwrap();
+        assert_eq!(bitfield.count(), 7);
 
-        assert_eq!(
-            storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-            &[
-                ("0".to_string(), dir_entry1.clone()),
-                ("a".to_string(), dir_entry1.clone()),
-                ("b".to_string(), dir_entry2.clone()),
-            ]
-        );
-    }
+        let mut bitfield = PointersBitfield::default();
 
-    #[test]
-    fn test_blob_id() {
-        let mut storage = Storage::new();
+        bitfield.set(5);
+        bitfield.set(30);
+        bitfield.set(31);
 
-        let slice1 = &[0xFF, 0xFF, 0xFF];
-        let slice2 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-        let slice3 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-        let slice4 = &[];
+        assert_eq!(bitfield.get_index_for(5).unwrap(), 0);
+        assert_eq!(bitfield.get_index_for(30).unwrap(), 1);
+        assert_eq!(bitfield.get_index_for(31).unwrap(), 2);
 
-        let blob1 = storage.add_blob_by_ref(slice1).unwrap();
-        let blob2 = storage.add_blob_by_ref(slice2).unwrap();
-        let blob3 = storage.add_blob_by_ref(slice3).unwrap();
-        let blob4 = storage.add_blob_by_ref(slice4).unwrap();
-
-        assert!(blob1.is_inline());
-        assert!(!blob2.is_inline());
-        assert!(blob3.is_inline());
-        assert!(!blob4.is_inline());
-
-        assert_eq!(storage.get_blob(blob1).unwrap().as_ref(), slice1);
-        assert_eq!(storage.get_blob(blob2).unwrap().as_ref(), slice2);
-        assert_eq!(storage.get_blob(blob3).unwrap().as_ref(), slice3);
-        assert_eq!(storage.get_blob(blob4).unwrap().as_ref(), slice4);
+        assert_eq!(bitfield.count(), 3);
     }
 
     #[test]
     fn test_pointers_id() {
-        let id = PointersId {
-            start: 0,
-            bitfield: 0b10101010110111101,
-        };
+        // let id = PointersId {
+        //     start: 0,
+        //     bitfield: 0b10101010110111101,
+        // };
 
-        id.get_index_for_ptr(2);
+        // id.get_index_for_ptr(2);
     }
 }

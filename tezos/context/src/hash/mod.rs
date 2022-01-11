@@ -184,13 +184,16 @@ fn hash_long_inode(
             // |  index  |  hash  |
 
             // for (index, pointer) in pointers.iter().enumerate() {
-            for (index, pointer) in storage.iter_pointers_with_index(*pointers) {
+            // for (index, pointer) in storage.iter_pointers_with_index(*pointers) {
+            for (ptr_index, index) in storage.iter_pointers_with_index(*pointers) {
                 // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
+                let pointer = storage.pointers.get(index).unwrap();
+
                 // Skip pointers without entries.
                 // if let Some(pointer) = pointer.as_ref() {
-                let index: u8 = *index as u8;
+                let index: u8 = ptr_index as u8;
 
                 hasher.update(&[index]);
 

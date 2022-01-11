@@ -600,7 +600,11 @@ impl PointersOffsetsHeader {
     ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
-        for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
+        // for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
+        for (index, (_, pointer)) in storage.iter_pointers_with_index(pointers).enumerate() {
+
+            let pointer = storage.pointers.get(pointer).unwrap();
+
             // for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
             let p_offset = pointer
                 .get_offset()
@@ -659,7 +663,10 @@ fn serialize_inode(
 
             // Recursively serialize all children
             // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-            for pointer in storage.iter_pointers(*pointers) {
+            // for pointer in storage.iter_pointers(*pointers) {
+            for (_, index) in storage.iter_pointers_with_index(*pointers) {
+                let pointer = storage.pointers.get(index).unwrap();
+
                 let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
@@ -705,7 +712,10 @@ fn serialize_inode(
                 PointersOffsetsHeader::from_pointers(offset, *pointers, storage)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
-            for pointer in storage.iter_pointers(*pointers) {
+            for (_, index) in storage.iter_pointers_with_index(*pointers) {
+
+                let pointer = storage.pointers.get(index).unwrap();
+
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let pointer_offset = pointer
                     .get_offset()
@@ -1124,7 +1134,7 @@ fn deserialize_inode_pointers(
             Some(Pointer::new_commited(None, None, Some(absolute_offset)));
     }
 
-    Ok(storage.add_inode_pointers(depth as u8, nchildren, pointers)?)
+    Ok(storage.add_inode_pointers(depth as u16, nchildren, pointers)?)
 
     // Ok(Inode {
     //     depth: depth as u8,
@@ -1215,556 +1225,556 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_serialize() {
-        let mut storage = Storage::new();
-        let mut strings = StringInterner::default();
-        let mut repo = Persistent::try_new(None, true).unwrap();
-        let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
-        let fake_hash_id = HashId::try_from(1).unwrap();
-
-        let offset = repo.synchronize_data(&[], &[0, 0, 0, 0, 0, 0]).unwrap();
-
-        // Test Object::Directory
-
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "bab",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-
-        let mut bytes = Vec::with_capacity(1024);
-        let offset = serialize_object(
-            &Object::Directory(dir_id),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            offset,
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-
-        if let Object::Directory(object) = object {
-            assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
-            )
-        } else {
-            panic!();
-        }
-
-        // Test Object::Directory (Shaped)
-
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "bab",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "0aa",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-        bytes.clear();
-
-        let mut bytes = Vec::with_capacity(1024);
-        let offset = serialize_object(
-            &Object::Directory(dir_id),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            offset,
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-
-        if let Object::Directory(object) = object {
-            assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
-            )
-        } else {
-            panic!();
-        }
-
-        // Test Object::Directory (Shaped)
-
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "a1",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "bab1",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "0aa1",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-        bytes.clear();
-
-        let mut bytes = Vec::with_capacity(1024);
-        let offset = serialize_object(
-            &Object::Directory(dir_id),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            offset,
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-
-        if let Object::Directory(object) = object {
-            assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
-            )
-        } else {
-            panic!();
-        }
-
-        // Test Object::Blob
-
-        // Not inlined value
-        let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
-
-        let mut bytes = Vec::with_capacity(1024);
-        let offset = serialize_object(
-            &Object::Blob(blob_id),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            Some(0.into()),
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-        if let Object::Blob(object) = object {
-            let blob = storage.get_blob(object).unwrap();
-            assert_eq!(blob.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-        } else {
-            panic!();
-        }
-
-        // Test Object::Commit
-
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-        bytes.clear();
-
-        let commit = Commit {
-            parent_commit_ref: Some(ObjectReference::new(HashId::new(9876), Some(1.into()))),
-            root_ref: ObjectReference::new(HashId::new(12345), Some(2.into())),
-            time: 123456,
-            author: "123".to_string(),
-            message: "abc".to_string(),
-        };
-
-        let offset = serialize_object(
-            &Object::Commit(Box::new(commit.clone())),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            offset,
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-        if let Object::Commit(object) = object {
-            assert_eq!(*object, commit);
-        } else {
-            panic!();
-        }
-
-        // Test Object::Commit with no parent
-
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-        bytes.clear();
-
-        let commit = Commit {
-            parent_commit_ref: None,
-            root_ref: ObjectReference::new(HashId::new(12), Some(3.into())),
-            time: 1234567,
-            author: "123456".repeat(100),
-            message: "abcd".repeat(100),
-        };
-
-        let offset = serialize_object(
-            &Object::Commit(Box::new(commit.clone())),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            offset,
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-        if let Object::Commit(object) = object {
-            assert_eq!(*object, commit);
-        } else {
-            panic!();
-        }
-
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-
-        bytes.clear();
-
-        let mut offsets = Vec::with_capacity(32);
-
-        // Test Inode::Directory
-
-        let mut pointers: [Option<Pointer>; 32] = Default::default();
-
-        for index in 0..pointers.len() {
-            let inode_value = Inode::Directory(DirectoryId::empty());
-            let inode_value_id = storage.add_inode(inode_value).unwrap();
-
-            let hash_id = HashId::new((index + 1) as u64).unwrap();
-
-            let offset = serialize_inode(
-                inode_value_id,
-                &mut bytes,
-                hash_id,
-                &storage,
-                &mut stats,
-                &mut repo,
-                offset.unwrap(),
-                &strings,
-            )
-            .unwrap();
-
-            offsets.push(offset);
-
-            pointers[index] = Some(Pointer::new_commited(
-                Some(hash_id),
-                Some(inode_value_id),
-                Some(offset),
-            ));
-        }
-
-        let inode = Inode::Pointers {
-            depth: 100,
-            nchildren: 200,
-            npointers: 250,
-            pointers,
-        };
-
-        let inode_id = storage.add_inode(inode).unwrap();
-
-        let hash_id = HashId::new(123).unwrap();
-        let offset = serialize_inode(
-            inode_id,
-            &mut bytes,
-            hash_id,
-            &storage,
-            &mut stats,
-            &mut repo,
-            offset.unwrap(),
-            &strings,
-        )
-        .unwrap();
-
-        repo.synchronize_data(&[], &bytes).unwrap();
-
-        let mut buffer = Vec::with_capacity(1000);
-        let inode_bytes = repo
-            .get_object_bytes(ObjectReference::new(None, Some(offset)), &mut buffer)
-            .unwrap();
-
-        let new_inode_id =
-            deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
-        let new_inode = storage.get_inode(new_inode_id).unwrap();
-
-        if let Inode::Pointers {
-            depth,
-            nchildren,
-            npointers,
-            pointers,
-        } = new_inode
-        {
-            assert_eq!(*depth, 100);
-            assert_eq!(*nchildren, 200);
-            assert_eq!(*npointers, 32);
-
-            for (index, pointer) in pointers.iter().enumerate() {
-                let pointer = pointer.as_ref().unwrap();
-                assert_eq!(pointer.get_offset().unwrap(), offsets[index]);
-            }
-        } else {
-            panic!()
-        }
-
-        // Test Inode::Value
-
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "bab",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-
-        let inode = Inode::Directory(dir_id);
-        let inode_id = storage.add_inode(inode).unwrap();
-
-        let offset = serialize_inode(
-            inode_id, &mut bytes, hash_id, &storage, &mut stats, &mut repo, offset, &strings,
-        )
-        .unwrap();
-
-        repo.synchronize_data(&[], &bytes).unwrap();
-        let mut buffer = Vec::with_capacity(1000);
-        let inode_bytes = repo
-            .get_object_bytes(ObjectReference::new(None, Some(offset)), &mut buffer)
-            .unwrap();
-
-        let new_inode_id =
-            deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
-        let new_inode = storage.get_inode(new_inode_id).unwrap().clone();
-
-        if let Inode::Directory(new_dir_id) = new_inode {
-            assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-                storage
-                    .get_owned_dir(new_dir_id, &mut strings, &repo)
-                    .unwrap()
-            )
-        }
-    }
-
-    #[test]
-    fn test_serialize_empty_blob() {
-        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
-        let mut storage = Storage::new();
-        let mut strings = StringInterner::default();
-        let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
-
-        let fake_hash_id = HashId::try_from(1).unwrap();
-
-        let blob_id = storage.add_blob_by_ref(&[]).unwrap();
-        let blob = Object::Blob(blob_id);
-        let blob_hash_id = hash_object(&blob, &mut repo, &storage, &strings).unwrap();
-
-        assert!(blob_hash_id.is_some());
-
-        let dir_id = DirectoryId::empty();
-        let dir_id = storage
-            .dir_insert(
-                dir_id,
-                "a",
-                DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
-                &mut strings,
-                &repo,
-            )
-            .unwrap();
-
-        let mut bytes = Vec::with_capacity(1024);
-
-        let offset = serialize_object(
-            &Object::Directory(dir_id),
-            fake_hash_id,
-            &mut bytes,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
-            Some(1.into()),
-        )
-        .unwrap();
-
-        let object =
-            deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
-
-        if let Object::Directory(object) = object {
-            assert_eq!(
-                storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-                storage.get_owned_dir(object, &mut strings, &repo).unwrap()
-            )
-        } else {
-            panic!();
-        }
-    }
-
-    #[test]
-    fn test_hash_id() {
-        let mut repo = Persistent::try_new(None, true).expect("failed to create context");
-        let mut output = Vec::with_capacity(10);
-        let mut stats = Default::default();
-
-        let number = HashId::new(10101).unwrap();
-
-        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
-        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
-        assert_eq!(output.len(), 4);
-        assert_eq!(hash_id.unwrap(), number);
-        assert_eq!(size, 4);
-
-        output.clear();
-
-        let number = HashId::new((u32::MAX as u64) + 10).unwrap();
-
-        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
-        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
-        assert_eq!(output.len(), 6);
-        assert_eq!(hash_id.unwrap(), number);
-        assert_eq!(size, 6);
-
-        output.clear();
-
-        let number = HashId::new(u32::MAX as u64).unwrap();
-
-        serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
-        let (hash_id, size) = deserialize_hash_id(&output).unwrap();
-        assert_eq!(output.len(), 6);
-        assert_eq!(hash_id.unwrap(), number);
-        assert_eq!(size, 6);
-    }
-
-    #[test]
-    fn test_inode_headers() {
-        let mut header = PointersOffsetsHeader::default();
-
-        for index in 0..32 {
-            header.set(index, RelativeOffsetLength::OneByte);
-            assert_eq!(header.get(index), RelativeOffsetLength::OneByte);
-
-            header.clear(index);
-            header.set(index, RelativeOffsetLength::TwoBytes);
-            assert_eq!(header.get(index), RelativeOffsetLength::TwoBytes);
-
-            header.clear(index);
-            header.set(index, RelativeOffsetLength::FourBytes);
-            assert_eq!(header.get(index), RelativeOffsetLength::FourBytes);
-
-            header.clear(index);
-            header.set(index, RelativeOffsetLength::EightBytes);
-            assert_eq!(header.get(index), RelativeOffsetLength::EightBytes);
-        }
-    }
+    // #[test]
+    // fn test_serialize() {
+    //     let mut storage = Storage::new();
+    //     let mut strings = StringInterner::default();
+    //     let mut repo = Persistent::try_new(None, true).unwrap();
+    //     let mut stats = SerializeStats::default();
+    //     let mut batch = Vec::new();
+    //     let mut older_objects = Vec::new();
+    //     let fake_hash_id = HashId::try_from(1).unwrap();
+
+    //     let offset = repo.synchronize_data(&[], &[0, 0, 0, 0, 0, 0]).unwrap();
+
+    //     // Test Object::Directory
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "a",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "bab",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+
+    //     let mut bytes = Vec::with_capacity(1024);
+    //     let offset = serialize_object(
+    //         &Object::Directory(dir_id),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         offset,
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+
+    //     if let Object::Directory(object) = object {
+    //         assert_eq!(
+    //             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //             storage.get_owned_dir(object, &mut strings, &repo).unwrap()
+    //         )
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     // Test Object::Directory (Shaped)
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "a",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "bab",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "0aa",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+
+    //     let offset = repo.synchronize_data(&[], &bytes).unwrap();
+    //     bytes.clear();
+
+    //     let mut bytes = Vec::with_capacity(1024);
+    //     let offset = serialize_object(
+    //         &Object::Directory(dir_id),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         offset,
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+
+    //     if let Object::Directory(object) = object {
+    //         assert_eq!(
+    //             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //             storage.get_owned_dir(object, &mut strings, &repo).unwrap()
+    //         )
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     // Test Object::Directory (Shaped)
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "a1",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "bab1",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "0aa1",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+
+    //     let offset = repo.synchronize_data(&[], &bytes).unwrap();
+    //     bytes.clear();
+
+    //     let mut bytes = Vec::with_capacity(1024);
+    //     let offset = serialize_object(
+    //         &Object::Directory(dir_id),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         offset,
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+
+    //     if let Object::Directory(object) = object {
+    //         assert_eq!(
+    //             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //             storage.get_owned_dir(object, &mut strings, &repo).unwrap()
+    //         )
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     // Test Object::Blob
+
+    //     // Not inlined value
+    //     let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+
+    //     let mut bytes = Vec::with_capacity(1024);
+    //     let offset = serialize_object(
+    //         &Object::Blob(blob_id),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         Some(0.into()),
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+    //     if let Object::Blob(object) = object {
+    //         let blob = storage.get_blob(object).unwrap();
+    //         assert_eq!(blob.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     // Test Object::Commit
+
+    //     let offset = repo.synchronize_data(&[], &bytes).unwrap();
+    //     bytes.clear();
+
+    //     let commit = Commit {
+    //         parent_commit_ref: Some(ObjectReference::new(HashId::new(9876), Some(1.into()))),
+    //         root_ref: ObjectReference::new(HashId::new(12345), Some(2.into())),
+    //         time: 123456,
+    //         author: "123".to_string(),
+    //         message: "abc".to_string(),
+    //     };
+
+    //     let offset = serialize_object(
+    //         &Object::Commit(Box::new(commit.clone())),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         offset,
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+    //     if let Object::Commit(object) = object {
+    //         assert_eq!(*object, commit);
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     // Test Object::Commit with no parent
+
+    //     let offset = repo.synchronize_data(&[], &bytes).unwrap();
+    //     bytes.clear();
+
+    //     let commit = Commit {
+    //         parent_commit_ref: None,
+    //         root_ref: ObjectReference::new(HashId::new(12), Some(3.into())),
+    //         time: 1234567,
+    //         author: "123456".repeat(100),
+    //         message: "abcd".repeat(100),
+    //     };
+
+    //     let offset = serialize_object(
+    //         &Object::Commit(Box::new(commit.clone())),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         offset,
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+    //     if let Object::Commit(object) = object {
+    //         assert_eq!(*object, commit);
+    //     } else {
+    //         panic!();
+    //     }
+
+    //     let offset = repo.synchronize_data(&[], &bytes).unwrap();
+
+    //     bytes.clear();
+
+    //     let mut offsets = Vec::with_capacity(32);
+
+    //     // Test Inode::Directory
+
+    //     let mut pointers: [Option<Pointer>; 32] = Default::default();
+
+    //     for index in 0..pointers.len() {
+    //         let inode_value = Inode::Directory(DirectoryId::empty());
+    //         let inode_value_id = storage.add_inode(inode_value).unwrap();
+
+    //         let hash_id = HashId::new((index + 1) as u64).unwrap();
+
+    //         let offset = serialize_inode(
+    //             inode_value_id,
+    //             &mut bytes,
+    //             hash_id,
+    //             &storage,
+    //             &mut stats,
+    //             &mut repo,
+    //             offset.unwrap(),
+    //             &strings,
+    //         )
+    //         .unwrap();
+
+    //         offsets.push(offset);
+
+    //         pointers[index] = Some(Pointer::new_commited(
+    //             Some(hash_id),
+    //             Some(inode_value_id),
+    //             Some(offset),
+    //         ));
+    //     }
+
+    //     let inode = Inode::Pointers {
+    //         depth: 100,
+    //         nchildren: 200,
+    //         npointers: 250,
+    //         pointers,
+    //     };
+
+    //     let inode_id = storage.add_inode(inode).unwrap();
+
+    //     let hash_id = HashId::new(123).unwrap();
+    //     let offset = serialize_inode(
+    //         inode_id,
+    //         &mut bytes,
+    //         hash_id,
+    //         &storage,
+    //         &mut stats,
+    //         &mut repo,
+    //         offset.unwrap(),
+    //         &strings,
+    //     )
+    //     .unwrap();
+
+    //     repo.synchronize_data(&[], &bytes).unwrap();
+
+    //     let mut buffer = Vec::with_capacity(1000);
+    //     let inode_bytes = repo
+    //         .get_object_bytes(ObjectReference::new(None, Some(offset)), &mut buffer)
+    //         .unwrap();
+
+    //     let new_inode_id =
+    //         deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
+    //     let new_inode = storage.get_inode(new_inode_id).unwrap();
+
+    //     if let Inode::Pointers {
+    //         depth,
+    //         nchildren,
+    //         npointers,
+    //         pointers,
+    //     } = new_inode
+    //     {
+    //         assert_eq!(*depth, 100);
+    //         assert_eq!(*nchildren, 200);
+    //         assert_eq!(*npointers, 32);
+
+    //         for (index, pointer) in pointers.iter().enumerate() {
+    //             let pointer = pointer.as_ref().unwrap();
+    //             assert_eq!(pointer.get_offset().unwrap(), offsets[index]);
+    //         }
+    //     } else {
+    //         panic!()
+    //     }
+
+    //     // Test Inode::Value
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "a",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "bab",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(2.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(3.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+
+    //     let inode = Inode::Directory(dir_id);
+    //     let inode_id = storage.add_inode(inode).unwrap();
+
+    //     let offset = serialize_inode(
+    //         inode_id, &mut bytes, hash_id, &storage, &mut stats, &mut repo, offset, &strings,
+    //     )
+    //     .unwrap();
+
+    //     repo.synchronize_data(&[], &bytes).unwrap();
+    //     let mut buffer = Vec::with_capacity(1000);
+    //     let inode_bytes = repo
+    //         .get_object_bytes(ObjectReference::new(None, Some(offset)), &mut buffer)
+    //         .unwrap();
+
+    //     let new_inode_id =
+    //         deserialize_inode(&inode_bytes, offset, &mut storage, &repo, &mut strings).unwrap();
+    //     let new_inode = storage.get_inode(new_inode_id).unwrap().clone();
+
+    //     if let Inode::Directory(new_dir_id) = new_inode {
+    //         assert_eq!(
+    //             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //             storage
+    //                 .get_owned_dir(new_dir_id, &mut strings, &repo)
+    //                 .unwrap()
+    //         )
+    //     }
+    // }
+
+    // #[test]
+    // fn test_serialize_empty_blob() {
+    //     let mut repo = Persistent::try_new(None, true).expect("failed to create context");
+    //     let mut storage = Storage::new();
+    //     let mut strings = StringInterner::default();
+    //     let mut stats = SerializeStats::default();
+    //     let mut batch = Vec::new();
+    //     let mut older_objects = Vec::new();
+
+    //     let fake_hash_id = HashId::try_from(1).unwrap();
+
+    //     let blob_id = storage.add_blob_by_ref(&[]).unwrap();
+    //     let blob = Object::Blob(blob_id);
+    //     let blob_hash_id = hash_object(&blob, &mut repo, &storage, &strings).unwrap();
+
+    //     assert!(blob_hash_id.is_some());
+
+    //     let dir_id = DirectoryId::empty();
+    //     let dir_id = storage
+    //         .dir_insert(
+    //             dir_id,
+    //             "a",
+    //             DirEntry::new_commited(DirEntryKind::Blob, None, None).with_offset(1.into()),
+    //             &mut strings,
+    //             &repo,
+    //         )
+    //         .unwrap();
+
+    //     let mut bytes = Vec::with_capacity(1024);
+
+    //     let offset = serialize_object(
+    //         &Object::Directory(dir_id),
+    //         fake_hash_id,
+    //         &mut bytes,
+    //         &storage,
+    //         &strings,
+    //         &mut stats,
+    //         &mut batch,
+    //         &mut older_objects,
+    //         &mut repo,
+    //         Some(1.into()),
+    //     )
+    //     .unwrap();
+
+    //     let object =
+    //         deserialize_object(&bytes, offset.unwrap(), &mut storage, &mut strings, &repo).unwrap();
+
+    //     if let Object::Directory(object) = object {
+    //         assert_eq!(
+    //             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
+    //             storage.get_owned_dir(object, &mut strings, &repo).unwrap()
+    //         )
+    //     } else {
+    //         panic!();
+    //     }
+    // }
+
+    // #[test]
+    // fn test_hash_id() {
+    //     let mut repo = Persistent::try_new(None, true).expect("failed to create context");
+    //     let mut output = Vec::with_capacity(10);
+    //     let mut stats = Default::default();
+
+    //     let number = HashId::new(10101).unwrap();
+
+    //     serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
+    //     let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+    //     assert_eq!(output.len(), 4);
+    //     assert_eq!(hash_id.unwrap(), number);
+    //     assert_eq!(size, 4);
+
+    //     output.clear();
+
+    //     let number = HashId::new((u32::MAX as u64) + 10).unwrap();
+
+    //     serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
+    //     let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+    //     assert_eq!(output.len(), 6);
+    //     assert_eq!(hash_id.unwrap(), number);
+    //     assert_eq!(size, 6);
+
+    //     output.clear();
+
+    //     let number = HashId::new(u32::MAX as u64).unwrap();
+
+    //     serialize_hash_id(number, &mut output, &mut repo, &mut stats).unwrap();
+    //     let (hash_id, size) = deserialize_hash_id(&output).unwrap();
+    //     assert_eq!(output.len(), 6);
+    //     assert_eq!(hash_id.unwrap(), number);
+    //     assert_eq!(size, 6);
+    // }
+
+    // #[test]
+    // fn test_inode_headers() {
+    //     let mut header = PointersOffsetsHeader::default();
+
+    //     for index in 0..32 {
+    //         header.set(index, RelativeOffsetLength::OneByte);
+    //         assert_eq!(header.get(index), RelativeOffsetLength::OneByte);
+
+    //         header.clear(index);
+    //         header.set(index, RelativeOffsetLength::TwoBytes);
+    //         assert_eq!(header.get(index), RelativeOffsetLength::TwoBytes);
+
+    //         header.clear(index);
+    //         header.set(index, RelativeOffsetLength::FourBytes);
+    //         assert_eq!(header.get(index), RelativeOffsetLength::FourBytes);
+
+    //         header.clear(index);
+    //         header.set(index, RelativeOffsetLength::EightBytes);
+    //         assert_eq!(header.get(index), RelativeOffsetLength::EightBytes);
+    //     }
+    // }
 }
