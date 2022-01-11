@@ -649,6 +649,7 @@ enum DirectoryOrInodeRef<'a> {
 }
 
 /// This enum is not stored in `Storage`
+#[derive(PartialEq, Eq)]
 enum DirectoryOrInodeId {
     Directory(DirectoryId),
     Inode(InodeId),
@@ -662,6 +663,13 @@ impl DirectoryOrInodeId {
                 let value: usize = (*inode_id).try_into().unwrap();
                 value as u64
             }
+        }
+    }
+
+    fn into_dir(self) -> DirectoryId {
+        match self {
+            DirectoryOrInodeId::Directory(dir_id) => dir_id,
+            DirectoryOrInodeId::Inode(inode_id) => inode_id.into(),
         }
     }
 }
@@ -1816,7 +1824,7 @@ impl Storage {
                 repository,
             )?;
             self.temp_dir.clear();
-            return Ok(inode_id.into()); // TODO
+            return Ok(inode_id.into_dir()); // TODO
         }
 
         let dir_entry_id = self.nodes.push(dir_entry)?;
@@ -1860,22 +1868,19 @@ impl Storage {
             self.temp_dir.clear();
 
             // TODO
-            Ok(inode_id.into())
+            Ok(inode_id.into_dir())
         }
     }
 
     fn remove_in_inode_recursive(
         &mut self,
-        inode_id: InodeId,
+        ptr_id: DirectoryOrInodeId,
         key: &str,
         strings: &mut StringInterner,
         repository: &ContextKeyValueStore,
-    ) -> Result<Option<InodeId>, StorageError> {
-        let inode = self.get_inode(inode_id)?;
-
-        match inode {
-            Inode::Directory(dir_id) => {
-                let dir_id = *dir_id;
+    ) -> Result<Option<DirectoryOrInodeId>, StorageError> {
+        match ptr_id {
+            DirectoryOrInodeId::Directory(dir_id) => {
                 let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
 
                 if new_dir_id.is_empty() {
@@ -1885,20 +1890,22 @@ impl Storage {
                 } else if new_dir_id == dir_id {
                     // The key was not found in the directory, so it's the same directory.
                     // Do not create a new inode.
-                    Ok(Some(inode_id))
+                    Ok(Some(ptr_id))
                 } else {
-                    self.add_inode(Inode::Directory(new_dir_id)).map(Some)
+                    Ok(Some(DirectoryOrInodeId::Directory(new_dir_id)))
+                    // self.add_inode(Inode::Directory(new_dir_id)).map(Some)
                 }
             }
-            Inode::Pointers {
-                depth,
-                nchildren,
-                npointers,
-                pointers,
-            } => {
-                let depth = *depth;
-                let mut npointers = *npointers;
-                let nchildren = *nchildren;
+            DirectoryOrInodeId::Inode(inode_id) => {
+                let Inode {
+                    depth,
+                    nchildren,
+                    pointers,
+                } = self.get_inode(inode_id)?;
+
+                // let depth = *depth;
+                // let mut npointers = *npointers;
+                // let nchildren = *nchildren;
                 let new_nchildren = nchildren - 1;
 
                 let new_inode_id = if new_nchildren as usize <= INODE_POINTER_THRESHOLD {
@@ -1906,7 +1913,11 @@ impl Storage {
                     // INODE_POINTER_THRESHOLD items, so it should be converted to a
                     // `Inode::Directory`.
 
-                    let dir_id = self.inodes_to_dir_sorted(inode_id, strings, repository)?;
+                    let dir_id = self.inodes_to_dir_sorted(
+                        DirectoryOrInodeId::Inode(inode_id),
+                        strings,
+                        repository,
+                    )?;
                     let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
 
                     if dir_id == new_dir_id {
@@ -1915,34 +1926,38 @@ impl Storage {
                         // Remove the directory that was just created with
                         // Self::inodes_to_dir_sorted above, it won't be used and save space.
                         self.directories.remove_last_nelems(dir_id.small_dir_len());
-                        return Ok(Some(inode_id));
+                        return Ok(Some(ptr_id));
                     }
 
-                    self.add_inode(Inode::Directory(new_dir_id))?
+                    DirectoryOrInodeId::Directory(new_dir_id)
+                    // self.add_inode(Inode::Directory(new_dir_id))?
                 } else {
-                    let index_at_depth = index_of_key(depth, key) as usize;
-                    let mut pointers = pointers.clone();
+                    let mut pointers = self.clone_pointers(*pointers);
+                    let index_at_depth = index_of_key(*depth as u32, key) as usize;
+                    // let mut pointers = pointers.clone();
 
                     let pointer = match pointers[index_at_depth].as_ref() {
                         Some(pointer) => pointer,
-                        None => return Ok(Some(inode_id)), // The key was not found
+                        None => return Ok(Some(ptr_id)), // The key was not found
                     };
 
-                    let ptr_inode_id = match pointer.inode_id() {
+                    let ptr_inode_id = match pointer.ptr_id() {
                         Some(inode_id) => inode_id,
                         None => {
-                            let pointer_inode_id = repository
-                                .get_inode(pointer.get_reference(), self, strings)
-                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-                            pointer.set_inode_id(pointer_inode_id);
-                            pointer_inode_id
+                            // let pointer_inode_id = repository
+                            //     .get_inode(pointer.get_reference(), self, strings)
+                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            // pointer.set_inode_id(pointer_inode_id);
+                            // pointer_inode_id
+
+                            todo!()
                         }
                     };
 
                     match self.remove_in_inode_recursive(ptr_inode_id, key, strings, repository)? {
                         Some(new_ptr_inode_id) if new_ptr_inode_id == ptr_inode_id => {
                             // The key was not found, don't create a new inode
-                            return Ok(Some(inode_id));
+                            return Ok(Some(ptr_id));
                         }
                         Some(new_ptr_inode_id) => {
                             pointers[index_at_depth] = Some(Pointer::new(None, new_ptr_inode_id));
@@ -1951,21 +1966,119 @@ impl Storage {
                             // The key was removed and it result in an empty directory.
                             // Remove the pointer: make it `None`.
                             pointers[index_at_depth] = None;
-                            npointers -= 1;
+                            // npointers -= 1; TODO: Is it correct ?
                         }
                     }
 
-                    self.add_inode(Inode::Pointers {
-                        depth,
-                        nchildren: new_nchildren,
-                        npointers,
-                        pointers,
-                    })?
+                    self.add_inode_pointers(*depth, new_nchildren, pointers)?
+
+                    // self.add_inode(Inode::Pointers {
+                    //     depth,
+                    //     nchildren: new_nchildren,
+                    //     npointers,
+                    //     pointers,
+                    // })?
                 };
 
                 Ok(Some(new_inode_id))
             }
         }
+
+        // let inode = self.get_inode(inode_id)?;
+
+        // match inode {
+        //     Inode::Directory(dir_id) => {
+        //         let dir_id = *dir_id;
+        //         let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
+
+        //         if new_dir_id.is_empty() {
+        //             // The directory is now empty, return None to indicate that it
+        //             // should be removed from the Inode::Pointers
+        //             Ok(None)
+        //         } else if new_dir_id == dir_id {
+        //             // The key was not found in the directory, so it's the same directory.
+        //             // Do not create a new inode.
+        //             Ok(Some(inode_id))
+        //         } else {
+        //             self.add_inode(Inode::Directory(new_dir_id)).map(Some)
+        //         }
+        //     }
+        //     Inode::Pointers {
+        //         depth,
+        //         nchildren,
+        //         npointers,
+        //         pointers,
+        //     } => {
+        //         let depth = *depth;
+        //         let mut npointers = *npointers;
+        //         let nchildren = *nchildren;
+        //         let new_nchildren = nchildren - 1;
+
+        //         let new_inode_id = if new_nchildren as usize <= INODE_POINTER_THRESHOLD {
+        //             // After removing an element from this `Inode::Pointers`, it remains
+        //             // INODE_POINTER_THRESHOLD items, so it should be converted to a
+        //             // `Inode::Directory`.
+
+        //             let dir_id = self.inodes_to_dir_sorted(inode_id, strings, repository)?;
+        //             let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
+
+        //             if dir_id == new_dir_id {
+        //                 // The key was not found.
+
+        //                 // Remove the directory that was just created with
+        //                 // Self::inodes_to_dir_sorted above, it won't be used and save space.
+        //                 self.directories.remove_last_nelems(dir_id.small_dir_len());
+        //                 return Ok(Some(inode_id));
+        //             }
+
+        //             self.add_inode(Inode::Directory(new_dir_id))?
+        //         } else {
+        //             let index_at_depth = index_of_key(depth, key) as usize;
+        //             let mut pointers = pointers.clone();
+
+        //             let pointer = match pointers[index_at_depth].as_ref() {
+        //                 Some(pointer) => pointer,
+        //                 None => return Ok(Some(inode_id)), // The key was not found
+        //             };
+
+        //             let ptr_inode_id = match pointer.inode_id() {
+        //                 Some(inode_id) => inode_id,
+        //                 None => {
+        //                     let pointer_inode_id = repository
+        //                         .get_inode(pointer.get_reference(), self, strings)
+        //                         .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+        //                     pointer.set_inode_id(pointer_inode_id);
+        //                     pointer_inode_id
+        //                 }
+        //             };
+
+        //             match self.remove_in_inode_recursive(ptr_inode_id, key, strings, repository)? {
+        //                 Some(new_ptr_inode_id) if new_ptr_inode_id == ptr_inode_id => {
+        //                     // The key was not found, don't create a new inode
+        //                     return Ok(Some(inode_id));
+        //                 }
+        //                 Some(new_ptr_inode_id) => {
+        //                     pointers[index_at_depth] = Some(Pointer::new(None, new_ptr_inode_id));
+        //                 }
+        //                 None => {
+        //                     // The key was removed and it result in an empty directory.
+        //                     // Remove the pointer: make it `None`.
+        //                     pointers[index_at_depth] = None;
+        //                     npointers -= 1;
+        //                 }
+        //             }
+
+        //             self.add_inode(Inode::Pointers {
+        //                 depth,
+        //                 nchildren: new_nchildren,
+        //                 npointers,
+        //                 pointers,
+        //             })?
+        //         };
+
+        //         Ok(Some(new_inode_id))
+        //     }
+        // }
     }
 
     /// Convert the Inode into a small directory
@@ -1974,7 +2087,7 @@ impl Storage {
     /// copy them into `Self::directories` in a sorted order.
     fn inodes_to_dir_sorted(
         &mut self,
-        inode_id: InodeId,
+        ptr_id: DirectoryOrInodeId,
         strings: &mut StringInterner,
         repository: &ContextKeyValueStore,
     ) -> Result<DirectoryId, StorageError> {
@@ -1984,7 +2097,7 @@ impl Storage {
         self.with_new_dir::<_, Result<_, StorageError>>(|this, temp_dir| {
             // let inode = this.get_inode(inode_id)?;
 
-            this.iter_full_inodes_recursive_unsorted(inode_id, strings, repository, &mut |value| {
+            this.iter_full_inodes_recursive_unsorted(ptr_id, strings, repository, &mut |value| {
                 temp_dir.push(*value);
                 Ok(())
             })
@@ -2010,11 +2123,16 @@ impl Storage {
         strings: &mut StringInterner,
         repository: &ContextKeyValueStore,
     ) -> Result<DirectoryId, StorageError> {
-        let inode_id = self.remove_in_inode_recursive(inode_id, key, strings, repository)?;
+        let inode_id = self.remove_in_inode_recursive(
+            DirectoryOrInodeId::Inode(inode_id),
+            key,
+            strings,
+            repository,
+        )?;
         let inode_id = inode_id.ok_or(StorageError::RootOfInodeNotAPointer)?;
 
         if self.inode_len(inode_id)? > DIRECTORY_INODE_THRESHOLD {
-            Ok(inode_id.into())
+            Ok(inode_id.into_dir())
         } else {
             // There is now DIRECTORY_INODE_THRESHOLD or less items:
             // Convert the inode into a 'small' directory
