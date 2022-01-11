@@ -401,7 +401,7 @@ impl TryFrom<usize> for InodeId {
 
 // #[bitfield]
 // #[derive(Clone, Debug, Copy, PartialEq, Eq)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PointersId {
     start: u32,
     bitfield: u32,
@@ -418,7 +418,7 @@ impl PointersId {
         self.start as usize
     }
 
-    fn npointers(&self) -> usize {
+    pub fn npointers(&self) -> usize {
         self.bitfield.count_ones() as usize
     }
 
@@ -482,7 +482,7 @@ impl Pointer {
 // }
 
 // assert_eq_size!([u8; 18], PointerToInode);
-assert_eq_size!([u8; 18], Pointer);
+assert_eq_size!([u8; 22], Pointer);
 
 impl Pointer {
     pub fn new(hash_id: Option<HashId>, dir_or_inode_id: DirectoryOrInodeId) -> Self {
@@ -597,13 +597,21 @@ impl Pointer {
         self.inner.set(inner);
     }
 
-    pub fn set_inode_id(&self, inode_id: InodeId) {
+    pub fn set_ptr_id(&self, ptr_id: DirectoryOrInodeId) {
         let mut inner = self.inner.get();
-        inner.set_inode_id(inode_id.0);
+        inner.set_ptr_id(ptr_id.as_u64());
         inner.set_is_inode_available(true);
 
         self.inner.set(inner);
     }
+
+    // pub fn set_inode_id(&self, inode_id: InodeId) {
+    //     let mut inner = self.inner.get();
+    //     inner.set_inode_id(inode_id.0);
+    //     inner.set_is_inode_available(true);
+
+    //     self.inner.set(inner);
+    // }
 
     pub fn set_offset(&self, offset: AbsoluteOffset) {
         debug_assert_ne!(offset.as_u64(), 0);
@@ -631,16 +639,16 @@ impl Pointer {
     }
 }
 
-assert_eq_size!([u8; 19], Option<Pointer>);
+assert_eq_size!([u8; 23], Option<Pointer>);
 
 #[derive(Debug)]
-struct Inode {
-    depth: u8,
-    nchildren: u32,
-    pointers: PointersId,
+pub struct Inode {
+    pub depth: u8,
+    pub nchildren: u32,
+    pub pointers: PointersId,
 }
 
-assert_eq_size!([u8; 14], Inode);
+assert_eq_size!([u8; 16], Inode);
 
 /// This enum is not stored in `Storage`
 enum DirectoryOrInodeRef<'a> {
@@ -649,8 +657,8 @@ enum DirectoryOrInodeRef<'a> {
 }
 
 /// This enum is not stored in `Storage`
-#[derive(PartialEq, Eq)]
-enum DirectoryOrInodeId {
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum DirectoryOrInodeId {
     Directory(DirectoryId),
     Inode(InodeId),
 }
@@ -666,7 +674,7 @@ impl DirectoryOrInodeId {
         }
     }
 
-    fn into_dir(self) -> DirectoryId {
+    pub fn into_dir(self) -> DirectoryId {
         match self {
             DirectoryOrInodeId::Directory(dir_id) => dir_id,
             DirectoryOrInodeId::Inode(inode_id) => inode_id.into(),
@@ -937,57 +945,68 @@ impl Storage {
         &self,
         inode_id: InodeId,
         pointer_index: usize,
-        pointer_inode_id: InodeId,
+        pointer_inode_id: DirectoryOrInodeId,
+        // pointer_inode_id: InodeId,
     ) -> Result<(), StorageError> {
-        use StorageError::*;
+        // use StorageError::*;
 
-        let pointers = match self.get_inode(inode_id)? {
-            Inode::Pointers { pointers, .. } => pointers,
-            Inode::Directory(_) => return Err(InodePointersNotFound),
-        };
+        todo!()
 
-        let (start, end) = pointers.get();
-        let pointers = match self.pointers.get_slice(start..end) {
-            Some(pointers) => pointers,
-            None => return Err(InodePointersNotFound),
-        };
+        // let pointers = match self.get_inode(inode_id)? {
+        //     Inode::Pointers { pointers, .. } => pointers,
+        //     Inode::Directory(_) => return Err(InodePointersNotFound),
+        // };
 
-        let pointer = match pointers.get(pointer_index) {
-            Some(Some(ref pointer)) => pointer,
-            Some(None) | None => return Err(InodePointersNotFound),
-        };
+        // let (start, end) = pointers.get();
+        // let pointers = match self.pointers.get_slice(start..end) {
+        //     Some(pointers) => pointers,
+        //     None => return Err(InodePointersNotFound),
+        // };
 
-        pointer.set_inode_id(pointer_inode_id);
+        // let pointer = match pointers.get(pointer_index) {
+        //     Some(Some(ref pointer)) => pointer,
+        //     Some(None) | None => return Err(InodePointersNotFound),
+        // };
 
-        Ok(())
+        // pointer.set_inode_id(pointer_inode_id);
+
+        // Ok(())
     }
 
     fn dir_find_dir_entry_recursive(
         &mut self,
-        inode_id: InodeId,
+        ptr_id: DirectoryOrInodeId,
         key: &str,
         strings: &mut StringInterner,
         repository: &ContextKeyValueStore,
     ) -> Result<Option<DirEntryId>, StorageError> {
-        let inode = self.get_inode(inode_id)?;
-
-        match inode {
-            Inode::Directory(dir_id) => {
-                let dir_id = *dir_id;
+        match ptr_id {
+            DirectoryOrInodeId::Directory(dir_id) => {
+                let dir_id = dir_id;
                 self.dir_find_dir_entry(dir_id, key, strings, repository)
             }
-            Inode::Pointers {
-                depth, pointers, ..
-            } => {
-                let index_at_depth = index_of_key(*depth, key) as usize;
+            DirectoryOrInodeId::Inode(inode_id) => {
+                let Inode {
+                    depth,
+                    nchildren,
+                    pointers,
+                } = self.get_inode(inode_id)?;
+                // let inode = self.get_inode(inode_id)?;
 
-                let pointer = match pointers.get(index_at_depth) {
-                    Some(Some(ref pointer)) => pointer,
-                    Some(None) | None => return Ok(None),
+                let index_at_depth = index_of_key(*depth as u32, key) as usize;
+
+                let pointer = match self.get_pointer_at_index(*pointers, index_at_depth) {
+                    Some(pointer) => pointer,
+                    None => return Ok(None),
                 };
 
-                let inode_id = if let Some(inode_id) = pointer.inode_id() {
-                    inode_id
+                // let pointer = match pointers.get(index_at_depth) {
+                //     Some(Some(ref pointer)) => pointer,
+                //     Some(None) | None => return Ok(None),
+                // };
+
+                let ptr_id = if let Some(ptr_id) = pointer.ptr_id() {
+                    ptr_id
                 } else {
                     let pointer_inode_id = repository
                         .get_inode(pointer.get_reference(), self, strings)
@@ -998,9 +1017,42 @@ impl Storage {
                 };
 
                 // let inode_id = pointer.inode_id();
-                self.dir_find_dir_entry_recursive(inode_id, key, strings, repository)
+                self.dir_find_dir_entry_recursive(ptr_id, key, strings, repository)
             }
         }
+
+        // let inode = self.get_inode(inode_id)?;
+
+        // match inode {
+        //     Inode::Directory(dir_id) => {
+        //         let dir_id = *dir_id;
+        //         self.dir_find_dir_entry(dir_id, key, strings, repository)
+        //     }
+        //     Inode::Pointers {
+        //         depth, pointers, ..
+        //     } => {
+        //         let index_at_depth = index_of_key(*depth, key) as usize;
+
+        //         let pointer = match pointers.get(index_at_depth) {
+        //             Some(Some(ref pointer)) => pointer,
+        //             Some(None) | None => return Ok(None),
+        //         };
+
+        //         let inode_id = if let Some(inode_id) = pointer.inode_id() {
+        //             inode_id
+        //         } else {
+        //             let pointer_inode_id = repository
+        //                 .get_inode(pointer.get_reference(), self, strings)
+        //                 .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+
+        //             self.set_pointer_inode_id(inode_id, index_at_depth, pointer_inode_id)?;
+        //             pointer_inode_id
+        //         };
+
+        //         // let inode_id = pointer.inode_id();
+        //         self.dir_find_dir_entry_recursive(inode_id, key, strings, repository)
+        //     }
+        // }
     }
 
     /// Find `key` in the directory.
@@ -1012,7 +1064,12 @@ impl Storage {
         repository: &ContextKeyValueStore,
     ) -> Result<Option<DirEntryId>, StorageError> {
         if let Some(inode_id) = dir_id.get_inode_id() {
-            self.dir_find_dir_entry_recursive(inode_id, key, strings, repository)
+            self.dir_find_dir_entry_recursive(
+                DirectoryOrInodeId::Inode(inode_id),
+                key,
+                strings,
+                repository,
+            )
         } else {
             let dir = self.get_small_dir(dir_id)?;
             match self.binary_search_in_dir(dir.as_ref(), key, strings)?.ok() {
@@ -1250,7 +1307,11 @@ impl Storage {
         })
     }
 
-    fn clone_pointers(&self, pointers: PointersId) -> [Option<Pointer>; 32] {
+    pub fn clone_pointers(&self, pointers: PointersId) -> [Option<Pointer>; 32] {
+        todo!()
+    }
+
+    fn get_pointer_at_index(&self, pointers: PointersId, index: usize) -> Option<&Pointer> {
         todo!()
     }
 
@@ -1258,8 +1319,13 @@ impl Storage {
         todo!()
     }
 
-    fn iter_pointers(&self, pointers: PointersId) -> impl Iterator<Item = Pointer> {
-        [].iter()
+    // fn iter_pointers(&self, pointers: PointersId) -> impl Iterator<Item = Pointer> {
+    pub fn iter_pointers(&self, pointers: PointersId) -> &[&Pointer] {
+        todo!()
+    }
+
+    pub fn iter_pointers_with_index(&self, pointers: PointersId) -> &[(usize, &Pointer)] {
+        todo!()
     }
 
     fn insert_inode(
@@ -1319,7 +1385,7 @@ impl Storage {
                 //     .get_index_for_ptr(index_at_depth)
                 //     .and_then(|index| self.pointers.get(index));
 
-                let pointers = self.clone_pointers(*pointers);
+                let mut pointers = self.clone_pointers(*pointers);
 
                 // let pointer = self.pointers.get(ptr_index);
 
@@ -1327,14 +1393,12 @@ impl Storage {
                     let ptr_id = match pointer.ptr_id() {
                         Some(ptr_id) => ptr_id,
                         None => {
-                            // let inode_id = repository
-                            //     .get_inode(pointer.get_reference(), self, strings)
-                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            let ptr_id = repository
+                                .get_inode(pointer.get_reference(), self, strings)
+                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-                            // pointer.set_inode_id(inode_id);
-                            // inode_id
-
-                            todo!()
+                            pointer.set_ptr_id(ptr_id);
+                            ptr_id
                         }
                     };
 
@@ -1515,7 +1579,8 @@ impl Storage {
                 }
             }
             DirectoryOrInodeId::Inode(inode_id) => {
-                let inode = self.get_inode(inode_id)?.clone();
+                let inode = self.get_inode(inode_id)?;
+                // let inode = self.get_inode(inode_id)?.clone();
                 let pointers = self.clone_pointers(inode.pointers);
 
                 for (index, pointer) in pointers.iter().enumerate() {
@@ -1527,14 +1592,12 @@ impl Storage {
                     let ptr_id = match pointer.ptr_id() {
                         Some(ptr_id) => ptr_id,
                         None => {
-                            // let pointer_inode_id = repository
-                            //     .get_inode(pointer.get_reference(), self, strings)
-                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            let pointer_inode_id = repository
+                                .get_inode(pointer.get_reference(), self, strings)
+                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-                            // self.set_pointer_inode_id(inode_id, index, pointer_inode_id)?;
-                            // pointer_inode_id
-
-                            todo!()
+                            self.set_pointer_inode_id(inode_id, index, pointer_inode_id)?;
+                            pointer_inode_id
                         }
                     };
 
@@ -1934,6 +1997,7 @@ impl Storage {
                 } else {
                     let mut pointers = self.clone_pointers(*pointers);
                     let index_at_depth = index_of_key(*depth as u32, key) as usize;
+                    let depth = *depth;
                     // let mut pointers = pointers.clone();
 
                     let pointer = match pointers[index_at_depth].as_ref() {
@@ -1944,13 +2008,11 @@ impl Storage {
                     let ptr_inode_id = match pointer.ptr_id() {
                         Some(inode_id) => inode_id,
                         None => {
-                            // let pointer_inode_id = repository
-                            //     .get_inode(pointer.get_reference(), self, strings)
-                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-                            // pointer.set_inode_id(pointer_inode_id);
-                            // pointer_inode_id
-
-                            todo!()
+                            let pointer_inode_id = repository
+                                .get_inode(pointer.get_reference(), self, strings)
+                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            pointer.set_ptr_id(pointer_inode_id);
+                            pointer_inode_id
                         }
                     };
 
@@ -1970,7 +2032,7 @@ impl Storage {
                         }
                     }
 
-                    self.add_inode_pointers(*depth, new_nchildren, pointers)?
+                    self.add_inode_pointers(depth, new_nchildren, pointers)?
 
                     // self.add_inode(Inode::Pointers {
                     //     depth,

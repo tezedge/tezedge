@@ -36,7 +36,7 @@ use crate::{
     },
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
-        storage::{DirEntryId, InodeId, Storage},
+        storage::{DirEntryId, DirectoryOrInodeId, InodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, WorkingTree},
         Object, ObjectReference,
@@ -909,7 +909,7 @@ impl KeyValueStoreBackend for Persistent {
         object_ref: ObjectReference,
         storage: &mut Storage,
         strings: &mut StringInterner,
-    ) -> Result<InodeId, DBError> {
+    ) -> Result<DirectoryOrInodeId, DBError> {
         self.get_object_bytes(object_ref, &mut storage.data)?;
         let object_bytes = std::mem::take(&mut storage.data);
 

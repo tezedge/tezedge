@@ -16,7 +16,7 @@ use crate::{
     serialize::{deserialize_hash_id, serialize_hash_id, ObjectTag, PointersHeader},
     working_tree::{
         shape::ShapeStrings,
-        storage::{DirectoryId, Inode, PointerToInode},
+        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointersId},
         string_interner::StringInterner,
         Commit, DirEntryKind, ObjectReference,
     },
@@ -441,7 +441,7 @@ pub fn serialize_object(
         Object::Directory(dir_id) => {
             if let Some(inode_id) = dir_id.get_inode_id() {
                 offset = serialize_inode(
-                    inode_id,
+                    DirectoryOrInodeId::Inode(inode_id),
                     output,
                     object_hash_id,
                     storage,
@@ -594,11 +594,14 @@ impl PointersOffsetsHeader {
 
     fn from_pointers(
         object_offset: AbsoluteOffset,
-        pointers: &[Option<PointerToInode>; 32],
+        pointers: PointersId,
+        // pointers: &[Option<Pointer>; 32],
+        storage: &Storage,
     ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
-        for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
+        for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
+            // for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
             let p_offset = pointer
                 .get_offset()
                 .ok_or(SerializationError::MissingOffset)?;
@@ -624,7 +627,7 @@ impl PointersOffsetsHeader {
 
 #[allow(clippy::too_many_arguments)]
 fn serialize_inode(
-    inode_id: InodeId,
+    ptr_id: DirectoryOrInodeId,
     output: &mut Vec<u8>,
     object_hash_id: HashId,
     storage: &Storage,
@@ -636,19 +639,27 @@ fn serialize_inode(
     use SerializationError::*;
 
     let offset;
-    let inode = storage.get_inode(inode_id)?;
+    // let inode = storage.get_inode(inode_id)?;
 
-    match inode {
-        Inode::Pointers {
-            depth,
-            nchildren,
-            npointers: _,
-            pointers,
-        } => {
+    match ptr_id {
+        DirectoryOrInodeId::Inode(inode_id) => {
+            // Inode::Pointers {
+            //     depth,
+            //     nchildren,
+            //     npointers: _,
+            //     pointers,
+            // } => {
+            let Inode {
+                depth,
+                nchildren,
+                pointers,
+            } = storage.get_inode(inode_id)?;
+
             stats.add_inode_pointers();
 
             // Recursively serialize all children
-            for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
+            // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
+            for pointer in storage.iter_pointers(*pointers) {
                 let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
@@ -658,9 +669,9 @@ fn serialize_inode(
                     continue;
                 }
 
-                let inode_id = pointer.inode_id().ok_or(MissingInodeId)?;
+                let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 let offset = serialize_inode(
-                    inode_id,
+                    ptr_id,
                     output,
                     hash_id,
                     storage,
@@ -684,13 +695,18 @@ fn serialize_inode(
             output.write_all(&depth.to_le_bytes())?;
             output.write_all(&nchildren.to_le_bytes())?;
 
-            let bitfield = PointersHeader::from(pointers);
+            // TODO: Don't clone here
+            let p = storage.clone_pointers(*pointers);
+            let bitfield = PointersHeader::from(&p);
             output.write_all(&bitfield.to_bytes())?;
 
-            let bitfield_offsets = PointersOffsetsHeader::from_pointers(offset, pointers)?;
+            // let pointers = storage.get_
+            let bitfield_offsets =
+                PointersOffsetsHeader::from_pointers(offset, *pointers, storage)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
-            for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
+            for pointer in storage.iter_pointers(*pointers) {
+                // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let pointer_offset = pointer
                     .get_offset()
                     .ok_or(SerializationError::MissingOffset)?;
@@ -701,14 +717,15 @@ fn serialize_inode(
 
             write_object_header(output, start, ObjectTag::InodePointers);
         }
-        Inode::Directory(dir_id) => {
+        DirectoryOrInodeId::Directory(dir_id) => {
+            // Inode::Directory(dir_id) => {
             // We don't check if it's a new inode because the parent
             // caller (recursively) confirmed it's a new one.
 
             let start = output.len();
             offset = file_offset.add_offset(start as u64);
 
-            let dir = storage.get_small_dir(*dir_id)?;
+            let dir = storage.get_small_dir(dir_id)?;
             serialize_directory_or_shape(
                 dir.as_ref(),
                 object_hash_id,
@@ -972,10 +989,10 @@ pub fn deserialize_object(
             .map(Object::Blob)
             .map_err(Into::into),
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(bytes, object_offset)?;
-            let inode_id = storage.add_inode(inode)?;
+            let ptr_id = deserialize_inode_pointers(bytes, object_offset, storage)?;
+            // let inode_id = storage.add_inode(inode)?;
 
-            Ok(Object::Directory(inode_id.into()))
+            Ok(Object::Directory(ptr_id.into_dir()))
         }
         ObjectTag::Commit => {
             let mut pos = 0;
@@ -1066,7 +1083,8 @@ pub fn deserialize_object(
 fn deserialize_inode_pointers(
     data: &[u8],
     object_offset: AbsoluteOffset,
-) -> Result<Inode, DeserializationError> {
+    storage: &mut Storage,
+) -> Result<DirectoryOrInodeId, DeserializationError> {
     use DeserializationError::*;
 
     let mut pos = 0;
@@ -1092,7 +1110,8 @@ fn deserialize_inode_pointers(
 
     pos += 8;
 
-    let mut pointers: [Option<PointerToInode>; 32] = Default::default();
+    // let mut pointers: [Option<PointerToInode>; 32] = Default::default();
+    let mut pointers: [Option<Pointer>; 32] = Default::default();
 
     for (index, pointer_index) in indexes_iter.enumerate() {
         let offset_length = offsets_header.get(index);
@@ -1101,19 +1120,23 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        pointers[pointer_index as usize] = Some(PointerToInode::new_commited(
-            None,
-            None,
-            Some(absolute_offset),
-        ));
+        pointers[pointer_index as usize] =
+            Some(Pointer::new_commited(None, None, Some(absolute_offset)));
     }
 
-    Ok(Inode::Pointers {
-        depth,
-        nchildren,
-        npointers,
-        pointers,
-    })
+    Ok(storage.add_inode_pointers(depth as u8, nchildren, pointers)?)
+
+    // Ok(Inode {
+    //     depth: depth as u8,
+    //     nchildren,
+    //     pointers: todo!(),
+    // })
+    // Ok(Inode::Pointers {
+    //     depth,
+    //     nchildren,
+    //     npointers,
+    //     pointers,
+    // })
 }
 
 fn deserialize_object_header<'a>(
@@ -1147,29 +1170,32 @@ pub fn deserialize_inode(
     storage: &mut Storage,
     repository: &ContextKeyValueStore,
     strings: &mut StringInterner,
-) -> Result<InodeId, DeserializationError> {
+) -> Result<DirectoryOrInodeId, DeserializationError> {
     use DeserializationError::*;
 
     let (header, data) = deserialize_object_header(data, object_offset, storage)?;
 
     match header.tag_or_err().map_err(|_| UnknownID)? {
         ObjectTag::InodePointers => {
-            let inode = deserialize_inode_pointers(data, object_offset)?;
-            storage.add_inode(inode).map_err(Into::into)
+            let ptr_id = deserialize_inode_pointers(data, object_offset, storage)?;
+            Ok(ptr_id)
+            // storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
             let dir_id = deserialize_directory(data, object_offset, storage, strings)?;
-            storage
-                .add_inode(Inode::Directory(dir_id))
-                .map_err(Into::into)
+            Ok(DirectoryOrInodeId::Directory(dir_id))
+            // storage
+            //     .add_inode(Inode::Directory(dir_id))
+            //     .map_err(Into::into)
         }
         ObjectTag::ShapedDirectory => {
             let dir_id =
                 deserialize_shaped_directory(data, object_offset, storage, repository, strings)
                     .unwrap();
-            storage
-                .add_inode(Inode::Directory(dir_id))
-                .map_err(Into::into)
+            Ok(DirectoryOrInodeId::Directory(dir_id))
+            // storage
+            //     .add_inode(Inode::Directory(dir_id))
+            //     .map_err(Into::into)
         }
         _ => Err(UnknownID),
     }
@@ -1488,7 +1514,7 @@ mod tests {
 
         // Test Inode::Directory
 
-        let mut pointers: [Option<PointerToInode>; 32] = Default::default();
+        let mut pointers: [Option<Pointer>; 32] = Default::default();
 
         for index in 0..pointers.len() {
             let inode_value = Inode::Directory(DirectoryId::empty());
@@ -1510,7 +1536,7 @@ mod tests {
 
             offsets.push(offset);
 
-            pointers[index] = Some(PointerToInode::new_commited(
+            pointers[index] = Some(Pointer::new_commited(
                 Some(hash_id),
                 Some(inode_value_id),
                 Some(offset),

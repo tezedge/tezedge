@@ -13,6 +13,7 @@ use thiserror::Error;
 
 use ocaml::ocaml_hash_string;
 
+use crate::working_tree::storage::DirectoryOrInodeId;
 use crate::working_tree::string_interner::StringInterner;
 use crate::working_tree::ObjectReference;
 use crate::{
@@ -107,15 +108,15 @@ pub(crate) fn index(depth: u32, name: &str) -> u32 {
 }
 
 fn hash_long_inode(
-    inode: &Inode,
+    ptr_id: DirectoryOrInodeId,
     store: &mut ContextKeyValueStore,
     storage: &Storage,
     strings: &StringInterner,
 ) -> Result<HashId, HashingError> {
     let mut hasher = VarBlake2b::new(OBJECT_HASH_LEN)?;
 
-    match inode {
-        Inode::Directory(dir_id) => {
+    match ptr_id {
+        DirectoryOrInodeId::Directory(dir_id) => {
             // Inode value:
             //
             // |   1   |   1  |     n_1      |  ...  |      n_k      |
@@ -124,7 +125,7 @@ fn hash_long_inode(
             //
             // where n_i = len(prehash(e_i))
 
-            let dir = storage.get_small_dir(*dir_id)?;
+            let dir = storage.get_small_dir(dir_id)?;
 
             hasher.update(&[0u8]); // type tag
             hasher.update(&[dir.len() as u8]);
@@ -155,12 +156,15 @@ fn hash_long_inode(
                 }
             }
         }
-        Inode::Pointers {
-            depth,
-            nchildren,
-            npointers,
-            pointers,
-        } => {
+        DirectoryOrInodeId::Inode(inode_id) => {
+            let Inode {
+                depth,
+                nchildren,
+                pointers,
+            } = storage.get_inode(inode_id)?;
+
+            let npointers = pointers.npointers();
+
             // Inode directory:
             //
             // |   1    | (LEB128) |   (LEB128)    |    1   |  33  | ... |  33  |
@@ -170,7 +174,7 @@ fn hash_long_inode(
             hasher.update(&[1u8]); // type tag
             leb128::write::unsigned(&mut hasher, *depth as u64)?;
             leb128::write::unsigned(&mut hasher, *nchildren as u64)?;
-            hasher.update(&[*npointers as u8]);
+            hasher.update(&[npointers as u8]);
 
             // Inode pointer:
 
@@ -179,32 +183,32 @@ fn hash_long_inode(
             // +---------+--------+
             // |  index  |  hash  |
 
-            for (index, pointer) in pointers.iter().enumerate() {
+            // for (index, pointer) in pointers.iter().enumerate() {
+            for (index, pointer) in storage.iter_pointers_with_index(*pointers) {
                 // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
                 // Skip pointers without entries.
-                if let Some(pointer) = pointer.as_ref() {
-                    let index: u8 = index as u8;
+                // if let Some(pointer) = pointer.as_ref() {
+                let index: u8 = *index as u8;
 
-                    hasher.update(&[index]);
+                hasher.update(&[index]);
 
-                    let hash_id = match pointer.hash_id(storage, store)? {
-                        Some(hash_id) => hash_id,
-                        None => {
-                            let inode_id =
-                                pointer.inode_id().ok_or(HashingError::MissingInodeId)?;
-                            let inode = storage.get_inode(inode_id)?;
-                            let hash_id = hash_long_inode(inode, store, storage, strings)?;
-                            pointer.set_hash_id(Some(hash_id));
-                            hash_id
-                        }
-                    };
-
-                    let hash = store.get_hash(ObjectReference::new(Some(hash_id), None))?;
-
-                    hasher.update(hash.as_ref());
+                let hash_id = match pointer.hash_id(storage, store)? {
+                    Some(hash_id) => hash_id,
+                    None => {
+                        let ptr_id = pointer.ptr_id().ok_or(HashingError::MissingInodeId)?;
+                        // let inode = storage.get_inode(inode_id)?;
+                        let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
+                        pointer.set_hash_id(Some(hash_id));
+                        hash_id
+                    }
                 };
+
+                let hash = store.get_hash(ObjectReference::new(Some(hash_id), None))?;
+
+                hasher.update(hash.as_ref());
+                // };
             }
         }
     }
@@ -277,8 +281,8 @@ pub(crate) fn hash_directory(
     strings: &StringInterner,
 ) -> Result<HashId, HashingError> {
     if let Some(inode_id) = dir_id.get_inode_id() {
-        let inode = storage.get_inode(inode_id)?;
-        hash_long_inode(inode, store, storage, strings)
+        // let inode = storage.get_inode(inode_id)?;
+        hash_long_inode(DirectoryOrInodeId::Inode(inode_id), store, storage, strings)
     } else {
         hash_short_inode(dir_id, store, storage, strings)
     }

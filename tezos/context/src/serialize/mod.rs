@@ -16,7 +16,7 @@ use crate::{
     persistent::DBError,
     working_tree::{
         shape::DirectoryShapeError,
-        storage::{DirEntryIdError, PointerToInode, Storage, StorageError},
+        storage::{DirEntryIdError, Pointer, Storage, StorageError},
         string_interner::StringInterner,
         Object,
     },
@@ -96,7 +96,7 @@ impl ObjectHeader {
 /// Let's say that there are 2 pointers sets in the array, at the index
 /// 1 and 7.
 /// This would be represented in this bitfield as:
-/// `0b01000001_00000000_00000000`
+/// `0b01000001_00000000_00000000_00000000`
 ///
 #[derive(Copy, Clone, Default, Debug)]
 struct PointersHeader {
@@ -140,8 +140,8 @@ impl PointersHeader {
     }
 }
 
-impl From<&[Option<PointerToInode>; 32]> for PointersHeader {
-    fn from(pointers: &[Option<PointerToInode>; 32]) -> Self {
+impl From<&[Option<Pointer>; 32]> for PointersHeader {
+    fn from(pointers: &[Option<Pointer>; 32]) -> Self {
         let mut bitfield = Self::default();
 
         for (index, pointer) in pointers.iter().enumerate() {
