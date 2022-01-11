@@ -290,6 +290,8 @@ fn serialize_inode(
                 pointers,
             } = storage.get_inode(inode_id)?;
 
+            let depth: u32 = *depth as u32;
+
             stats.add_inode_pointers();
 
             let header: [u8; 1] = ObjectHeader::new()
@@ -310,7 +312,6 @@ fn serialize_inode(
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
             for (_, index) in storage.iter_pointers_with_index(*pointers) {
-
                 let pointer = storage.pointers.get(index).unwrap();
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
@@ -322,7 +323,6 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for (_, index) in storage.iter_pointers_with_index(*pointers) {
-
                 let pointer = storage.pointers.get(index).unwrap();
 
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {

@@ -602,7 +602,6 @@ impl PointersOffsetsHeader {
 
         // for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
         for (index, (_, pointer)) in storage.iter_pointers_with_index(pointers).enumerate() {
-
             let pointer = storage.pointers.get(pointer).unwrap();
 
             // for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
@@ -659,6 +658,8 @@ fn serialize_inode(
                 pointers,
             } = storage.get_inode(inode_id)?;
 
+            let depth: u32 = *depth as u32;
+
             stats.add_inode_pointers();
 
             // Recursively serialize all children
@@ -713,7 +714,6 @@ fn serialize_inode(
             output.write_all(&bitfield_offsets.to_bytes())?;
 
             for (_, index) in storage.iter_pointers_with_index(*pointers) {
-
                 let pointer = storage.pointers.get(index).unwrap();
 
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {

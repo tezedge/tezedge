@@ -433,10 +433,7 @@ impl PointersBitfield {
 
         let index = index as u32;
 
-        let bitfield = self
-            .bitfield
-            .checked_shl(32 - index)
-            .unwrap_or(0);
+        let bitfield = self.bitfield.checked_shl(32 - index).unwrap_or(0);
 
         let index = bitfield.count_ones() as usize;
 
@@ -517,10 +514,7 @@ pub struct PointersId {
 impl From<(u32, &[Option<Pointer>; 32])> for PointersId {
     fn from((start, pointers): (u32, &[Option<Pointer>; 32])) -> Self {
         let bitfield = PointersBitfield::from(pointers);
-        Self {
-            start,
-            bitfield,
-        }
+        Self { start, bitfield }
     }
 }
 
@@ -787,7 +781,7 @@ enum DirectoryOrInodeRef<'a> {
 }
 
 /// This enum is not stored in `Storage`
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DirectoryOrInodeId {
     Directory(DirectoryId),
     Inode(InodeId),
@@ -795,13 +789,12 @@ pub enum DirectoryOrInodeId {
 
 impl DirectoryOrInodeId {
     fn as_u64(&self) -> u64 {
-        match self {
-            DirectoryOrInodeId::Directory(dir_id) => (*dir_id).into(),
-            DirectoryOrInodeId::Inode(inode_id) => {
-                let value: usize = (*inode_id).try_into().unwrap();
-                value as u64
-            }
-        }
+        let dir_id: DirectoryId = match self {
+            DirectoryOrInodeId::Directory(dir_id) => *dir_id,
+            DirectoryOrInodeId::Inode(inode_id) => (*inode_id).into(),
+        };
+
+        dir_id.into()
     }
 
     pub fn into_dir(self) -> DirectoryId {
@@ -867,7 +860,6 @@ pub struct Storage {
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
-
 
     pub pointers: ChunkedVec<Pointer>,
     // pointers: IndexMap<PointersId, Pointer>,
@@ -1400,15 +1392,11 @@ impl Storage {
                     continue;
                 }
 
-                println!("INDEX={:?} RANGE={:?}", index, range);
-
                 npointers += 1;
                 let dir_or_inode_id = self.create_inode(depth + 1, range, strings)?;
 
                 pointers[index as usize] = Some(Pointer::new(None, dir_or_inode_id));
             }
-
-            println!("POINTERS={:?}", pointers);
 
             self.add_inode_pointers(depth, nchildren, pointers)
             // self.add_inode(Inode::Pointers {
@@ -1482,7 +1470,6 @@ impl Storage {
     pub fn iter_pointers_with_index(&self, pointers: PointersId) -> InodePointersIter {
         InodePointersIter::new(pointers)
     }
-
 
     fn insert_inode(
         &mut self,
@@ -2553,12 +2540,60 @@ mod tests {
     }
 
     #[test]
-    fn test_pointers_id() {
-        // let id = PointersId {
-        //     start: 0,
-        //     bitfield: 0b10101010110111101,
-        // };
+    fn test_pointers_id_to_u64() {
+        let dir_id = DirectoryId::from(101);
+        let id = DirectoryOrInodeId::Directory(dir_id);
+        let id_u64 = id.as_u64();
+        assert_eq!(dir_id, DirectoryId::from(id_u64));
 
-        // id.get_index_for_ptr(2);
+        let inode_id = InodeId::try_from(101).unwrap();
+        let id = DirectoryOrInodeId::Inode(inode_id);
+        let id_u64 = id.as_u64();
+        assert_eq!(inode_id, DirectoryId::from(id_u64).get_inode_id().unwrap());
+    }
+
+    #[test]
+    fn test_pointers_id() {
+        let mut bitfield = PointersBitfield::default();
+
+        bitfield.set(0);
+        bitfield.set(1);
+        bitfield.set(3);
+        bitfield.set(4);
+        bitfield.set(8);
+        bitfield.set(30);
+        bitfield.set(31);
+
+        for start in 0..100usize {
+            let id = PointersId {
+                start: start as u32,
+                bitfield,
+            };
+
+            let mut iter = InodePointersIter::new(id);
+
+            assert_eq!(iter.next().unwrap(), (0, start));
+            assert_eq!(iter.next().unwrap(), (1, start + 1));
+            assert_eq!(iter.next().unwrap(), (3, start + 2));
+            assert_eq!(iter.next().unwrap(), (4, start + 3));
+            assert_eq!(iter.next().unwrap(), (8, start + 4));
+            assert_eq!(iter.next().unwrap(), (30, start + 5));
+            assert_eq!(iter.next().unwrap(), (31, start + 6));
+            assert!(iter.next().is_none());
+        }
+
+        let mut bitfield = PointersBitfield::default();
+        bitfield.set(5);
+        bitfield.set(30);
+        bitfield.set(31);
+
+        let id = PointersId { start: 0, bitfield };
+
+        let mut iter = InodePointersIter::new(id);
+
+        assert_eq!(iter.next().unwrap(), (5, 0));
+        assert_eq!(iter.next().unwrap(), (30, 1));
+        assert_eq!(iter.next().unwrap(), (31, 2));
+        assert!(iter.next().is_none());
     }
 }
