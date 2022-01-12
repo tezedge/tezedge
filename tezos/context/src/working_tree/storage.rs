@@ -8,7 +8,7 @@
 
 use std::{
     borrow::Cow,
-    cell::Cell,
+    cell::{Cell, RefCell},
     cmp::Ordering,
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -25,8 +25,9 @@ use crate::{
     chunks::ChunkedVec,
     hash::HashingError,
     kv_store::{index_map::IndexMap, HashId},
+    persistent::file::FileOffset,
     working_tree::ObjectReference,
-    ContextKeyValueStore,
+    ContextKeyValueStore, Map,
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
@@ -466,8 +467,8 @@ impl PointersBitfield {
     }
 }
 
-impl From<&[Option<Pointer>; 32]> for PointersBitfield {
-    fn from(pointers: &[Option<Pointer>; 32]) -> Self {
+impl From<&[Option<PointerWithInfo>; 32]> for PointersBitfield {
+    fn from(pointers: &[Option<PointerWithInfo>; 32]) -> Self {
         let mut bitfield = Self::default();
 
         for (index, pointer) in pointers.iter().enumerate() {
@@ -511,8 +512,8 @@ pub struct PointersId {
     bitfield: PointersBitfield,
 }
 
-impl From<(u32, &[Option<Pointer>; 32])> for PointersId {
-    fn from((start, pointers): (u32, &[Option<Pointer>; 32])) -> Self {
+impl From<(u32, &[Option<PointerWithInfo>; 32])> for PointersId {
+    fn from((start, pointers): (u32, &[Option<PointerWithInfo>; 32])) -> Self {
         let bitfield = PointersBitfield::from(pointers);
         Self { start, bitfield }
     }
@@ -549,21 +550,31 @@ impl PointersId {
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct PointerInner {
-    // index: B5,
-    hash_id: B48,
+    // // index: B5,
+    // hash_id: B48,
     is_commited: bool,
     is_inode_available: bool,
     /// This is a `DirectoryId` or an `InodeId`
     ptr_id: B61,
-    /// Set to `0` when the offset is not set
-    offset: B63,
-    #[skip]
-    unused: B2,
+    // /// Set to `0` when the offset is not set
+    // offset: B63,
+    // #[skip]
+    // unused: B2,
+    unused: B1,
 }
 
 #[derive(Clone, Debug)]
 pub struct Pointer {
     inner: Cell<PointerInner>,
+}
+
+#[derive(Debug)]
+pub struct PointerWithInfo {
+    pub index: usize,
+    pub object_ref: ObjectReference,
+    // pub hash_id: Option<HashId>,
+    // pub offset: Option<AbsoluteOffset>,
+    pub pointer: Pointer,
 }
 
 // impl Pointer {
@@ -578,18 +589,19 @@ pub struct Pointer {
 // }
 
 // assert_eq_size!([u8; 18], PointerToInode);
-assert_eq_size!([u8; 22], Pointer);
+assert_eq_size!([u8; 8], Pointer);
 
 impl Pointer {
     pub fn new(hash_id: Option<HashId>, dir_or_inode_id: DirectoryOrInodeId) -> Self {
+        assert!(hash_id.is_none());
+
         Self {
             inner: Cell::new(
                 PointerInner::new()
-                    .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
+                    // .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(false)
                     .with_ptr_id(dir_or_inode_id.as_u64())
-                    .with_is_inode_available(true)
-                    .with_offset(0),
+                    .with_is_inode_available(true), // .with_offset(0)
             ),
         }
     }
@@ -600,28 +612,32 @@ impl Pointer {
         // inode_id: Option<InodeId>,
         offset: Option<AbsoluteOffset>,
     ) -> Self {
+        // TODO: Handle in-memory, hash_id is some here
+        // assert!(hash_id.is_none());
+
+        // assert!(offset.is_some());
+
         Self {
             inner: Cell::new(
                 PointerInner::new()
-                    .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
+                    // .with_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0))
                     .with_is_commited(true)
                     .with_is_inode_available(ptr_id.is_some())
-                    .with_ptr_id(ptr_id.map(|i| i.as_u64()).unwrap_or(0))
-                    // .with_inode_id(inode_id.map(|i| i.0).unwrap_or(0))
-                    .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0)),
+                    .with_ptr_id(ptr_id.map(|i| i.as_u64()).unwrap_or(0)), // .with_inode_id(inode_id.map(|i| i.0).unwrap_or(0))
+                                                                           // .with_offset(offset.map(|o| o.as_u64()).unwrap_or(0))
             ),
         }
     }
 
-    pub fn with_offset(self, offset: u64) -> Self {
-        debug_assert_ne!(offset, 0);
+    // pub fn with_offset(self, offset: u64) -> Self {
+    //     debug_assert_ne!(offset, 0);
 
-        let mut inner = self.inner.get();
-        inner.set_offset(offset);
-        self.inner.set(inner);
+    //     let mut inner = self.inner.get();
+    //     inner.set_offset(offset);
+    //     self.inner.set(inner);
 
-        self
-    }
+    //     self
+    // }
 
     // pub fn inode_id(&self) -> Option<InodeId> {
     //     let inner = self.inner.get();
@@ -651,47 +667,47 @@ impl Pointer {
         }
     }
 
-    pub fn get_reference(&self) -> ObjectReference {
-        let hash_id = HashId::new(self.inner.get().hash_id());
-        ObjectReference::new(hash_id, self.get_offset())
-    }
+    // pub fn get_reference(&self) -> ObjectReference {
+    //     let hash_id = HashId::new(self.inner.get().hash_id());
+    //     ObjectReference::new(hash_id, self.get_offset())
+    // }
 
-    pub fn hash_id(
-        &self,
-        storage: &Storage,
-        repository: &ContextKeyValueStore,
-    ) -> Result<Option<HashId>, HashingError> {
-        let mut inner = self.inner.get();
+    // pub fn hash_id(
+    //     &self,
+    //     storage: &Storage,
+    //     repository: &ContextKeyValueStore,
+    // ) -> Result<Option<HashId>, HashingError> {
+    //     let mut inner = self.inner.get();
 
-        if let Some(hash_id) = HashId::new(inner.hash_id()) {
-            return Ok(Some(hash_id));
-        };
+    //     if let Some(hash_id) = HashId::new(inner.hash_id()) {
+    //         return Ok(Some(hash_id));
+    //     };
 
-        let offset = match self.get_offset() {
-            Some(offset) => offset,
-            None => return Ok(None),
-        };
+    //     let offset = match self.get_offset() {
+    //         Some(offset) => offset,
+    //         None => return Ok(None),
+    //     };
 
-        let hash_id = match storage.offsets_to_hash_id.get(&offset) {
-            Some(hash_id) => *hash_id,
-            None => {
-                let object_ref = ObjectReference::new(None, Some(offset));
-                repository.get_hash_id(object_ref)?
-            }
-        };
+    //     let hash_id = match storage.offsets_to_hash_id.get(&offset) {
+    //         Some(hash_id) => *hash_id,
+    //         None => {
+    //             let object_ref = ObjectReference::new(None, Some(offset));
+    //             repository.get_hash_id(object_ref)?
+    //         }
+    //     };
 
-        inner.set_hash_id(hash_id.as_u64());
-        self.inner.set(inner);
+    //     inner.set_hash_id(hash_id.as_u64());
+    //     self.inner.set(inner);
 
-        Ok(Some(hash_id))
-    }
+    //     Ok(Some(hash_id))
+    // }
 
-    pub fn set_hash_id(&self, hash_id: Option<HashId>) {
-        let mut inner = self.inner.get();
-        inner.set_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0));
+    // pub fn set_hash_id(&self, hash_id: Option<HashId>) {
+    //     let mut inner = self.inner.get();
+    //     inner.set_hash_id(hash_id.map(|h| h.as_u64()).unwrap_or(0));
 
-        self.inner.set(inner);
-    }
+    //     self.inner.set(inner);
+    // }
 
     pub fn set_ptr_id(&self, ptr_id: DirectoryOrInodeId) {
         let mut inner = self.inner.get();
@@ -709,25 +725,25 @@ impl Pointer {
     //     self.inner.set(inner);
     // }
 
-    pub fn set_offset(&self, offset: AbsoluteOffset) {
-        debug_assert_ne!(offset.as_u64(), 0);
+    // pub fn set_offset(&self, offset: AbsoluteOffset) {
+    //     debug_assert_ne!(offset.as_u64(), 0);
 
-        let mut inner = self.inner.get();
-        inner.set_offset(offset.as_u64());
+    //     let mut inner = self.inner.get();
+    //     inner.set_offset(offset.as_u64());
 
-        self.inner.set(inner);
-    }
+    //     self.inner.set(inner);
+    // }
 
-    pub fn get_offset(&self) -> Option<AbsoluteOffset> {
-        let inner = self.inner.get();
-        let offset: u64 = inner.offset();
+    // pub fn get_offset(&self) -> Option<AbsoluteOffset> {
+    //     let inner = self.inner.get();
+    //     let offset: u64 = inner.offset();
 
-        if offset != 0 {
-            Some(offset.into())
-        } else {
-            None
-        }
-    }
+    //     if offset != 0 {
+    //         Some(offset.into())
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub fn is_commited(&self) -> bool {
         let inner = self.inner.get();
@@ -735,7 +751,7 @@ impl Pointer {
     }
 }
 
-assert_eq_size!([u8; 23], Option<Pointer>);
+assert_eq_size!([u8; 9], Option<Pointer>);
 
 pub struct InodePointersIter {
     start: usize,
@@ -764,6 +780,29 @@ impl Iterator for InodePointersIter {
         Some((next_ptr_index, self.start + current))
     }
 }
+
+// #[bitfield]
+// #[derive(Clone, Debug)]
+// pub struct Inode {
+//     depth: B15,
+//     nchildren: B32,
+//     is_commited: bool,
+//     pointers: B64
+// }
+
+// impl Inode {
+//     fn get_depth(&self) -> u16 {
+//         self.depth()
+//     }
+
+//     fn get_nchildren(&self) -> u32 {
+//         self.nchildren()
+//     }
+
+//     fn get_is_commited(&self) -> bool {
+//         self.is_commited
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Inode {
@@ -842,13 +881,15 @@ pub struct Storage {
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
     directories: ChunkedVec<(StringId, DirEntryId)>,
-    /// Temporary directory, this is used to avoid allocations when we
+    /// Temporary directories, this is used to avoid allocations when we
     /// manipulate `directories`
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
     /// done it will copy that directory from `temp_dir` into the end of `directories`
     temp_dir: Vec<(StringId, DirEntryId)>,
-
-    temp_inodes: Vec<u8>,
+    /// Vector where we temporary store the hashes (`hash::index_of_key()`) of
+    /// `Self::temp_dir`.
+    /// The hash of `Self::temp_dir[X]` is at `Self::temp_inodes_index[X]`
+    temp_inodes_index: Vec<u8>,
     /// Concatenation of all blobs in the working tree.
     /// The working tree has `BlobId` which refers to a subslice of this
     /// vector `blobs`.
@@ -864,11 +905,16 @@ pub struct Storage {
     inodes: IndexMap<InodeId, Inode>,
 
     pub pointers: ChunkedVec<Pointer>,
+
+    pub pointers_refs: RefCell<Map<usize, ObjectReference>>,
+    // pub pointers_offsets: RefCell<Map<usize, AbsoluteOffset>>,
+    // pub pointers_hash_id: RefCell<Map<usize, HashId>>,
+
     // pointers: IndexMap<PointersId, Pointer>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
-    pub offsets_to_hash_id: HashMap<AbsoluteOffset, HashId>,
+    pub offsets_to_hash_id: Map<AbsoluteOffset, HashId>,
 }
 
 #[derive(Debug)]
@@ -917,13 +963,17 @@ impl Storage {
         Self {
             directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~4MB
             temp_dir: Vec::with_capacity(256),                                          // 2KB
-            temp_inodes: Vec::with_capacity(1024),                                      // 2KB
-            blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // 128KB
-            nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~3MB
-            inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~20MB
-            data: Vec::with_capacity(100_000),                                          // ~97KB
-            offsets_to_hash_id: HashMap::default(),
+            // Allocates `temp_inodes_index` only when used
+            temp_inodes_index: Vec::new(), // 0B
+            blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY), // 128KB
+            nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY), // ~3MB
+            inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY), // ~20MB
+            data: Vec::with_capacity(100_000), // ~97KB
+            offsets_to_hash_id: Map::default(),
             pointers: ChunkedVec::with_chunk_capacity(32 * 1024),
+            pointers_refs: Default::default(),
+            // pointers_offsets: Default::default(),
+            // pointers_hash_id: Default::default(),
         } // Total ~27MB
     }
 
@@ -932,11 +982,15 @@ impl Storage {
         let directories_cap = self.directories.capacity();
         let blobs_cap = self.blobs.capacity();
         let temp_dir_cap = self.temp_dir.capacity();
+        let temp_inodes_index_cap = self.temp_inodes_index.capacity();
         let inodes_cap = self.inodes.capacity();
+        let pointers_cap = self.pointers.capacity();
         let strings = strings.memory_usage();
         let total_bytes = (nodes_cap * size_of::<DirEntry>())
             .saturating_add(directories_cap * size_of::<(StringId, DirEntryId)>())
             .saturating_add(temp_dir_cap * size_of::<(StringId, DirEntryId)>())
+            .saturating_add(temp_inodes_index_cap * size_of::<u8>())
+            .saturating_add(pointers_cap * size_of::<Pointer>())
             .saturating_add(blobs_cap)
             .saturating_add(inodes_cap * size_of::<Inode>());
 
@@ -946,10 +1000,13 @@ impl Storage {
             directories_len: self.directories.len(),
             directories_cap,
             temp_dir_cap,
+            temp_inodes_index: temp_inodes_index_cap,
             blobs_len: self.blobs.len(),
             blobs_cap,
             inodes_len: self.inodes.len(),
             inodes_cap,
+            pointers_len: self.pointers.len(),
+            pointers_cap,
             strings,
             total_bytes,
         }
@@ -984,6 +1041,84 @@ impl Storage {
 
     pub fn add_dir_entry(&mut self, dir_entry: DirEntry) -> Result<DirEntryId, DirEntryIdError> {
         self.nodes.push(dir_entry).map_err(|_| DirEntryIdError)
+    }
+
+    // pub fn get_hashid_of_pointer(&self, index: usize) -> Option<HashId> {
+    //     self.pointers_hash_id.borrow().get(&index).copied()
+    // }
+
+    pub fn set_hashid_of_pointer(&self, index: usize, hash_id: HashId) {
+        let mut refs = self.pointers_refs.borrow_mut();
+
+        let object_ref = refs.entry(index).or_default();
+        object_ref.hash_id.replace(hash_id);
+        // self.pointers_hash_id.borrow_mut().insert(index, hash_id);
+    }
+
+    pub fn get_pointer_reference(&self, index: usize) -> ObjectReference {
+        self.pointers_refs
+            .borrow()
+            .get(&index)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn set_pointer_reference(&self, index: usize, object_ref: ObjectReference) {
+        self.pointers_refs.borrow_mut().insert(index, object_ref);
+    }
+
+    // pub fn get_offset_pointer(&self, index: usize) -> Option<AbsoluteOffset> {
+    //     self.pointers_offsets.borrow().get(&index).copied()
+    // }
+
+    pub fn set_offset_pointer(&self, index: usize, offset: AbsoluteOffset) {
+        let mut refs = self.pointers_refs.borrow_mut();
+
+        let object_ref = refs.entry(index).or_default();
+        object_ref.offset.replace(offset);
+    }
+
+    // pub fn set_offset_pointer(&self, index: usize, offset: AbsoluteOffset) {
+    //     self.pointers_offsets.borrow_mut().insert(index, offset);
+    // }
+
+    // pub fn get_pointer_reference(&self, index: usize) -> ObjectReference {
+    //     let hash_id = self.pointers_hash_id.borrow().get(&index).copied();
+    //     let offset = self.pointers_offsets.borrow().get(&index).copied();
+    //     ObjectReference::new(hash_id, offset)
+    // }
+
+    pub fn retrieve_hashid_of_pointer(
+        &self,
+        index: usize,
+        repository: &ContextKeyValueStore,
+    ) -> Result<Option<HashId>, HashingError> {
+        let mut refs = self.pointers_refs.borrow_mut();
+
+        let object_ref = refs.entry(index).or_default();
+
+        if let Some(hash_id) = object_ref.hash_id {
+            return Ok(Some(hash_id));
+        };
+
+        let offset = match object_ref.offset {
+            Some(offset) => offset,
+            None => return Ok(None),
+        };
+
+        let hash_id = match self.offsets_to_hash_id.get(&offset) {
+            Some(hash_id) => *hash_id,
+            None => {
+                let object_ref = ObjectReference::new(None, Some(offset));
+                repository.get_hash_id(object_ref)?
+            }
+        };
+
+        object_ref.hash_id.replace(hash_id);
+
+        // self.set_hashid_of_pointer(index, hash_id);
+
+        Ok(Some(hash_id))
     }
 
     /// Return the small directory `dir_id`.
@@ -1078,7 +1213,7 @@ impl Storage {
 
         let inode = self.get_inode(inode_id)?;
 
-        let pointer = match self.get_pointer_at_index(inode.pointers, pointer_index) {
+        let (_, pointer) = match self.get_pointer_at_index(inode.pointers, pointer_index) {
             Some(pointer) => pointer,
             None => return Err(InodePointersNotFound),
         };
@@ -1132,7 +1267,7 @@ impl Storage {
 
                 let index_at_depth = index_of_key(*depth as u32, key) as usize;
 
-                let pointer = match self.get_pointer_at_index(*pointers, index_at_depth) {
+                let (index, pointer) = match self.get_pointer_at_index(*pointers, index_at_depth) {
                     Some(pointer) => pointer,
                     None => return Ok(None),
                 };
@@ -1145,8 +1280,10 @@ impl Storage {
                 let ptr_id = if let Some(ptr_id) = pointer.ptr_id() {
                     ptr_id
                 } else {
+                    let pointer_ref = self.get_pointer_reference(index);
+
                     let pointer_inode_id = repository
-                        .get_inode(pointer.get_reference(), self, strings)
+                        .get_inode(pointer_ref, self, strings)
                         .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
                     self.set_pointer_inode_id(inode_id, index_at_depth, pointer_inode_id)?;
@@ -1263,10 +1400,12 @@ impl Storage {
         &mut self,
         depth: u16,
         nchildren: u32,
-        pointers: [Option<Pointer>; 32],
+        pointers: [Option<PointerWithInfo>; 32],
     ) -> Result<DirectoryOrInodeId, StorageError> {
         let start = self.pointers.len() as u32;
         let pointers_id = PointersId::from((start, &pointers));
+
+        let mut ptr_index = 0;
 
         for (index, pointer) in pointers.iter().enumerate() {
             let pointer = match pointer {
@@ -1274,7 +1413,35 @@ impl Storage {
                 None => continue,
             };
 
-            self.pointers.push(pointer.clone());
+            self.pointers.push(pointer.pointer.clone());
+
+            // if let Some(index) = pointer.index {
+
+            // }
+
+            // if pointer.offset.is_none() && pointer.pointer.is_commited() {
+            //     panic!();
+            // }
+
+            let index = start as usize + ptr_index;
+            // pointer.index = start as usize + index;
+
+            let hash_id = pointer.object_ref.hash_id_opt();
+            let offset = pointer.object_ref.offset_opt();
+
+            if hash_id.is_some() || offset.is_some() {
+                self.set_pointer_reference(index, ObjectReference::new(hash_id, offset));
+            }
+
+            // if let Some(hash_id) = pointer.object_ref.hash_id_opt() {
+            //     self.set_hashid_of_pointer(index, hash_id);
+            // }
+
+            // if let Some(offset) = pointer.offset {
+            //     self.set_offset_pointer(index, offset);
+            // }
+
+            ptr_index += 1;
         }
 
         let current = self.inodes.push(Inode {
@@ -1356,6 +1523,18 @@ impl Storage {
         Ok(TempDirRange { start, end })
     }
 
+    fn prepare_temp_hash_inodes(&mut self, dir_range: &TempDirRange) {
+        if self.temp_inodes_index.capacity() == 0 {
+            self.temp_inodes_index = Vec::with_capacity(1024);
+        }
+
+        if self.temp_inodes_index.len() < dir_range.end {
+            // Make sure that `Self::temp_inodes_index` is at least the same
+            // size than `Self::temp_dir[dir_range]`.
+            self.temp_inodes_index.resize(dir_range.end, 0);
+        }
+    }
+
     fn create_inode(
         &mut self,
         depth: u16,
@@ -1376,24 +1555,30 @@ impl Storage {
             Ok(DirectoryOrInodeId::Directory(new_dir_id))
         } else {
             let nchildren = dir_range_len as u32;
-            let mut pointers: [Option<Pointer>; 32] = Default::default();
+            let mut pointers: [Option<PointerWithInfo>; 32] = Default::default();
 
-            if self.temp_inodes.len() < dir_range.end {
-                self.temp_inodes.resize(dir_range.end + 1, 0);
-            }
+            self.prepare_temp_hash_inodes(&dir_range);
 
+            // Compute the hashes of the whole `dir_range`
+            // We put them in `Self::temp_inodes_index` to retrieve them later
             for i in dir_range.clone() {
                 let (key_id, _) = self.temp_dir[i];
                 let key = strings.get_str(key_id)?;
 
                 let index = index_of_key(depth as u32, &key) as u8;
-                self.temp_inodes[i] = index;
+                self.temp_inodes_index[i] = index;
+                // The index (hash) of `Self::temp_dir[i]` is now
+                // at `Self::temp_inodes_index[i]`
             }
 
             for index in 0..32u8 {
+                // Put all the entries with the same index (hash) in a continous
+                // range
                 let range = self.with_temp_dir_range(|this| {
                     for i in dir_range.clone() {
-                        if this.temp_inodes[i] != index {
+                        // Retrieve the index we computed above
+                        // The index of `Self::temp_dir[i]` is at `Self::temp_inodes_index[i]`
+                        if this.temp_inodes_index[i] != index {
                             continue;
                         }
                         this.temp_dir.push(this.temp_dir[i]);
@@ -1407,7 +1592,14 @@ impl Storage {
 
                 let dir_or_inode_id = self.create_inode(depth + 1, range, strings)?;
 
-                pointers[index as usize] = Some(Pointer::new(None, dir_or_inode_id));
+                // pointers[index as usize] = Some(Pointer::new(None, dir_or_inode_id));
+                pointers[index as usize] = Some(PointerWithInfo {
+                    index: 0,
+                    object_ref: Default::default(),
+                    // hash_id: None,
+                    // offset: None,
+                    pointer: Pointer::new(None, dir_or_inode_id),
+                });
             }
 
             self.add_inode_pointers(depth, nchildren, pointers)
@@ -1453,20 +1645,60 @@ impl Storage {
         })
     }
 
-    pub fn clone_pointers(&self, pointers: PointersId) -> [Option<Pointer>; 32] {
-        let mut cloned: [Option<Pointer>; 32] = Default::default();
+    pub fn clone_pointers(&self, pointers: PointersId) -> [Option<PointerWithInfo>; 32] {
+        let mut cloned: [Option<PointerWithInfo>; 32] = Default::default();
 
         for (ptr_index, index) in self.iter_pointers_with_index(pointers) {
             let pointer = self.pointers.get(index).unwrap();
-            cloned[ptr_index] = Some(pointer.clone());
+
+            // if pointer.is_commited() && offset.is_none() {
+            //     panic!("OFFSET NONE {:?}", pointer);
+            // }
+
+            cloned[ptr_index] = Some(PointerWithInfo {
+                index,
+                object_ref: self.get_pointer_reference(index),
+                // hash_id: self.pointers_hash_id.borrow().get(&index).copied(),
+                // offset: self.pointers_offsets.borrow().get(&index).copied(),
+                pointer: pointer.clone(),
+            });
         }
 
         cloned
     }
 
-    fn get_pointer_at_index(&self, pointers: PointersId, index: usize) -> Option<&Pointer> {
+    pub fn clone_pointers_without_detail(
+        &self,
+        pointers: PointersId,
+    ) -> [Option<PointerWithInfo>; 32] {
+        let mut cloned: [Option<PointerWithInfo>; 32] = Default::default();
+
+        for (ptr_index, index) in self.iter_pointers_with_index(pointers) {
+            let pointer = self.pointers.get(index).unwrap();
+
+            // if pointer.is_commited() && offset.is_none() {
+            //     panic!("OFFSET NONE {:?}", pointer);
+            // }
+
+            cloned[ptr_index] = Some(PointerWithInfo {
+                index,
+                object_ref: Default::default(),
+                // hash_id: self.pointers_hash_id.borrow().get(&index).copied(),
+                // offset: self.pointers_offsets.borrow().get(&index).copied(),
+                pointer: pointer.clone(),
+            });
+        }
+
+        cloned
+    }
+
+    fn get_pointer_at_index(
+        &self,
+        pointers: PointersId,
+        index: usize,
+    ) -> Option<(usize, &Pointer)> {
         let index = pointers.get_index_for_ptr(index)?;
-        self.pointers.get(index)
+        self.pointers.get(index).map(|p| (index, p))
     }
 
     // fn get_pointers_ref(&self, pointers: PointersId) -> &[Pointer] {
@@ -1544,37 +1776,50 @@ impl Storage {
 
                 // let pointer = self.pointers.get(ptr_index);
 
-                let (inode_id, is_new_key) = if let Some(pointer) = &pointers[index_at_depth] {
-                    let ptr_id = match pointer.ptr_id() {
-                        Some(ptr_id) => ptr_id,
-                        None => {
-                            let ptr_id = repository
-                                .get_inode(pointer.get_reference(), self, strings)
-                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                let (inode_id, is_new_key) =
+                    if let Some(pointer_details) = &pointers[index_at_depth] {
+                        let pointer = &pointer_details.pointer;
 
-                            pointer.set_ptr_id(ptr_id);
-                            ptr_id
-                        }
+                        let ptr_id = match pointer.ptr_id() {
+                            Some(ptr_id) => ptr_id,
+                            None => {
+                                let pointer_ref = self.get_pointer_reference(pointer_details.index);
+
+                                let ptr_id = repository
+                                    .get_inode(pointer_ref, self, strings)
+                                    .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+
+                                pointer.set_ptr_id(ptr_id);
+                                ptr_id
+                            }
+                        };
+
+                        self.insert_inode(
+                            depth + 1,
+                            ptr_id,
+                            key,
+                            key_id,
+                            dir_entry,
+                            strings,
+                            repository,
+                        )?
+                    } else {
+                        npointers += 1;
+
+                        let new_dir_id = self.insert_dir_single_dir_entry(key_id, dir_entry)?;
+                        let inode_id = self.create_inode(depth, new_dir_id, strings)?;
+                        (inode_id, true)
                     };
 
-                    self.insert_inode(
-                        depth + 1,
-                        ptr_id,
-                        key,
-                        key_id,
-                        dir_entry,
-                        strings,
-                        repository,
-                    )?
-                } else {
-                    npointers += 1;
+                pointers[index_at_depth] = Some(PointerWithInfo {
+                    index: 0,
+                    object_ref: Default::default(),
+                    // hash_id: None,
+                    // offset: None,
+                    pointer: Pointer::new(None, inode_id),
+                });
 
-                    let new_dir_id = self.insert_dir_single_dir_entry(key_id, dir_entry)?;
-                    let inode_id = self.create_inode(depth, new_dir_id, strings)?;
-                    (inode_id, true)
-                };
-
-                pointers[index_at_depth] = Some(Pointer::new(None, inode_id));
+                // pointers[index_at_depth] = Some(Pointer::new(None, inode_id));
 
                 let nchildren = if is_new_key { nchildren + 1 } else { nchildren };
 
@@ -1691,7 +1936,7 @@ impl Storage {
     ///
     /// This is used to force recomputing hashes
     #[cfg(test)]
-    pub fn inodes_drop_hash_ids(&self, inode_id: InodeId) {
+    pub fn inodes_drop_hash_ids(&mut self, inode_id: InodeId) {
         let inode = self.get_inode(inode_id).unwrap();
 
         // TODO: Find a way to iterates, without using Cow::Owned
@@ -1699,7 +1944,9 @@ impl Storage {
 
         for (_, index) in self.iter_pointers_with_index(inode.pointers) {
             let pointer = self.pointers.get(index).unwrap();
-            pointer.set_hash_id(None);
+
+            self.pointers_refs.borrow_mut().remove(&index);
+            // pointer.set_hash_id(None);
 
             if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
                 self.inodes_drop_hash_ids(inode_id);
@@ -1745,19 +1992,26 @@ impl Storage {
             DirectoryOrInodeId::Inode(inode_id) => {
                 let inode = self.get_inode(inode_id)?;
                 // let inode = self.get_inode(inode_id)?.clone();
-                let pointers = self.clone_pointers(inode.pointers);
+                let pointers = self.clone_pointers_without_detail(inode.pointers);
 
-                for (index, pointer) in pointers.iter().enumerate() {
-                    let pointer = match pointer {
-                        Some(pointer) => pointer,
+                for (index, pointer_details) in pointers.iter().enumerate() {
+                    let pointer_details = match pointer_details {
+                        Some(pointer_details) => pointer_details,
                         None => continue,
                     };
+
+                    let pointer = &pointer_details.pointer;
 
                     let ptr_id = match pointer.ptr_id() {
                         Some(ptr_id) => ptr_id,
                         None => {
+                            // let pointer_ref = pointer.object_ref;
+                            let pointer_ref = self.get_pointer_reference(pointer_details.index);
+
+                            // println!("REF={:?} DETAIL={:?} PTR={:?}", pointer_ref, pointer_details, pointer);
+
                             let pointer_inode_id = repository
-                                .get_inode(pointer.get_reference(), self, strings)
+                                .get_inode(pointer_ref, self, strings)
                                 .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
                             self.set_pointer_inode_id(inode_id, index, pointer_inode_id)?;
@@ -2055,7 +2309,7 @@ impl Storage {
             )?;
 
             self.temp_dir.clear();
-            self.temp_inodes.clear();
+            self.temp_inodes_index.clear();
 
             return Ok(inode_id.into_dir()); // TODO
         }
@@ -2100,7 +2354,7 @@ impl Storage {
             let inode_id = self.create_inode(0, range, strings)?;
 
             self.temp_dir.clear();
-            self.temp_inodes.clear();
+            self.temp_inodes_index.clear();
 
             // TODO
             Ok(inode_id.into_dir())
@@ -2177,13 +2431,17 @@ impl Storage {
                         None => return Ok(Some(ptr_id)), // The key was not found
                     };
 
-                    let ptr_inode_id = match pointer.ptr_id() {
+                    let ptr_inode_id = match pointer.pointer.ptr_id() {
                         Some(inode_id) => inode_id,
                         None => {
+                            // let pointer_ref = self.get_pointer_reference(pointer.index);
+                            let pointer_ref = pointer.object_ref;
+
                             let pointer_inode_id = repository
-                                .get_inode(pointer.get_reference(), self, strings)
+                                .get_inode(pointer_ref, self, strings)
                                 .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-                            pointer.set_ptr_id(pointer_inode_id);
+
+                            pointer.pointer.set_ptr_id(pointer_inode_id);
                             pointer_inode_id
                         }
                     };
@@ -2194,7 +2452,14 @@ impl Storage {
                             return Ok(Some(ptr_id));
                         }
                         Some(new_ptr_inode_id) => {
-                            pointers[index_at_depth] = Some(Pointer::new(None, new_ptr_inode_id));
+                            // pointers[index_at_depth] = Some(Pointer::new(None, new_ptr_inode_id));
+                            pointers[index_at_depth] = Some(PointerWithInfo {
+                                index: 0,
+                                object_ref: Default::default(),
+                                // hash_id: None,
+                                // offset: None,
+                                pointer: Pointer::new(None, new_ptr_inode_id),
+                            });
                         }
                         None => {
                             // The key was removed and it result in an empty directory.
@@ -2441,10 +2706,14 @@ impl Storage {
         self.nodes = IndexMap::empty();
         self.directories = ChunkedVec::empty();
         self.temp_dir = Vec::new();
+        self.temp_inodes_index = Vec::new();
         self.blobs = ChunkedVec::empty();
         self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();
+        self.pointers = ChunkedVec::empty();
+        self.pointers_refs = Default::default();
+        // self.pointers_offsets = Default::default();
     }
 }
 

@@ -186,10 +186,13 @@ pub struct StorageMemoryUsage {
     pub directories_len: usize,
     pub directories_cap: usize,
     pub temp_dir_cap: usize,
+    pub temp_inodes_index: usize,
     pub blobs_len: usize,
     pub blobs_cap: usize,
     pub inodes_len: usize,
     pub inodes_cap: usize,
+    pub pointers_len: usize,
+    pub pointers_cap: usize,
     pub strings: StringsMemoryUsage,
     pub total_bytes: usize,
 }

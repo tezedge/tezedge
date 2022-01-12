@@ -16,7 +16,7 @@ use crate::{
     persistent::DBError,
     working_tree::{
         shape::DirectoryShapeError,
-        storage::{DirEntryIdError, Pointer, Storage, StorageError},
+        storage::{DirEntryIdError, Pointer, PointerWithInfo, Storage, StorageError},
         string_interner::StringInterner,
         Object,
     },
@@ -140,8 +140,8 @@ impl PointersHeader {
     }
 }
 
-impl From<&[Option<Pointer>; 32]> for PointersHeader {
-    fn from(pointers: &[Option<Pointer>; 32]) -> Self {
+impl From<&[Option<PointerWithInfo>; 32]> for PointersHeader {
+    fn from(pointers: &[Option<PointerWithInfo>; 32]) -> Self {
         let mut bitfield = Self::default();
 
         for (index, pointer) in pointers.iter().enumerate() {

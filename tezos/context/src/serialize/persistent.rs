@@ -16,7 +16,7 @@ use crate::{
     serialize::{deserialize_hash_id, serialize_hash_id, ObjectTag, PointersHeader},
     working_tree::{
         shape::ShapeStrings,
-        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointersId},
+        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointerWithInfo, PointersId},
         string_interner::StringInterner,
         Commit, DirEntryKind, ObjectReference,
     },
@@ -601,13 +601,18 @@ impl PointersOffsetsHeader {
         let mut bitfield = Self::default();
 
         // for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
-        for (index, (_, pointer)) in storage.iter_pointers_with_index(pointers).enumerate() {
-            let pointer = storage.pointers.get(pointer).unwrap();
+        for (index, (_, pointer_index)) in storage.iter_pointers_with_index(pointers).enumerate() {
+            let pointer = storage.pointers.get(pointer_index).unwrap();
 
             // for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
-            let p_offset = pointer
-                .get_offset()
+            let p_offset = storage
+                .get_pointer_reference(pointer_index)
+                .offset_opt()
                 .ok_or(SerializationError::MissingOffset)?;
+
+            // let p_offset = pointer
+            //     .get_offset()
+            //     .ok_or(SerializationError::MissingOffset)?;
 
             let (_, offset_length) = get_relative_offset(object_offset, p_offset);
 
@@ -668,7 +673,13 @@ fn serialize_inode(
             for (_, index) in storage.iter_pointers_with_index(*pointers) {
                 let pointer = storage.pointers.get(index).unwrap();
 
-                let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
+                // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
+
+                let hash_id = storage
+                    .retrieve_hashid_of_pointer(index, repository)?
+                    .ok_or(MissingHashId)?;
+
+                // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -689,7 +700,8 @@ fn serialize_inode(
                     strings,
                 )?;
 
-                pointer.set_offset(offset);
+                storage.set_offset_pointer(index, offset);
+                // pointer.set_offset(offset);
             }
 
             let start = output.len();
@@ -717,9 +729,20 @@ fn serialize_inode(
                 let pointer = storage.pointers.get(index).unwrap();
 
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                let pointer_offset = pointer
-                    .get_offset()
+
+                // let pointer_offset = storage
+                //     .get_offset_pointer(index)
+                //     .ok_or(SerializationError::MissingOffset)?;
+
+                let pointer_offset = storage
+                    .get_pointer_reference(index)
+                    .offset_opt()
                     .ok_or(SerializationError::MissingOffset)?;
+
+                // let pointer_offset = pointer
+                //     .get_offset()
+                //     .ok_or(SerializationError::MissingOffset)?;
+
                 let (relative_offset, offset_length) = get_relative_offset(offset, pointer_offset);
 
                 serialize_offset(output, relative_offset, offset_length, stats)?;
@@ -1121,7 +1144,9 @@ fn deserialize_inode_pointers(
     pos += 8;
 
     // let mut pointers: [Option<PointerToInode>; 32] = Default::default();
-    let mut pointers: [Option<Pointer>; 32] = Default::default();
+    let mut pointers: [Option<PointerWithInfo>; 32] = Default::default();
+
+    // let mut ptr_start = storage.pointers.len();
 
     for (index, pointer_index) in indexes_iter.enumerate() {
         let offset_length = offsets_header.get(index);
@@ -1130,8 +1155,16 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        pointers[pointer_index as usize] =
-            Some(Pointer::new_commited(None, None, Some(absolute_offset)));
+        // storage.set_offset_pointer(ptr_start, absolute_offset);
+        // ptr_start += 1;
+
+        pointers[pointer_index as usize] = Some(PointerWithInfo {
+            index,
+            object_ref: ObjectReference::new(None, Some(absolute_offset)),
+            // hash_id: None,
+            // offset: Some(absolute_offset),
+            pointer: Pointer::new_commited(None, None, Some(absolute_offset)),
+        });
     }
 
     Ok(storage.add_inode_pointers(depth as u16, nchildren, pointers)?)

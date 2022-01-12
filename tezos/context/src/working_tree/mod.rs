@@ -88,11 +88,13 @@ pub enum Object {
     Commit(Box<Commit>),
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct ObjectReference {
     hash_id: Option<HashId>,
     offset: Option<AbsoluteOffset>,
 }
+
+assert_eq_size!([u8; 24], ObjectReference);
 
 impl From<HashId> for ObjectReference {
     fn from(hash_id: HashId) -> Self {
@@ -111,6 +113,10 @@ impl ObjectReference {
     pub fn offset(&self) -> AbsoluteOffset {
         self.offset
             .expect("ObjectReference::offset called outside of the persistent context")
+    }
+
+    pub fn offset_opt(&self) -> Option<AbsoluteOffset> {
+        self.offset
     }
 
     pub fn hash_id(&self) -> HashId {

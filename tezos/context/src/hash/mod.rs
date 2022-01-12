@@ -193,17 +193,24 @@ fn hash_long_inode(
 
                 // Skip pointers without entries.
                 // if let Some(pointer) = pointer.as_ref() {
-                let index: u8 = ptr_index as u8;
+                let ptr_index: u8 = ptr_index as u8;
 
-                hasher.update(&[index]);
+                hasher.update(&[ptr_index]);
 
-                let hash_id = match pointer.hash_id(storage, store)? {
+                let hash_id = match storage.retrieve_hashid_of_pointer(index, store)? {
+                    // let hash_id = match pointer.hash_id(storage, store)? {
                     Some(hash_id) => hash_id,
                     None => {
-                        let ptr_id = pointer.ptr_id().ok_or(HashingError::MissingInodeId)?;
+                        let ptr_id = pointer
+                            .ptr_id()
+                            .ok_or(HashingError::MissingInodeId)
+                            .unwrap_or_else(|_| panic!("LA PTR={:?}", pointer));
                         // let inode = storage.get_inode(inode_id)?;
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
-                        pointer.set_hash_id(Some(hash_id));
+                        // pointer.set_hash_id(Some(hash_id));
+
+                        storage.set_hashid_of_pointer(index, hash_id);
+
                         hash_id
                     }
                 };
@@ -723,6 +730,7 @@ mod tests {
             {
                 let hash_id = HashId::new(11111).unwrap();
 
+                // for index in 0..3000000 {
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
                     dir_id = storage
@@ -754,7 +762,10 @@ mod tests {
                     assert_eq!(storage.dir_len(a).unwrap(), storage.dir_len(b).unwrap());
                 }
 
+                // println!("ADDED {:#?}", storage.memory_usage(&strings));
+
                 // Remove the elements we just inserted
+                // for index in 0..3000000 {
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
                     dir_id = storage
