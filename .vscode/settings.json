@@ -5,6 +5,10 @@
     "**/target/debug/incremental/**": true
   },
   "cSpell.words": [
+    "tezos",
+    "thiserror",
+    "reqwest",
+    "structopt",
     "Seedable",
     "Tezedge",
     "shiplift",

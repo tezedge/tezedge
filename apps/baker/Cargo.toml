@@ -1,0 +1,17 @@
+[package]
+name = "baker"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+structopt = { version = "0.3.25" }
+reqwest = { version = "0.11.8", features = ["blocking", "stream"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+slog-async = { version = "2.7" }
+slog-term = { version = "2.8" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+derive_more = { version = "0.99.17" }
+thiserror = { version = "1.0" }
+
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.11.0", features = ["serde"] }
