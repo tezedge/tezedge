@@ -847,6 +847,8 @@ pub struct Storage {
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
     /// done it will copy that directory from `temp_dir` into the end of `directories`
     temp_dir: Vec<(StringId, DirEntryId)>,
+
+    temp_inodes: Vec<u8>,
     /// Concatenation of all blobs in the working tree.
     /// The working tree has `BlobId` which refers to a subslice of this
     /// vector `blobs`.
@@ -915,6 +917,7 @@ impl Storage {
         Self {
             directories: ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY), // ~4MB
             temp_dir: Vec::with_capacity(256),                                          // 2KB
+            temp_inodes: Vec::with_capacity(1024),                                      // 2KB
             blobs: ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY),             // 128KB
             nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY),               // ~3MB
             inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY),             // ~20MB
@@ -1374,16 +1377,26 @@ impl Storage {
         } else {
             let nchildren = dir_range_len as u32;
             let mut pointers: [Option<Pointer>; 32] = Default::default();
-            let mut npointers = 0;
+
+            if self.temp_inodes.len() < dir_range.end {
+                self.temp_inodes.resize(dir_range.end + 1, 0);
+            }
+
+            for i in dir_range.clone() {
+                let (key_id, _) = self.temp_dir[i];
+                let key = strings.get_str(key_id)?;
+
+                let index = index_of_key(depth as u32, &key) as u8;
+                self.temp_inodes[i] = index;
+            }
 
             for index in 0..32u8 {
                 let range = self.with_temp_dir_range(|this| {
                     for i in dir_range.clone() {
-                        let (key_id, dir_entry_id) = this.temp_dir[i];
-                        let key = strings.get_str(key_id)?;
-                        if index_of_key(depth as u32, &key) as u8 == index {
-                            this.temp_dir.push((key_id, dir_entry_id));
+                        if this.temp_inodes[i] != index {
+                            continue;
                         }
+                        this.temp_dir.push(this.temp_dir[i]);
                     }
                     Ok(())
                 })?;
@@ -1392,7 +1405,6 @@ impl Storage {
                     continue;
                 }
 
-                npointers += 1;
                 let dir_or_inode_id = self.create_inode(depth + 1, range, strings)?;
 
                 pointers[index as usize] = Some(Pointer::new(None, dir_or_inode_id));
@@ -2041,7 +2053,10 @@ impl Storage {
                 strings,
                 repository,
             )?;
+
             self.temp_dir.clear();
+            self.temp_inodes.clear();
+
             return Ok(inode_id.into_dir()); // TODO
         }
 
@@ -2083,7 +2098,9 @@ impl Storage {
             self.directories.remove_last_nelems(dir_len);
 
             let inode_id = self.create_inode(0, range, strings)?;
+
             self.temp_dir.clear();
+            self.temp_inodes.clear();
 
             // TODO
             Ok(inode_id.into_dir())
