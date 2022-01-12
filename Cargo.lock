@@ -993,6 +993,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum_dispatch"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd53b3fde38a39a06b2e66dc282f3e86191e53bd04cc499929c15742beae3df8"
+dependencies = [
+ "once_cell",
+ "proc-macro2 1.0.32",
+ "quote 1.0.10",
+ "syn 1.0.81",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3206,6 +3218,21 @@ dependencies = [
  "tezos_protocol_ipc_client",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "shell_automaton_poc"
+version = "0.1.0"
+dependencies = [
+ "crypto",
+ "derive_more",
+ "either",
+ "enum_dispatch",
+ "mio",
+ "networking",
+ "tezos_encoding",
+ "tezos_identity",
+ "tezos_messages",
 ]
 
 [[package]]

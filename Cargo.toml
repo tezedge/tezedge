@@ -27,6 +27,7 @@ members = [
     "shell-integration",
     "shell_automaton",
     "shell_automaton/testing",
+    "shell_automaton_poc",
     "storage",
     "sandbox",
     "light_node",
