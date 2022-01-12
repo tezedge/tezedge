@@ -689,15 +689,13 @@ pub(crate) fn parse_block_hash(
 
     // find requested header, if no offset we return header
     let block_hash = if let Some(offset) = offset {
+        // If we go further back enough that a block cannot be found, then
+        // the genesis block will be reached
         match BlockMetaStorage::new(env.persistent_storage())
             .find_block_at_distance(block_hash, offset)?
         {
             Some(block_hash) => block_hash,
-            None => {
-                return Err(RpcServiceError::NoDataFoundError {
-                    reason: format!("Unknown block for block_id_param: {}", block_id_param),
-                });
-            }
+            None => genesis_block_hash()?,
         }
     } else {
         block_hash
