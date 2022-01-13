@@ -15,7 +15,7 @@ use crate::{
     serialize::{deserialize_hash_id, ObjectHeader, ObjectTag, PointersHeader},
     working_tree::{
         shape::ShapeStrings,
-        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointerWithInfo},
+        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer},
         string_interner::StringInterner,
         Commit, DirEntryKind, ObjectReference,
     },
@@ -620,7 +620,7 @@ fn deserialize_inode_pointers(
 
     pos += 4;
 
-    let mut pointers: [Option<PointerWithInfo>; 32] = Default::default();
+    let mut pointers: [Option<Pointer>; 32] = Default::default();
 
     for index in indexes_iter {
         let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
@@ -628,19 +628,19 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        pointers[index as usize] = Some(PointerWithInfo {
-            index,
-            object_ref: ObjectReference::new(Some(hash_id.ok_or(MissingHash)?), None),
-            // hash_id: Some(hash_id.ok_or(MissingHash)?),
-            // offset: None,
-            pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None, None),
-        });
+        // pointers[index as usize] = Some(PointerWithInfo {
+        //     index,
+        //     object_ref: ObjectReference::new(Some(hash_id.ok_or(MissingHash)?), None),
+        //     // hash_id: Some(hash_id.ok_or(MissingHash)?),
+        //     // offset: None,
+        //     pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None, None),
+        // });
 
-        // pointers[index as usize] = Some(Pointer::new_commited(
-        //     Some(hash_id.ok_or(MissingHash)?),
-        //     None,
-        //     None,
-        // ));
+        pointers[index as usize] = Some(Pointer::new_commited(
+            Some(hash_id.ok_or(MissingHash)?),
+            None,
+            None,
+        ));
     }
 
     Ok(storage.add_inode_pointers(depth as u16, nchildren, pointers)?)
