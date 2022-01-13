@@ -16,6 +16,7 @@ mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
     pub const BLOCK_HASH: [u8; 2] = [1, 52];
     pub const BLOCK_METADATA_HASH: [u8; 2] = [234, 249];
+    pub const BLOCK_PAYLOAD_HASH: [u8; 3] = [1, 106, 242];
     pub const CONTEXT_HASH: [u8; 2] = [79, 199];
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
@@ -270,6 +271,7 @@ macro_rules! define_hash {
 define_hash!(ChainId);
 define_hash!(BlockHash);
 define_hash!(BlockMetadataHash);
+define_hash!(BlockPayloadHash);
 define_hash!(OperationHash);
 define_hash!(OperationListListHash);
 define_hash!(OperationMetadataHash);
@@ -296,6 +298,8 @@ pub enum HashType {
     BlockHash,
     // "\234\249" (* bm(52) *)
     BlockMetadataHash,
+    // "\001\106\242" (* vh(52) *)
+    BlockPayloadHash,
     // "\002\170" (* P(51) *)
     ProtocolHash,
     // "\079\199" (* Co(52) *)
@@ -338,6 +342,7 @@ impl HashType {
             HashType::ChainId => &CHAIN_ID,
             HashType::BlockHash => &BLOCK_HASH,
             HashType::BlockMetadataHash => &BLOCK_METADATA_HASH,
+            &HashType::BlockPayloadHash => &BLOCK_PAYLOAD_HASH,
             HashType::ContextHash => &CONTEXT_HASH,
             HashType::ProtocolHash => &PROTOCOL_HASH,
             HashType::OperationHash => &OPERATION_HASH,
@@ -363,6 +368,7 @@ impl HashType {
             HashType::ChainId => 4,
             HashType::BlockHash
             | HashType::BlockMetadataHash
+            | HashType::BlockPayloadHash
             | HashType::ContextHash
             | HashType::ProtocolHash
             | HashType::OperationHash

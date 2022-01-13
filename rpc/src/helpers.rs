@@ -206,6 +206,10 @@ pub struct BlockHeaderInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_round: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_of_work_nonce: Option<String>,
@@ -269,6 +273,12 @@ impl BlockHeaderInfo {
             .get("signature")
             .map(|val| val.as_str().unwrap().to_string());
         let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
+        let payload_hash = header_data
+            .get("payload_hash")
+            .map(|val| val.as_str().unwrap().to_owned());
+        let payload_round = header_data
+            .get("payload_round")
+            .map(|val| val.as_i64().unwrap() as i32);
         let proof_of_work_nonce = header_data
             .get("proof_of_work_nonce")
             .map(|val| val.as_str().unwrap().to_string());
@@ -298,6 +308,8 @@ impl BlockHeaderInfo {
             protocol: block_additional_data.protocol_hash().to_base58_check(),
             signature,
             priority,
+            payload_hash,
+            payload_round,
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,

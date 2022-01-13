@@ -4,7 +4,7 @@
 use std::convert::TryFrom;
 
 use crate::{
-    OCamlApplyBlockExecutionTimestamps, OCamlCommitGenesisResult, OCamlComputePathResponse,
+    OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlCommitGenesisResult, OCamlComputePathResponse,
     OCamlCycleRollsOwnerSnapshot, OCamlInitProtocolContextResult, OCamlNodeMessage,
     OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
@@ -20,8 +20,8 @@ use super::{
     OCamlTezosErrorTrace, OCamlValidateOperationResponse, OCamlValidateOperationResult,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
-    OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
+    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_from_ocaml_polymorphic_variant, impl_from_ocaml_record, impl_from_ocaml_variant,
@@ -76,6 +76,7 @@ from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_typed_hash!(OCamlContextHash, ContextHash);
 from_ocaml_typed_hash!(OCamlProtocolHash, ProtocolHash);
 from_ocaml_typed_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+from_ocaml_typed_hash!(OCamlBlockPayloadHash, BlockPayloadHash);
 from_ocaml_typed_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
 from_ocaml_typed_hash!(
     OCamlOperationMetadataListListHash,

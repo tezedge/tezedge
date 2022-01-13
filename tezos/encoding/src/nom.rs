@@ -244,6 +244,7 @@ macro_rules! hash_nom_reader {
 hash_nom_reader!(ChainId);
 hash_nom_reader!(BlockHash);
 hash_nom_reader!(BlockMetadataHash);
+hash_nom_reader!(BlockPayloadHash);
 hash_nom_reader!(OperationHash);
 hash_nom_reader!(OperationListListHash);
 hash_nom_reader!(OperationMetadataHash);
