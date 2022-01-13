@@ -223,6 +223,28 @@ pub async fn chains_block_id_header_shell(
     }
 }
 
+pub async fn chains_block_id_header_protocol_data_raw(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
+
+    let block_header = base_services::get_block_raw_header_or_fail(
+        &chain_id,
+        block_hash,
+        env.persistent_storage(),
+    );
+
+    result_to_json_response(
+        block_header.map(|header| hex::encode(header.header.protocol_data())),
+        env.log(),
+    )
+}
+
 pub async fn chains_block_id_metadata(
     _: Request<Body>,
     params: Params,

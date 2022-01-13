@@ -88,6 +88,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/header/protocol_data/raw",
+        shell_handler::chains_block_id_header_protocol_data_raw,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/chains/:chain_id/mempool/pending_operations",
         shell_handler::mempool_pending_operations,
     );
