@@ -197,7 +197,7 @@ fn hash_long_inode(
 
                 hasher.update(&[ptr_index]);
 
-                let hash_id = match storage.retrieve_hashid_of_pointer(index, store)? {
+                let hash_id = match storage.retrieve_hashid_of_pointer(pointer, store)? {
                     // let hash_id = match pointer.hash_id(storage, store)? {
                     Some(hash_id) => hash_id,
                     None => {
@@ -206,10 +206,11 @@ fn hash_long_inode(
                             .ok_or(HashingError::MissingInodeId)
                             .unwrap_or_else(|_| panic!("LA PTR={:?}", pointer));
                         // let inode = storage.get_inode(inode_id)?;
+
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
                         // pointer.set_hash_id(Some(hash_id));
 
-                        storage.set_hashid_of_pointer(index, hash_id);
+                        storage.set_hashid_of_pointer(pointer, hash_id);
 
                         hash_id
                     }
@@ -762,7 +763,7 @@ mod tests {
                     assert_eq!(storage.dir_len(a).unwrap(), storage.dir_len(b).unwrap());
                 }
 
-                // println!("ADDED {:#?}", storage.memory_usage(&strings));
+                println!("ADDED {:#?}", storage.memory_usage(&strings));
 
                 // Remove the elements we just inserted
                 // for index in 0..3000000 {

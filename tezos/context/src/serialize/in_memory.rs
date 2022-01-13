@@ -315,7 +315,7 @@ fn serialize_inode(
                 let pointer = storage.pointers.get(index).unwrap();
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = storage
-                    .retrieve_hashid_of_pointer(index, repository)?
+                    .retrieve_hashid_of_pointer(pointer, repository)?
                     .ok_or(MissingHashId)?;
                 // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
@@ -330,7 +330,7 @@ fn serialize_inode(
 
                 // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = storage
-                    .retrieve_hashid_of_pointer(index, repository)?
+                    .retrieve_hashid_of_pointer(pointer, repository)?
                     .ok_or(MissingHashId)?;
                 // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 

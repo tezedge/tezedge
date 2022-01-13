@@ -610,11 +610,20 @@ impl PointersOffsetsHeader {
             //     .offset_opt()
             //     .ok_or(SerializationError::MissingOffset)?;
 
-            let p_offset = pointer
-                .get_reference()
-                .ok_or(SerializationError::MissingOffset)?
-                .offset_opt()
-                .ok_or(SerializationError::MissingOffset)?;
+            let p_offset = storage.pointer_retrieve_offset(pointer).unwrap();
+
+            // let p_offset = pointer
+            //     .get_reference()
+            //     .and_then(|r| r.offset_opt())
+            //     .unwrap();
+
+            // .ok_or(SerializationError::MissingOffset)?;
+
+            // let p_offset = pointer
+            //     .get_reference()
+            //     .ok_or(SerializationError::MissingOffset)?
+            //     .offset_opt()
+            //     .ok_or(SerializationError::MissingOffset)?;
 
             // let p_offset = pointer
             //     .get_offset()
@@ -682,8 +691,11 @@ fn serialize_inode(
                 // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 let hash_id = storage
-                    .retrieve_hashid_of_pointer(index, repository)?
-                    .ok_or(MissingHashId)?;
+                    .retrieve_hashid_of_pointer(pointer, repository)?
+                    .unwrap_or_else(|| {
+                        panic!("POINTER={:?}", pointer);
+                    });
+                // .ok_or(MissingHashId)?;
 
                 // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
@@ -706,7 +718,7 @@ fn serialize_inode(
                     strings,
                 )?;
 
-                storage.set_offset_pointer(index, offset);
+                storage.set_offset_pointer(pointer, offset);
                 // pointer.set_offset(offset);
             }
 
@@ -740,11 +752,20 @@ fn serialize_inode(
                 //     .get_offset_pointer(index)
                 //     .ok_or(SerializationError::MissingOffset)?;
 
-                let pointer_offset = pointer
-                    .get_reference()
-                    .ok_or(SerializationError::MissingOffset)?
-                    .offset_opt()
-                    .ok_or(SerializationError::MissingOffset)?;
+                let pointer_offset = storage.pointer_retrieve_offset(pointer).unwrap();
+                // .ok_or(SerializationError::MissingOffset)?;
+
+                // let pointer_offset = pointer
+                //     .get_reference()
+                //     .and_then(|r| r.offset_opt())
+                //     .unwrap();
+                //     // .ok_or(SerializationError::MissingOffset)?;
+
+                // let pointer_offset = pointer
+                //     .get_reference()
+                //     .ok_or(SerializationError::MissingOffset)?
+                //     .offset_opt()
+                //     .ok_or(SerializationError::MissingOffset)?;
 
                 // let pointer_offset = storage
                 //     .get_pointer_reference(index)
@@ -1215,7 +1236,7 @@ fn deserialize_object_header<'a>(
     let (object_hash_id, nbytes) = deserialize_hash_id(data)?;
     storage
         .offsets_to_hash_id
-        .insert(object_offset, object_hash_id.ok_or(MissingOffset)?);
+        .insert(object_offset, object_hash_id.ok_or(MissingHash)?);
 
     let data = data.get(nbytes..).ok_or(UnexpectedEOF)?;
 
