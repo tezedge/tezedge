@@ -49,6 +49,7 @@
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::{
     array::TryFromSliceError,
+    collections::{HashMap, HashSet},
     sync::{Arc, PoisonError},
     vec::IntoIter,
 };
@@ -90,6 +91,63 @@ pub struct PostCommitData {
     pub reused: Vec<HashId>,
     pub serialize_stats: Box<SerializeStats>,
     pub output: Vec<u8>,
+}
+
+#[derive(Default)]
+pub struct BlobStatistics {
+    pub size: usize,
+    pub total: usize,
+    pub unique: HashSet<Vec<u8>>,
+}
+
+impl std::fmt::Debug for BlobStatistics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "{{ blob_length: {:>5}, total: {:>8}, unique: {:>8} }}",
+            self.size,
+            self.total,
+            self.unique.len()
+        ))
+    }
+}
+
+#[derive(Default)]
+pub struct DirectoryStatistics {
+    pub size: usize,
+    pub total: usize,
+    pub unique: HashSet<Vec<u8>>,
+}
+
+impl std::fmt::Debug for DirectoryStatistics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "{{ dir_length: {:>8}, total: {:>8}, unique: {:>8} }}",
+            self.size,
+            self.total,
+            self.unique.len(),
+        ))
+    }
+}
+
+type BlobSize = usize;
+type DirSize = usize;
+
+#[derive(Default)]
+pub struct WorkingTreeStatistics {
+    pub max_depth: usize,
+    pub nobjects: usize,
+    pub nobjects_inlined: usize,
+    pub nhashes: usize,
+    pub nshapes: usize,
+    pub ndirectories: usize,
+    pub unique_hash: HashSet<ObjectHash>,
+    pub unique_strings: HashMap<String, ()>,
+    pub directories_by_length: HashMap<DirSize, DirectoryStatistics>,
+    pub blobs_by_length: HashMap<BlobSize, BlobStatistics>,
+    pub strings_total_bytes: usize,
+    pub objects_total_bytes: usize,
+    pub shapes_total_bytes: usize,
+    pub lowest_offset: u64,
 }
 
 impl PostCommitData {
@@ -420,6 +478,7 @@ struct SerializingData<'a> {
     offset: Option<AbsoluteOffset>,
     serialize_function: SerializeObjectSignature,
     keep_older_objects: bool,
+    dedup_objects: Option<HashMap<HashId, AbsoluteOffset>>,
 }
 
 impl<'a> SerializingData<'a> {
@@ -428,6 +487,7 @@ impl<'a> SerializingData<'a> {
         offset: Option<AbsoluteOffset>,
         serialize_function: SerializeObjectSignature,
         keep_older_objects: bool,
+        enable_dedup_object: bool,
     ) -> Self {
         Self {
             batch: Vec::with_capacity(2048),
@@ -438,7 +498,28 @@ impl<'a> SerializingData<'a> {
             offset,
             serialize_function,
             keep_older_objects,
+            dedup_objects: if enable_dedup_object {
+                Some(Default::default())
+            } else {
+                None
+            },
         }
+    }
+
+    fn get_dedup_object(&self, hash_id: HashId) -> Option<AbsoluteOffset> {
+        self.dedup_objects
+            .as_ref()
+            .and_then(|d| d.get(&hash_id))
+            .copied()
+    }
+
+    fn add_dedup_object(&mut self, hash_id: HashId, offset: AbsoluteOffset) {
+        let dedup = match self.dedup_objects.as_mut() {
+            Some(dedup) => dedup,
+            None => return,
+        };
+
+        dedup.insert(hash_id, offset);
     }
 
     fn add_serialized_object(
@@ -826,6 +907,7 @@ impl WorkingTree {
         serialize_function: Option<SerializeObjectSignature>,
         offset: Option<AbsoluteOffset>,
         keep_older_objects: bool,
+        enable_dedup_objects: bool,
     ) -> Result<PostCommitData, MerkleError> {
         let root_hash_id = self.get_root_directory_hash(repository)?;
         let root = self.get_root_directory();
@@ -845,8 +927,13 @@ impl WorkingTree {
             None => return Ok(PostCommitData::empty_with_commit(commit_hash)),
         };
 
-        let mut data =
-            SerializingData::new(repository, offset, serialize_function, keep_older_objects);
+        let mut data = SerializingData::new(
+            repository,
+            offset,
+            serialize_function,
+            keep_older_objects,
+            enable_dedup_objects,
+        );
 
         let storage = self.index.storage.borrow();
         let strings = self.index.get_string_interner()?;
@@ -1039,6 +1126,11 @@ impl WorkingTree {
                     }
                     dir_entry.set_commited(true);
 
+                    if let Some(offset) = data.get_dedup_object(object_hash_id) {
+                        dir_entry.set_offset(offset);
+                        return Ok(());
+                    }
+
                     let offset = match dir_entry.get_object() {
                         None => return Ok(()),
                         Some(object) => self.serialize_objects_recursively(
@@ -1053,6 +1145,7 @@ impl WorkingTree {
 
                     if let Some(offset) = offset {
                         dir_entry.set_offset(offset);
+                        data.add_dedup_object(object_hash_id, offset);
                     };
 
                     Ok(())
@@ -1151,48 +1244,177 @@ impl WorkingTree {
             WorkingTreeRoot::Value(_) => DirectoryId::empty(),
         }
     }
+}
 
-    // TODO: only used in tests on this file
-    //    pub fn get_staged_entries(&self) -> Result<std::string::String, MerkleError> {
-    //        let mut result = String::new();
-    //        for (hash, entry) in self.staged_cache.get_mut().cached() {
-    //            match entry {
-    //                Entry::Blob(blob) => {
-    //                    result += &format!("{}: Value {:?}, \n", hex::encode(&hash[0..3]), blob);
-    //                }
-    //
-    //                Entry::Tree(tree) => {
-    //                    if tree.is_empty() {
-    //                        continue;
-    //                    }
-    //                    let tree_hash = &hash_tree(tree)?[0..3];
-    //                    result += &format!("{}: Tree {{", hex::encode(tree_hash));
-    //
-    //                    for (path, val) in tree {
-    //                        let kind = if let DirEntryKind::Directory = val.dir_entry_kind {
-    //                            "Tree"
-    //                        } else {
-    //                            "Value/Blob"
-    //                        };
-    //                        result += &format!(
-    //                            "{}: {}({:?}), ",
-    //                            path,
-    //                            kind,
-    //                            hex::encode(&val.entry_hash[0..3])
-    //                        );
-    //                    }
-    //                    result += "}}\n";
-    //                }
-    //
-    //                Entry::Commit(_) => {
-    //                    return Err(MerkleError::InvalidState(
-    //                        "commits must not occur in staged area",
-    //                    ));
-    //                }
-    //            }
-    //        }
-    //        Ok(result)
-    //    }
+/// Implementation used for `context-tool`
+mod tool {
+    use super::*;
+
+    impl WorkingTree {
+        /// See `Self::traverse_working_tree` below
+        ///
+        /// Method used for `context-tool` only.
+        fn traverse_working_tree_recursive(
+            &self,
+            object: Object,
+            object_hash_id: Option<HashId>,
+            storage: &mut Storage,
+            strings: &mut StringInterner,
+            depth: usize,
+            stats: &mut Option<WorkingTreeStatistics>,
+        ) -> Result<(), MerkleError> {
+            if let Some(stats) = stats.as_mut() {
+                stats.max_depth = depth.max(stats.max_depth);
+            };
+
+            match object {
+                Object::Blob(blob_id) => {
+                    if let Some(stats) = stats.as_mut() {
+                        if blob_id.is_inline() {
+                            stats.nobjects_inlined += 1;
+                        }
+
+                        let blob = storage.get_blob(blob_id)?;
+                        let blob_length = blob.len();
+
+                        let blob_stats =
+                            stats.blobs_by_length.entry(blob_length).or_insert_with(|| {
+                                BlobStatistics {
+                                    size: blob_length,
+                                    total: 0,
+                                    unique: HashSet::default(),
+                                }
+                            });
+                        blob_stats.total += 1;
+                        blob_stats.unique.insert(blob.to_vec());
+                    }
+
+                    Ok(())
+                }
+                Object::Directory(dir_id) => {
+                    let dir = {
+                        let repository = self.index.repository.read()?;
+                        storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
+                    };
+
+                    if let Some(stats) = stats.as_mut() {
+                        stats.ndirectories += 1;
+
+                        let dir_hash = object_hash_id.map(|hash_id| {
+                            let repository = self.index.repository.read().unwrap();
+                            repository.get_hash(hash_id.into()).unwrap().to_vec()
+                        });
+
+                        let dir_stats = stats
+                            .directories_by_length
+                            .entry(dir.len())
+                            .or_insert_with(|| DirectoryStatistics {
+                                size: dir.len(),
+                                total: 0,
+                                unique: HashSet::default(),
+                            });
+                        dir_stats.total += 1;
+                        if let Some(dir_hash) = dir_hash {
+                            dir_stats.unique.insert(dir_hash);
+                        }
+
+                        stats.nobjects += dir.len();
+                    }
+
+                    for (string_id, dir_entry_id) in dir {
+                        if let Some(stats) = stats.as_mut() {
+                            let string = strings.get_str(string_id)?.into_owned();
+
+                            let mut length_to_add = 0;
+                            stats
+                                .unique_strings
+                                .entry(string)
+                                .or_insert_with_key(|string| {
+                                    length_to_add = string.len();
+                                });
+                            stats.strings_total_bytes += length_to_add;
+                        }
+
+                        let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+
+                        let object_hash_id = {
+                            let mut repository = self.index.repository.write()?;
+                            match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
+                                Some(hash_id) => {
+                                    assert!(dir_entry.get_hash_id().is_ok());
+
+                                    if let Some(stats) = stats.as_mut() {
+                                        stats.nhashes += 1;
+                                        let hash =
+                                            repository.get_hash(hash_id.into())?.into_owned();
+                                        stats.unique_hash.insert(hash);
+                                    }
+
+                                    Some(hash_id)
+                                }
+                                None => {
+                                    // inlined blob
+                                    None
+                                }
+                            }
+                        };
+
+                        let object = self
+                            .index
+                            .dir_entry_object(dir_entry_id, storage, strings)?;
+
+                        self.traverse_working_tree_recursive(
+                            object,
+                            object_hash_id,
+                            storage,
+                            strings,
+                            depth + 1,
+                            stats,
+                        )?;
+                    }
+
+                    Ok(())
+                }
+                Object::Commit(_commit) => {
+                    panic!()
+                }
+            }
+        }
+
+        /// Traverse the whole tree by fetching all its objects and storing them in
+        /// the `Storage`.
+        ///
+        /// Method used for `context-tool` only.
+        pub fn traverse_working_tree(
+            &self,
+            enable_stats: bool,
+        ) -> Result<Option<WorkingTreeStatistics>, MerkleError> {
+            let object = match self.root {
+                WorkingTreeRoot::Directory(dir_id) => Object::Directory(dir_id),
+                WorkingTreeRoot::Value(blob_id) => Object::Blob(blob_id),
+            };
+
+            let mut storage = self.index.storage.borrow_mut();
+            let mut strings = self.index.get_string_interner()?;
+
+            let mut stats = if enable_stats {
+                Some(WorkingTreeStatistics::default())
+            } else {
+                None
+            };
+
+            self.traverse_working_tree_recursive(
+                object,
+                None,
+                &mut *storage,
+                &mut *strings,
+                0,
+                &mut stats,
+            )?;
+
+            Ok(stats)
+        }
+    }
 }
 
 //* /// Merkle storage predefined tests with abstraction for underlaying kv_store for context

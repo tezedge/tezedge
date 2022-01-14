@@ -4,12 +4,12 @@
 use std::{
     borrow::Cow,
     collections::{
-        btree_map::Entry::{Occupied, Vacant},
         hash_map::DefaultHasher,
-        BTreeMap,
+        hash_map::Entry::{Occupied, Vacant},
     },
     convert::{TryFrom, TryInto},
     hash::Hasher,
+    io::Read,
 };
 
 use crate::{
@@ -17,6 +17,7 @@ use crate::{
     kv_store::index_map::IndexMap,
     persistent::file::{File, TAG_SHAPE, TAG_SHAPE_INDEX},
     serialize::DeserializationError,
+    Map,
 };
 use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -34,7 +35,7 @@ pub enum DirectoryShapeError {
     IdFromUSize,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct DirectoryShapeId(u32);
 
 impl TryInto<usize> for DirectoryShapeId {
@@ -83,7 +84,7 @@ pub struct ShapeSliceId {
 /// A `DirectoryShapeId` maps to a slice of `StringId`
 pub struct DirectoryShapes {
     /// Map `DirectoryShapeHash` to its `DirectoryShapeId` and strings.
-    hash_to_strings: BTreeMap<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
+    hash_to_strings: Map<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
     shapes: ChunkedVec<StringId>,
 
     to_serialize: Vec<ShapeSliceId>,
@@ -111,10 +112,23 @@ pub enum ShapeStrings<'a> {
     Owned(Vec<String>),
 }
 
+impl<'a> ShapeStrings<'a> {
+    pub fn len(&self) -> usize {
+        match self {
+            ShapeStrings::SliceIds(slice) => slice.len(),
+            ShapeStrings::Owned(owned) => owned.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 impl DirectoryShapes {
     pub fn new() -> Self {
         Self {
-            hash_to_strings: BTreeMap::default(),
+            hash_to_strings: Default::default(),
             id_to_hash: IndexMap::with_chunk_capacity(1_024 * 100),
             temp: Vec::with_capacity(256),
             shapes: ChunkedVec::with_chunk_capacity(64 * 1024 * 1024), // 64 MB
@@ -217,10 +231,12 @@ impl DirectoryShapes {
         let mut offset = shapes_file.start();
         let shape_file_end = shapes_file.offset().as_u64();
 
-        while offset < shape_file_end {
-            shapes_file.read_exact_at(&mut string_id_bytes, offset.into())?;
-            let string_id = StringId::deserialize(string_id_bytes);
+        let mut shapes_file = shapes_file.buffered()?;
 
+        while offset < shape_file_end {
+            shapes_file.read_exact(&mut string_id_bytes)?;
+
+            let string_id = StringId::deserialize(string_id_bytes);
             offset += string_id_bytes.len() as u64;
 
             result.shapes.push(string_id);
@@ -230,8 +246,10 @@ impl DirectoryShapes {
         let shape_index_file_end = shapes_index_file.offset().as_u64();
         let mut shape_slice_id_bytes = [0u8; 8];
 
+        let mut shapes_index_file = shapes_index_file.buffered()?;
+
         while offset < shape_index_file_end {
-            shapes_index_file.read_exact_at(&mut shape_slice_id_bytes, offset.into())?;
+            shapes_index_file.read_exact(&mut shape_slice_id_bytes)?;
 
             offset += shape_slice_id_bytes.len() as u64;
 

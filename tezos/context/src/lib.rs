@@ -149,7 +149,9 @@ use std::num::TryFromIntError;
 use std::sync::PoisonError;
 
 use gc::GarbageCollectionError;
+pub use kv_store::persistent::Persistent;
 use kv_store::HashId;
+
 use persistent::{DBError, KeyValueStoreBackend};
 use tezos_context_api::{ContextKey, ContextKeyOwned, ContextValue, StringTreeObject};
 use thiserror::Error;
@@ -165,7 +167,7 @@ use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
 use crypto::hash::{ContextHash, FromBytesError};
 
-mod persistent;
+pub mod persistent;
 
 use crate::persistent::{Flushable, Persistable};
 

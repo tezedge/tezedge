@@ -26,7 +26,7 @@ use crate::{
     hash::HashingError,
     kv_store::{index_map::IndexMap, HashId},
     working_tree::ObjectReference,
-    ContextKeyValueStore,
+    ContextKeyValueStore, ObjectHash,
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
@@ -535,6 +535,11 @@ impl PointerToInode {
         } else {
             None
         }
+    }
+
+    pub fn hash_id_opt(&self) -> Option<HashId> {
+        let inner = self.inner.get();
+        HashId::new(inner.hash_id())
     }
 
     pub fn is_commited(&self) -> bool {
@@ -1065,6 +1070,7 @@ impl Storage {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn insert_inode(
         &mut self,
         depth: u32,
@@ -1669,6 +1675,115 @@ impl Storage {
     }
 }
 
+/// Implementation used for `context-tool`
+mod tool {
+    use super::*;
+
+    impl PointerToInode {
+        /// Remove all `HashId` and `AbsoluteOffset` in `Self`
+        /// This is used in order to recompute them
+        ///
+        /// Method used for `context-tool` only.
+        pub fn forget_reference(&self) {
+            let mut inner = self.inner.get();
+            inner.set_hash_id(0);
+            inner.set_is_commited(false);
+            inner.set_offset(0);
+            self.inner.set(inner);
+        }
+    }
+
+    impl Storage {
+        /// Return a new `StringInterner` containing only the strings used by `Self`
+        /// All the strings in `Self` will now refers to strings inside the new `StringInterner`
+        ///
+        /// Method used for `context-tool` only.
+        pub fn strip_string_interner(&mut self, old_strings: StringInterner) -> StringInterner {
+            let mut new_string_interner = StringInterner::default();
+
+            let new_directories: Vec<_> = self
+                .directories
+                .iter()
+                .map(|(string_id, dir_entry_id)| {
+                    let s = old_strings.get_str(*string_id).unwrap();
+                    let new_id = new_string_interner.make_string_id(s.as_ref());
+                    (new_id, *dir_entry_id)
+                })
+                .collect();
+
+            self.directories = ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY);
+            self.directories.extend_from_slice(&new_directories);
+
+            new_string_interner
+        }
+
+        /// Scan the directories (including inodes) and remove duplicates
+        /// Duplicates will now have the same `HashId`
+        ///
+        /// Method used for `context-tool` only.
+        pub fn deduplicate_hashes(&mut self, repository: &ContextKeyValueStore) {
+            let mut unique: HashMap<ObjectHash, HashId> = HashMap::default();
+
+            for (_, dir_entry_id) in self.directories.iter() {
+                let dir_entry = self.get_dir_entry(*dir_entry_id).unwrap();
+
+                let hash_id: HashId = match dir_entry.hash_id() {
+                    Some(hash_id) => hash_id,
+                    None => continue,
+                };
+
+                let hash: ObjectHash = repository.get_hash(hash_id.into()).unwrap().into_owned();
+                let new_hash_id: HashId = *unique.entry(hash).or_insert(hash_id);
+
+                dir_entry.set_hash_id(new_hash_id);
+            }
+
+            for inode in self.inodes.iter_values() {
+                let pointers = match inode {
+                    Inode::Pointers { pointers, .. } => pointers,
+                    Inode::Directory(_) => continue,
+                };
+
+                for ptr in pointers.iter().filter_map(|p| p.as_ref()) {
+                    let hash_id: HashId = match ptr.hash_id_opt() {
+                        Some(hash_id) => hash_id,
+                        None => continue,
+                    };
+
+                    let hash: ObjectHash =
+                        repository.get_hash(hash_id.into()).unwrap().into_owned();
+                    let new_hash_id: HashId = *unique.entry(hash).or_insert(hash_id);
+
+                    ptr.set_hash_id(Some(new_hash_id));
+                }
+            }
+        }
+
+        /// Remove all `HashId` and `AbsoluteOffset` in `Self`
+        /// This is used in order to recompute them
+        ///
+        /// Method used for `context-tool` only.
+        pub fn forget_references(&mut self) {
+            self.offsets_to_hash_id = Default::default();
+
+            for (_, dir_entry_id) in self.directories.iter() {
+                let dir_entry = self.get_dir_entry(*dir_entry_id).unwrap();
+                dir_entry.set_offset(None);
+                dir_entry.set_hash_id(None);
+                dir_entry.set_commited(false);
+            }
+
+            for inode in self.inodes.iter_values() {
+                if let Inode::Pointers { pointers, .. } = inode {
+                    for ptr in pointers.iter().filter_map(|p| p.as_ref()) {
+                        ptr.forget_reference();
+                    }
+                };
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -1690,8 +1805,8 @@ mod tests {
         let blob2_id = storage.add_blob_by_ref(&[2]).unwrap();
         let object2 = Object::Blob(blob2_id);
 
-        let dir_entry1 = DirEntry::new(Blob, object.clone());
-        let dir_entry2 = DirEntry::new(Blob, object2.clone());
+        let dir_entry1 = DirEntry::new(Blob, object);
+        let dir_entry2 = DirEntry::new(Blob, object2);
 
         let dir_id = DirectoryId::empty();
         let dir_id = storage
@@ -1708,8 +1823,8 @@ mod tests {
             storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
             &[
                 ("0".to_string(), dir_entry1.clone()),
-                ("a".to_string(), dir_entry1.clone()),
-                ("b".to_string(), dir_entry2.clone()),
+                ("a".to_string(), dir_entry1),
+                ("b".to_string(), dir_entry2),
             ]
         );
     }

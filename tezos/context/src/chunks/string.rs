@@ -106,15 +106,16 @@ impl ChunkedString {
     fn get_next_chunk(&mut self) -> &mut String {
         let chunk_capacity = self.chunk_capacity;
 
-        if self
+        let must_alloc_new_chunk = self
             .list_of_chunks
             .last()
             .map(|chunk| {
                 debug_assert!(chunk.len() <= chunk_capacity);
                 chunk.len() == chunk_capacity
             })
-            .unwrap_or(true)
-        {
+            .unwrap_or(true);
+
+        if must_alloc_new_chunk {
             self.list_of_chunks
                 .push(String::with_capacity(self.chunk_capacity));
         }
