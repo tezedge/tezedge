@@ -347,21 +347,13 @@ where
                     return;
                 }
             };
-            let current_branch = match &store.state().mempool.local_head_state {
-                Some(v) => &v.hash,
-                None => {
-                    store.service().rpc().respond(*rpc_id, empty);
-                    return;
-                }
-            };
             let v_ops = &store.state().mempool.validated_operations;
             let v = MempoolOperations::collect(
                 &v_ops.applied,
                 &v_ops.refused,
                 &v_ops.branch_delayed,
                 &v_ops.branch_refused,
-                &store.state().mempool.validated_operations.ops,
-                current_branch,
+                &v_ops.ops,
                 &prevalidator.protocol,
             );
             store.service().rpc().respond(*rpc_id, v);
