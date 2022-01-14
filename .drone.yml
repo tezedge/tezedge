@@ -140,7 +140,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -259,7 +259,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   environment:
     RUST_BACKTRACE: 1
@@ -318,7 +318,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   commands:
     - cd apps/node_monitoring && cargo build --release
@@ -396,7 +396,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: generate-artificial-load
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   privileged: true
   detach: true
   user: root
@@ -417,7 +417,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   privileged: true
   user: root
   commands:
@@ -487,7 +487,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: tezedge-updated-node-run-mainnet
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -586,7 +586,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -598,7 +598,7 @@ steps:
 # NOTE: right now rocksdb is the default, so the default unit tests run
 # above already includes these tests.
 # - name: run-unit-tests-multibackend-rockdb
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
 #   pull: if-not-exists
 #   user: root
 #   environment:
@@ -609,7 +609,7 @@ steps:
 #     - cargo test --release --features maindb-backend-rocksdb
 
 - name: run-unit-tests-multibackend-sled
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -621,7 +621,7 @@ steps:
 
 # NOTE: not used right now, and it is flakey, disabled for now
 # - name: run-unit-tests-multibackend-edgekv
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
 #   pull: if-not-exists
 #   user: root
 #   environment:
@@ -632,7 +632,7 @@ steps:
 #     - cargo test --release --features maindb-backend-edgekv
 
 - name: run-unit-tests-monitoring
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -691,7 +691,7 @@ steps:
 # GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and
 # all of then should initialize the context
 - name: protocol-runner-writable-and-readonly-context
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -707,7 +707,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
 # scenario accordingly
 - name: protocol-runner-acquisition-from-pool
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -723,7 +723,7 @@ steps:
 # GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to
 # the new head
 - name: shell-current-head
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -740,7 +740,7 @@ steps:
 # GIVEN we have one node with genesis and one node with level 3 WHEN we connect them a current branch is sent to the node with genesis
 # and THEN it bootstraps to level 3 then a new current_head is sent and applied by both nodes
 - name: shell-current-branch-then-current-head
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -756,7 +756,7 @@ steps:
 
 # GIVEN we run two nodes(1,2) with different branches WHEN we connect the two nodes THEN both branches are present in node 1
 - name: shell-simple-reorg
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -773,7 +773,7 @@ steps:
 # GIVEN we run two connected tezedge nodes WHEN one node sends CurrentHead with hacked protocol data THEN the node should blacklist
 # the node sending the hacked data
 - name: shell-multipass-blacklisting
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -790,7 +790,7 @@ steps:
 # GIVEN a mocke node on level 3 (level 7 is the current chain head) WHEN the node receives all CurrentHeadMessages THEN
 # the node is considered bootstrapped and mempool is activated
 - name: shell-bootstrapping-current-branch/heads
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -807,7 +807,7 @@ steps:
 # GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis
 # bootstraps to level 1324 and has its memool functional
 - name: shell-bootstrap-and-mempool
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -824,7 +824,7 @@ steps:
 # GIVEN we are running tezedge node WHEN accept connections from the network THEN we are not passing a the defined threshold with the
 # number of connected peers
 - name: p2p-comply-with-max-threshold
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -841,7 +841,7 @@ steps:
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
 # the connection should succeed
 - name: p2p-pow-success
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -858,7 +858,7 @@ steps:
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
 # the connection should fail
 - name: p2p-pow-fail
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -933,7 +933,7 @@ steps:
     - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
 - name: tezedge-node-bootstrap
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   volumes:
@@ -974,7 +974,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: replay-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -997,7 +997,7 @@ steps:
       --network=$${NETWORK}
 
 - name: take-irmin-context-snapshot-and-bootstrap-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -1053,7 +1053,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: take-tezedge-context-snapshot-and-bootstrap-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -1112,7 +1112,7 @@ steps:
 
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -1180,441 +1180,9 @@ environment:
   PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
   PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
 
-
-steps:
-
-- name: prepare-data
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
-
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
-
-- name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    # copy the tezos src file from the image to a shared volume
-    - mkdir -p python-test-logs
-    - mkdir -p tezos-src
-    - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
-    # prepare modified python files for tests (compatibility with tezedge node)
-    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
-    - cp drone-cache/python-tests/daemons/baker.py tezos-src/tezos/tests_python/daemons/baker.py
-    - cp drone-cache/python-tests/daemons/endorser.py tezos-src/tezos/tests_python/daemons/endorser.py
-    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
-    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
-    # copy binaries to the test
-    - cp drone-cache/build_files/light-node tezos-src/tezos/
-    - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
-    - cp drone-cache/build_files/ffi/libtezos.so tezos-src/tezos/
-    # copy zcash-params init files - see constants.py light-node params
-    - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
-    - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
-
-- name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
-
-- name: client-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_client.py
-
-- name: accuser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-    CONTEXT_MUST_SURVIVE_RESTARTS: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_accuser.py
-  failure: ignore # TODO: Remove once fixed
-
-- name: block-times-ideal-scenario-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_block_times_ideal_scenario.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
-
-- name: many-nodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
-
-- name: mempool-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
-
-# TODO: test_migration.py
-
-- name: fork-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-    CONTEXT_MUST_SURVIVE_RESTARTS: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
-
-- name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-    CONTEXT_MUST_SURVIVE_RESTARTS: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
-
-- name: programs-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
-
-- name: many-bakers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
-
-- name: contract-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract.py
-
-- name: contract-baker-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
-
-- name: contract-annotations-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
-
-- name: contract-bls12-381-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_bls12_381.py
-
-- name: contract-macros-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_macros.py
-
-- name: contract-opcodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_opcodes.py
-
-- name: crypto-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_crypto.py
-
-- name: fa12-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fa12.py
-
-- name: mockup-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mockup.py
-
-- name: multiple-transfers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multiple_transfers.py
-
-- name: multisig-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multisig.py
-
-- name: per-block-votes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_per_block_votes.py
-
-- name: sapling-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_sapling.py
-
-# TODO test_tenderbake_bakers_restart.py
-# TODO test_tenderbake_incremental_start.py
-# TODO test_tenderbake_long_dynamic_bake.py
-# TODO test_tenderbake_manual_bake.py
-# TODO test_tenderbake.py
-
-- name: basic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  # TODO: TE-275 remove failure: ignore
-  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
-  failure: ignore
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
-
-- name: save-python-test-logs
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    rebuild: true
-    backend: "sftp"
-    cache_key: 'python-test-011-logs-{{ .Build.Number }}'
-    mount:
-      - 'python-test-logs' # <- builds a cache from this directory
-  when:
-    status:
-      - success
-      - failure
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - build-tezedge-binaries
-
----
-##############################################################################################################
-# This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
-# version from protocol 012-ithaca
-#
-# GIVEN tezedge is compatible with the octez node and protocol 012-ithaca WHEN we run the octez python tests with tezedge THEN all the
-# octez python tests should pass
-##############################################################################################################
-kind: pipeline
-name: corr/octez-python-tests-applied-to-tezedge-012-ithaca
-
-environment:
-  TEST_PROTO_DIR_SUFFIX: _012
-  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
-  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
-
-
 defs:
   - &python-test
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -1626,7 +1194,6 @@ defs:
       - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
 
-
 steps:
 
 - name: prepare-data
@@ -1656,7 +1223,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1824,7 +1391,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'python-test-012-logs-{{ .Build.Number }}'
+    cache_key: 'python-test-011-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
   when:
@@ -1857,6 +1424,20 @@ environment:
   PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
   TEZEDGE_NODE_PARAMS: "--disable-endorsements-precheck=true"
 
+defs:
+  - &python-test
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    pull: if-not-exists
+    user: root
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd tezos-src/tezos/tests_python
+      - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
+
 steps:
 
 - name: prepare-data
@@ -1886,7 +1467,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1913,332 +1494,131 @@ steps:
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_baker_endorser.py
 
 - name: client-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_client.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_client.py
 
-# TODO: re-enable once it stops freezing
-# - name: accuser-test
-#   image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-#   pull: if-not-exists
-#   user: root
-#   environment:
-#     SODIUM_USE_PKG_CONFIG: 1
-#     RUST_BACKTRACE: 1
-#     CONTEXT_MUST_SURVIVE_RESTARTS: 1
-#   commands:
-#     - cd tezos-src/tezos/tests_python
-#     - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-#     - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-#     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_accuser.py
-#   failure: ignore # TODO: Remove once fixed
+- name: nonce-seed-revelation-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_nonce_seed_revelation.py
+
+- name: accuser-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_accuser.py
+  failure: ignore
+
+- name: block-times-ideal-scenario-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_block_times_ideal_scenario.py
 
 - name: many-nodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_many_nodes.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_mempool.py
 
 - name: fork-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-    CONTEXT_MUST_SURVIVE_RESTARTS: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_fork.py
 
 - name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-    CONTEXT_MUST_SURVIVE_RESTARTS: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_double_endorsement.py
 
 - name: programs-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_programs.py
 
 - name: many-bakers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_many_bakers.py
 
 - name: contract-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract.py
 
 - name: contract-baker-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract_baker.py
 
 - name: contract-annotations-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract_annotations.py
 
 - name: contract-bls12-381-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_bls12_381.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract_bls12_381.py
 
 - name: contract-macros-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_macros.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract_macros.py
 
 - name: contract-opcodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_opcodes.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_contract_opcodes.py
 
 - name: crypto-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_crypto.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_crypto.py
 
 - name: fa12-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fa12.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_fa12.py
 
 - name: mockup-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mockup.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_mockup.py
 
 - name: multiple-transfers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multiple_transfers.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_multiple_transfers.py
 
 - name: multisig-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multisig.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_multisig.py
 
 - name: per-block-votes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_per_block_votes.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_per_block_votes.py
 
 - name: sapling-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_sapling.py
-  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+    PYTHON_TEST: test_sapling.py
 
 - name: basic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
-  pull: if-not-exists
-  # TODO: TE-275 remove failure: ignore
-  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
-  failure: ignore
-  user: root
+  <<: *python-test
   environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd tezos-src/tezos/tests_python
-    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+    PYTHON_TEST: test_basic.py
+  failure: ignore
 
 - name: save-python-test-logs
   image: meltwater/drone-cache
@@ -2255,7 +1635,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'python-test-011-logs-{{ .Build.Number }}'
+    cache_key: 'python-test-011-no-endorsement-prechecking-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
   when:
@@ -2267,6 +1647,273 @@ trigger:
   branch:
     - master
     - develop
+
+depends_on:
+  - build-tezedge-binaries
+
+---
+##############################################################################################################
+# This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
+# version from protocol 012-ithaca
+#
+# GIVEN tezedge is compatible with the octez node and protocol 012-ithaca WHEN we run the octez python tests with tezedge THEN all the
+# octez python tests should pass
+##############################################################################################################
+kind: pipeline
+name: corr/octez-python-tests-applied-to-tezedge-012-ithaca
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  TEST_PROTO_DIR_SUFFIX: _012
+  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
+  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
+
+
+defs:
+  - &python-test
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    pull: if-not-exists
+    user: root
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd tezos-src/tezos/tests_python
+      - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
+    failure: ignore # TODO: remove once everything has been fixed
+
+steps:
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: prepare-python-tests
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    # copy the tezos src file from the image to a shared volume
+    - mkdir -p python-test-logs
+    - mkdir -p tezos-src
+    - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
+    # prepare modified python files for tests (compatibility with tezedge node)
+    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
+    - cp drone-cache/python-tests/daemons/baker.py tezos-src/tezos/tests_python/daemons/baker.py
+    - cp drone-cache/python-tests/daemons/endorser.py tezos-src/tezos/tests_python/daemons/endorser.py
+    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
+    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    # copy binaries to the test
+    - cp drone-cache/build_files/light-node tezos-src/tezos/
+    - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
+    - cp drone-cache/build_files/ffi/libtezos.so tezos-src/tezos/
+    # copy zcash-params init files - see constants.py light-node params
+    - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
+    - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
+
+- name: baker-endorser-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_baker_endorser.py
+
+- name: client-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_client.py
+
+- name: nonce-seed-revelation-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_nonce_seed_revelation.py
+
+# TODO: re-enable once it stops freezing
+# - name: accuser-test
+#   <<: *python-test
+#   environment:
+#     PYTHON_TEST: test_accuser.py
+#   failure: ignore
+
+- name: many-nodes-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_many_nodes.py
+
+- name: mempool-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_mempool.py
+
+# TODO
+# - name: migration-test
+#   <<: *python-test
+#   environment:
+#     PYTHON_TEST: test_migration.py
+
+- name: fork-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_fork.py
+
+- name: programs-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_programs.py
+
+- name: many-bakers-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_many_bakers.py
+
+- name: contract-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract.py
+
+- name: contract-baker-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract_baker.py
+
+- name: contract-annotations-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract_annotations.py
+
+- name: contract-bls12-381-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract_bls12_381.py
+
+- name: contract-macros-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract_macros.py
+
+- name: contract-opcodes-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_contract_opcodes.py
+
+- name: crypto-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_crypto.py
+
+- name: fa12-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_fa12.py
+
+- name: mockup-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_mockup.py
+
+- name: multiple-transfers-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_multiple_transfers.py
+
+- name: multisig-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_multisig.py
+
+- name: per-block-votes-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_per_block_votes.py
+
+- name: sapling-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_sapling.py
+
+- name: tenderbake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake.py
+
+- name: tenderbake-manual-bake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_manual_bake.py
+
+- name: tenderbake-long-dynamic-bake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_long_dynamic_bake.py
+
+- name: tenderbake-long-bakers-restart-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_bakers_restart.py
+
+- name: tenderbake-incremental-start-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_incremental_start.py
+
+- name: basic-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_basic.py
+  failure: ignore
+
+- name: save-python-test-logs
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'python-test-012-logs-{{ .Build.Number }}'
+    mount:
+      - 'python-test-logs' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
 
 depends_on:
   - build-tezedge-binaries
@@ -2346,7 +1993,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -2492,7 +2139,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -2563,7 +2210,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: tezedge-sandbox-run
-    image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -2733,7 +2380,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -2929,7 +2576,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-granada-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3106,7 +2753,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3122,7 +2769,7 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3143,7 +2790,7 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3264,7 +2911,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-hangzhou-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3290,7 +2937,7 @@ steps:
 # run empty octez sandbox and wait for it
 - name: octez-node-sandbox-hangzhou-run
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   detach: true
   volumes:
     - name: sandbox-data
@@ -3311,7 +2958,7 @@ steps:
 # connect both nodes with tezos-admin-client
 - name: connect-octez-and-tezedge
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -3324,7 +2971,7 @@ steps:
 # inject protocol to octez node, means it creates the first block with level 1
 - name: inject-first-block-with-tezos_client
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -3361,7 +3008,7 @@ steps:
 # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
 - name: do-transfer-with-tezos_client
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -3390,7 +3037,7 @@ steps:
 
 - name: run-tezos-endorser-011-PtHangz2
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -3420,7 +3067,7 @@ steps:
 
 - name: run-tezos-baker-011-PtHangz2
   user: root
-  image: tezos/tezos:v12.0-rc1
+  image: tezos/tezos:v12.0
   volumes:
     - name: sandbox-data
       path: /data/sandbox
@@ -3441,7 +3088,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3457,7 +3104,7 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3478,7 +3125,7 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v12.0-rc1-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3579,7 +3226,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3911,7 +3558,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3977,7 +3624,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4143,7 +3790,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-edo2net-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4208,7 +3855,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4370,7 +4017,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-florencenet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4435,7 +4082,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4598,7 +4245,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-granadanet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4680,7 +4327,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4864,7 +4511,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-mainnet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4929,7 +4576,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -5106,7 +4753,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5335,7 +4982,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5578,7 +5225,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5702,7 +5349,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5713,7 +5360,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   commands:
     - sleep 10
 
@@ -5783,7 +5430,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5794,7 +5441,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   commands:
     - sleep 10
 
@@ -5865,7 +5512,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5876,7 +5523,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   commands:
     - sleep 10
 
@@ -5951,7 +5598,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -6027,7 +5674,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: run-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -6044,7 +5691,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -6077,7 +5724,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -6119,7 +5766,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -6223,7 +5870,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -6273,7 +5920,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -6430,7 +6077,7 @@ steps:
         '
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     volumes:
       - name: tools
@@ -6473,7 +6120,7 @@ steps:
       - curl -s localhost:8732/stats/dbrw | jq .
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     volumes:
       - name: tools
@@ -6708,7 +6355,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6728,7 +6375,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6931,7 +6578,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6951,7 +6598,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -7135,7 +6782,7 @@ steps:
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -7183,7 +6830,7 @@ steps:
       - ms_print new-node.massif.out > new-node.msp.out
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
