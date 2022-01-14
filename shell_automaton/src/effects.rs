@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::actors::actors_effects;
+use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
@@ -126,6 +127,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     rpc_effects(store, action);
 
     rights_effects(store, action);
+
+    prechecker_effects(store, action);
 
     kv_block_meta_effects(store, action);
     kv_block_header_effects(store, action);
