@@ -81,9 +81,13 @@ macro_rules! kv_actions {
             }
         }
 
-        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From)]
+        #[derive(
+            Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From, thiserror::Error,
+        )]
         pub enum Error {
+            #[error("Storage error: `{0}`")]
             Storage(crate::service::storage_service::StorageError),
+            #[error("Value not found")]
             NotFound,
         }
     };

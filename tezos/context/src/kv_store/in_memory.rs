@@ -25,7 +25,7 @@ use crate::{
         GarbageCollectionError, GarbageCollector,
     },
     hash::ObjectHash,
-    persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
+    persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics},
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, InodeId, Storage},
@@ -284,7 +284,7 @@ impl KeyValueStoreBackend for InMemory {
         strings: &mut StringInterner,
     ) -> Result<DirectoryOrInodeId, DBError> {
         let object_bytes = self.get_value(object_ref.hash_id())?.unwrap_or(&[]);
-        in_memory::deserialize_inode(&object_bytes, storage, strings, self).map_err(Into::into)
+        in_memory::deserialize_inode(object_bytes, storage, strings, self).map_err(Into::into)
     }
 
     fn get_object_bytes<'a>(
@@ -324,6 +324,7 @@ impl KeyValueStoreBackend for InMemory {
                 Some(in_memory::serialize_object),
                 None,
                 true,
+                false,
             )
             .map_err(Box::new)?;
 
@@ -346,6 +347,10 @@ impl KeyValueStoreBackend for InMemory {
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
         // Unused HashId are garbage collected
         Ok(hash_id)
+    }
+
+    fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError> {
+        Ok(None)
     }
 
     #[cfg(test)]

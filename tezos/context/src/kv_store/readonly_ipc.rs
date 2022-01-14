@@ -17,7 +17,7 @@ use slog::{error, info};
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use thiserror::Error;
 
-use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable};
+use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable, ReadStatistics};
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
@@ -235,6 +235,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
                 None,
                 None,
                 false,
+                false,
             )
             .map_err(Box::new)?;
 
@@ -262,6 +263,10 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
         // HashId in the read-only backend are never commited
         Ok(hash_id)
+    }
+
+    fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError> {
+        Ok(None)
     }
 
     #[cfg(test)]

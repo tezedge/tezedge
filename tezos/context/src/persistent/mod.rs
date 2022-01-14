@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, convert::TryFrom, io, sync::PoisonError};
+use std::{borrow::Cow, collections::HashMap, convert::TryFrom, io, sync::PoisonError};
 
 use crypto::hash::ContextHash;
 use thiserror::Error;
@@ -137,6 +137,10 @@ pub trait KeyValueStoreBackend {
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError>;
     /// Reload the persistent database and verify its integrity
     fn reload_database(&mut self) -> Result<(), DBError>;
+    /// Return the file's statistics
+    ///
+    /// `Self::try_new` needs to be called with `read_mode=true`
+    fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError>;
     /// Simulate a `commit`, by writing data to disk/memory, without computing hash
     #[cfg(test)]
     fn synchronize_data(
@@ -144,6 +148,27 @@ pub trait KeyValueStoreBackend {
         batch: &[(HashId, Arc<[u8]>)],
         output: &[u8],
     ) -> Result<Option<AbsoluteOffset>, DBError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ReadStatistics {
+    pub nobjects: usize,
+    pub objects_total_bytes: usize,
+    pub lowest_offset: u64,
+    pub unique_shapes: HashMap<DirectoryShapeId, ()>,
+    pub shapes_length: usize,
+}
+
+impl Default for ReadStatistics {
+    fn default() -> Self {
+        Self {
+            nobjects: 0,
+            objects_total_bytes: 0,
+            lowest_offset: u64::MAX,
+            unique_shapes: HashMap::default(),
+            shapes_length: 0,
+        }
+    }
 }
 
 /// Possible errors for schema

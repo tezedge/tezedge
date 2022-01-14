@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::HashTrait;
+use crypto::hash::{HashBase58, HashTrait};
 use nom::{
     bitvec::{bitvec, order::Msb0, view::BitView},
     branch::*,
@@ -260,6 +260,15 @@ hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 hash_nom_reader!(Signature);
 
+impl<H> NomReader for HashBase58<H>
+where
+    H: NomReader,
+{
+    fn nom_read(bytes: &[u8]) -> NomResult<Self> {
+        nom::combinator::map(H::nom_read, Self)(bytes)
+    }
+}
+
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {
         map(z_bignum, |big_int| big_int.into())(bytes)
@@ -465,6 +474,21 @@ where
             })),
             e => e,
         }
+    }
+}
+
+/// Reserves `size` trailing bytes of the input and applies parser to the rest of the input.
+#[inline(always)]
+pub fn reserve<'a, O, F>(size: usize, mut parser: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
+where
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
+{
+    move |input| {
+        let input_len = input.len();
+        let reserved_len = input_len - std::cmp::min(input_len, size);
+        let reserved_input = &input[..reserved_len];
+        let (reserved_input, out) = parser(reserved_input)?;
+        Ok((&input[reserved_len - reserved_input.len()..], out))
     }
 }
 
@@ -717,6 +741,15 @@ mod test {
         let res: NomResult<u32> = bounded(3, u32(Endianness::Big))(input);
         let err = res.expect_err("Error is expected");
         assert_eq!(err, limit_error(&input[..3], BoundedEncodingKind::Bounded));
+    }
+
+    #[test]
+    fn test_reserved() {
+        let input = &[0, 0, 0, 1];
+        let mut parser = tuple((reserve(1, list(u8)), u8));
+        let (input, res) = parser(input).unwrap();
+        assert_eq!(input.len(), 0);
+        assert_eq!(res, (vec![0; 3], 1));
     }
 
     #[test]

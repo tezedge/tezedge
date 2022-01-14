@@ -11,14 +11,13 @@ pub use super::super::proto_009::operation::{
     ActivateAccountOperation, BallotOperation, ContractId, DelegationOperation,
     DoubleEndorsementEvidenceOperation, EndorsementOperation, EndorsementWithSlotOperation,
     FailingNoopOperation, InlinedEndorsement, InlinedEndorsementContents,
-    InlinedEndorsementVariant, OriginationOperation, ProposalsOperation,
-    RegisterGlobalConstantOperation, RevealOperation, SeedNonceRevelationOperation,
-    TransactionOperation,
+    InlinedEndorsementVariant, OriginationOperation, ProposalsOperation, RevealOperation,
+    SeedNonceRevelationOperation, TransactionOperation,
 };
 
 use std::convert::TryFrom;
 
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash, Signature};
+use crypto::hash::{HashBase58, HashTrait};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::{encoding::HasEncoding, nom::NomReader};
 
@@ -28,13 +27,49 @@ use crate::p2p::encoding::{
     operation::Operation as P2POperation,
 };
 
+type BlockHash = HashBase58<crypto::hash::BlockHash>;
+type Signature = HashBase58<crypto::hash::Signature>;
+type ContextHash = HashBase58<crypto::hash::ContextHash>;
+type OperationListListHash = HashBase58<crypto::hash::OperationListListHash>;
+
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
 pub struct Operation {
     pub branch: BlockHash,
     pub contents: Vec<Contents>,
     pub signature: Signature,
+}
+
+impl tezos_encoding::nom::NomReader for Operation {
+    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+        nom::combinator::map(
+            nom::sequence::tuple((
+                tezos_encoding::nom::field(
+                    "Operation::branch",
+                    <BlockHash as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+                tezos_encoding::nom::field(
+                    "Operation::contents",
+                    tezos_encoding::nom::reserve(
+                        Signature::hash_size(),
+                        tezos_encoding::nom::list(
+                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
+                        ),
+                    ),
+                ),
+                tezos_encoding::nom::field(
+                    "Operation::signature",
+                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+            )),
+            |(branch, contents, signature)| Operation {
+                branch,
+                contents,
+                signature,
+            },
+        )(bytes)
+    }
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -48,7 +83,7 @@ impl TryFrom<P2POperation> for Operation {
             signature,
         } = OperationContents::from_bytes(operation.data())?;
         Ok(Operation {
-            branch,
+            branch: HashBase58(branch),
             contents,
             signature,
         })
@@ -57,10 +92,36 @@ impl TryFrom<P2POperation> for Operation {
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
 pub struct OperationContents {
     pub contents: Vec<Contents>,
     pub signature: Signature,
+}
+
+impl tezos_encoding::nom::NomReader for OperationContents {
+    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+        nom::combinator::map(
+            nom::sequence::tuple((
+                tezos_encoding::nom::field(
+                    "OperationContents::contents",
+                    tezos_encoding::nom::reserve(
+                        Signature::hash_size(),
+                        tezos_encoding::nom::list(
+                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
+                        ),
+                    ),
+                ),
+                tezos_encoding::nom::field(
+                    "OperationContents::signature",
+                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+            )),
+            |(contents, signature)| OperationContents {
+                contents,
+                signature,
+            },
+        )(bytes)
+    }
 }
 
 impl TryFrom<P2POperation> for OperationContents {
@@ -83,8 +144,9 @@ impl TryFrom<P2POperation> for OperationContents {
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
 ///
 /// Comparing to [super::super::proto_001::operation::Content], new variant [Operation::FailingNoop] is added.
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 #[encoding(tags = "u8")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Contents {
     /// Endorsmnent (tag 0).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#id5].
@@ -92,18 +154,22 @@ pub enum Contents {
 
     /// Seed_nonce_revelation (tag 1).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#seed-nonce-revelation-tag-1].
+    #[serde(rename = "seed_nonce_revelation")]
     SeedNonceRevelation(SeedNonceRevelationOperation),
 
     /// Double_endorsement_evidence (tag 2).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-endorsement-evidence-tag-2].
+    #[serde(rename = "double_endorsement_evidence")]
     DoubleEndorsementEvidence(DoubleEndorsementEvidenceOperation),
 
     /// Double_baking_evidence (tag 3).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
+    #[serde(rename = "double_baking_evidence")]
     DoubleBakingEvidence(DoubleBakingEvidenceOperation),
 
     /// Activate_account (tag 4).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#activate-account-tag-4].
+    #[serde(rename = "activate_account")]
     ActivateAccount(ActivateAccountOperation),
 
     /// Proposals (tag 5).
@@ -117,11 +183,13 @@ pub enum Contents {
     /// Endorsement_with_slot (tag 10).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-with-slot-tag-10].
     #[encoding(tag = 10)]
+    #[serde(rename = "endorsement_with_slot")]
     EndorsementWithSlot(EndorsementWithSlotOperation),
 
     /// Failing_noop (tag 17).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#failing-noop-tag-17].
     #[encoding(tag = 17)]
+    #[serde(rename = "failing_noop")]
     FailingNoop(FailingNoopOperation),
 
     /// Reveal (tag 107).
@@ -140,15 +208,11 @@ pub enum Contents {
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#delegation-tag-110].
     #[encoding(tag = 110)]
     Delegation(DelegationOperation),
-    /// Register_global_constant (tag 111).
-    /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#register-global-constant-tag-111].
-    #[encoding(tag = 111)]
-    RegisterGlobalConstant(RegisterGlobalConstantOperation),
 }
 
 /// Double_baking_evidence (tag 3).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct DoubleBakingEvidenceOperation {
     #[encoding(dynamic)]
     pub bh1: FullHeader,
@@ -158,7 +222,7 @@ pub struct DoubleBakingEvidenceOperation {
 
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]
     pub level: Level,
@@ -223,7 +287,7 @@ mod tests {
     }
 
     macro_rules! operation_contents_test {
-	    ($name:ident, $branch:literal, $signature:literal, $contents:ident, $contents_assert:block) => {
+	    ($name:ident, $branch:literal, $signature:expr, $contents:ident, $contents_assert:block) => {
             #[test]
             fn $name() -> Result<()> {
                 use std::convert::TryInto;
@@ -239,7 +303,9 @@ mod tests {
                     branch.to_base58_check(),
                     $branch
                 );
-                assert_eq!(signature.to_base58_check(), $signature);
+                if $signature.is_some() {
+                    assert_eq!(&signature.to_base58_check(), $signature.unwrap());
+                }
                 assert_eq!($contents.len(), 1);
                 $contents_assert;
 
@@ -253,7 +319,9 @@ mod tests {
                     branch.to_base58_check(),
                     $branch
                 );
-                assert_eq!(signature.to_base58_check(), $signature);
+                if $signature.is_some() {
+                    assert_eq!(&signature.to_base58_check(), $signature.unwrap());
+                }
                 assert_eq!($contents.len(), 1);
                 $contents_assert;
 
@@ -262,7 +330,9 @@ mod tests {
                     $contents,
                     signature,
                 } = operation.clone().try_into()?;
-                assert_eq!(signature.to_base58_check(), $signature);
+                if $signature.is_some() {
+                    assert_eq!(&signature.to_base58_check(), $signature.unwrap());
+                }
                 assert_eq!($contents.len(), 1);
                 $contents_assert;
 
@@ -270,7 +340,7 @@ mod tests {
             }
 	    };
 	    ($name:ident, $contents:ident, $contents_assert:block) => {
-            operation_contents_test!($name, "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb", "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ", $contents, $contents_assert);
+            operation_contents_test!($name, "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb", Some("sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ"), $contents, $contents_assert);
         };
     }
 
@@ -470,6 +540,40 @@ mod tests {
         }
     });
 
+    operation_contents_test!(
+        endorsement_with_slot1,
+        "BKjKKYPeqaQLmdsw34Fa2KF8scdCBggae1eWyEoaQnFj45vSQgX",
+        Option::<&str>::None,
+        contents,
+        {
+            match &contents[0] {
+                Contents::EndorsementWithSlot(EndorsementWithSlotOperation {
+                    endorsement:
+                        InlinedEndorsement {
+                            branch,
+                            operations,
+                            signature,
+                        },
+                    slot,
+                }) => {
+                    assert_eq!(*slot, 41);
+                    assert_eq!(
+                        branch.to_base58_check(),
+                        "BKjKKYPeqaQLmdsw34Fa2KF8scdCBggae1eWyEoaQnFj45vSQgX"
+                    );
+                    assert!(matches!(
+                        operations,
+                        InlinedEndorsementContents::Endorsement(InlinedEndorsementVariant {
+                            level: 700456
+                        })
+                    ));
+                    assert_eq!(signature.to_base58_check(), "sigkFFGNQ1V2oFRqrxvw9KkzDzyxDcGTFu39hbNeAjHx52mXL4M3SdZZwY9xPQ1AsqHhb41k2x7ubLx7H7yRmtb8ANCa7324");
+                }
+                _ => assert!(false, "endorsement with slot expected"),
+            }
+        }
+    );
+
     operation_contents_test!(reveal, contents, {
         match &contents[0] {
             Contents::Reveal(RevealOperation {
@@ -651,22 +755,4 @@ mod tests {
             _ => assert!(false, "delegation expected"),
         }
     });
-
-    /* TODO implement this test when data is available
-    operation_contents_test!(register_global_constant, contents, {
-        match &contents[0] {
-            Contents::RegisterGlobalConstant(RegisterGlobalConstantOperation { source, fee, counter, gas_limit, storage_limit, value }) => {
-                assert_eq!(
-                    source.to_string_representation(),
-                    "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"
-                );
-                assert_eq!(fee.0, BigInt::from(33));
-                assert_eq!(counter.0, BigInt::from(732));
-                assert_eq!(gas_limit.0, BigInt::from(9451117));
-                assert_eq!(storage_limit.0, BigInt::from(57024931117_u64));
-            }
-            _ => assert!(false, "register_global_constant expected"),
-        }
-    });
-    */
 }
