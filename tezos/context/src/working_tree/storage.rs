@@ -601,7 +601,7 @@ enum PointerRefValue {
 
 #[bitfield]
 #[derive(Debug, Clone)]
-struct PointerRef {
+pub struct PointerRef {
     is_commited: bool,
     ref_kind: PointerRefKind,
     /// Depending on `ref_kind`, this is either a `InodeId` or a `BigPointerId`
@@ -653,7 +653,8 @@ pub struct Pointer {
 
 pub struct PointerOnStack {
     /// Index in `Storage::pointers`
-    pub index: Option<usize>,
+    pub pointer_ref: Option<PointerRef>,
+    // pub index: Option<usize>,
     pub pointer: Pointer,
 }
 
@@ -1629,6 +1630,7 @@ impl Storage {
                     ptr_id
                 } else {
                     let pointer = self.pointer_copy(ref_index).unwrap();
+                    // self.pointer_fetch(&pointer, repository, strings)?
 
                     let pointer_ref = pointer.get_reference().unwrap();
                     // let pointer_ref = self.get_pointer_reference(index);
@@ -1776,19 +1778,29 @@ impl Storage {
                     // TODO: Don't push when it's already in `Self::pointers`
                     // TODO HERE
 
-                    let pointer_ref = if let Some(index) = pointer.index {
-                        index
+                    if let Some(pointer_ref) = pointer.pointer_ref.clone() {
+                        pointer_ref
                     } else {
-                        self.pointers.push(pointer.pointer.clone())
-                    };
+                        let pointer_ref = self.pointers.push(pointer.pointer.clone());
+                        PointerRef::new()
+                            .with_ref_kind(PointerRefKind::BigPointer)
+                            .with_is_commited(pointer.is_commited())
+                            .with_value(pointer_ref as u32)
+                    }
+
+                    // let pointer_ref = if let Some(index) = pointer.index {
+                    //     index
+                    // } else {
+                    //     self.pointers.push(pointer.pointer.clone())
+                    // };
 
                     // let pointer_ref = self.pointers.push(pointer.pointer.clone());
 
                     // self.pointers.push(pointer.pointer.clone());
-                    PointerRef::new()
-                        .with_ref_kind(PointerRefKind::BigPointer)
-                        .with_is_commited(pointer.is_commited())
-                        .with_value(pointer_ref as u32)
+                    // PointerRef::new()
+                    //     .with_ref_kind(PointerRefKind::BigPointer)
+                    //     .with_is_commited(pointer.is_commited())
+                    //     .with_value(pointer_ref as u32)
                 };
 
             // match pointer.ptr_id() {
@@ -1995,7 +2007,7 @@ impl Storage {
                 let dir_or_inode_id = self.create_inode(depth + 1, range, strings)?;
 
                 pointers[index as usize] = Some(PointerOnStack {
-                    index: None,
+                    pointer_ref: None,
                     pointer: Pointer::new(None, dir_or_inode_id),
                 });
                 // pointers[index as usize] = Some(PointerWithInfo {
@@ -2063,7 +2075,8 @@ impl Storage {
             // Pointer::
 
             cloned[ptr_index] = Some(PointerOnStack {
-                index: Some(pointer_ref.value_as_u32() as usize),
+                pointer_ref: Some(pointer_ref.clone()),
+                // index: Some(pointer_ref.value_as_u32() as usize),
                 pointer: Pointer::from_pointer_ref(pointer_ref, self),
             });
 
@@ -2170,6 +2183,25 @@ impl Storage {
         // None
     }
 
+    fn pointer_fetch(
+        &mut self,
+        pointer: &Pointer,
+        repository: &ContextKeyValueStore,
+        strings: &mut StringInterner,
+    ) -> Result<DirectoryOrInodeId, StorageError> {
+        let pointer_ref = pointer.get_reference().unwrap();
+
+        let pointer_inode_id = repository
+            .get_inode(pointer_ref, self, strings)
+            .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+
+        pointer.set_ptr_id(pointer_inode_id);
+
+        self.set_pointer_ref(pointer, pointer_ref);
+
+        Ok(pointer_inode_id)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn insert_inode(
         &mut self,
@@ -2240,21 +2272,22 @@ impl Storage {
                     let ptr_id = match pointer.ptr_id() {
                         Some(ptr_id) => ptr_id,
                         None => {
+                            self.pointer_fetch(pointer, repository, strings)?
                             // let pointer_ref = self.get_pointer_reference(pointer_details.index);
 
                             // panic!();
 
-                            let pointer_ref = pointer.get_reference().unwrap();
+                            // let pointer_ref = pointer.get_reference().unwrap();
 
-                            let ptr_id = repository
-                                .get_inode(pointer_ref, self, strings)
-                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            // let ptr_id = repository
+                            //     .get_inode(pointer_ref, self, strings)
+                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-                            pointer.set_ptr_id(ptr_id);
+                            // pointer.set_ptr_id(ptr_id);
 
-                            self.set_pointer_ref(pointer, pointer_ref);
+                            // self.set_pointer_ref(pointer, pointer_ref);
 
-                            ptr_id
+                            // ptr_id
                         }
                     };
 
@@ -2289,7 +2322,7 @@ impl Storage {
                 // println!("NEW_KEY={:?} {:?}", is_new_key, inode_id);
 
                 pointers[index_at_depth] = Some(PointerOnStack {
-                    index: None,
+                    pointer_ref: None,
                     pointer: Pointer::new(None, inode_id),
                 });
 
@@ -2478,6 +2511,7 @@ impl Storage {
                     let ptr_id = match pointer.ptr_id() {
                         Some(ptr_id) => ptr_id,
                         None => {
+                            // self.pointer_fetch(pointer, repository, strings)?
                             // let pointer_ref = pointer.object_ref;
 
                             let pointer_ref = pointer.get_reference().unwrap();
@@ -2568,13 +2602,13 @@ impl Storage {
                 let inode = self.get_inode(inode_id)?;
 
                 // for pointer in self.iter_pointers(inode.pointers) {
-                for (_, index) in self.iter_pointers_with_index(inode.pointers) {
+                for (_, ref_index) in self.iter_pointers_with_index(inode.pointers) {
                     // let pointer = self.pointers_refs.get(index).unwrap();
 
                     // When the inode is not deserialized, ignore it
                     // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
                     // the full inode
-                    if let Some(ptr_id) = self.pointer_get_id(index) {
+                    if let Some(ptr_id) = self.pointer_get_id(ref_index) {
                         // let inode = self.get_inode(inode_id)?;
                         self.iter_inodes_recursive_unsorted(ptr_id, fun)?;
                     }
@@ -2919,19 +2953,20 @@ impl Storage {
                     let ptr_inode_id = match pointer.ptr_id() {
                         Some(inode_id) => inode_id,
                         None => {
+                            self.pointer_fetch(pointer, repository, strings)?
                             // let pointer_ref = self.get_pointer_reference(pointer.index);
                             // let pointer_ref = pointer.object_ref;
-                            let pointer_ref = pointer.get_reference().unwrap();
+                            // let pointer_ref = pointer.get_reference().unwrap();
 
-                            let pointer_inode_id = repository
-                                .get_inode(pointer_ref, self, strings)
-                                .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
+                            // let pointer_inode_id = repository
+                            //     .get_inode(pointer_ref, self, strings)
+                            //     .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-                            pointer.set_ptr_id(pointer_inode_id);
+                            // pointer.set_ptr_id(pointer_inode_id);
 
-                            self.set_pointer_ref(pointer, pointer_ref);
+                            // self.set_pointer_ref(pointer, pointer_ref);
 
-                            pointer_inode_id
+                            // pointer_inode_id
                         }
                     };
 
@@ -2942,7 +2977,7 @@ impl Storage {
                         }
                         Some(new_ptr_inode_id) => {
                             pointers[index_at_depth] = Some(PointerOnStack {
-                                index: None,
+                                pointer_ref: None,
                                 pointer: Pointer::new(None, new_ptr_inode_id),
                             });
                             // pointers[index_at_depth] = Some(PointerWithInfo {

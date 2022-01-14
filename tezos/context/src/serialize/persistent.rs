@@ -1203,7 +1203,7 @@ fn deserialize_inode_pointers(
         // ptr_start += 1;
 
         pointers[pointer_index as usize] = Some(PointerOnStack {
-            index: None,
+            pointer_ref: None,
             pointer: Pointer::new_commited(None, None, Some(absolute_offset)),
         });
 

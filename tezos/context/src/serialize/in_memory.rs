@@ -639,7 +639,7 @@ fn deserialize_inode_pointers(
         // });
 
         pointers[index as usize] = Some(PointerOnStack {
-            index: None,
+            pointer_ref: None,
             pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None, None),
         });
     }
