@@ -161,6 +161,7 @@ fn hash_long_inode(
                 depth,
                 nchildren,
                 pointers,
+                ..
             } = storage.get_inode(inode_id)?;
 
             let npointers = pointers.npointers();
@@ -189,7 +190,8 @@ fn hash_long_inode(
                 // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
-                let pointer = storage.pointers.get(index).unwrap();
+                // let pointer = storage.pointers.get(index).unwrap();
+                let pointer = storage.pointer_copy(index).unwrap();
 
                 // Skip pointers without entries.
                 // if let Some(pointer) = pointer.as_ref() {
@@ -197,7 +199,7 @@ fn hash_long_inode(
 
                 hasher.update(&[ptr_index]);
 
-                let hash_id = match storage.retrieve_hashid_of_pointer(pointer, store)? {
+                let hash_id = match storage.retrieve_hashid_of_pointer(&pointer, store)? {
                     // let hash_id = match pointer.hash_id(storage, store)? {
                     Some(hash_id) => hash_id,
                     None => {
@@ -210,7 +212,7 @@ fn hash_long_inode(
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
                         // pointer.set_hash_id(Some(hash_id));
 
-                        storage.set_hashid_of_pointer(pointer, hash_id);
+                        storage.set_hashid_of_pointer(&pointer, hash_id);
 
                         hash_id
                     }
@@ -763,7 +765,7 @@ mod tests {
                     assert_eq!(storage.dir_len(a).unwrap(), storage.dir_len(b).unwrap());
                 }
 
-                println!("ADDED {:#?}", storage.memory_usage(&strings));
+                // println!("ADDED {:#?}", storage.memory_usage(&strings));
 
                 // Remove the elements we just inserted
                 // for index in 0..3000000 {
