@@ -609,7 +609,7 @@ impl PointersOffsetsHeader {
         let mut bitfield = Self::default();
 
         // for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
-        for (index, (_, pointer_index)) in storage.iter_pointers_with_index(pointers).enumerate() {
+        for (index, (_, pointer_index)) in pointers.iter().enumerate() {
             let pointer = storage.pointer_copy(pointer_index).unwrap();
             // let pointer = storage.pointers.get(pointer_index).unwrap();
 
@@ -694,7 +694,7 @@ fn serialize_inode(
             // Recursively serialize all children
             // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
             // for pointer in storage.iter_pointers(*pointers) {
-            for (_, index) in storage.iter_pointers_with_index(*pointers) {
+            for (_, index) in pointers.iter() {
                 // let pointer = storage.pointers.get(index).unwrap();
                 let pointer = storage.pointer_copy(index).unwrap();
 
@@ -753,7 +753,7 @@ fn serialize_inode(
                 PointersOffsetsHeader::from_pointers(offset, *pointers, storage)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
-            for (_, index) in storage.iter_pointers_with_index(*pointers) {
+            for (_, index) in pointers.iter() {
                 let pointer = storage.pointer_copy(index).unwrap();
                 // let pointer = storage.pointers.get(index).unwrap();
 

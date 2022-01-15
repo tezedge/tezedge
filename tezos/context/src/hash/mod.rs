@@ -186,7 +186,7 @@ fn hash_long_inode(
 
             // for (index, pointer) in pointers.iter().enumerate() {
             // for (index, pointer) in storage.iter_pointers_with_index(*pointers) {
-            for (ptr_index, index) in storage.iter_pointers_with_index(*pointers) {
+            for (ptr_index, index) in pointers.iter() {
                 // When the pointer is `None`, it means that there is no DirEntry
                 // under that index.
 
