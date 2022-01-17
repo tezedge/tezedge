@@ -224,10 +224,10 @@ Size: variable
 | timestamp | 8 | timestamp |
 | validation_pass | 1 | unsigned byte |
 | operations_hash | 32 | OperationListListHash |
-| # of bytes in the next field (up to 24) | 4 | unsigned 32-bit integer |
+| # of bytes in the next field (up to 96) | 4 | unsigned 32-bit integer |
 | fitness | variable | list of [BlockHeader.fitness items](#blockheaderfitness-items) |
 | context | 32 | ContextHash |
-| protocol_data | up to 8388470 | list of unsigned byte |
+| protocol_data | up to 8388398 | list of unsigned byte |
 
 
 ### BlockHeader.fitness items

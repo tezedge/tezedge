@@ -2,31 +2,143 @@
 // SPDX-License-Identifier: MIT
 
 //! Operation contents. This is the contents of the opaque field [super::operation::Operation::data].
-//! See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
+//!
+//! See https://tezos.gitlab.io/protocols/012_ithaca.html
 
 pub use super::super::proto_011::operation::{
     ActivateAccountOperation, BallotOperation, ContractId, DelegationOperation,
     DoubleEndorsementEvidenceOperation, EndorsementOperation, EndorsementWithSlotOperation,
     FailingNoopOperation, InlinedEndorsement, InlinedEndorsementContents,
-    InlinedEndorsementVariant, Operation, OperationContents, OriginationOperation,
-    ProposalsOperation, RegisterGlobalConstantOperation, RevealOperation,
-    SeedNonceRevelationOperation, TransactionOperation,
+    InlinedEndorsementVariant, OriginationOperation, ProposalsOperation,
+    RegisterGlobalConstantOperation, RevealOperation, SeedNonceRevelationOperation,
+    TransactionOperation,
 };
 
-use crypto::hash::{BlockHash, BlockPayloadHash, ContextHash, OperationListListHash, Signature};
-use tezos_encoding::{encoding::HasEncoding, nom::NomReader};
+use crypto::hash::{BlockHash, ContextHash, HashTrait, OperationListListHash, Signature};
+use std::convert::TryFrom;
+
+use crypto::hash::BlockPayloadHash;
+use tezos_encoding::{binary_reader::BinaryReaderError, encoding::HasEncoding, nom::NomReader};
 
 use crate::p2p::encoding::{
     block_header::{Fitness, Level},
     limits::BLOCK_HEADER_FITNESS_MAX_SIZE,
+    operation::Operation as P2POperation,
 };
 
 /// Operation contents.
+/// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+pub struct Operation {
+    pub branch: BlockHash,
+    pub contents: Vec<Contents>,
+    pub signature: Signature,
+}
+
+impl tezos_encoding::nom::NomReader for Operation {
+    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+        nom::combinator::map(
+            nom::sequence::tuple((
+                tezos_encoding::nom::field(
+                    "Operation::branch",
+                    <BlockHash as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+                tezos_encoding::nom::field(
+                    "Operation::contents",
+                    tezos_encoding::nom::reserve(
+                        Signature::hash_size(),
+                        tezos_encoding::nom::list(
+                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
+                        ),
+                    ),
+                ),
+                tezos_encoding::nom::field(
+                    "Operation::signature",
+                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+            )),
+            |(branch, contents, signature)| Operation {
+                branch,
+                contents,
+                signature,
+            },
+        )(bytes)
+    }
+}
+
+impl TryFrom<P2POperation> for Operation {
+    type Error = BinaryReaderError;
+
+    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+        use crate::p2p::binary_message::BinaryRead;
+        let branch = operation.branch().clone();
+        let OperationContents {
+            contents,
+            signature,
+        } = OperationContents::from_bytes(operation.data())?;
+        Ok(Operation {
+            branch,
+            contents,
+            signature,
+        })
+    }
+}
+
+/// Operation contents.
+/// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+pub struct OperationContents {
+    pub contents: Vec<Contents>,
+    pub signature: Signature,
+}
+
+impl tezos_encoding::nom::NomReader for OperationContents {
+    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+        nom::combinator::map(
+            nom::sequence::tuple((
+                tezos_encoding::nom::field(
+                    "OperationContents::contents",
+                    tezos_encoding::nom::reserve(
+                        Signature::hash_size(),
+                        tezos_encoding::nom::list(
+                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
+                        ),
+                    ),
+                ),
+                tezos_encoding::nom::field(
+                    "OperationContents::signature",
+                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
+                ),
+            )),
+            |(contents, signature)| OperationContents {
+                contents,
+                signature,
+            },
+        )(bytes)
+    }
+}
+
+impl TryFrom<P2POperation> for OperationContents {
+    type Error = BinaryReaderError;
+
+    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+        use crate::p2p::binary_message::BinaryRead;
+        let OperationContents {
+            contents,
+            signature,
+        } = OperationContents::from_bytes(operation.data())?;
+        Ok(OperationContents {
+            contents,
+            signature,
+        })
+    }
+}
+
+/// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
-///
-/// Comparing to [super::super::proto_010::operation::Content], nothing was added, but the header changed some fields (and is used by `DoubleBakingEvidenceOperation`).
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 #[encoding(tags = "u8")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Contents {
     /// Endorsmnent (tag 0).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#id5].
@@ -34,18 +146,22 @@ pub enum Contents {
 
     /// Seed_nonce_revelation (tag 1).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#seed-nonce-revelation-tag-1].
+    #[serde(rename = "seed_nonce_revelation")]
     SeedNonceRevelation(SeedNonceRevelationOperation),
 
     /// Double_endorsement_evidence (tag 2).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-endorsement-evidence-tag-2].
+    #[serde(rename = "double_endorsement_evidence")]
     DoubleEndorsementEvidence(DoubleEndorsementEvidenceOperation),
 
     /// Double_baking_evidence (tag 3).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
+    #[serde(rename = "double_baking_evidence")]
     DoubleBakingEvidence(DoubleBakingEvidenceOperation),
 
     /// Activate_account (tag 4).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#activate-account-tag-4].
+    #[serde(rename = "activate_account")]
     ActivateAccount(ActivateAccountOperation),
 
     /// Proposals (tag 5).
@@ -59,11 +175,13 @@ pub enum Contents {
     /// Endorsement_with_slot (tag 10).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-with-slot-tag-10].
     #[encoding(tag = 10)]
+    #[serde(rename = "endorsement_with_slot")]
     EndorsementWithSlot(EndorsementWithSlotOperation),
 
     /// Failing_noop (tag 17).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#failing-noop-tag-17].
     #[encoding(tag = 17)]
+    #[serde(rename = "failing_noop")]
     FailingNoop(FailingNoopOperation),
 
     /// Reveal (tag 107).
@@ -82,6 +200,7 @@ pub enum Contents {
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#delegation-tag-110].
     #[encoding(tag = 110)]
     Delegation(DelegationOperation),
+
     /// Register_global_constant (tag 111).
     /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#register-global-constant-tag-111].
     #[encoding(tag = 111)]
@@ -90,7 +209,7 @@ pub enum Contents {
 
 /// Double_baking_evidence (tag 3).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct DoubleBakingEvidenceOperation {
     #[encoding(dynamic)]
     pub bh1: FullHeader,
@@ -101,7 +220,7 @@ pub struct DoubleBakingEvidenceOperation {
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
 /// Compared to the earlier version, `priority` got removed and `payload_hash` and `payload_round` got added.
-#[derive(Debug, Clone, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]
     pub level: Level,

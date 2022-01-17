@@ -13,7 +13,7 @@ use tezos_encoding::{
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-//use crate::base::signature_public_key::SignaturePublicKeyHash;
+use crate::base::signature_public_key::SignaturePublicKeyHash;
 
 const STAKE_DISTRIBUTION_SIZE: i64 = 500 /* delegates */ * 15 /* words */ * 4 /* bytes */;
 const SAMPLER_STATE_SIZE: i64 = 80 /* words */ * 4 /* bytes */;
@@ -94,18 +94,17 @@ impl ToRpcJsonMap for FixedConstants {
     }
 }
 
-// TODO
-// #[derive(Serialize, Deserialize, Debug, Clone)]
-// pub enum DelegateSelection {
-//     Random,
-//     RoundRobinOver(Vec<Vec<SignaturePublicKeyHash>>),
-// }
-//
-// impl HasEncoding for DelegateSelection {
-//     fn encoding() -> &'static tezos_encoding::encoding::Encoding {
-//         todo!()
-//     }
-// }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DelegateSelection {
+    Random,
+    RoundRobinOver(Vec<Vec<SignaturePublicKeyHash>>),
+}
+
+impl HasEncoding for DelegateSelection {
+    fn encoding() -> &'static tezos_encoding::encoding::Encoding {
+        todo!()
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
 pub struct Ratio {
