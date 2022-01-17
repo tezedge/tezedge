@@ -43,7 +43,7 @@ pub struct TestChain {
     pub expiration_date: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TezosRuntimeLogLevel {
     App,
     Error,
@@ -52,8 +52,11 @@ pub enum TezosRuntimeLogLevel {
     Debug,
 }
 
-// Must be in sync with ffi_config.ml
-#[derive(Clone, Serialize, Deserialize, Debug)]
+/// Holds configuration for OCaml runtime - e.g. arguments
+/// which are passed to OCaml and can be change in runtime.
+///
+/// Must be in sync with ffi_config.ml
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub log_level: Option<TezosRuntimeLogLevel>,
@@ -136,19 +139,19 @@ impl fmt::Debug for PrevalidatorWrapper {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginApplicationRequest {
     pub chain_id: ChainId,
     pub pred_header: BlockHeader,
     pub block_header: BlockHeader,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginApplicationResponse {
     pub result: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
@@ -157,7 +160,7 @@ pub struct BeginConstructionRequest {
     pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidateOperationRequest {
     pub prevalidator: PrevalidatorWrapper,
     pub operation: Operation,
@@ -194,7 +197,7 @@ trait HasOperationHash {
     fn operation_hash(&self) -> &OperationHash;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Applied {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
@@ -324,7 +327,7 @@ impl fmt::Debug for InitProtocolContextResult {
 }
 
 /// Commit genesis result
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommitGenesisResult {
     pub block_header_proto_json: String,
     pub block_header_proto_metadata_bytes: Vec<u8>,
@@ -370,7 +373,7 @@ impl From<TezosErrorTrace> for CallError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum TezosStorageInitError {
     #[error("OCaml storage init failed, message: {message}!")]
     InitializeError { message: String },
@@ -392,7 +395,7 @@ impl From<FromBytesError> for TezosStorageInitError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum GetDataError {
     #[error("OCaml failed to get data, message: {message}!")]
     ReadError { message: String },
@@ -406,7 +409,7 @@ impl From<TezosErrorTrace> for GetDataError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error, PartialEq)]
+#[derive(Error, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ApplyBlockError {
     #[error("Incomplete operations, expected: {expected}, has actual: {actual}!")]
     IncompleteOperations { expected: usize, actual: usize },
@@ -495,7 +498,7 @@ impl From<CallError> for ApplyBlockError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum BeginApplicationError {
     #[error("Failed to begin application - message: {message}!")]
     FailedToBeginApplication { message: String },
@@ -531,7 +534,7 @@ impl From<CallError> for BeginApplicationError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum BeginConstructionError {
     #[error("Failed to begin construction - message: {message}!")]
     FailedToBeginConstruction { message: String },
@@ -567,7 +570,7 @@ impl From<CallError> for BeginConstructionError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ValidateOperationError {
     #[error("Failed to validate operation - message: {message}!")]
     FailedToValidateOperation { message: String },
@@ -608,7 +611,7 @@ impl From<TezosErrorTrace> for ContextDataError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolDataError {
     #[error("Resolve/decode context data failed to decode: {message}!")]
     DecodeError { message: String },
@@ -630,7 +633,7 @@ impl From<FromBytesError> for ProtocolDataError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum FfiJsonEncoderError {
     #[error("FFI JSON encoding error: {message}!")]
     EncodeError { message: String },
@@ -710,7 +713,7 @@ impl RpcRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HelpersPreapplyBlockRequest {
     pub protocol_rpc_request: ProtocolRpcRequest,
     pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
@@ -718,12 +721,12 @@ pub struct HelpersPreapplyBlockRequest {
     pub predecessor_max_operations_ttl: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HelpersPreapplyResponse {
     pub body: Json,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolRpcResponse {
     RPCConflict(Option<String>),
     RPCCreated(Option<String>),
@@ -799,13 +802,13 @@ impl TryFrom<&str> for RpcMethod {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcArgDesc {
     pub name: String,
     pub descr: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolRpcError {
     #[error("RPC: cannot parse body: {0}")]
     RPCErrorCannotParseBody(String),
@@ -823,7 +826,7 @@ pub enum ProtocolRpcError {
     FailedToCallProtocolRpc(String),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRpcRequest {
     pub block_header: BlockHeader,
     pub chain_arg: String,
@@ -832,7 +835,7 @@ pub struct ProtocolRpcRequest {
     pub request: RpcRequest,
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum HelpersPreapplyError {
     #[error("Failed to call protocol rpc - message: {message}!")]
     FailedToCallProtocolRpc { message: String },
@@ -860,7 +863,7 @@ impl From<CallError> for HelpersPreapplyError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ComputePathRequest {
     pub operations: Vec<Vec<OperationHash>>,
 }
@@ -884,12 +887,12 @@ impl TryFrom<&Vec<Vec<Operation>>> for ComputePathRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ComputePathResponse {
     pub operations_hashes_path: Vec<Path>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Error)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ComputePathError {
     #[error("Path computation failed, message: {message}!")]
     PathError { message: String },
@@ -914,7 +917,7 @@ impl From<CallError> for ComputePathError {
 }
 
 /// Error types generated by a tezos protocol.
-#[derive(Error, Debug)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolError {
     /// Protocol rejected to apply a block.
     #[error("Apply block error: {reason}")]

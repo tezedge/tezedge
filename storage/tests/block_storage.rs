@@ -1,11 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryInto;
-
 use anyhow::Error;
 
-use crypto::hash::HashType;
 use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -53,22 +50,6 @@ fn test_put_block_header_twice() -> Result<(), Error> {
         stored_location1.block_header.0,
         stored_location2.block_header.0
     );
-
-    Ok(())
-}
-
-#[test]
-fn block_storage_assign_context() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create_to_out_dir("__block_assign_to_context")?;
-    let storage = BlockStorage::new(tmp_storage.storage());
-
-    let block_header = make_test_block_header()?;
-    let context_hash = vec![1; HashType::ContextHash.size()].try_into()?;
-
-    storage.put_block_header(&block_header)?;
-    storage.assign_to_context(&block_header.hash, &context_hash)?;
-    let block_header_res = storage.get_by_context_hash(&context_hash)?.unwrap();
-    assert_eq!(block_header_res, block_header);
 
     Ok(())
 }

@@ -12,28 +12,27 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use slog::{info, o, warn, Logger};
-use storage::PersistentStorage;
+use storage::{PersistentStorage, StorageInitInfo};
 
-use crypto::hash::ChainId;
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
-
-use tezos_protocol_ipc_client::ProtocolRunnerApi;
-
-use crate::PeerConnectionThreshold;
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 pub use shell_automaton::service::actors_service::{
     ActorsMessageFrom as ShellAutomatonMsg, AutomatonSyncSender as ShellAutomatonSender,
 };
+pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBlockResult};
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
+use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolServiceDefault,
-    RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
+    ProtocolServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Port, ShellAutomaton};
+
+use crate::PeerConnectionThreshold;
 
 #[derive(Debug, Clone)]
 pub struct P2p {
@@ -86,15 +85,17 @@ impl ShellAutomatonManager {
     const SHELL_AUTOMATON_QUEUE_MAX_CAPACITY: usize = 100_000;
 
     pub fn new(
+        protocol_runner_api: ProtocolRunnerApi,
         persistent_storage: PersistentStorage,
         network_channel: NetworkChannelRef,
-        tezos_protocol_api: Arc<ProtocolRunnerApi>,
         log: Logger,
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
         pow_target: f64,
-        chain_id: ChainId,
+        init_storage_data: StorageInitInfo,
+        protocol_runner_config: ProtocolRunnerConfiguration,
+        context_init_status_sender: tokio::sync::watch::Sender<bool>,
     ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::from_iter(
@@ -147,23 +148,35 @@ impl ShellAutomatonManager {
             log.new(o!("service" => "quota")),
         );
 
-        let protocol = ProtocolServiceDefault::new(mio_service.waker(), tezos_protocol_api);
+        let protocol_service =
+            ProtocolServiceDefault::new(mio_service.waker(), Arc::new(protocol_runner_api.clone()));
+        let protocol_runner_service = ProtocolRunnerServiceDefault::new(
+            protocol_runner_api,
+            mio_service.waker(),
+            64,
+            context_init_status_sender,
+        );
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
             mio: mio_service,
+            protocol: protocol_service,
+            protocol_runner: protocol_runner_service,
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
-            protocol,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
 
+        let chain_id = init_storage_data.chain_id.clone();
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
+
+            protocol_runner: protocol_runner_config,
+            init_storage_data,
 
             port: p2p_config.listener_port,
             disable_mempool: p2p_config.disable_mempool,
@@ -181,6 +194,9 @@ impl ShellAutomatonManager {
 
             peers_potential_max: p2p_config.peer_threshold.high * 5,
             peers_connected_max: p2p_config.peer_threshold.high,
+            peers_bootstrapped_min: p2p_config
+                .peer_threshold
+                .num_of_peers_for_bootstrap_threshold(),
 
             peers_graylist_disable: p2p_config.disable_peer_graylist,
             peers_graylist_timeout: Duration::from_secs(15 * 60),

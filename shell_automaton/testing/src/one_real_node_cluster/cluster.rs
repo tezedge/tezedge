@@ -18,8 +18,8 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
-    MioPeerStreamMocked, MioServiceMocked, ProtocolServiceDummy, QuotaServiceDummy,
-    RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
+    MioPeerStreamMocked, MioServiceMocked, ProtocolRunnerServiceDummy, ProtocolServiceDummy,
+    QuotaServiceDummy, RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
 };
 use crate::service::{Service, TimeService};
 
@@ -36,6 +36,7 @@ pub struct ServiceMocked {
     pub randomness: RandomnessServiceMocked,
     pub dns: DnsServiceMocked,
     pub mio: MioServiceMocked,
+    pub protocol_runner: ProtocolRunnerServiceDummy,
     pub storage: StorageServiceDummy,
     pub rpc: RpcServiceDummy,
     pub actors: ActorsServiceDummy,
@@ -50,6 +51,7 @@ impl ServiceMocked {
             randomness: RandomnessServiceMocked::Dummy,
             dns: DnsServiceMocked::Constant(Ok(vec![])),
             mio: MioServiceMocked::new(([0, 0, 0, 0], 9732).into(), u16::MAX as usize),
+            protocol_runner: ProtocolRunnerServiceDummy::new(),
             storage: StorageServiceDummy::new(),
             rpc: RpcServiceDummy::new(),
             actors: ActorsServiceDummy::new(),
@@ -73,6 +75,7 @@ impl Service for ServiceMocked {
     type Randomness = RandomnessServiceMocked;
     type Dns = DnsServiceMocked;
     type Mio = MioServiceMocked;
+    type ProtocolRunner = ProtocolRunnerServiceDummy;
     type Storage = StorageServiceDummy;
     type Rpc = RpcServiceDummy;
     type Actors = ActorsServiceDummy;
@@ -89,6 +92,10 @@ impl Service for ServiceMocked {
 
     fn mio(&mut self) -> &mut Self::Mio {
         &mut self.mio
+    }
+
+    fn protocol_runner(&mut self) -> &mut Self::ProtocolRunner {
+        &mut self.protocol_runner
     }
 
     fn storage(&mut self) -> &mut Self::Storage {

@@ -8,7 +8,8 @@ use slog::error;
 use tezos_messages::{p2p::binary_message::BinaryWrite, protocol::SupportedProtocol};
 
 use crate::{
-    mempool::mempool_actions::{BlockAppliedAction, MempoolOperationDecodedAction},
+    block_applier::BlockApplierApplyState,
+    mempool::mempool_actions::MempoolOperationDecodedAction,
     prechecker::{
         prechecker_actions::PrecheckerEndorsementValidationRefusedAction, Applied,
         PrecheckerOperationState, Refused,
@@ -379,20 +380,27 @@ where
             });
         }
         // prechache next block protocol, applied block is needed for that
-        Action::BlockApplied(BlockAppliedAction { hash, block, .. })
-            if prechecker_state
+        Action::BlockApplierApplySuccess(_) => {
+            let block = match &store.state().block_applier.current {
+                BlockApplierApplyState::Success { block, .. } => block,
+                _ => return,
+            };
+
+            if !prechecker_state
                 .next_protocol
                 .as_ref()
                 .map_or(true, |(proto, state)| {
-                    (*proto == block.proto() && matches!(state, SupportedProtocolState::None))
-                        || proto + 1 == block.proto()
-                }) =>
-        {
-            slog::trace!(&store.state.get().log, "=== query next block protocol ==="; "proto" => block.proto(), "block" => hash.to_base58_check());
-            store.dispatch(PrecheckerQueryNextBlockProtocolAction {
-                block_hash: hash.clone(),
-                proto: block.proto(),
-            });
+                    (*proto == block.header.proto()
+                        && matches!(state, SupportedProtocolState::None))
+                        || proto + 1 == block.header.proto()
+                })
+            {
+                return;
+            }
+
+            slog::trace!(&store.state.get().log, "=== query next block protocol ==="; "proto" => block.header.proto(), "block" => block.hash.to_base58_check());
+            let (block_hash, proto) = (block.hash.clone(), block.header.proto());
+            store.dispatch(PrecheckerQueryNextBlockProtocolAction { block_hash, proto });
         }
         Action::PrecheckerQueryNextBlockProtocol(PrecheckerQueryNextBlockProtocolAction {
             block_hash,

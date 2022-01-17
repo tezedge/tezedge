@@ -81,6 +81,10 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                     "error" => format!("{:?}", err));
             }
         },
+        Action::StorageBlocksGenesisInitCommitResultGetError(content) => {
+            slog::error!(log, "Error when getting genesis commit result from protocol";
+                "error" => &content.error);
+        }
         _ => {}
     }
 }

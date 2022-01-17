@@ -10,26 +10,26 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBlockResult};
 use slog::{warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::PeerId;
-use shell_integration::InjectBlockOneshotResultCallback;
+use networking::{ApplyBlockDone, ApplyBlockFailed, PeerId};
+use shell_integration::{InjectBlockError, InjectBlockOneshotResultCallback};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, OperationsForBlock, PeerMessageResponse,
 };
 
-use crate::chain_feeder::{ApplyBlock, ApplyBlockPermit, ChainFeederRef};
-use crate::chain_manager::ChainManagerRef;
+use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::shell_automaton_manager::{ShellAutomatonMsg, ShellAutomatonSender};
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
-use crate::state::{ApplyBlockBatch, StateError};
+use crate::state::StateError;
 use crate::validation;
 use crate::validation::CanApplyStatus;
 
@@ -43,9 +43,6 @@ pub struct DataRequester {
     pub(crate) operations_meta_storage: OperationsMetaStorage,
 
     pub(crate) shell_automaton: ShellAutomatonSender,
-
-    /// Chain feeder - actor, which is responsible to apply_block to context
-    block_applier: ChainFeederRef,
 }
 
 impl DataRequester {
@@ -53,13 +50,11 @@ impl DataRequester {
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
         shell_automaton: ShellAutomatonSender,
-        block_applier: ChainFeederRef,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
             shell_automaton,
-            block_applier,
         }
     }
 
@@ -364,114 +359,129 @@ impl DataRequester {
         chain_manager: Arc<ChainManagerRef>,
         result_callback: Option<InjectBlockOneshotResultCallback>,
     ) -> Result<(), StateError> {
-        self.call_apply_block(
-            chain_id,
-            ApplyBlockBatch::one(block_hash),
-            chain_manager,
-            result_callback,
-        )
-    }
-
-    fn call_apply_block(
-        &self,
-        chain_id: Arc<ChainId>,
-        batch: ApplyBlockBatch,
-        chain_manager: Arc<ChainManagerRef>,
-        result_callback: Option<InjectBlockOneshotResultCallback>,
-    ) -> Result<(), StateError> {
-        // check batch, if the start block is ok and can be applied
-        // if start is already applied, we fold the bath to next block (if any)
-        let batch = {
-            let mut batch_to_use = batch;
-            loop {
-                // get block metadata
-                let block_metadata =
-                    match self.block_meta_storage.get(&batch_to_use.block_to_apply)? {
-                        Some(block_metadata) => block_metadata,
-                        None => {
-                            return Err(StateError::ProcessingError {
-                                reason: format!(
-                                    "No metadata found for block_hash: {}",
-                                    batch_to_use.block_to_apply.to_base58_check()
-                                ),
-                            });
-                        }
-                    };
-
-                // check if can be applied
-                match validation::can_apply_block(
-                    (&batch_to_use.block_to_apply, &block_metadata),
-                    |bh| self.operations_meta_storage.is_complete(bh),
-                    |predecessor| self.block_meta_storage.is_applied(predecessor),
-                )? {
-                    CanApplyStatus::Ready => break batch_to_use,
-                    CanApplyStatus::AlreadyApplied => {
-                        // if we dont have successors, we need to finished,
-                        // if we have, we can shift the batch and try again
-                        batch_to_use = match batch_to_use.shift() {
-                            Some(shifted_batch) => shifted_batch,
-                            None => return Err(StateError::ProcessingError {
-                                reason: "Block cannot be applied, because the whole batch is already applied".to_string(),
-                            })
-                        };
-                    }
-                    CanApplyStatus::MissingPredecessor => {
-                        return Err(StateError::ProcessingError {
-                            reason: format!(
-                                "Block {} cannot be applied because missing predecessor block",
-                                batch_to_use.block_to_apply.to_base58_check()
-                            ),
-                        })
-                    }
-                    CanApplyStatus::PredecessorNotApplied => {
-                        return Err(StateError::ProcessingError {
-                            reason: format!(
-                                "Block {} cannot be applied because predecessor block is not applied yet",
-                                batch_to_use.block_to_apply.to_base58_check()
-                            ),
-                        })
-                    }
-                    CanApplyStatus::MissingOperations => {
-                        return Err(StateError::ProcessingError {
-                            reason: format!(
-                                "Block {} cannot be applied because missing operations",
-                                batch_to_use.block_to_apply.to_base58_check()
-                            ),
-                        })
-                    }
-                }
+        // get block metadata
+        let block_metadata = match self.block_meta_storage.get(&block_hash)? {
+            Some(block_metadata) => block_metadata,
+            None => {
+                return Err(StateError::ProcessingError {
+                    reason: format!(
+                        "No metadata found for block_hash: {}",
+                        block_hash.to_base58_check()
+                    ),
+                });
             }
         };
 
-        // try to call apply
-        self.block_applier.tell(
-            ApplyBlock::new(chain_id, batch, chain_manager, result_callback, None, None),
-            None,
-        );
+        // check if can be applied
+        match validation::can_apply_block(
+            (&block_hash, &block_metadata),
+            |bh| self.operations_meta_storage.is_complete(bh),
+            |predecessor| self.block_meta_storage.is_applied(predecessor),
+        )? {
+            CanApplyStatus::Ready => {}
+            CanApplyStatus::AlreadyApplied => {
+                return Err(StateError::ProcessingError {
+                    reason: "Block cannot be applied, because it's is already applied".to_string(),
+                });
+            }
+            CanApplyStatus::MissingPredecessor => {
+                return Err(StateError::ProcessingError {
+                    reason: format!(
+                        "Block {} cannot be applied because missing predecessor block",
+                        block_hash.to_base58_check()
+                    ),
+                })
+            }
+            CanApplyStatus::PredecessorNotApplied => {
+                return Err(StateError::ProcessingError {
+                    reason: format!(
+                        "Block {} cannot be applied because predecessor block is not applied yet",
+                        block_hash.to_base58_check()
+                    ),
+                })
+            }
+            CanApplyStatus::MissingOperations => {
+                return Err(StateError::ProcessingError {
+                    reason: format!(
+                        "Block {} cannot be applied because missing operations",
+                        block_hash.to_base58_check()
+                    ),
+                })
+            }
+        }
+
+        let _ = self.shell_automaton.send(ShellAutomatonMsg::ApplyBlock {
+            chain_id,
+            block_hash: Arc::new(block_hash),
+            callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
+                let result_callback_send = move |res| result_callback.map(|cb| cb.send(res));
+                match result {
+                    Ok((chain_id, block, result)) => {
+                        chain_manager.tell(
+                            ProcessValidatedBlock::new(
+                                block,
+                                chain_id,
+                                result.block_metadata_hash.clone(),
+                                result.ops_metadata_hash.clone(),
+                                Instant::now(),
+                            ),
+                            None,
+                        );
+                        result_callback_send(Ok(()));
+                    }
+                    Err(_) => {
+                        result_callback_send(Err(InjectBlockError {
+                            reason: "Block application failed!".to_owned(),
+                        }));
+                    }
+                }
+            }),
+        });
 
         Ok(())
     }
 
-    pub fn call_apply_block_batch(
+    pub fn call_apply_block(
         &self,
         chain_id: Arc<ChainId>,
-        batch: ApplyBlockBatch,
+        block_hash: Arc<BlockHash>,
         chain_manager: Arc<ChainManagerRef>,
         bootstrapper: PeerBranchBootstrapperRef,
-        permit: ApplyBlockPermit,
     ) {
-        // try to call apply
-        self.block_applier.tell(
-            ApplyBlock::new(
-                chain_id,
-                batch,
-                chain_manager,
-                None,
-                Some(bootstrapper),
-                Some(permit),
-            ),
-            None,
-        );
+        let _ = self.shell_automaton.send(ShellAutomatonMsg::ApplyBlock {
+            chain_id,
+            block_hash,
+            callback: ApplyBlockCallback::from(move |block_hash, result: ApplyBlockResult| {
+                match result {
+                    Ok((chain_id, block, result)) => {
+                        chain_manager.tell(
+                            ProcessValidatedBlock::new(
+                                block,
+                                chain_id,
+                                result.block_metadata_hash.clone(),
+                                result.ops_metadata_hash.clone(),
+                                Instant::now(),
+                            ),
+                            None,
+                        );
+                        bootstrapper.tell(
+                            ApplyBlockDone {
+                                last_applied: Arc::new(block_hash),
+                            },
+                            None,
+                        );
+                    }
+                    Err(_) => {
+                        bootstrapper.tell(
+                            ApplyBlockFailed {
+                                failed_block: Arc::new(block_hash),
+                            },
+                            None,
+                        );
+                    }
+                }
+            }),
+        });
     }
 }
 

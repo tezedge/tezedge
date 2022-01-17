@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use strum_macros::IntoStaticStr;
 // TODO: move some (or all) of these to this crate?
@@ -49,26 +50,26 @@ pub enum ProtocolMessage {
     ShutdownCall,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetKeyFromHistoryRequest {
     pub context_hash: ContextHash,
     pub key: ContextKeyOwned,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetKeyValuesByPrefixRequest {
     pub context_hash: ContextHash,
     pub prefix: ContextKeyOwned,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetTreeByPrefixRequest {
     pub context_hash: ContextHash,
     pub prefix: ContextKeyOwned,
     pub depth: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct InitProtocolContextParams {
     pub storage: TezosContextStorageConfiguration,
     pub genesis: GenesisChain,
@@ -82,7 +83,7 @@ pub struct InitProtocolContextParams {
     pub context_stats_db_path: Option<PathBuf>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GenesisResultDataParams {
     pub genesis_context_hash: ContextHash,
     pub chain_id: ChainId,
@@ -90,7 +91,7 @@ pub struct GenesisResultDataParams {
     pub genesis_max_operations_ttl: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonEncodeApplyBlockResultMetadataParams {
     pub context_hash: ContextHash,
     pub metadata_bytes: RustBytes,
@@ -99,7 +100,7 @@ pub struct JsonEncodeApplyBlockResultMetadataParams {
     pub next_protocol_hash: ProtocolHash,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonEncodeApplyBlockOperationsMetadataParams {
     pub chain_id: ChainId,
     pub operations: Vec<Vec<Operation>>,
@@ -109,7 +110,8 @@ pub struct JsonEncodeApplyBlockOperationsMetadataParams {
 }
 
 /// This event message is generated as a response to the `ProtocolMessage` command.
-#[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
+#[enum_kind(NodeMessageKind, derive(Serialize, Deserialize,))]
 pub enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),
@@ -136,5 +138,5 @@ pub enum NodeMessage {
 }
 
 /// Empty message
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NoopMessage;

@@ -8,11 +8,18 @@ use std::{
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use storage::StorageInitInfo;
+use tezos_api::{environment::TezosEnvironmentConfiguration, ffi::TezosRuntimeConfiguration};
+use tezos_context_api::{
+    ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
+};
+use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
-    hash::{ChainId, CryptoboxPublicKeyHash, HashTrait},
+    hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashTrait},
     proof_of_work::ProofOfWork,
 };
 use tezos_identity::Identity;
@@ -44,6 +51,9 @@ pub fn identity_1() -> Identity {
 pub struct Config {
     pub initial_time: SystemTime,
 
+    pub protocol_runner: ProtocolRunnerConfiguration,
+    pub init_storage_data: StorageInitInfo,
+
     pub port: Port,
     pub disable_mempool: bool,
     pub private_node: bool,
@@ -72,6 +82,11 @@ pub struct Config {
 
     /// Maximum number of connected peers on socket layer.
     pub peers_connected_max: usize,
+
+    /// Minimum number of peers that we need to be bootstrapped with
+    /// (our current head equal or greater than theirs),
+    /// for us to be considered bootstrapped (`Self::is_bootstrapped() == true`).
+    pub peers_bootstrapped_min: usize,
 
     /// Disable automatic graylisting peers when something goes wrong.
     pub peers_graylist_disable: bool,
@@ -103,15 +118,55 @@ pub struct Quota {
     pub write_quota: usize,
 }
 
-pub fn default_config() -> Config {
-    let pow_target = 26.0;
+pub fn default_test_config() -> Config {
     Config {
         initial_time: SystemTime::now(),
+
+        protocol_runner: ProtocolRunnerConfiguration {
+            runtime_configuration: TezosRuntimeConfiguration {
+                log_enabled: false,
+                log_level: None,
+            },
+            environment: TezosEnvironmentConfiguration {
+                genesis: GenesisChain {
+                    time: "".to_owned(),
+                    block: "".to_owned(),
+                    protocol: "".to_owned(),
+                },
+                bootstrap_lookup_addresses: vec![],
+                version: "".to_owned(),
+                protocol_overrides: ProtocolOverrides {
+                    user_activated_upgrades: vec![],
+                    user_activated_protocol_overrides: vec![],
+                },
+                enable_testchain: false,
+                patch_context_genesis_parameters: None,
+            },
+            enable_testchain: false,
+            storage: TezosContextStorageConfiguration::TezEdgeOnly(
+                TezosContextTezEdgeStorageConfiguration {
+                    backend: ContextKvStoreConfiguration::InMem,
+                    ipc_socket_path: None,
+                },
+            ),
+            executable_path: Default::default(),
+            log_level: slog::Level::Error,
+        },
+        init_storage_data: StorageInitInfo {
+            chain_id: ChainId::try_from_bytes(&[122, 6, 167, 112]).unwrap(),
+            genesis_block_header_hash: BlockHash::from_base58_check(
+                "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2",
+            )
+            .unwrap(),
+            patch_context: None,
+            context_stats_db_path: None,
+            replay: None,
+        },
 
         port: 9732,
         disable_mempool: false,
         private_node: false,
-        pow_target,
+        pow_target: 0.0,
         // identity: Identity::generate(pow_target).unwrap(),
         identity: identity_1(),
         shell_compatibility_version: ShellCompatibilityVersion::new(
@@ -129,47 +184,7 @@ pub fn default_config() -> Config {
 
         peers_potential_max: 80,
         peers_connected_max: 40,
-
-        peers_graylist_disable: false,
-        peers_graylist_timeout: Duration::from_secs(15 * 60),
-
-        record_state_snapshots_with_interval: None,
-        record_actions: false,
-
-        quota: Quota {
-            restore_duration_millis: 1000,
-            read_quota: 1024,
-            write_quota: 1024,
-        },
-    }
-}
-
-pub fn test_config() -> Config {
-    let pow_target = 0.0;
-    Config {
-        initial_time: SystemTime::now(),
-
-        port: 19732,
-        disable_mempool: false,
-        private_node: false,
-        pow_target,
-        // identity: Identity::generate(pow_target).unwrap(),
-        identity: identity_1(),
-        shell_compatibility_version: ShellCompatibilityVersion::new(
-            "TEZOS_GRANADANET_2021-05-21T15:00:00Z".to_owned(),
-            vec![0],
-            vec![1],
-        ),
-        chain_id: ChainId::try_from("NetXz969SFaFn8k").unwrap(),
-
-        check_timeouts_interval: Duration::from_millis(100),
-        peer_connecting_timeout: Duration::from_secs(4),
-        peer_handshaking_timeout: Duration::from_secs(8),
-
-        peer_max_io_syscalls: 64,
-
-        peers_potential_max: 80,
-        peers_connected_max: 40,
+        peers_bootstrapped_min: 60,
 
         peers_graylist_disable: false,
         peers_graylist_timeout: Duration::from_secs(15 * 60),

@@ -2,14 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 use crate::actors::actors_effects;
+use crate::block_applier::block_applier_effects;
 use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
+use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_effects;
+use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_effects;
 use crate::{Action, ActionId, ActionWithMeta, Store};
 
 use crate::logger::logger_effects;
 use crate::paused_loops::paused_loops_effects;
+
+use crate::protocol_runner::init::context::protocol_runner_init_context_effects;
+use crate::protocol_runner::init::context_ipc_server::protocol_runner_init_context_ipc_server_effects;
+use crate::protocol_runner::init::protocol_runner_init_effects;
+use crate::protocol_runner::init::runtime::protocol_runner_init_runtime_effects;
+use crate::protocol_runner::protocol_runner_effects;
+use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_effects;
 
 use crate::peer::binary_message::read::peer_binary_message_read_effects;
 use crate::peer::binary_message::write::peer_binary_message_write_effects;
@@ -33,6 +43,10 @@ use crate::peers::graylist::peers_graylist_effects;
 use crate::mempool::mempool_effects;
 use crate::protocol::protocol_effects;
 
+use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_effects;
+use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_effects;
+use crate::storage::blocks::genesis::init::header_put::storage_blocks_genesis_init_header_put_effects;
+use crate::storage::blocks::genesis::init::storage_blocks_genesis_init_effects;
 use crate::storage::request::storage_request_effects;
 use crate::storage::state_snapshot::create::{
     storage_state_snapshot_create_effects, StorageStateSnapshotCreateInitAction,
@@ -94,6 +108,17 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     paused_loops_effects(store, action);
 
+    protocol_runner_effects(store, action);
+
+    protocol_runner_spawn_server_effects(store, action);
+
+    protocol_runner_init_effects(store, action);
+    protocol_runner_init_runtime_effects(store, action);
+    protocol_runner_init_context_effects(store, action);
+    protocol_runner_init_context_ipc_server_effects(store, action);
+
+    block_applier_effects(store, action);
+
     peer_effects(store, action);
 
     protocol_effects(store, action);
@@ -121,6 +146,15 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     mempool_effects(store, action);
 
     storage_request_effects(store, action);
+
+    storage_blocks_genesis_check_applied_effects(store, action);
+
+    storage_blocks_genesis_init_effects(store, action);
+    storage_blocks_genesis_init_header_put_effects(store, action);
+    storage_blocks_genesis_init_additional_data_put_effects(store, action);
+    storage_blocks_genesis_init_commit_result_get_effects(store, action);
+    storage_blocks_genesis_init_commit_result_put_effects(store, action);
+
     storage_state_snapshot_create_effects(store, action);
 
     actors_effects(store, action);

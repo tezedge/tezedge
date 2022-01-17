@@ -46,6 +46,11 @@ use crate::storage::state_snapshot::create::StorageStateSnapshotCreateInitAction
 
 pub mod mempool;
 
+pub mod protocol_runner;
+use protocol_runner::ProtocolRunnerStartAction;
+
+pub mod block_applier;
+
 pub mod rpc;
 
 pub mod actors;
@@ -99,6 +104,8 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         {
             eprintln!("P2p: failed to start server. Error: {:?}", err);
         }
+
+        self.store.dispatch(ProtocolRunnerStartAction {});
 
         for (address, port) in peers_dns_lookup_addrs.into_iter() {
             self.store

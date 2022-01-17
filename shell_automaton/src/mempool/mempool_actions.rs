@@ -5,13 +5,9 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, OperationHash, OperationMetadataListListHash,
-};
+use crypto::hash::{BlockHash, OperationHash};
 use tezos_messages::p2p::encoding::block_header::Level;
-use tezos_messages::p2p::encoding::{
-    block_header::BlockHeader, mempool::Mempool, operation::Operation,
-};
+use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
 use crate::service::rpc_service::RpcId;
 
@@ -279,25 +275,6 @@ impl EnablingCondition<State> for MempoolFlushAction {
         } else {
             false
         }
-    }
-}
-
-/// NOTE: this action is not specific to mempool, may be handled elsewhere
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BlockAppliedAction {
-    pub chain_id: ChainId,
-    pub block: BlockHeader,
-    pub hash: BlockHash,
-    pub block_metadata_hash: Option<BlockMetadataHash>,
-    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
-    pub is_bootstrapped: bool,
-}
-
-impl EnablingCondition<State> for BlockAppliedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
     }
 }
 

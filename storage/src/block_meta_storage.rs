@@ -381,7 +381,7 @@ macro_rules! successors_count {
 }
 
 /// Meta information for the block
-#[derive(Clone, Getters, CopyGetters, Setters, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Getters, CopyGetters, Setters, PartialEq, Debug, Clone)]
 pub struct Meta {
     #[get = "pub"]
     predecessor: Option<BlockHash>,
