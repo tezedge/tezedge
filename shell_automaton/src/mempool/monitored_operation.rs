@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, HashBase58, OperationHash, ProtocolHash};
+use crypto::hash::{HashBase58, OperationHash, ProtocolHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -23,15 +23,11 @@ pub struct MempoolOperations {
 fn convert_applied(
     applied: &[Applied],
     operations: &HashMap<HashBase58<OperationHash>, Operation>,
-    current_branch: &BlockHash,
 ) -> Vec<HashMap<String, Value>> {
     applied
         .iter()
         .filter_map(move |v| {
             let branch = operations.get(&v.hash)?.branch();
-            if branch.ne(current_branch) {
-                return None;
-            }
             let mut m = serde_json::from_str(&v.protocol_data_json).unwrap_or_else(|err| {
                 let mut m = HashMap::new();
                 m.insert(
@@ -112,11 +108,10 @@ impl MempoolOperations {
         branch_delayed: &[Errored],
         branch_refused: &[Errored],
         operations: &HashMap<HashBase58<OperationHash>, Operation>,
-        current_branch: &BlockHash,
         protocol: &ProtocolHash,
     ) -> Self {
         MempoolOperations {
-            applied: convert_applied(applied, operations, current_branch),
+            applied: convert_applied(applied, operations),
             refused: convert_errored(refused, operations, protocol),
             branch_delayed: convert_errored(branch_delayed, operations, protocol),
             branch_refused: convert_errored(branch_refused, operations, protocol),
@@ -230,10 +225,7 @@ mod tests {
         );
 
         // convert
-        let current_branch = "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H"
-            .try_into()
-            .unwrap();
-        let result = convert_applied(&data, &operations, &current_branch);
+        let result = convert_applied(&data, &operations);
         assert_json_eq!(serde_json::to_value(result).unwrap(), expected_json,);
     }
 
