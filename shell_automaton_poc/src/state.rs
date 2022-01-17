@@ -372,12 +372,13 @@ impl Transactions {
         if let Some(ParentInfo { tx_id, .. }) = parent {
             let ancestors = self.ancestors(tx_id);
             /*
-                Children transactions can read into an ancestor's write-field (children complete before parent's commit).
-                It could be possible for children transactions to write to fields as long as they don't overlap with
-                the ancestor's fields, however this would need "rollback" support for transaction cancelation, which
-                might require a complex implementation. When children transactions commit, they usually just need to
-                notify the parent transaction and don't perform any other side-effects, so we just deny children
-                transaction that attempts to write to to shared-state.
+                Children transactions can read into an ancestor's write-field (children complete
+                before parent's commit). It could be possible for children transactions to write
+                to fields as long as they don't overlap with the ancestor's fields, however this
+                would need "rollback" support for transaction cancelation, which might require a
+                complex implementation. When children transactions commit, they usually just need
+                to notify the parent transaction and don't perform any other side-effects, so we
+                just deny children transaction that attempts to write to to shared-state.
             */
             assert!(transaction_access.write == 0);
 

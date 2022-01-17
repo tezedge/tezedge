@@ -431,7 +431,7 @@ impl MioCanReadAction {
 impl ImpureAction<MioService> for MioCanReadAction {
     fn effects(&self, state: &GlobalState, service: &mut MioService) {
         let transactions = state.transactions.borrow();
-        let transaction = TxRecvData::get(&transactions, self.tx_id).borrow_mut();
+        let transaction = TxRecvData::get(&transactions, self.tx_id).borrow();
 
         if let TransactionState::Pending(tx_state) = &transaction.state {
             if let TxRecvData::Receiving(RecvContext {
@@ -467,7 +467,7 @@ impl MioCanWriteAction {
 impl ImpureAction<MioService> for MioCanWriteAction {
     fn effects(&self, state: &GlobalState, service: &mut MioService) {
         let transactions = state.transactions.borrow();
-        let transaction = TxSendData::get(&transactions, self.tx_id).borrow_mut();
+        let transaction = TxSendData::get(&transactions, self.tx_id).borrow();
 
         if let TransactionState::Pending(tx_state) = &transaction.state {
             if let TxSendData::Transmitting(SendContext {
