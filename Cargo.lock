@@ -812,6 +812,7 @@ dependencies = [
  "p256",
  "rand 0.7.3",
  "serde 1.0.130",
+ "serde_json",
  "sodiumoxide",
  "thiserror",
 ]
