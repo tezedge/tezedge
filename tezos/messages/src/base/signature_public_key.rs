@@ -628,4 +628,22 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn sig_as_json_is_base58check() {
+        let pkss = [
+            "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP",
+            "sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN",
+            "p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW",
+        ];
+        for pks_str in pkss {
+            let pks = SignaturePublicKey::from_b58_hash(pks_str)
+                .expect("Invalid base58check for signature");
+            let json = serde_json::to_string(&pks).expect("JSON encoding error");
+            assert_eq!(json, format!(r#""{}""#, pks_str));
+            let pks1 =
+                serde_json::from_str::<SignaturePublicKey>(&json).expect("JSON decoding error");
+            assert_eq!(pks, pks1);
+        }
+    }
 }

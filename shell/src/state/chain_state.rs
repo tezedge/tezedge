@@ -690,7 +690,7 @@ impl BlockchainState {
 
         while counter > 0 {
             // evaluate next step, means we want predecessor at this distance
-            let distance = step.next();
+            let distance = step.next_step();
 
             // close history with caboose, if next step distance is negative (because of find_block_at_distance)
             let distance = if distance < 0 {

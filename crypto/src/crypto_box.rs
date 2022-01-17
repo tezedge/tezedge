@@ -53,7 +53,7 @@ fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZ
 
     // convert to correct key size
     let mut arr = [0u8; CRYPTO_KEY_SIZE];
-    arr.copy_from_slice(&buf);
+    arr.copy_from_slice(buf);
     Ok(arr)
 }
 
