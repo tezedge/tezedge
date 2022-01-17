@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{HashBase58, OperationHash, ProtocolHash};
+use crypto::hash::{OperationHash, ProtocolHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -22,7 +22,7 @@ pub struct MempoolOperations {
 
 fn convert_applied(
     applied: &[Applied],
-    operations: &HashMap<HashBase58<OperationHash>, Operation>,
+    operations: &HashMap<OperationHash, Operation>,
 ) -> Vec<HashMap<String, Value>> {
     applied
         .iter()
@@ -48,7 +48,7 @@ fn convert_applied(
 
 fn convert_errored(
     errored: &[Errored],
-    operations: &HashMap<HashBase58<OperationHash>, Operation>,
+    operations: &HashMap<OperationHash, Operation>,
     protocol: &ProtocolHash,
 ) -> Vec<Value> {
     let mut result = Vec::with_capacity(errored.len());
@@ -107,7 +107,7 @@ impl MempoolOperations {
         refused: &[Errored],
         branch_delayed: &[Errored],
         branch_refused: &[Errored],
-        operations: &HashMap<HashBase58<OperationHash>, Operation>,
+        operations: &HashMap<OperationHash, Operation>,
         protocol: &ProtocolHash,
     ) -> Self {
         MempoolOperations {
@@ -135,7 +135,7 @@ pub struct MonitoredOperation<'a> {
 impl<'a> MonitoredOperation<'a> {
     pub fn collect_applied(
         applied: &'a [Applied],
-        operations: &'a HashMap<HashBase58<OperationHash>, Operation>,
+        operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
         applied.iter().filter_map(move |applied_op| {
@@ -158,7 +158,7 @@ impl<'a> MonitoredOperation<'a> {
 
     pub fn collect_errored(
         errored: &'a [Errored],
-        operations: &'a HashMap<HashBase58<OperationHash>, Operation>,
+        operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
         errored.iter().filter_map(move |errored_op| {

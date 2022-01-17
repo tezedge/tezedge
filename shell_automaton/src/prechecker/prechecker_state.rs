@@ -10,7 +10,7 @@ use std::{
 use crypto::{
     base58::FromBase58CheckError,
     blake2b::Blake2bError,
-    hash::{BlockHash, FromBytesError, HashBase58, OperationHash, Signature},
+    hash::{BlockHash, FromBytesError, OperationHash, Signature},
 };
 use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
@@ -86,7 +86,7 @@ impl Default for SupportedProtocolState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProtocolVersionCache {
     pub time: Duration,
-    pub protocol_versions: BTreeMap<HashBase58<BlockHash>, (ActionId, SupportedProtocol)>,
+    pub protocol_versions: BTreeMap<BlockHash, (ActionId, SupportedProtocol)>,
 }
 
 impl Default for ProtocolVersionCache {
@@ -240,8 +240,8 @@ impl OperationDecodedContents {
 
     pub(super) fn branch(&self) -> &BlockHash {
         match self {
-            OperationDecodedContents::Proto010(op) => &op.branch.0,
-            OperationDecodedContents::Proto011(op) => &op.branch.0,
+            OperationDecodedContents::Proto010(op) => &op.branch,
+            OperationDecodedContents::Proto011(op) => &op.branch,
         }
     }
 

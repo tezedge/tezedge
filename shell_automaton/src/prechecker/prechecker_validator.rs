@@ -288,7 +288,7 @@ fn validate_inlined_endorsement(
     start: Instant,
     log: &Logger,
 ) -> Result<Applied, Refused> {
-    if &endorsement.branch.0 != block_hash {
+    if &endorsement.branch != block_hash {
         return Err(Refused::new(
             json,
             EndorsementValidationError::WrongEndorsementPredecessor,
@@ -300,7 +300,7 @@ fn validate_inlined_endorsement(
     } else {
         return Err(Refused::new(json, EndorsementValidationError::InvalidSlot));
     };
-    let signature = &endorsement.signature.0;
+    let signature = &endorsement.signature;
     let mut encoded = endorsement.branch.as_ref().to_vec();
     let binary_endorsement = match endorsement.operations.as_bytes() {
         Ok(bytes) => bytes,

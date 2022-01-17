@@ -8,10 +8,7 @@ use std::{
     time::Instant,
 };
 
-use crypto::{
-    blake2b::{self, Blake2bError},
-    hash::HashBase58,
-};
+use crypto::blake2b::{self, Blake2bError};
 use slog::{error, trace, warn, FnValue};
 use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::base::{
@@ -135,7 +132,7 @@ where
             }
         }
         Action::StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction {
-            key: HashBase58(key),
+            key,
             value,
         }) => {
             for key in requests
@@ -157,7 +154,7 @@ where
             }
         }
         Action::StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction {
-            key: HashBase58(key),
+            key,
             error,
         }) => {
             for key in requests
@@ -199,10 +196,7 @@ where
             }
         }
         Action::StorageBlockAdditionalDataOk(
-            kv_block_additional_data::StorageBlockAdditionalDataOkAction {
-                key: HashBase58(key),
-                value,
-            },
+            kv_block_additional_data::StorageBlockAdditionalDataOkAction { key, value },
         ) => {
             let rights_keys: Vec<_> = requests
                 .iter()
@@ -223,10 +217,7 @@ where
             }
         }
         Action::StorageBlockAdditionalDataError(
-            kv_block_additional_data::StorageBlockAdditionalDataErrorAction {
-                key: HashBase58(key),
-                error,
-            },
+            kv_block_additional_data::StorageBlockAdditionalDataErrorAction { key, error },
         ) => {
             for key in requests
                 .iter()
@@ -266,10 +257,7 @@ where
                 store.dispatch(kv_constants::StorageConstantsGetAction::new(key));
             }
         }
-        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction {
-            key: HashBase58(key),
-            value,
-        }) => {
+        Action::StorageConstantsOk(kv_constants::StorageConstantsOkAction { key, value }) => {
             for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -306,10 +294,7 @@ where
                 }
             }
         }
-        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction {
-            key: HashBase58(key),
-            error,
-        }) => {
+        Action::StorageConstantsError(kv_constants::StorageConstantsErrorAction { key, error }) => {
             let rights_keys: Vec<_> = requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -355,10 +340,7 @@ where
                 store.dispatch(kv_cycle_eras::StorageCycleErasGetAction::new(key));
             }
         }
-        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction {
-            key: HashBase58(key),
-            value,
-        }) => {
+        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key, value }) => {
             for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
@@ -382,7 +364,7 @@ where
             }
         }
         Action::StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction {
-            key: HashBase58(key),
+            key,
             error,
         }) => {
             for key in requests
