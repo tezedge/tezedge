@@ -475,7 +475,7 @@ impl From<InodeId> for u32 {
 /// `0b00000000_00000000_00000000_10000010`
 ///
 #[derive(Copy, Clone, Default, Debug)]
-struct PointersBitfield {
+pub struct PointersBitfield {
     bitfield: u32,
 }
 
@@ -504,28 +504,28 @@ impl PointersBitfield {
         Some(index)
     }
 
-    fn to_bytes(self) -> [u8; 4] {
+    pub fn to_bytes(self) -> [u8; 4] {
         self.bitfield.to_le_bytes()
     }
 
     /// Iterates on all the bit sets in the bitfield.
     ///
     /// The iterator returns the index of the bit.
-    fn iter(&self) -> PointersBitfieldIterator {
+    pub fn iter(&self) -> PointersBitfieldIterator {
         PointersBitfieldIterator {
             bitfield: *self,
             current: 0,
         }
     }
 
-    fn from_bytes(bytes: [u8; 4]) -> Self {
+    pub fn from_bytes(bytes: [u8; 4]) -> Self {
         Self {
             bitfield: u32::from_le_bytes(bytes),
         }
     }
 
     /// Count number of bit set in the bitfield.
-    fn count(&self) -> u8 {
+    pub fn count(&self) -> u8 {
         self.bitfield.count_ones() as u8
     }
 }
@@ -547,7 +547,7 @@ impl From<&[Option<PointerOnStack>; 32]> for PointersBitfield {
 /// Iterates on all the bit sets in the bitfield.
 ///
 /// The iterator returns the index of the bit.
-struct PointersBitfieldIterator {
+pub struct PointersBitfieldIterator {
     bitfield: PointersBitfield,
     current: usize,
 }
@@ -589,6 +589,10 @@ impl PointersId {
 
     pub fn npointers(&self) -> usize {
         self.bitfield.count() as usize
+    }
+
+    pub fn bitfield(&self) -> PointersBitfield {
+        self.bitfield
     }
 
     fn get_index_for_ptr(&self, ptr_index: usize) -> Option<usize> {
@@ -721,7 +725,7 @@ impl Pointer {
         }
     }
 
-    fn from_pointer_ref(pointer_ref: PointerRef, storage: &Storage) -> Self {
+    fn from_pointer_ref(pointer_ref: PointerRef, storage: &Storage) -> Result<Self, StorageError> {
         let value: u32 = pointer_ref.value();
 
         match pointer_ref.ref_kind() {
@@ -731,18 +735,24 @@ impl Pointer {
                 let inode_id: u64 = inode_id.into();
 
                 let is_commited: bool = pointer_ref.is_commited();
-                Self {
+                Ok(Self {
                     inner: Cell::new(
                         PointerInner::new()
                             .with_is_commited(is_commited)
                             .with_ptr_kind(PointerPtrKind::Directory)
                             .with_ptr_id(inode_id),
                     ),
-                }
+                })
             }
             PointerRefKind::BigPointer => {
-                let pointer_id: PointerId = (value as usize).try_into().unwrap();
-                storage.pointers.get(pointer_id).unwrap().cloned().unwrap()
+                let pointer_id: PointerId = (value as usize).try_into()?;
+                let pointer = storage
+                    .pointers
+                    .get(pointer_id)?
+                    .cloned()
+                    .ok_or(StorageError::InodePointersNotFound)?;
+
+                Ok(pointer)
             }
         }
     }
@@ -1440,17 +1450,18 @@ impl Storage {
                         .with_ref_kind(PointerRefKind::InodeId)
                         .with_is_commited(pointer.is_commited())
                         .with_value(inode_id)
+                } else if let Some(pointer_ref) = pointer.pointer_ref.clone() {
+                    // `PointerRef` already exist, use it.
+                    // This avoid growing `Self::pointers`.
+                    pointer_ref
                 } else {
-                    if let Some(pointer_ref) = pointer.pointer_ref.clone() {
-                        pointer_ref
-                    } else {
-                        let pointer_ref: PointerId = self.pointers.push(pointer.pointer.clone())?;
-                        let pointer_ref: u32 = pointer_ref.into();
-                        PointerRef::new()
-                            .with_ref_kind(PointerRefKind::BigPointer)
-                            .with_is_commited(pointer.is_commited())
-                            .with_value(pointer_ref)
-                    }
+                    // Create a new `Pointer`
+                    let pointer_ref: PointerId = self.pointers.push(pointer.pointer.clone())?;
+                    let pointer_ref: u32 = pointer_ref.into();
+                    PointerRef::new()
+                        .with_ref_kind(PointerRefKind::BigPointer)
+                        .with_is_commited(pointer.is_commited())
+                        .with_value(pointer_ref)
                 };
 
             self.pointers_refs.push(pointer_ref);
@@ -1654,7 +1665,10 @@ impl Storage {
         })
     }
 
-    pub fn clone_pointers(&self, pointers: PointersId) -> [Option<PointerOnStack>; 32] {
+    pub fn clone_pointers(
+        &self,
+        pointers: PointersId,
+    ) -> Result<[Option<PointerOnStack>; 32], StorageError> {
         let mut cloned: [Option<PointerOnStack>; 32] = Default::default();
 
         for (ptr_index, index) in pointers.iter() {
@@ -1669,7 +1683,7 @@ impl Storage {
             cloned[ptr_index] = Some(PointerOnStack {
                 pointer_ref: Some(pointer_ref.clone()),
                 // index: Some(pointer_ref.value_as_u32() as usize),
-                pointer: Pointer::from_pointer_ref(pointer_ref, self),
+                pointer: Pointer::from_pointer_ref(pointer_ref, self)?,
             });
 
             // cloned[ptr_index] = Some(pointer.clone());
@@ -1683,7 +1697,7 @@ impl Storage {
             // });
         }
 
-        cloned
+        Ok(cloned)
     }
 
     // pub fn clone_pointers_without_detail(
@@ -1879,7 +1893,7 @@ impl Storage {
 
                 let index_at_depth = index_of_key(depth as u32, key) as usize;
 
-                let mut pointers = self.clone_pointers(*pointers);
+                let mut pointers = self.clone_pointers(*pointers)?;
 
                 let (inode_id, is_new_key) = if let Some(pointer) = &pointers[index_at_depth] {
                     let ptr_id = match pointer.ptr_id() {
@@ -2503,7 +2517,7 @@ impl Storage {
                     DirectoryOrInodeId::Directory(new_dir_id)
                     // self.add_inode(Inode::Directory(new_dir_id))?
                 } else {
-                    let mut pointers = self.clone_pointers(*pointers);
+                    let mut pointers = self.clone_pointers(*pointers)?;
                     let index_at_depth = index_of_key(*depth as u32, key) as usize;
                     let depth = *depth;
                     // let mut pointers = pointers.clone();
@@ -2934,42 +2948,6 @@ mod tests {
     };
 
     use super::*;
-
-    // #[test]
-    // fn test_storage() {
-    //     let mut storage = Storage::new();
-    //     let mut strings = StringInterner::default();
-    //     let repo = InMemory::try_new().unwrap();
-
-    //     let blob_id = storage.add_blob_by_ref(&[1]).unwrap();
-    //     let object = Object::Blob(blob_id);
-
-    //     let blob2_id = storage.add_blob_by_ref(&[2]).unwrap();
-    //     let object2 = Object::Blob(blob2_id);
-
-    //     let dir_entry1 = DirEntry::new(Blob, object.clone());
-    //     let dir_entry2 = DirEntry::new(Blob, object2.clone());
-
-    //     let dir_id = DirectoryId::empty();
-    //     let dir_id = storage
-    //         .dir_insert(dir_id, "a", dir_entry1.clone(), &mut strings, &repo)
-    //         .unwrap();
-    //     let dir_id = storage
-    //         .dir_insert(dir_id, "b", dir_entry2.clone(), &mut strings, &repo)
-    //         .unwrap();
-    //     let dir_id = storage
-    //         .dir_insert(dir_id, "0", dir_entry1.clone(), &mut strings, &repo)
-    //         .unwrap();
-
-    //     assert_eq!(
-    //         storage.get_owned_dir(dir_id, &mut strings, &repo).unwrap(),
-    //         &[
-    //             ("0".to_string(), dir_entry1.clone()),
-    //             ("a".to_string(), dir_entry1.clone()),
-    //             ("b".to_string(), dir_entry2.clone()),
-    //         ]
-    //     );
-    // }
 
     #[test]
     fn test_blob_id() {

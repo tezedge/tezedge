@@ -12,10 +12,12 @@ use tezos_timing::SerializeStats;
 
 use crate::{
     kv_store::HashId,
-    serialize::{deserialize_hash_id, ObjectHeader, ObjectTag, PointersHeader},
+    serialize::{deserialize_hash_id, ObjectHeader, ObjectTag},
     working_tree::{
         shape::ShapeStrings,
-        storage::{DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointerOnStack},
+        storage::{
+            DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointerOnStack, PointersBitfield,
+        },
         string_interner::StringInterner,
         Commit, DirEntryKind, ObjectReference,
     },
@@ -24,7 +26,7 @@ use crate::{
 
 use crate::working_tree::{
     shape::DirectoryShapeId,
-    storage::{DirEntryId, InodeId, Storage},
+    storage::{DirEntryId, Storage},
     string_interner::StringId,
     DirEntry, Object,
 };
@@ -274,16 +276,9 @@ fn serialize_inode(
     use SerializationError::*;
 
     output.clear();
-    // let inode = storage.get_inode(inode_id)?;
 
     match ptr_id {
         DirectoryOrInodeId::Inode(inode_id) => {
-            // Inode::Pointers {
-            //     depth,
-            //     nchildren,
-            //     npointers: _,
-            //     pointers,
-            // } => {
             let Inode {
                 depth,
                 nchildren,
@@ -303,22 +298,18 @@ fn serialize_inode(
             output.write_all(&depth.to_ne_bytes())?;
             output.write_all(&nchildren.to_ne_bytes())?;
 
-            // TODO: Don't clone here
-            let p = storage.clone_pointers(*pointers);
-            let bitfield = PointersHeader::from(&p);
-            output.write_all(&bitfield.to_bytes())?;
+            let bitfield: PointersBitfield = pointers.bitfield();
+            let bitfield: [u8; 4] = bitfield.to_bytes();
+            output.write_all(&bitfield)?;
 
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
             for (_, index) in pointers.iter() {
                 let pointer = storage.pointer_copy(index).unwrap();
-                // let pointer = storage.pointers.get(index).unwrap();
-                // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = storage
                     .retrieve_hashid_of_pointer(&pointer, repository)?
                     .ok_or(MissingHashId)?;
-                // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 serialize_hash_id(hash_id, output, repository, stats)?;
             }
@@ -328,13 +319,10 @@ fn serialize_inode(
             // Recursively serialize all children
             for (_, index) in pointers.iter() {
                 let pointer = storage.pointer_copy(index).unwrap();
-                // let pointer = storage.pointers.get(index).unwrap();
 
-                // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
                 let hash_id = storage
                     .retrieve_hashid_of_pointer(&pointer, repository)?
                     .ok_or(MissingHashId)?;
-                // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -614,11 +602,10 @@ fn deserialize_inode_pointers(
 
     pos += 8;
 
-    let descriptor = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
-    let descriptor = PointersHeader::from_bytes(descriptor.try_into()?);
+    let pointers_bitfield = data.get(pos..pos + 4).ok_or(UnexpectedEOF)?;
+    let pointers_bitfield = PointersBitfield::from_bytes(pointers_bitfield.try_into()?);
 
-    let npointers = descriptor.count();
-    let indexes_iter = descriptor.iter();
+    let indexes_iter = pointers_bitfield.iter();
 
     pos += 4;
 
@@ -630,14 +617,6 @@ fn deserialize_inode_pointers(
 
         pos += nbytes;
 
-        // pointers[index as usize] = Some(PointerWithInfo {
-        //     index,
-        //     object_ref: ObjectReference::new(Some(hash_id.ok_or(MissingHash)?), None),
-        //     // hash_id: Some(hash_id.ok_or(MissingHash)?),
-        //     // offset: None,
-        //     pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None, None),
-        // });
-
         pointers[index as usize] = Some(PointerOnStack {
             pointer_ref: None,
             pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None),
@@ -645,13 +624,6 @@ fn deserialize_inode_pointers(
     }
 
     Ok(storage.add_inode_pointers(depth as u16, nchildren, pointers)?)
-
-    // Ok(Inode::Pointers {
-    //     depth,
-    //     nchildren,
-    //     npointers,
-    //     pointers,
-    // })
 }
 
 pub fn deserialize_inode(
