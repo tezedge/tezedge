@@ -3,6 +3,7 @@
 
 pub use redux_rs::TimeService;
 
+pub mod service_async_channel;
 pub mod service_channel;
 
 pub mod dns_service;
@@ -13,6 +14,9 @@ pub use randomness_service::{RandomnessService, RandomnessServiceDefault};
 
 pub mod mio_service;
 pub use mio_service::{MioService, MioServiceDefault};
+
+pub mod protocol_runner_service;
+pub use protocol_runner_service::{ProtocolRunnerService, ProtocolRunnerServiceDefault};
 
 pub mod storage_service;
 pub use storage_service::{StorageService, StorageServiceDefault};
@@ -34,6 +38,7 @@ pub trait Service: TimeService {
     type Dns: DnsService;
     type Mio: MioService;
     type Storage: StorageService;
+    type ProtocolRunner: ProtocolRunnerService;
     type Rpc: RpcService;
     type Actors: ActorsService;
     type Quota: QuotaService;
@@ -46,6 +51,8 @@ pub trait Service: TimeService {
     fn mio(&mut self) -> &mut Self::Mio;
 
     fn storage(&mut self) -> &mut Self::Storage;
+
+    fn protocol_runner(&mut self) -> &mut Self::ProtocolRunner;
 
     fn rpc(&mut self) -> &mut Self::Rpc;
 
@@ -61,6 +68,7 @@ pub struct ServiceDefault {
     pub dns: DnsServiceDefault,
     pub mio: MioServiceDefault,
     pub storage: StorageServiceDefault,
+    pub protocol_runner: ProtocolRunnerServiceDefault,
     pub rpc: RpcServiceDefault,
     pub actors: ActorsServiceDefault,
     pub quota: QuotaServiceDefault,
@@ -74,6 +82,7 @@ impl Service for ServiceDefault {
     type Dns = DnsServiceDefault;
     type Mio = MioServiceDefault;
     type Storage = StorageServiceDefault;
+    type ProtocolRunner = ProtocolRunnerServiceDefault;
     type Rpc = RpcServiceDefault;
     type Actors = ActorsServiceDefault;
     type Quota = QuotaServiceDefault;
@@ -93,6 +102,10 @@ impl Service for ServiceDefault {
 
     fn storage(&mut self) -> &mut Self::Storage {
         &mut self.storage
+    }
+
+    fn protocol_runner(&mut self) -> &mut Self::ProtocolRunner {
+        &mut self.protocol_runner
     }
 
     fn rpc(&mut self) -> &mut Self::Rpc {

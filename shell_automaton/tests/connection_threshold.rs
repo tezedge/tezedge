@@ -4,7 +4,7 @@ use std::{
 };
 
 use shell_automaton::{
-    config::default_config,
+    config::default_test_config,
     peer::{
         connection::{
             closed::PeerConnectionClosedAction,
@@ -190,7 +190,7 @@ impl state_explorer::GenState for ConnectedPeers {
 pub fn test_config(max_connections: usize) -> Config {
     Config {
         peers_connected_max: max_connections,
-        ..default_config()
+        ..default_test_config()
     }
 }
 

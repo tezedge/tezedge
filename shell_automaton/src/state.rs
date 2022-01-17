@@ -3,15 +3,18 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use ::storage::persistent::SchemaError;
 
+use crate::block_applier::BlockApplierState;
 use crate::config::Config;
 use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
 use crate::peers::PeersState;
 use crate::prechecker::PrecheckerState;
+use crate::protocol_runner::ProtocolRunnerState;
 use crate::rights::RightsState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
@@ -48,6 +51,8 @@ pub struct State {
     pub peers: PeersState,
     pub peer_connection_incoming_accept: PeerConnectionIncomingAcceptState,
     pub storage: StorageState,
+    pub protocol_runner: ProtocolRunnerState,
+    pub block_applier: BlockApplierState,
 
     pub mempool: MempoolState,
 
@@ -64,7 +69,12 @@ pub struct State {
 }
 
 impl State {
+    /// This constant is used for solving, if something is bootstrapped
+    /// This means, that the compared level, should be on at least 99%.
+    pub const HIGH_LEVEL_MARGIN_PERCENTAGE: i32 = 99;
+
     pub fn new(config: Config) -> Self {
+        let block_applier = BlockApplierState::new(&config);
         Self {
             log: Default::default(),
             config,
@@ -73,6 +83,8 @@ impl State {
             storage: StorageState::new(),
             mempool: MempoolState::default(),
             rights: RightsState::default(),
+            protocol_runner: ProtocolRunnerState::Idle,
+            block_applier,
 
             prechecker: PrecheckerState::default(),
 
@@ -134,6 +146,41 @@ impl State {
         } else {
             Some(self.config.min_time_interval())
         }
+    }
+
+    pub fn current_head_level(&self) -> Option<Level> {
+        self.mempool
+            .local_head_state
+            .as_ref()
+            .map(|v| v.header.level())
+    }
+
+    /// Global bootstrap status is considered as bootstrapped, only if
+    /// number of bootstrapped peers is above threshold.
+    pub fn is_bootstrapped(&self) -> bool {
+        let current_head_level = match self.current_head_level() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        let bootstrapped_peers_len = self
+            .peers
+            .iter()
+            .filter_map(|(_, p)| p.status.as_handshaked())
+            .filter_map(|peer| peer.current_head_level)
+            .filter_map(|level| {
+                // calculate what percentage is our current head of
+                // peer's current head. If percentage is greater than
+                // or equal to `Self::HIGH_LEVEL_MARGIN_PERCENTAGE`,
+                // then we are in sync with the peer.
+                current_head_level
+                    .checked_mul(100)
+                    .and_then(|l| l.checked_div(level))
+            })
+            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
+            .count();
+
+        bootstrapped_peers_len >= self.config.peers_bootstrapped_min
     }
 }
 

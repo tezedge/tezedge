@@ -9,6 +9,7 @@ use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
+use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::OperationKind;
 use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
@@ -200,30 +201,30 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
-        Action::BlockApplied(BlockAppliedAction {
-            chain_id,
-            block,
-            hash,
-            is_bootstrapped,
-            ..
-        }) => {
-            // TODO(vlad) move to separate action
+        Action::BlockApplierApplySuccess(_) => {
+            let (chain_id, block) = match &state.block_applier.current {
+                BlockApplierApplyState::Success {
+                    chain_id, block, ..
+                } => (chain_id, block),
+                _ => return,
+            };
             // TODO: get from protocol
             const TTL: i32 = 120;
 
             if config.chain_id.ne(chain_id) {
                 return;
             }
-            if *is_bootstrapped {
-                mempool_state.running_since = Some(());
+            if state.is_bootstrapped() {
+                state.mempool.running_since = Some(());
             }
+            let mempool_state = &mut state.mempool;
             mempool_state.prevalidator = None;
             let old_head_level = mempool_state
                 .local_head_state
                 .as_ref()
                 .map(|v| v.header.level());
             let changed = if let Some(old_head) = &mempool_state.local_head_state {
-                old_head.hash.ne(&block.predecessor())
+                old_head.hash.ne(&block.header.predecessor())
             } else {
                 false
             };
@@ -245,8 +246,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             mempool_state.branch_changed = changed;
             mempool_state.local_head_state = Some(HeadState {
-                header: block.clone(),
-                hash: hash.clone(),
+                header: (*block.header).clone(),
+                hash: block.hash.clone(),
                 ops_removed: false,
                 prevalidator_ready: false,
             });
@@ -255,7 +256,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             //     mempool_state.wait_prevalidator_operations.push(op.clone());
             // }
 
-            let level = block.level().saturating_sub(TTL);
+            let level = block.header.level().saturating_sub(TTL);
 
             // `drain_filter` is unstable for now
             for (_, ops) in mempool_state.level_to_operation.range(..level) {
@@ -290,7 +291,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state.level_to_operation.retain(|x, _| *x >= level);
 
             let start_level = old_head_level.unwrap_or(0);
-            let end_level = block.level();
+            let end_level = block.header.level();
 
             if start_level >= end_level {
                 return;

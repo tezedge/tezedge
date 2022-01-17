@@ -1,19 +1,32 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{BlockHash, BlockMetadataHash, ChainId, OperationMetadataListListHash};
+use std::collections::HashMap;
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
-use tezedge_actor_system::actors::*;
 
+use crypto::hash::{BlockHash, ChainId};
 use networking::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
+use storage::BlockHeaderWithHash;
+use tezedge_actor_system::actors::*;
+use tezos_api::ffi::ApplyBlockResponse;
 use tezos_messages::p2p::encoding::prelude::{
-    BlockHeader, MetadataMessage, NetworkVersion, PeerMessageResponse,
+    MetadataMessage, NetworkVersion, PeerMessageResponse,
 };
 
 use crate::peer::PeerId;
+
+pub type ApplyBlockResult = Result<
+    (
+        Arc<ChainId>,
+        Arc<BlockHeaderWithHash>,
+        Arc<ApplyBlockResponse>,
+    ),
+    (),
+>;
 
 pub trait ActorsService {
     /// Send message to actors.
@@ -21,6 +34,14 @@ pub trait ActorsService {
 
     /// Try to receive/read queued message from actors, if there is any.
     fn try_recv(&mut self) -> Result<ActorsMessageFrom, mpsc::TryRecvError>;
+
+    fn register_apply_block_callback(
+        &mut self,
+        block_hash: Arc<BlockHash>,
+        callback: ApplyBlockCallback,
+    );
+
+    fn call_apply_block_callback(&mut self, block_hash: &BlockHash, result: ApplyBlockResult);
 }
 
 /// Message to actors.
@@ -43,20 +64,36 @@ impl From<ActorsMessageTo> for NetworkChannelMsg {
     }
 }
 
+pub type ApplyBlockCallbackFn = Box<dyn FnOnce(BlockHash, ApplyBlockResult) + Send>;
+
+pub struct ApplyBlockCallback(ApplyBlockCallbackFn);
+
+impl<F> From<F> for ApplyBlockCallback
+where
+    F: 'static + FnOnce(BlockHash, ApplyBlockResult) + Send,
+{
+    fn from(f: F) -> Self {
+        Self(Box::new(f))
+    }
+}
+
+impl fmt::Debug for ApplyBlockCallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApplyBlockCallbackFn").finish()
+    }
+}
+
 /// Message from actors.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ActorsMessageFrom {
     PeerStalled(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
-    BlockApplied(
-        ChainId,
-        BlockHeader,
-        BlockHash,
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-        bool,
-    ),
+    ApplyBlock {
+        chain_id: Arc<ChainId>,
+        block_hash: Arc<BlockHash>,
+        callback: ApplyBlockCallback,
+    },
     Shutdown,
 }
 
@@ -107,6 +144,8 @@ pub struct ActorsServiceDefault {
 
     /// NetworkChannel is used to send messages/notifications to actors.
     network_channel: NetworkChannelRef,
+
+    apply_block_callbacks: HashMap<Arc<BlockHash>, ApplyBlockCallback>,
 }
 
 impl ActorsServiceDefault {
@@ -117,6 +156,7 @@ impl ActorsServiceDefault {
         Self {
             actors_channel,
             network_channel,
+            apply_block_callbacks: HashMap::new(),
         }
     }
 }
@@ -134,5 +174,19 @@ impl ActorsService for ActorsServiceDefault {
 
     fn try_recv(&mut self) -> Result<ActorsMessageFrom, mpsc::TryRecvError> {
         self.actors_channel.try_recv()
+    }
+
+    fn register_apply_block_callback(
+        &mut self,
+        block_hash: Arc<BlockHash>,
+        callback: ApplyBlockCallback,
+    ) {
+        self.apply_block_callbacks.insert(block_hash, callback);
+    }
+
+    fn call_apply_block_callback(&mut self, block_hash: &BlockHash, result: ApplyBlockResult) {
+        if let Some(callback) = self.apply_block_callbacks.remove(block_hash) {
+            (callback.0)(block_hash.clone(), result);
+        }
     }
 }

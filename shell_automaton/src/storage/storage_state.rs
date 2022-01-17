@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::request::PendingRequests;
 
+use super::blocks::StorageBlocksState;
 use super::request::StorageRequestState;
 use super::state_snapshot::StorageStateSnapshotState;
 
@@ -13,6 +14,8 @@ pub struct StorageState {
     pub requests: PendingRequests<StorageRequestState>,
 
     pub state_snapshot: StorageStateSnapshotState,
+
+    pub blocks: StorageBlocksState,
 
     pub block_meta: super::kv_block_meta::State,
     pub block_additional_data: super::kv_block_additional_data::State,
@@ -29,6 +32,8 @@ impl StorageState {
             requests: PendingRequests::new(),
 
             state_snapshot: StorageStateSnapshotState::new(),
+
+            blocks: StorageBlocksState::new(),
 
             block_meta: Default::default(),
             block_additional_data: Default::default(),

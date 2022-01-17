@@ -29,6 +29,9 @@ pub struct PeerHandshaked {
 
     pub message_read: PeerMessageReadState,
     pub message_write: PeerMessageWriteState,
+
+    /// Level of the current head received from peer.
+    pub current_head_level: Option<i32>,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]

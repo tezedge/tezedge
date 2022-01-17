@@ -4,27 +4,30 @@
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::thread;
 use std::time::Instant;
+use std::{fmt, thread};
 
-use crypto::hash::{BlockHash, ProtocolHash};
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
+
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use storage::block_meta_storage::Meta;
 use storage::cycle_eras_storage::CycleErasData;
 use storage::cycle_storage::CycleData;
-use strum::IntoEnumIterator;
-
 use storage::persistent::BincodeEncoded;
 use storage::shell_automaton_action_meta_storage::{
     ShellAutomatonActionStats, ShellAutomatonActionsStats,
 };
 use storage::{
-    BlockAdditionalData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ConstantsStorage, CycleErasStorage, CycleMetaStorage, OperationsStorage,
-    OperationsStorageReader, PersistentStorage, ShellAutomatonActionMetaStorage,
-    ShellAutomatonActionStorage, ShellAutomatonStateStorage,
+    BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader,
+    BlockStorage, BlockStorageReader, ChainMetaStorage, ConstantsStorage, CycleErasStorage,
+    CycleMetaStorage, OperationsMetaStorage, OperationsStorage, OperationsStorageReader,
+    PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
+    ShellAutomatonStateStorage, StorageInitInfo,
 };
-use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::request::RequestId;
 use crate::storage::kv_cycle_meta::CycleKey;
@@ -42,6 +45,12 @@ pub trait StorageService {
 
     /// Try to receive/read queued response, if there is any.
     fn response_try_recv(&mut self) -> Result<StorageResponse, ResponseTryRecvError>;
+
+    fn blocks_genesis_commit_result_put(
+        &mut self,
+        init_storage_info: &StorageInitInfo,
+        commit_result: CommitGenesisResult,
+    ) -> Result<(), StorageError>;
 }
 
 type StorageWorkerRequester = ServiceWorkerRequester<StorageRequest, StorageResponse>;
@@ -76,6 +85,19 @@ pub enum StorageRequestPayload {
     ConstantsGet(ProtocolHash),
     CycleErasGet(ProtocolHash),
     CycleMetaGet(CycleKey),
+
+    BlockHeaderPut(BlockHeaderWithHash),
+    BlockAdditionalDataPut((BlockHash, BlockAdditionalData)),
+
+    PrepareApplyBlockData {
+        chain_id: Arc<ChainId>,
+        block_hash: Arc<BlockHash>,
+    },
+    StoreApplyBlockResult {
+        block_hash: Arc<BlockHash>,
+        block_result: Arc<ApplyBlockResponse>,
+        block_metadata: Arc<Meta>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -91,6 +113,16 @@ pub enum StorageResponseSuccess {
     ConstantsGetSuccess(ProtocolHash, Option<String>),
     CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
+
+    BlockHeaderPutSuccess(bool),
+    BlockAdditionalDataPutSuccess(()),
+
+    PrepareApplyBlockDataSuccess {
+        block: Arc<BlockHeaderWithHash>,
+        block_meta: Arc<Meta>,
+        apply_block_req: Arc<ApplyBlockRequest>,
+    },
+    StoreApplyBlockResultSuccess(Arc<BlockAdditionalData>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -106,6 +138,12 @@ pub enum StorageResponseError {
     ConstantsGetError(ProtocolHash, StorageError),
     CycleErasGetError(ProtocolHash, StorageError),
     CycleMetaGetError(CycleKey, StorageError),
+
+    BlockHeaderPutError(StorageError),
+    BlockAdditionalDataPutError(StorageError),
+
+    PrepareApplyBlockDataError(StorageError),
+    StoreApplyBlockResultError(StorageError),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -150,9 +188,15 @@ impl StorageResponse {
     }
 }
 
-#[derive(Debug)]
 pub struct StorageServiceDefault {
     worker_channel: StorageWorkerRequester,
+    storage: PersistentStorage,
+}
+
+impl fmt::Debug for StorageServiceDefault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StorageServiceDefault").finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -203,8 +247,9 @@ impl StorageServiceDefault {
         let snapshot_storage = ShellAutomatonStateStorage::new(&storage);
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
-        let block_meta_storage = BlockMetaStorage::new(&storage);
+
         let block_storage = BlockStorage::new(&storage);
+        let block_meta_storage = BlockMetaStorage::new(&storage);
         let operations_storage = OperationsStorage::new(&storage);
         let constants_storage = ConstantsStorage::new(&storage);
         let cycle_meta_storage = CycleMetaStorage::new(&storage);
@@ -299,6 +344,64 @@ impl StorageServiceDefault {
                     .get(&proto_hash)
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
+
+                BlockHeaderPut(data) => match block_storage.put_block_header(&data) {
+                    Ok(is_new_block) => Ok(BlockHeaderPutSuccess(is_new_block)),
+                    Err(err) => Err(BlockHeaderPutError(err.into())),
+                },
+
+                BlockAdditionalDataPut((block_hash, data)) => {
+                    match block_meta_storage.put_block_additional_data(&block_hash, &data) {
+                        Ok(()) => Ok(BlockAdditionalDataPutSuccess(())),
+                        Err(err) => Err(BlockAdditionalDataPutError(err.into())),
+                    }
+                }
+
+                PrepareApplyBlockData {
+                    chain_id,
+                    block_hash,
+                } => {
+                    let result = storage::prepare_block_apply_request(
+                        &block_hash,
+                        (*chain_id).clone(),
+                        &block_storage,
+                        &block_meta_storage,
+                        &operations_storage,
+                        // TODO: cache prev applied block data.
+                        None,
+                    );
+
+                    match result {
+                        Ok((req, meta, block)) => Ok(PrepareApplyBlockDataSuccess {
+                            block,
+                            block_meta: meta.into(),
+                            apply_block_req: req.into(),
+                        }),
+                        Err(err) => Err(PrepareApplyBlockDataError(err.into())),
+                    }
+                }
+                StoreApplyBlockResult {
+                    block_hash,
+                    block_result,
+                    block_metadata,
+                } => {
+                    let mut block_meta = (*block_metadata).clone();
+                    let result = storage::store_applied_block_result(
+                        &block_storage,
+                        &block_meta_storage,
+                        &block_hash,
+                        (*block_result).clone(),
+                        &mut block_meta,
+                        &cycle_meta_storage,
+                        &cycle_eras_storage,
+                        &constants_storage,
+                    );
+
+                    match result {
+                        Ok(data) => Ok(StoreApplyBlockResultSuccess(data.into())),
+                        Err(err) => Err(StoreApplyBlockResultError(err.into())),
+                    }
+                }
             };
 
             if req.subscribe {
@@ -329,12 +432,15 @@ impl StorageServiceDefault {
     ) -> Self {
         let (requester, responder) = worker_channel(waker, channel_bound);
 
+        let storage = persistent_storage.clone();
+
         thread::Builder::new()
             .name("storage-thread".to_owned())
-            .spawn(move || Self::run_worker(log, persistent_storage, responder))
+            .spawn(move || Self::run_worker(log, storage, responder))
             .unwrap();
 
         Self {
+            storage: persistent_storage,
             worker_channel: requester,
         }
     }
@@ -352,5 +458,28 @@ impl StorageService for StorageServiceDefault {
     #[inline(always)]
     fn response_try_recv(&mut self) -> Result<StorageResponse, ResponseTryRecvError> {
         self.worker_channel.try_recv()
+    }
+
+    // TODO: this calls storage directly, which will block state machine
+    // thread.
+    #[inline(always)]
+    fn blocks_genesis_commit_result_put(
+        &mut self,
+        init_storage_data: &StorageInitInfo,
+        commit_result: CommitGenesisResult,
+    ) -> Result<(), StorageError> {
+        let block_storage = BlockStorage::new(&self.storage);
+        let block_meta_storage = BlockMetaStorage::new(&self.storage);
+        let chain_meta_storage = ChainMetaStorage::new(&self.storage);
+        let operations_meta_storage = OperationsMetaStorage::new(&self.storage);
+
+        Ok(storage::store_commit_genesis_result(
+            &block_storage,
+            &block_meta_storage,
+            &chain_meta_storage,
+            &operations_meta_storage,
+            init_storage_data,
+            commit_result,
+        )?)
     }
 }

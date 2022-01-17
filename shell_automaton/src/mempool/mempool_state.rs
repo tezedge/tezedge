@@ -75,12 +75,12 @@ impl MempoolState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HeadState {
-    pub(super) header: BlockHeader,
+    pub header: BlockHeader,
     pub hash: BlockHash,
     // operations included in the head already removed
-    pub(super) ops_removed: bool,
+    pub ops_removed: bool,
     // prevalidator for the head is created
-    pub(super) prevalidator_ready: bool,
+    pub prevalidator_ready: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr};
 
 use crate::peer::connection::PeerConnectionStatePhase;
 use crate::peer::handshaking::PeerHandshakingPhase;
 
-pub type PeersTimeouts = BTreeMap<SocketAddr, PeerTimeout>;
+pub type PeersTimeouts = Vec<(SocketAddr, PeerTimeout)>;
 pub type GraylistTimeouts = Vec<IpAddr>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

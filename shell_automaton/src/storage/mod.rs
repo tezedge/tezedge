@@ -7,6 +7,7 @@ pub use storage_state::*;
 
 pub mod request;
 
+pub mod blocks;
 pub mod state_snapshot;
 
 macro_rules! kv_state {
