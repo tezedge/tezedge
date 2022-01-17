@@ -619,7 +619,9 @@ impl PointersOffsetsHeader {
             //     .offset_opt()
             //     .ok_or(SerializationError::MissingOffset)?;
 
-            let p_offset = storage.pointer_retrieve_offset(&pointer).unwrap();
+            let p_offset = storage
+                .pointer_retrieve_offset(&pointer)?
+                .ok_or(SerializationError::MissingOffset)?;
 
             // let p_offset = pointer
             //     .get_reference()
@@ -728,7 +730,7 @@ fn serialize_inode(
                     strings,
                 )?;
 
-                storage.set_offset_pointer(&pointer, offset);
+                storage.set_offset_pointer(&pointer, offset)?;
                 // pointer.set_offset(offset);
             }
 
@@ -763,8 +765,9 @@ fn serialize_inode(
                 //     .get_offset_pointer(index)
                 //     .ok_or(SerializationError::MissingOffset)?;
 
-                let pointer_offset = storage.pointer_retrieve_offset(&pointer).unwrap();
-                // .ok_or(SerializationError::MissingOffset)?;
+                let pointer_offset = storage
+                    .pointer_retrieve_offset(&pointer)?
+                    .ok_or(SerializationError::MissingOffset)?;
 
                 // let pointer_offset = pointer
                 //     .get_reference()
@@ -1204,7 +1207,7 @@ fn deserialize_inode_pointers(
 
         pointers[pointer_index as usize] = Some(PointerOnStack {
             pointer_ref: None,
-            pointer: Pointer::new_commited(None, None, Some(absolute_offset)),
+            pointer: Pointer::new_commited(None, Some(absolute_offset)),
         });
 
         // pointers[pointer_index as usize] = Some(PointerWithInfo {

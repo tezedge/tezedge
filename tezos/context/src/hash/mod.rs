@@ -212,7 +212,7 @@ fn hash_long_inode(
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
                         // pointer.set_hash_id(Some(hash_id));
 
-                        storage.set_hashid_of_pointer(&pointer, hash_id);
+                        storage.set_hashid_of_pointer(&pointer, hash_id)?;
 
                         hash_id
                     }
