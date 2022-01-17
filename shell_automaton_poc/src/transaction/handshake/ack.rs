@@ -9,216 +9,96 @@ use crate::{
     state::GlobalState,
     transaction::{
         chunk::{TxRecvChunk, TxSendChunk},
-        data_transfer::{RecvDataResult, SendDataResult},
         transaction::{
-            CompleteTransactionAction, CreateTransactionAction, Transaction, TransactionStage,
-            TransactionType,
+            CompleteTransactionAction, CreateTransactionAction, ParentInfo, Transaction,
+            TransactionStage, TransactionState, TransactionType, TxOps,
         },
     },
 };
 
 use super::handshake::{HandshakeRecvAckMessageAction, HandshakeSendAckMessageCompleteAction};
 
-#[derive(PartialEq, Clone)]
-pub enum SendAckMessageStage {
-    Transmitting,
-    Finish,
-}
-
-impl TransactionStage for SendAckMessageStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Transmitting => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
-    }
+#[derive(Clone)]
+pub struct RecvAckMessageContext {
+    pub token: mio::Token,
+    pub nonce: Nonce,
+    pub key: PrecomputedKey,
 }
 
 #[derive(Clone)]
-pub struct TxSendAckMessage {
-    stage: SendAckMessageStage,
-    result: Option<SendDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
-    nonce: Nonce,
-    bytes_to_send: Vec<u8>,
+pub enum TxRecvAckMessage {
+    Receiving(RecvAckMessageContext),
+    Completed(Nonce, Result<Vec<u8>, ()>),
 }
 
-impl TxSendAckMessage {
-    pub fn try_new(
-        parent_tx: u64,
-        token: mio::Token,
-        nonce: Nonce,
-        key: PrecomputedKey,
-        msg: AckMessage,
-    ) -> Result<Self, ()> {
-        if let Ok(bytes) = msg.as_bytes() {
-            if let Ok(bytes_to_send) = key.encrypt(&bytes, &nonce) {
-                return Ok(Self {
-                    stage: SendAckMessageStage::Transmitting,
-                    result: None,
-                    parent_tx,
-                    token,
-                    nonce: nonce.increment(),
-                    bytes_to_send,
-                });
-            }
-        }
-
-        return Err(());
-    }
-
-    fn init_reducer(tx_id: u64, state: &mut GlobalState) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&tx_id).unwrap();
-
-        if let TransactionType::TxSendAckMessage(tx_state) = transaction.tx_type() {
-            // TODO: handle errors properly
-            let send_chunk =
-                TxSendChunk::try_new(tx_id, tx_state.token, tx_state.bytes_to_send.clone())
-                    .unwrap();
-            drop(transactions);
-            // AckMessage fits in a single chunk
-            CreateTransactionAction::new(&[], &[], send_chunk.into()).dispatch_pure(state);
-        } else {
-            panic!("TxSendAckMessage init_reducer: Invalid Transaction type")
+impl TransactionStage for TxRecvAckMessage {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Receiving(_) => next_stage.is_completed(),
+            _ => false,
         }
     }
 
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
-}
-
-impl Transaction for TxSendAckMessage {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
-    }
-
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
-    }
-}
-
-pub struct SendAckMessageCompleteAction {
-    tx_id: u64,
-    result: SendDataResult,
-}
-
-impl SendAckMessageCompleteAction {
-    pub fn new(tx_id: u64, result: SendDataResult) -> Self {
-        Self { tx_id, result }
-    }
-}
-
-impl PureAction for SendAckMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        match transaction.tx_type_mut() {
-            TransactionType::TxSendAckMessage(tx_state) => {
-                match tx_state.stage {
-                    SendAckMessageStage::Transmitting => {
-                        let parent_tx_id = tx_state.parent_tx;
-                        let nonce = tx_state.nonce.clone();
-
-                        tx_state.result = Some(self.result.clone());
-                        tx_state.stage.set_stage(SendAckMessageStage::Finish);
-
-                        drop(transaction);
-
-                        let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-                        match parent_transaction.tx_type() {
-                            TransactionType::TxHandshake(_) => {
-                                drop(transactions);
-                                HandshakeSendAckMessageCompleteAction::new(
-                                    parent_tx_id,
-                                    nonce,
-                                    self.result.clone()
-                                ).dispatch_pure(state);
-                                CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                            },
-                            _ => panic!("SendAckMessageCompleteAction reducer: unknown parent transaction type")
-                        }
-                    }
-                    SendAckMessageStage::Finish => {
-                        panic!("SendAckMessageCompleteAction reducer: called at invalid stage")
-                    }
-                }
-            }
-            _ => panic!("SendAckMessageCompleteAction reducer: Invalid Transaction type"),
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(..) => true,
+            _ => false,
         }
     }
-}
-
-#[derive(PartialEq, Clone)]
-pub enum RecvAckMessageStage {
-    Receiving,
-    Finish,
-}
-
-impl TransactionStage for RecvAckMessageStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Receiving => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
-    }
-}
-
-#[derive(Clone)]
-pub struct TxRecvAckMessage {
-    stage: RecvAckMessageStage,
-    result: Option<RecvDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
-    nonce: Nonce,
-    key: PrecomputedKey,
-}
-
-impl TxRecvAckMessage {
-    pub fn new(parent_tx: u64, token: mio::Token, nonce: Nonce, key: PrecomputedKey) -> Self {
-        Self {
-            stage: RecvAckMessageStage::Receiving,
-            result: None,
-            parent_tx,
-            token,
-            nonce,
-            key,
-        }
-    }
-
-    fn init_reducer(tx_id: u64, state: &mut GlobalState) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&tx_id).unwrap();
-
-        if let TransactionType::TxRecvAckMessage(tx_state) = transaction.tx_type() {
-            let token = tx_state.token;
-
-            drop(transactions);
-
-            // message fits in a single chunk
-            CreateTransactionAction::new(&[], &[], TxRecvChunk::new(tx_id, token).into())
-                .dispatch_pure(state);
-        } else {
-            panic!("TxRecvAckMessage init_reducer: Invalid Transaction type")
-        }
-    }
-
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
 }
 
 impl Transaction for TxRecvAckMessage {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
+    fn init(&mut self, tx_id: u64, state: &GlobalState) {
+        match self {
+            TxRecvAckMessage::Receiving(ctx) => {
+                CreateTransactionAction::new(
+                    0,
+                    0,
+                    TxRecvChunk::new(ctx.token),
+                    Some(ParentInfo {
+                        tx_id,
+                        tx_type: TransactionType::TxRecvAckMessage,
+                    }),
+                )
+                .dispatch_pure(state);
+            }
+            _ => panic!("Invalid intitial state"),
+        }
     }
 
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxRecvAckMessage::Completed(nonce, result) = self {
+            let result = result
+                .clone()
+                .and_then(|bytes| AckMessage::from_bytes(bytes).or_else(|_| Err(())));
+
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxHandshake => {
+                        HandshakeRecvAckMessageAction::new(tx_id, nonce.clone(), result)
+                            .dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
+    }
+
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxRecvAckMessage {
+    pub fn new(token: mio::Token, nonce: Nonce, key: PrecomputedKey) -> Self {
+        Self::Receiving(RecvAckMessageContext { token, nonce, key })
+    }
+
+    fn is_receiving(&self) -> bool {
+        match self {
+            Self::Receiving(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -234,79 +114,154 @@ impl RecvAckMessageAction {
 }
 
 impl PureAction for RecvAckMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxRecvAckMessage::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvAckMessage(tx_state) => {
-                let mut result = Err(());
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_receiving());
 
-                if let Ok(bytes) = &self.result {
-                    if let Ok(decrypted) = tx_state.key.decrypt(&bytes, &tx_state.nonce) {
-                        tx_state.nonce = tx_state.nonce.increment();
+            if let TxRecvAckMessage::Receiving(ctx) = tx_state.clone() {
+                let result = self
+                    .result
+                    .clone()
+                    .and_then(|bytes| ctx.key.decrypt(&bytes, &ctx.nonce).or_else(|_| Err(())));
 
-                        if let Ok(msg) = AckMessage::from_bytes(decrypted) {
-                            result = Ok(msg);
-                        }
-                    }
-                }
-                drop(transactions);
-                RecvAckMessageCompleteAction::new(self.tx_id, result).dispatch_pure(state)
+                tx_state.set(TxRecvAckMessage::Completed(ctx.nonce.increment(), result));
+                //drop(transaction);
+                //drop(transactions);
+                CompleteTransactionAction::<TxRecvAckMessage>::new(self.tx_id).dispatch_pure(state);
             }
-            _ => panic!("RecvAckMessageAction reducer: Invalid Transaction type"),
         }
     }
 }
 
-pub struct RecvAckMessageCompleteAction {
-    tx_id: u64,
-    result: Result<AckMessage, ()>,
+#[derive(Clone)]
+pub struct SendAckMessageContext {
+    pub token: mio::Token,
+    pub nonce: Nonce,
+    pub bytes_to_send: Vec<u8>,
 }
 
-impl RecvAckMessageCompleteAction {
-    pub fn new(tx_id: u64, result: Result<AckMessage, ()>) -> Self {
+#[derive(Clone)]
+pub enum TxSendAckMessage {
+    Transmitting(SendAckMessageContext),
+    Completed(Nonce, Result<(), ()>),
+}
+
+impl TransactionStage for TxSendAckMessage {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Transmitting(_) => next_stage.is_completed(),
+            _ => false,
+        }
+    }
+
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(..) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Transaction for TxSendAckMessage {
+    fn init(&mut self, tx_id: u64, state: &GlobalState) {
+        match self {
+            TxSendAckMessage::Transmitting(ctx) => {
+                CreateTransactionAction::new(
+                    0,
+                    0,
+                    TxSendChunk::try_new(ctx.token, ctx.bytes_to_send.clone()).unwrap(),
+                    Some(ParentInfo {
+                        tx_id,
+                        tx_type: TransactionType::TxSendAckMessage,
+                    }),
+                )
+                .dispatch_pure(state);
+            }
+            _ => panic!("Invalid intitial state"),
+        }
+    }
+
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxSendAckMessage::Completed(nonce, result) = self {
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxHandshake => {
+                        HandshakeSendAckMessageCompleteAction::new(
+                            tx_id,
+                            nonce.clone(),
+                            result.clone(),
+                        )
+                        .dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
+    }
+
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxSendAckMessage {
+    pub fn try_new(
+        token: mio::Token,
+        nonce: Nonce,
+        key: PrecomputedKey,
+        msg: AckMessage,
+    ) -> Result<Self, ()> {
+        let bytes = msg.as_bytes().or_else(|_| Err(()))?;
+        let bytes_to_send = key.encrypt(&bytes, &nonce).or_else(|_| Err(()))?;
+
+        Ok(Self::Transmitting(SendAckMessageContext {
+            token,
+            nonce,
+            bytes_to_send,
+        }))
+    }
+
+    fn is_transmitting(&self) -> bool {
+        match self {
+            Self::Transmitting(_) => true,
+            _ => false,
+        }
+    }
+}
+
+pub struct SendAckMessageCompleteAction {
+    tx_id: u64,
+    result: Result<(), ()>,
+}
+
+impl SendAckMessageCompleteAction {
+    pub fn new(tx_id: u64, result: Result<(), ()>) -> Self {
         Self { tx_id, result }
     }
 }
 
-impl PureAction for RecvAckMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+impl PureAction for SendAckMessageCompleteAction {
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxSendAckMessage::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvAckMessage(tx_state) => {
-                let parent_tx_id = tx_state.parent_tx;
-                let nonce = tx_state.nonce.clone();
-                let result = match self.result {
-                    Ok(_) => RecvDataResult::Success,
-                    _ => RecvDataResult::Error,
-                };
-                tx_state.result = Some(result);
-                tx_state.stage.set_stage(RecvAckMessageStage::Finish);
-                drop(transaction);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_transmitting());
 
-                let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-                match parent_transaction.tx_type() {
-                    TransactionType::TxHandshake(_) => {
-                        drop(transactions);
-                        HandshakeRecvAckMessageAction::new(
-                            parent_tx_id,
-                            nonce,
-                            self.result.clone(),
-                        )
-                        .dispatch_pure(state);
-                    }
-                    _ => panic!(
-                        "RecvAckMessageCompleteAction reducer: unknown parent transaction type"
-                    ),
-                }
-
-                CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
+            if let TxSendAckMessage::Transmitting(ctx) = tx_state.clone() {
+                tx_state.set(TxSendAckMessage::Completed(
+                    ctx.nonce.increment(),
+                    self.result,
+                ));
+                //drop(transaction);
+                //drop(transactions);
+                CompleteTransactionAction::<TxSendAckMessage>::new(self.tx_id).dispatch_pure(state);
             }
-            _ => panic!("RecvAckMessageCompleteAction reducer: Invalid Transaction type"),
         }
     }
 }

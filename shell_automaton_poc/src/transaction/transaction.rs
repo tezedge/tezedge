@@ -1,35 +1,50 @@
+use std::{
+    cell::{RefCell, RefMut},
+    collections::btree_map::Iter,
+    marker::PhantomData,
+};
+
 use crate::{
     action::PureAction,
-    state::{GlobalState, SharedStateAccess, SharedStateField},
-};
-use enum_dispatch::enum_dispatch;
-
-use super::{
-    chunk::{TxRecvChunk, TxSendChunk},
-    data_transfer::{TxRecvData, TxSendData},
-    handshake::{
-        ack::{TxRecvAckMessage, TxSendAckMessage},
-        connection::{TxRecvConnectionMessage, TxSendConnectionMessage},
-        handshake::TxHandshake,
-        metadata::{TxRecvMetadataMessage, TxSendMetadataMessage},
-    },
+    state::{FieldAccess, FieldAccessMask, GlobalState, Transactions, TransactionsOps},
 };
 
-#[enum_dispatch(TransactionType)]
-pub trait Transaction {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState);
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState);
+#[derive(Clone)]
+pub struct ParentInfo {
+    pub tx_id: u64,
+    pub tx_type: TransactionType,
 }
 
-#[enum_dispatch]
-#[derive(Clone)]
+pub trait Transaction
+where
+    Self: Sized,
+    Transactions: TransactionsOps<Self>,
+{
+    fn init(&mut self, tx_id: u64, state: &GlobalState);
+    fn commit(&self, tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState);
+    fn cancel(&self, tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState);
+
+    fn transactions(transactions: &Transactions) -> Iter<u64, RefCell<Tx<Self>>> {
+        transactions.iter()
+    }
+
+    fn get(transactions: &Transactions, tx_id: u64) -> &RefCell<Tx<Self>> {
+        transactions
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"))
+    }
+
+    fn remove(mut transactions: RefMut<Transactions>, tx_id: u64) {
+        transactions.remove(tx_id);
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum TransactionType {
-    TxSendData,
     TxSendChunk,
     TxSendConnectionMessage,
     TxSendMetadataMessage,
     TxSendAckMessage,
-    TxRecvData,
     TxRecvChunk,
     TxRecvConnectionMessage,
     TxRecvMetadataMessage,
@@ -38,189 +53,265 @@ pub enum TransactionType {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum TransactionStatus {
-    Pending,
-    Retry,
-    Cancelled,
-    Completed,
+pub enum TransactionState<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+{
+    Pending(T),
+    Retry(T),
 }
 
 pub trait TransactionStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool;
+    fn is_enabled(&self, stage: &Self) -> bool;
+    fn is_completed(&self) -> bool;
 
-    fn set_stage(&mut self, new_stage: Self)
+    fn set(&mut self, new_stage: Self)
     where
         Self: Sized,
     {
-        assert!(self.is_stage_enabled(&new_stage));
+        assert!(self.is_enabled(&new_stage));
         *self = new_stage;
     }
 }
 
-pub struct Tx {
-    tx_type: TransactionType,
-    state_access: SharedStateAccess,
-    transaction_status: TransactionStatus,
+pub trait TxOps {
+    fn access(&self) -> &FieldAccess;
+    fn parent(&self) -> Option<ParentInfo>;
+    fn is_pending(&self) -> bool;
+    fn is_retry(&self) -> bool;
 }
 
-impl Tx {
+pub struct Tx<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+{
+    pub state: TransactionState<T>,
+    parent: Option<ParentInfo>,
+    access: FieldAccess,
+}
+
+impl<T: Transaction> Tx<T>
+where
+    Transactions: TransactionsOps<T>,
+{
     pub fn new(
-        tx_type: TransactionType,
-        state_access: SharedStateAccess,
-        transaction_status: TransactionStatus,
+        state: TransactionState<T>,
+        parent: Option<ParentInfo>,
+        access: FieldAccess,
     ) -> Self {
         Tx {
-            tx_type,
-            state_access,
-            transaction_status,
+            state,
+            parent,
+            access,
+        }
+    }
+}
+
+impl<T: Transaction> TxOps for Tx<T>
+where
+    Transactions: TransactionsOps<T>,
+{
+    fn access(&self) -> &FieldAccess {
+        &self.access
+    }
+
+    fn parent(&self) -> Option<ParentInfo> {
+        self.parent.clone()
+    }
+
+    fn is_pending(&self) -> bool {
+        match self.state {
+            TransactionState::Pending(_) => true,
+            _ => false,
         }
     }
 
-    pub fn tx_type(&self) -> &TransactionType {
-        &self.tx_type
-    }
-
-    pub fn tx_type_mut(&mut self) -> &mut TransactionType {
-        &mut self.tx_type
-    }
-
-    pub fn access(&self) -> &SharedStateAccess {
-        &self.state_access
-    }
-
-    pub fn is_status(&self, status: TransactionStatus) -> bool {
-        self.transaction_status == status
-    }
-
-    pub fn is_pending(&self) -> bool {
-        self.is_status(TransactionStatus::Pending)
-    }
-
-    pub fn is_completed(&self) -> bool {
-        self.is_status(TransactionStatus::Completed)
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.is_status(TransactionStatus::Cancelled)
+    fn is_retry(&self) -> bool {
+        match self.state {
+            TransactionState::Retry(_) => true,
+            _ => false,
+        }
     }
 }
 
-pub struct CreateTransactionAction {
-    tx_access: SharedStateAccess,
-    tx_type: TransactionType,
+pub struct CreateTransactionAction<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+    T: Clone,
+{
+    transaction_access: FieldAccess,
+    transaction_type: T,
+    parent: Option<ParentInfo>,
 }
 
-impl CreateTransactionAction {
+impl<T: Transaction> CreateTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+    T: Clone,
+{
     pub fn new(
-        access_read: &[SharedStateField],
-        access_write: &[SharedStateField],
-        tx_type: TransactionType,
+        read_access: FieldAccessMask,
+        write_access: FieldAccessMask,
+        transaction_type: T,
+        parent: Option<ParentInfo>,
     ) -> Self {
         Self {
-            tx_access: SharedStateAccess::new(access_read, access_write),
-            tx_type: tx_type,
+            transaction_access: FieldAccess::new(read_access, write_access),
+            transaction_type,
+            parent,
         }
     }
 }
 
-impl PureAction for CreateTransactionAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let status = match state.is_tx_exclusive(&self.tx_access) {
-            true => TransactionStatus::Retry,
-            false => TransactionStatus::Pending,
+impl<T: Transaction> PureAction for CreateTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+    T: Clone,
+{
+    fn reducer(&self, state: &GlobalState) {
+        let tx_state = match state
+            .transactions
+            .borrow()
+            .is_access_exclusive(self.parent.clone(), &self.transaction_access)
+        {
+            true => TransactionState::Retry(self.transaction_type.clone()),
+            false => TransactionState::Pending(self.transaction_type.clone()),
         };
 
-        let tx_id = state.add_transaction(Tx::new(
-            self.tx_type.clone(),
-            self.tx_access.clone(),
-            status.clone(),
-        ));
+        let transaction = Tx::new(tx_state, self.parent.clone(), self.transaction_access);
+        let is_pending = transaction.is_pending();
+        let tx_id = match state.transactions.borrow_mut().insert(transaction) {
+            Some(tx_id) => tx_id,
+            None => panic!("Attempt to insert an existing transaction"),
+        };
 
-        if status == TransactionStatus::Pending {
+        if is_pending {
             StartTransactionAction::new(tx_id).dispatch_pure(state);
         }
     }
 }
 
-pub struct StartTransactionAction {
+pub struct StartTransactionAction<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+{
     tx_id: u64,
+    transaction_type: PhantomData<T>,
 }
 
-impl StartTransactionAction {
+impl<T: Transaction> StartTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
     pub fn new(tx_id: u64) -> Self {
-        Self { tx_id }
+        Self {
+            tx_id,
+            transaction_type: PhantomData,
+        }
     }
 }
 
-impl PureAction for StartTransactionAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+impl<T: Transaction> PureAction for StartTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = T::get(&transactions, self.tx_id).borrow_mut();
 
         assert!(transaction.is_pending());
 
-        let tx_state = transaction.tx_type_mut();
-        let init_reducer = tx_state.init_reducer_fn();
-
-        drop(transactions);
-        init_reducer(self.tx_id, state);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            //drop(transaction);
+            //drop(transactions);
+            tx_state.init(self.tx_id, state)
+        }
     }
 }
 
-pub struct CompleteTransactionAction {
+pub struct CompleteTransactionAction<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+{
     tx_id: u64,
+    transaction_type: PhantomData<T>,
 }
 
-impl CompleteTransactionAction {
+impl<T: Transaction> CompleteTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
     pub fn new(tx_id: u64) -> Self {
-        Self { tx_id }
+        Self {
+            tx_id,
+            transaction_type: PhantomData,
+        }
     }
 }
 
-impl PureAction for CompleteTransactionAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let mut transaction = transactions.get_mut(&self.tx_id).unwrap();
+impl<T: Transaction> PureAction for CompleteTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let transaction = T::get(&transactions, self.tx_id).borrow();
 
         assert!(transaction.is_pending());
-        transaction.transaction_status = TransactionStatus::Completed;
 
-        let tx_state = transaction.tx_type_mut();
-        let commit_reducer = tx_state.commit_reducer_fn();
+        if let TransactionState::Pending(tx_state) = &transaction.state {
+            let parent = transaction.parent();
+            //drop(transaction);
+            //drop(transactions);
+            tx_state.commit(self.tx_id, parent, state);
+        }
 
-        drop(transactions);
-        // Shared-state write access is granted to `commit_reducer`
-        commit_reducer(self.tx_id, state);
-
-        let transaction = state.remove_transaction(self.tx_id);
-        assert!(transaction.is_completed());
+        T::remove(state.transactions.borrow_mut(), self.tx_id);
     }
 }
 
+#[derive(Debug)]
 pub enum CancelTransactionReason {
     ConnectionClosed,
 }
 
-pub struct CancelTransactionAction {
+#[derive(Debug)]
+pub struct CancelTransactionAction<T: Transaction>
+where
+    Transactions: TransactionsOps<T>,
+{
     tx_id: u64,
-    reason: CancelTransactionReason,
+    _reason: CancelTransactionReason,
+    transaction_type: PhantomData<T>,
 }
 
-impl CancelTransactionAction {
-    pub fn new(tx_id: u64, reason: CancelTransactionReason) -> Self {
-        Self { tx_id, reason }
+impl<T: Transaction> CancelTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
+    pub fn new(tx_id: u64, _reason: CancelTransactionReason) -> Self {
+        Self {
+            tx_id,
+            _reason,
+            transaction_type: PhantomData,
+        }
     }
 }
 
-impl PureAction for CancelTransactionAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let mut transaction = transactions.get_mut(&self.tx_id).unwrap();
+impl<T: Transaction> PureAction for CancelTransactionAction<T>
+where
+    Transactions: TransactionsOps<T>,
+{
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let transaction = T::get(&transactions, self.tx_id).borrow();
 
-        assert!(!transaction.is_cancelled() && !transaction.is_completed());
-        transaction.transaction_status = TransactionStatus::Cancelled;
+        if let TransactionState::Pending(tx_state) = &transaction.state {
+            //drop(transaction);
+            //drop(transactions);
+            tx_state.cancel(self.tx_id, transaction.parent(), state)
+        }
 
-        let transaction = state.remove_transaction(self.tx_id);
-        assert!(transaction.is_cancelled());
+        T::remove(state.transactions.borrow_mut(), self.tx_id);
     }
 }

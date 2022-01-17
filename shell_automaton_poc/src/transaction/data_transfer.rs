@@ -1,80 +1,81 @@
 use super::{
     chunk::{RecvChunkAction, SendChunkCompleteAction},
-    transaction::{CompleteTransactionAction, TransactionStage},
+    transaction::{CompleteTransactionAction, ParentInfo, TransactionStage, TransactionType},
 };
-use crate::transaction::transaction::{Transaction, TransactionType};
+use crate::transaction::transaction::{Transaction, TransactionState, TxOps};
 use crate::{action::PureAction, state::GlobalState};
+
 #[derive(Clone)]
-pub enum RecvDataResult {
-    Success,
-    Error,
-}
-
-#[derive(PartialEq, Clone)]
-pub enum RecvDataStage {
-    Receiving,
-    Finish,
-}
-
-impl TransactionStage for RecvDataStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Receiving => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
-    }
+pub struct RecvContext {
+    pub token: mio::Token,
+    pub bytes_remaining: usize,
+    pub bytes_received: Vec<u8>,
 }
 
 #[derive(Clone)]
-pub struct TxRecvData {
-    stage: RecvDataStage,
-    result: Option<RecvDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
-    bytes_remaining: usize,
-    bytes_received: Vec<u8>,
+pub enum TxRecvData {
+    Receiving(RecvContext),
+    Completed(Result<Vec<u8>, ()>),
 }
 
-impl Transaction for TxRecvData {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
-    }
-
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
-    }
-}
-
-impl TxRecvData {
-    pub fn new(parent_tx: u64, token: mio::Token, data_len: usize) -> Self {
-        Self {
-            stage: RecvDataStage::Receiving,
-            result: None,
-            parent_tx: parent_tx,
-            token: token,
-            bytes_remaining: data_len,
-            bytes_received: Vec::new(),
+impl TransactionStage for TxRecvData {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Receiving(ctx) => match next_stage {
+                Self::Completed(_) => true,
+                Self::Receiving(new_ctx) => {
+                    ctx.token == new_ctx.token
+                        && new_ctx.bytes_remaining < ctx.bytes_remaining
+                        && new_ctx.bytes_remaining != 0
+                }
+            },
+            _ => false,
         }
     }
 
-    fn init_reducer(_tx_id: u64, _state: &mut GlobalState) {
-        //state.get_tx_mut(tx_id).set_pending_effects(true);
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Transaction for TxRecvData {
+    fn init(&mut self, _tx_id: u64, _state: &GlobalState) {}
+
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxRecvData::Completed(result) = self {
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxRecvChunk => {
+                        RecvChunkAction::new(tx_id, result.clone()).dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
     }
 
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
 
-    pub fn token(&self) -> &mio::Token {
-        &self.token
+impl TxRecvData {
+    pub fn new(token: mio::Token, data_len: usize) -> Self {
+        Self::Receiving(RecvContext {
+            token,
+            bytes_remaining: data_len,
+            bytes_received: Vec::new(),
+        })
     }
 
-    pub fn stage(&self) -> RecvDataStage {
-        self.stage.clone()
-    }
-
-    pub fn bytes_remaining(&self) -> usize {
-        self.bytes_remaining
+    fn is_receiving(&self) -> bool {
+        match self {
+            Self::Receiving(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -90,148 +91,109 @@ impl RecvDataAction {
 }
 
 impl PureAction for RecvDataAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxRecvData::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvData(tx_state) => {
-                match &self.result {
-                    Ok(bytes_received) => {
-                        assert!(bytes_received.len() <= tx_state.bytes_remaining);
-                        tx_state.bytes_remaining -= bytes_received.len();
-                        tx_state.bytes_received.extend(bytes_received);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_receiving());
 
-                        if tx_state.bytes_remaining == 0 {
-                            tx_state.result = Some(RecvDataResult::Success);
-                        }
-                    }
-                    Err(_) => tx_state.result = Some(RecvDataResult::Error),
-                }
+            if let TxRecvData::Receiving(mut ctx) = tx_state.clone() {
+                if let Ok(data) = &self.result {
+                    assert!(data.len() <= ctx.bytes_remaining);
+                    ctx.bytes_remaining -= data.len();
+                    ctx.bytes_received.extend(data);
 
-                if tx_state.result.is_some() {
-                    let result = match tx_state.result.as_ref().unwrap() {
-                        RecvDataResult::Success => Ok(tx_state.bytes_received.clone()),
-                        RecvDataResult::Error => Err(()),
-                    };
-
-                    drop(transactions);
-                    RecvDataCompleteAction::new(self.tx_id, result).dispatch_pure(state);
-                }
-            }
-            _ => panic!("RecvDataAction reducer: Invalid Transaction type"),
-        }
-    }
-}
-
-pub struct RecvDataCompleteAction {
-    tx_id: u64,
-    result: Result<Vec<u8>, ()>,
-}
-
-impl RecvDataCompleteAction {
-    pub fn new(tx_id: u64, result: Result<Vec<u8>, ()>) -> Self {
-        Self { tx_id, result }
-    }
-}
-
-impl PureAction for RecvDataCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvData(tx_state) => {
-                tx_state.stage.set_stage(RecvDataStage::Finish);
-
-                let parent_tx_id = tx_state.parent_tx;
-                let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-                match parent_transaction.tx_type() {
-                    TransactionType::TxRecvChunk(_) => {
-                        drop(transactions);
-                        RecvChunkAction::new(parent_tx_id, self.result.clone())
+                    if ctx.bytes_remaining == 0 {
+                        tx_state.set(TxRecvData::Completed(Ok(ctx.bytes_received)));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxRecvData>::new(self.tx_id)
                             .dispatch_pure(state);
-                        CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
+                    } else {
+                        // context update
+                        tx_state.set(TxRecvData::Receiving(ctx.clone()));
                     }
-                    _ => panic!("RecvDataCompleteAction reducer: unknown parent transaction type"),
+                } else {
+                    tx_state.set(TxRecvData::Completed(Err(())));
+                    //drop(transaction);
+                    //drop(transactions);
+                    CompleteTransactionAction::<TxRecvData>::new(self.tx_id).dispatch_pure(state);
                 }
             }
-            _ => panic!("RecvDataCompleteAction reducer: Invalid Transaction type"),
         }
-    }
-}
-
-#[derive(PartialEq, Clone)]
-pub enum SendDataResult {
-    Success,
-    Error,
-}
-
-#[derive(PartialEq, Clone)]
-pub enum SendDataStage {
-    Transmitting,
-    Finish,
-}
-
-impl TransactionStage for SendDataStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Transmitting => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
     }
 }
 
 #[derive(Clone)]
-pub struct TxSendData {
-    stage: SendDataStage,
-    result: Option<SendDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
-    bytes_to_send: Vec<u8>,
+pub struct SendContext {
+    pub token: mio::Token,
+    pub bytes_to_send: Vec<u8>,
 }
 
-impl TxSendData {
-    pub fn new(parent_tx: u64, token: mio::Token, bytes_to_send: Vec<u8>) -> Self {
-        Self {
-            stage: SendDataStage::Transmitting,
-            result: None,
-            parent_tx,
-            token,
-            bytes_to_send,
+#[derive(Clone)]
+pub enum TxSendData {
+    Transmitting(SendContext),
+    Completed(Result<(), ()>),
+}
+
+impl TransactionStage for TxSendData {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Transmitting(ctx) => match next_stage {
+                Self::Completed(_) => true,
+                Self::Transmitting(new_ctx) => {
+                    ctx.token == new_ctx.token
+                        && new_ctx.bytes_to_send.len() < ctx.bytes_to_send.len()
+                }
+            },
+            _ => false,
         }
     }
 
-    pub fn token(&self) -> &mio::Token {
-        &self.token
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(_) => true,
+            _ => false,
+        }
     }
-
-    pub fn stage(&self) -> SendDataStage {
-        self.stage.clone()
-    }
-
-    pub fn bytes_to_send(&self) -> &Vec<u8> {
-        &self.bytes_to_send
-    }
-
-    fn init_reducer(_tx_id: u64, _state: &mut GlobalState) {
-        //state.get_tx_mut(tx_id).set_pending_effects(true);
-    }
-
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
-
 }
 
 impl Transaction for TxSendData {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
+    fn init(&mut self, _tx_id: u64, _state: &GlobalState) {}
+
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxSendData::Completed(result) = *self {
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxSendChunk => {
+                        SendChunkCompleteAction::new(tx_id, result).dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
     }
 
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxSendData {
+    pub fn new(token: mio::Token, bytes_to_send: Vec<u8>) -> Self {
+        Self::Transmitting(SendContext {
+            token,
+            bytes_to_send,
+        })
+    }
+
+    fn is_transmitting(&self) -> bool {
+        match self {
+            Self::Transmitting(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -247,70 +209,36 @@ impl SendDataAction {
 }
 
 impl PureAction for SendDataAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxSendData::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        if let TransactionType::TxSendData(tx_state) = transaction.tx_type_mut() {
-            match self.result {
-                Ok(bytes_sent) => {
-                    assert!(bytes_sent <= tx_state.bytes_to_send.len());
-                    tx_state.bytes_to_send = tx_state.bytes_to_send[bytes_sent..].to_vec();
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_transmitting());
 
-                    // no more bytes remaining, progress to finish stage
-                    if tx_state.bytes_to_send.len() == 0 {
-                        tx_state.result = Some(SendDataResult::Success);
+            if let TxSendData::Transmitting(mut ctx) = tx_state.clone() {
+                if let Ok(bytes_sent) = self.result {
+                    assert!(bytes_sent <= ctx.bytes_to_send.len());
+                    ctx.bytes_to_send = ctx.bytes_to_send[bytes_sent..].to_vec();
+
+                    if ctx.bytes_to_send.len() == 0 {
+                        tx_state.set(TxSendData::Completed(Ok(())));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxSendData>::new(self.tx_id)
+                            .dispatch_pure(state);
+                    } else {
+                        // context update
+                        tx_state.set(TxSendData::Transmitting(ctx));
                     }
+                } else {
+                    tx_state.set(TxSendData::Completed(Err(())));
+                    //drop(transaction);
+                    //drop(transactions);
+                    CompleteTransactionAction::<TxSendData>::new(self.tx_id).dispatch_pure(state);
                 }
-                Err(_) => tx_state.result = Some(SendDataResult::Error),
             }
-
-            if tx_state.result.is_some() {
-                let result = tx_state.result.clone().unwrap();
-
-                drop(transactions);
-                SendDataCompleteAction::new(self.tx_id, result).dispatch_pure(state);
-            }
-        } else {
-            panic!("SendDataAction reducer: invalid transaction type");
-        }
-    }
-}
-
-pub struct SendDataCompleteAction {
-    tx_id: u64,
-    result: SendDataResult,
-}
-
-impl SendDataCompleteAction {
-    pub fn new(tx_id: u64, result: SendDataResult) -> Self {
-        Self { tx_id, result }
-    }
-}
-
-impl PureAction for SendDataCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        if let TransactionType::TxSendData(tx_state) = transaction.tx_type_mut() {
-            let parent_tx_id = tx_state.parent_tx;
-            tx_state.stage.set_stage(SendDataStage::Finish);
-            drop(transaction);
-
-            let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-            match parent_transaction.tx_type() {
-                TransactionType::TxSendChunk(_) => {
-                    drop(transactions);
-                    SendChunkCompleteAction::new(parent_tx_id, self.result.clone())
-                        .dispatch_pure(state);
-                    CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                }
-                _ => panic!("SendDataCompleteAction reducer: unknown parent transaction type"),
-            }
-        } else {
-            panic!("SendDataCompleteAction reducer: Invalid Transaction type")
         }
     }
 }

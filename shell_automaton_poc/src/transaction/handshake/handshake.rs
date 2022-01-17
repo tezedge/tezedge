@@ -16,12 +16,9 @@ use tezos_messages::p2p::{
 use crate::{
     action::PureAction,
     state::{GlobalState, Peer},
-    transaction::{
-        data_transfer::SendDataResult,
-        transaction::{
-            CompleteTransactionAction, CreateTransactionAction, Transaction, TransactionStage,
-            TransactionType,
-        },
+    transaction::transaction::{
+        CompleteTransactionAction, CreateTransactionAction, ParentInfo, Transaction,
+        TransactionStage, TransactionState, TransactionType, TxOps,
     },
 };
 
@@ -32,34 +29,7 @@ use super::{
 };
 
 #[derive(PartialEq, Clone)]
-pub enum HandshakeStage {
-    SendConnection,
-    RecvConnection,
-    SendMetadata,
-    RecvMetadata,
-    SendAck,
-    RecvAck,
-    Finish,
-}
-
-impl TransactionStage for HandshakeStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::SendConnection => [Self::RecvConnection, Self::Finish].iter(),
-            Self::RecvConnection => [Self::SendMetadata, Self::Finish].iter(),
-            Self::SendMetadata => [Self::RecvMetadata, Self::Finish].iter(),
-            Self::RecvMetadata => [Self::SendAck, Self::Finish].iter(),
-            Self::SendAck => [Self::RecvAck, Self::Finish].iter(),
-            Self::RecvAck => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
-    }
-}
-
-#[derive(PartialEq, Clone)]
-pub enum HandshakeResult {
+pub enum HandshakeError {
     Graylisted,
     SendConnectionError,
     RecvConnectionError,
@@ -70,258 +40,330 @@ pub enum HandshakeResult {
     SendMetadataError,
     RecvMetadataError,
     SendAckError,
+    TooManyConnections,
+    AlreadyConnected,
     RecvAckError,
-    Nack(Option<NackInfo>),
-    Success,
+    RecvNack,
 }
-
 #[derive(Clone)]
-
-pub struct TxHandshake {
-    stage: HandshakeStage,
-    result: Option<HandshakeResult>,
+pub struct InitContext {
     token: mio::Token,
     address: SocketAddr,
     incoming: bool,
     nonce: Nonce,
-    local_chunk: Option<BinaryChunk>,
-    nonce_pair: Option<NoncePair>,
-    pub_key: Option<PublicKey>,
-    precomputed_key: Option<PrecomputedKey>,
-    nack_motive: Option<NackMotive>,
+}
+#[derive(Clone)]
+pub struct SendConnectionContext {
+    token: mio::Token,
+    address: SocketAddr,
+    incoming: bool,
+    local_chunk: BinaryChunk,
+}
+#[derive(Clone)]
+pub struct RecvConnectionContext {
+    token: mio::Token,
+    address: SocketAddr,
+    incoming: bool,
+    local_chunk: BinaryChunk,
+}
+#[derive(Clone)]
+pub struct SendMetadataContext {
+    token: mio::Token,
+    address: SocketAddr,
+    nonce_pair: NoncePair,
+    precomputed_key: PrecomputedKey,
+}
+#[derive(Clone)]
+pub struct RecvMetadataContext {
+    token: mio::Token,
+    address: SocketAddr,
+    nonce_pair: NoncePair,
+    precomputed_key: PrecomputedKey,
+}
+#[derive(Clone)]
+pub struct SendAckContext {
+    token: mio::Token,
+    address: SocketAddr,
+    nonce_pair: NoncePair,
+    precomputed_key: PrecomputedKey,
+    msg: AckMessage,
+}
+#[derive(Clone)]
+pub struct RecvAckContext {
+    token: mio::Token,
+    address: SocketAddr,
+    nonce_pair: NoncePair,
+    precomputed_key: PrecomputedKey,
+}
+#[derive(Clone)]
+pub struct CompletedContext {
+    token: mio::Token,
+    address: SocketAddr,
+    nonce_pair: NoncePair,
+    precomputed_key: PrecomputedKey,
+}
+#[derive(Clone)]
+pub struct ErrorContext {
+    token: mio::Token,
+    address: SocketAddr,
+    reason: HandshakeError,
 }
 
-impl TxHandshake {
-    pub fn new(token: mio::Token, address: SocketAddr, incoming: bool, nonce: Nonce) -> Self {
-        TxHandshake {
-            stage: HandshakeStage::SendConnection,
-            result: None,
-            token,
-            address,
-            incoming,
-            nonce,
-            local_chunk: None,
-            nonce_pair: None,
-            pub_key: None,
-            precomputed_key: None,
-            nack_motive: None,
+#[derive(Clone)]
+pub enum TxHandshake {
+    Init(InitContext),
+    SendConnection(SendConnectionContext),
+    RecvConnection(RecvConnectionContext),
+    SendMetadata(SendMetadataContext),
+    RecvMetadata(RecvMetadataContext),
+    SendAck(SendAckContext),
+    RecvAck(RecvAckContext),
+    Completed(Result<CompletedContext, ErrorContext>),
+}
+
+impl TransactionStage for TxHandshake {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Init(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::SendConnection(_) => true,
+                _ => false,
+            },
+            Self::SendConnection(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::RecvConnection(_) => true,
+                _ => false,
+            },
+            Self::RecvConnection(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::SendMetadata(_) => true,
+                _ => false,
+            },
+            Self::SendMetadata(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::RecvMetadata(_) => true,
+                _ => false,
+            },
+            Self::RecvMetadata(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::SendAck(_) => true,
+                _ => false,
+            },
+            Self::SendAck(_) => match next_stage {
+                Self::Completed(Err(_)) => true,
+                Self::RecvAck(_) => true,
+                _ => false,
+            },
+            Self::RecvAck(_) => match next_stage {
+                Self::Completed(_) => true,
+                _ => false,
+            },
+            _ => false,
         }
     }
 
-    pub fn token(&self) -> &mio::Token {
-        &self.token
-    }
-
-    pub fn check_pow(&mut self, msg: &ConnectionMessage, pow_target: f64) -> Result<(), ()> {
-        let pow_data = [msg.public_key.clone(), msg.proof_of_work_stamp.clone()].concat();
-
-        match crypto::proof_of_work::check_proof_of_work(pow_data.as_slice(), pow_target) {
-            Ok(_) => Ok(()),
-            _ => {
-                self.result = Some(HandshakeResult::BadPow);
-                Err(())
-            }
-        }
-    }
-
-    pub fn set_nonce_pair(&mut self, msg: &ConnectionMessage) -> Result<(), ()> {
-        match generate_nonces(
-            self.local_chunk.as_ref().unwrap().raw(),
-            BinaryChunk::from_content(&msg.as_bytes().unwrap())
-                .unwrap()
-                .raw(),
-            self.incoming,
-        ) {
-            Ok(nonce_pair) => {
-                self.nonce_pair = Some(nonce_pair);
-                Ok(())
-            }
-            _ => {
-                self.result = Some(HandshakeResult::NoncePairError);
-                Err(())
-            }
-        }
-    }
-
-    pub fn set_pub_key(&mut self, msg: &ConnectionMessage) -> Result<(), ()> {
-        match PublicKey::from_bytes(&msg.public_key) {
-            Ok(key) => {
-                self.pub_key = Some(key);
-                Ok(())
-            }
-            _ => {
-                self.result = Some(HandshakeResult::PublicKeyError);
-                Err(())
-            }
-        }
-    }
-
-    pub fn local_nonce(&mut self) -> &Nonce {
-        &self.nonce_pair.as_ref().unwrap().local
-    }
-
-    pub fn local_nonce_mut(&mut self) -> &mut Nonce {
-        &mut self.nonce_pair.as_mut().unwrap().local
-    }
-
-    pub fn remote_nonce(&mut self) -> &Nonce {
-        &self.nonce_pair.as_ref().unwrap().remote
-    }
-
-    pub fn remote_nonce_mut(&mut self) -> &mut Nonce {
-        &mut self.nonce_pair.as_mut().unwrap().remote
-    }
-
-    fn init_reducer(tx_id: u64, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&tx_id).unwrap();
-        let shared_state = state.shared();
-        let graylist = shared_state.graylist.get(transaction).unwrap();
-
-        if let TransactionType::TxHandshake(tx_state) = transaction.tx_type_mut() {
-            if graylist.contains(&tx_state.address.ip()) {
-                tx_state.result = Some(HandshakeResult::Graylisted);
-                tx_state.stage.set_stage(HandshakeStage::Finish);
-                drop(transactions);
-                drop(shared_state);
-                CompleteTransactionAction::new(tx_id).dispatch_pure(state);
-            } else {
-                drop(transactions);
-                drop(shared_state);
-                HandshakeSendConnectionMessageAction::new(tx_id).dispatch_pure(state);
-            }
-        } else {
-            panic!("TxHandshake init_reducer: Invalid Transaction type")
-        }
-    }
-
-    fn commit_reducer(tx_id: u64, state: &mut GlobalState) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&tx_id).unwrap();
-        let mut shared_state = state.shared_mut();
-
-        if let TransactionType::TxHandshake(tx_state) = transaction.tx_type() {
-            let result = tx_state.result.clone().unwrap();
-
-            if result == HandshakeResult::Success {
-                let peer = Peer {
-                    token: tx_state.token,
-                    pub_key: tx_state.pub_key.clone().unwrap(),
-                    nonce_pair: tx_state.nonce_pair.clone().unwrap(),
-                    precomputed_key: tx_state.precomputed_key.clone().unwrap(),
-                };
-
-                let connected_peers = shared_state.connected_peers.get_mut(transaction).unwrap();
-                connected_peers.insert(tx_state.address, peer);
-            } else {
-                let failed_peers = shared_state.failed_peers.get_mut(transaction).unwrap();
-                failed_peers.insert(tx_state.token);
-
-                if let HandshakeResult::Nack(_) = result {
-                    return;
-                }
-
-                // Any errors during handshake result in graylisting the peer
-                let graylist = shared_state.graylist.get_mut(transaction).unwrap();
-                graylist.insert(tx_state.address.ip());
-            }
-        } else {
-            panic!("TxHandshake commit_reducer: Invalid Transaction type")
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(_) => true,
+            _ => false,
         }
     }
 }
 
 impl Transaction for TxHandshake {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
-    }
+    fn init(&mut self, tx_id: u64, state: &GlobalState) {
+        assert!(self.is_init());
 
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
-    }
-}
-
-pub struct HandshakeSendConnectionMessageAction {
-    tx_id: u64,
-}
-
-impl HandshakeSendConnectionMessageAction {
-    pub fn new(tx_id: u64) -> Self {
-        Self { tx_id }
-    }
-}
-
-impl PureAction for HandshakeSendConnectionMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                let conf = &state.immutable().config;
-
-                // TODO: proper error handling
-                let msg = ConnectionMessage::try_new(
-                    tx_state.address.port(),
-                    &conf.identity.public_key,
-                    &conf.identity.proof_of_work_stamp,
-                    tx_state.nonce.clone(),
-                    conf.network.clone(),
-                )
-                .unwrap();
-
-                tx_state.local_chunk =
-                    Some(BinaryChunk::from_content(&msg.as_bytes().unwrap()).unwrap());
-                let send_connection_msg =
-                    TxSendConnectionMessage::try_new(self.tx_id, tx_state.token, msg).unwrap();
-                drop(transactions);
-                CreateTransactionAction::new(&[], &[], send_connection_msg.into())
-                    .dispatch_pure(state);
+        if let TxHandshake::Init(ctx) = self.clone() {
+            if state
+                .shared
+                .peers
+                .borrow(&state.access(tx_id))
+                .iter()
+                .any(|peer| {
+                    if let Peer::Graylisted(address) = peer {
+                        *address == ctx.address.ip()
+                    } else {
+                        false
+                    }
+                })
+            {
+                self.set(Self::Completed(Err(ErrorContext {
+                    token: ctx.token,
+                    address: ctx.address,
+                    reason: HandshakeError::Graylisted,
+                })));
+                CompleteTransactionAction::<TxHandshake>::new(tx_id).dispatch_pure(state);
+                return;
             }
-            _ => panic!("HandshakeSendConnectionMessageAction reducer: Invalid Transaction type"),
+
+            let conf = &state.immutable.config;
+            let msg = ConnectionMessage::try_new(
+                ctx.address.port(),
+                &conf.identity.public_key,
+                &conf.identity.proof_of_work_stamp,
+                ctx.nonce.clone(),
+                conf.network.clone(),
+            )
+            .unwrap();
+
+            self.set(Self::SendConnection(SendConnectionContext {
+                token: ctx.token,
+                address: ctx.address,
+                incoming: ctx.incoming,
+                local_chunk: BinaryChunk::from_content(&msg.as_bytes().unwrap()).unwrap(),
+            }));
+
+            CreateTransactionAction::new(
+                0,
+                0,
+                TxSendConnectionMessage::try_new(ctx.token, msg).unwrap(),
+                Some(ParentInfo {
+                    tx_id,
+                    tx_type: TransactionType::TxHandshake,
+                }),
+            )
+            .dispatch_pure(state);
+        }
+    }
+
+    fn commit(&self, tx_id: u64, _parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed());
+
+        if let TxHandshake::Completed(result) = &self {
+            let mut peers = state.shared.peers.borrow_mut(&state.access(tx_id));
+
+            match result.clone() {
+                Ok(ctx) => {
+                    peers.insert(Peer::Connected(
+                        ctx.token,
+                        ctx.address,
+                        ctx.precomputed_key,
+                        ctx.nonce_pair,
+                    ));
+                }
+                Err(ErrorContext {
+                    address, reason, ..
+                }) => {
+                    if reason != HandshakeError::RecvNack
+                        && reason != HandshakeError::Graylisted
+                        && reason != HandshakeError::TooManyConnections
+                    {
+                        /*
+                            Before graylisting a peer we need to see if there are any other peers with same IP
+                            and remove them (this is possible because we support NAT). A better solution would
+                            be to base graylisting not on IP addresses but on Peer-ID (from peer's identity).
+                        */
+                        let connected_peers_with_same_ip: Vec<Peer> = peers
+                            .iter()
+                            .filter_map(|peer| match peer {
+                                Peer::Connected(_, sock_address, ..)
+                                    if sock_address.ip() == address.ip() =>
+                                {
+                                    Some(peer.clone())
+                                }
+                                _ => None,
+                            })
+                            .collect();
+
+                        for peer in connected_peers_with_same_ip {
+                            if peers.remove(&peer) == false {
+                                panic!("peer not in set")
+                            }
+                        }
+
+                        peers.insert(Peer::Graylisted(address.ip()));
+                    }
+                }
+            }
+        }
+    }
+
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxHandshake {
+    pub fn new(token: mio::Token, address: SocketAddr, incoming: bool, nonce: Nonce) -> Self {
+        TxHandshake::Init(InitContext {
+            token,
+            address,
+            incoming,
+            nonce,
+        })
+    }
+
+    pub fn token(&self) -> mio::Token {
+        match self {
+            Self::Init(InitContext { token, .. })
+            | Self::SendConnection(SendConnectionContext { token, .. })
+            | Self::RecvConnection(RecvConnectionContext { token, .. })
+            | Self::SendMetadata(SendMetadataContext { token, .. })
+            | Self::RecvMetadata(RecvMetadataContext { token, .. })
+            | Self::SendAck(SendAckContext { token, .. })
+            | Self::RecvAck(RecvAckContext { token, .. })
+            | Self::Completed(Ok(CompletedContext { token, .. }))
+            | Self::Completed(Err(ErrorContext { token, .. })) => *token,
+        }
+    }
+
+    fn is_init(&self) -> bool {
+        match self {
+            Self::Init(_) => true,
+            _ => false,
         }
     }
 }
 
 pub struct HandshakeSendConnectionMessageCompleteAction {
     tx_id: u64,
-    result: SendDataResult,
+    result: Result<(), ()>,
 }
 
 impl HandshakeSendConnectionMessageCompleteAction {
-    pub fn new(tx_id: u64, result: SendDataResult) -> Self {
+    pub fn new(tx_id: u64, result: Result<(), ()>) -> Self {
         Self { tx_id, result }
     }
 }
 
 impl PureAction for HandshakeSendConnectionMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                if self.result == SendDataResult::Error {
-                    tx_state.result = Some(HandshakeResult::SendConnectionError);
-                    tx_state.stage.set_stage(HandshakeStage::Finish);
-                    drop(transactions);
-                    CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                } else {
-                    let token = tx_state.token;
-                    tx_state.stage.set_stage(HandshakeStage::RecvConnection);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::SendConnection(ctx) => {
+                    if self.result.is_err() {
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::SendConnectionError})));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                        .dispatch_pure(state);
+                        return
+                    }
 
-                    drop(transactions);
+                    tx_state.set(TxHandshake::RecvConnection(RecvConnectionContext {
+                        token: ctx.token,
+                        address: ctx.address,
+                        incoming: ctx.incoming,
+                        local_chunk: ctx.local_chunk
+                    }));
+                    //drop(transaction);
+                    //drop(transactions);
                     CreateTransactionAction::new(
-                        &[],
-                        &[],
-                        TxRecvConnectionMessage::new(self.tx_id, token).into(),
+                        0,
+                        0,
+                        TxRecvConnectionMessage::new(ctx.token),
+                        Some(ParentInfo {
+                            tx_id: self.tx_id,
+                            tx_type: TransactionType::TxHandshake,
+                        }),
                     )
                     .dispatch_pure(state);
-                }
+                },
+                _ => panic!("HandshakeSendConnectionMessageCompleteAction reducer: action dispatched at invalid stage"),
             }
-            _ => panic!(
-                "HandshakeSendConnectionMessageCompleteAction reducer: Invalid Transaction type"
-            ),
         }
     }
 }
@@ -338,102 +380,105 @@ impl HandshakeRecvConnectionMessageAction {
 }
 
 impl PureAction for HandshakeRecvConnectionMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-        let shared_state = state.shared();
-        // TODO: handle errors properly
-        let connected_peers = shared_state.connected_peers.get(transaction).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let conf = &state.immutable.config;
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                match &self.result {
-                    Ok(msg) => {
-                        let conf = &state.immutable().config;
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::RecvConnection(ctx) => {
+                    match &self.result {
+                        Ok(msg) => {
+                            let pow_data = [msg.public_key.clone(), msg.proof_of_work_stamp.clone()].concat();
 
-                        //  TODO: check network version compatibility
-                        if tx_state.check_pow(&msg, conf.pow_target).is_ok()
-                            && tx_state.set_nonce_pair(&msg).is_ok()
-                            && tx_state.set_pub_key(&msg).is_ok()
-                        {
-                            if *tx_state.pub_key.as_ref().unwrap()
-                                == state.immutable().config.identity.public_key
-                            {
-                                tx_state.result = Some(HandshakeResult::ConnectSelfError);
-                                tx_state.stage.set_stage(HandshakeStage::Finish);
-                                drop(transactions);
-                                drop(shared_state);
-                                CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                            } else {
-                                let precomputed_key = PrecomputedKey::precompute(
-                                    tx_state.pub_key.as_ref().unwrap(),
-                                    &conf.identity.secret_key,
-                                );
-                                tx_state.precomputed_key = Some(precomputed_key);
-
-                                if connected_peers.len() == conf.max_peer_threshold {
-                                    tx_state.nack_motive = Some(NackMotive::TooManyConnections)
-                                }
-
-                                if connected_peers.iter().any(|(_, peer)| {
-                                    peer.pub_key == *tx_state.pub_key.as_ref().unwrap()
-                                }) {
-                                    tx_state.nack_motive = Some(NackMotive::AlreadyConnected)
-                                }
-
-                                tx_state.stage.set_stage(HandshakeStage::SendMetadata);
-                                drop(transactions);
-                                drop(shared_state);
-                                HandshakeSendMetadataAction::new(self.tx_id).dispatch_pure(state)
+                            if crypto::proof_of_work::check_proof_of_work(pow_data.as_slice(), conf.pow_target).is_err() {
+                                tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::BadPow})));
+                                //drop(transaction);
+                                //drop(transactions);
+                                CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                                .dispatch_pure(state);
+                                return
                             }
+
+                            let nonce_pair = generate_nonces(
+                                ctx.local_chunk.raw(),
+                                BinaryChunk::from_content(&msg.as_bytes().unwrap())
+                                    .unwrap()
+                                    .raw(),
+                                ctx.incoming,
+                            );
+
+                            if nonce_pair.is_err() {
+                                tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::NoncePairError})));
+                                //drop(transaction);
+                                //drop(transactions);
+                                CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                                .dispatch_pure(state);
+                                return
+                            }
+
+                            let pub_key = PublicKey::from_bytes(&msg.public_key);
+
+                            if pub_key.is_err() {
+                                tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::PublicKeyError})));
+                                //drop(transaction);
+                                //drop(transactions);
+                                CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                                .dispatch_pure(state);
+                                return
+                            }
+
+                            let pub_key = pub_key.unwrap();
+                            let precomputed_key = PrecomputedKey::precompute(
+                                &pub_key,
+                                &conf.identity.secret_key,
+                            );
+
+                            if pub_key == conf.identity.public_key {
+                                tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::ConnectSelfError})));
+                                //drop(transaction);
+                                //drop(transactions);
+                                CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                                .dispatch_pure(state);
+                                return
+                            }
+
+                            let nonce_pair = nonce_pair.unwrap();
+                            let tx = TxSendMetadataMessage::try_new(
+                                ctx.token,
+                                nonce_pair.local.clone(),
+                                precomputed_key.clone(),
+                                MetadataMessage::new(conf.disable_mempool, conf.private_node)
+                            )
+                            .unwrap();
+
+                            tx_state.set(TxHandshake::SendMetadata(SendMetadataContext{
+                                token: ctx.token,
+                                address: ctx.address,
+                                nonce_pair,
+                                precomputed_key
+                            }));
+
+                            //drop(transaction);
+                            //drop(transactions);
+                            CreateTransactionAction::new(0, 0, tx, Some(ParentInfo {
+                                tx_id: self.tx_id,
+                                tx_type: TransactionType::TxHandshake,
+                            })).dispatch_pure(state);
+                        },
+                        Err(_) => {
+                            tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::RecvConnectionError})));
+                            //drop(transaction);
+                            //drop(transactions);
+                            CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                            .dispatch_pure(state);
                         }
                     }
-                    _ => {
-                        tx_state.result = Some(HandshakeResult::RecvConnectionError);
-                        tx_state.stage.set_stage(HandshakeStage::Finish);
-                        drop(transactions);
-                        drop(shared_state);
-                        CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                    }
-                };
+                }
+                _ => panic!("HandshakeRecvConnectionMessageAction reducer: action dispatched at invalid stage"),
             }
-            _ => panic!("HandshakeRecvConnectionMessageAction reducer: Invalid Transaction type"),
-        }
-    }
-}
-
-pub struct HandshakeSendMetadataAction {
-    tx_id: u64,
-}
-
-impl HandshakeSendMetadataAction {
-    pub fn new(tx_id: u64) -> Self {
-        Self { tx_id }
-    }
-}
-
-impl PureAction for HandshakeSendMetadataAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                let conf = &state.immutable().config;
-                let msg = MetadataMessage::new(conf.disable_mempool, conf.private_node);
-                // TODO: properly handle errors
-                let tx = TxSendMetadataMessage::try_new(
-                    self.tx_id,
-                    tx_state.token,
-                    tx_state.local_nonce().clone(),
-                    tx_state.precomputed_key.as_ref().unwrap().clone(),
-                    msg,
-                )
-                .unwrap();
-                drop(transactions);
-                CreateTransactionAction::new(&[], &[], tx.into()).dispatch_pure(state);
-            }
-            _ => panic!("HandshakeSendMetadataAction reducer: Invalid Transaction type"),
         }
     }
 }
@@ -441,11 +486,11 @@ impl PureAction for HandshakeSendMetadataAction {
 pub struct HandshakeSendMetadataMessageCompleteAction {
     tx_id: u64,
     nonce: Nonce,
-    result: SendDataResult,
+    result: Result<(), ()>,
 }
 
 impl HandshakeSendMetadataMessageCompleteAction {
-    pub fn new(tx_id: u64, nonce: Nonce, result: SendDataResult) -> Self {
+    pub fn new(tx_id: u64, nonce: Nonce, result: Result<(), ()>) -> Self {
         Self {
             tx_id,
             nonce,
@@ -455,35 +500,47 @@ impl HandshakeSendMetadataMessageCompleteAction {
 }
 
 impl PureAction for HandshakeSendMetadataMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                *tx_state.local_nonce_mut() = self.nonce.clone();
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::SendMetadata(ctx) => {
+                    if self.result.is_err() {
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::SendMetadataError})));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                        .dispatch_pure(state);
+                        return
+                    }
+                    let remote_nonce = ctx.nonce_pair.remote;
+                    let tx = TxRecvMetadataMessage::new(ctx.token, remote_nonce.clone(), ctx.precomputed_key.clone());
 
-                if self.result == SendDataResult::Error {
-                    tx_state.result = Some(HandshakeResult::SendMetadataError);
-                    tx_state.stage.set_stage(HandshakeStage::Finish);
-                    drop(transactions);
-                    CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                } else {
-                    let tx = TxRecvMetadataMessage::new(
-                        self.tx_id,
-                        tx_state.token,
-                        tx_state.remote_nonce().clone(),
-                        tx_state.precomputed_key.as_ref().unwrap().clone(),
-                    );
+                    tx_state.set(TxHandshake::RecvMetadata(RecvMetadataContext {
+                        token: ctx.token,
+                        address: ctx.address,
+                        nonce_pair: NoncePair { local: self.nonce.clone(), remote: remote_nonce },
+                        precomputed_key: ctx.precomputed_key
+                    }));
 
-                    tx_state.stage.set_stage(HandshakeStage::RecvMetadata);
-                    drop(transactions);
-                    CreateTransactionAction::new(&[], &[], tx.into()).dispatch_pure(state);
-                }
+                    //drop(transaction);
+                    //drop(transactions);
+                    CreateTransactionAction::new(
+                        0,
+                        0,
+                        tx,
+                        Some(ParentInfo {
+                            tx_id: self.tx_id,
+                            tx_type: TransactionType::TxHandshake,
+                        }),
+                    )
+                    .dispatch_pure(state);
+                },
+                _ => panic!("HandshakeSendMetadataMessageCompleteAction reducer: action dispatched at invalid stage"),
             }
-            _ => panic!(
-                "HandshakeSendMetadataMessageCompleteAction reducer: Invalid Transaction type"
-            ),
         }
     }
 }
@@ -505,72 +562,84 @@ impl HandshakeRecvMetadataMessageAction {
 }
 
 impl PureAction for HandshakeRecvMetadataMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let conf = &state.immutable.config;
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                *tx_state.remote_nonce_mut() = self.nonce.clone();
-
-                match &self.result {
-                    Ok(_metadata) => {
-                        // TODO: check metadata information?
-                        tx_state.stage.set_stage(HandshakeStage::SendAck);
-                        drop(transactions);
-                        HandshakeSendAckMessageAction::new(self.tx_id).dispatch_pure(state);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::RecvMetadata(ctx) => {
+                    if self.result.is_err() {
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::RecvMetadataError})));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                        .dispatch_pure(state);
+                        return
                     }
-                    Err(_) => {
-                        tx_state.result = Some(HandshakeResult::RecvMetadataError);
-                        tx_state.stage.set_stage(HandshakeStage::Finish);
-                        drop(transactions);
-                        CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                    }
-                }
-            }
-            _ => panic!("HandshakeRecvMetadataMessageAction reducer: Invalid Transaction type"),
-        }
-    }
-}
+                    // TODO: check metadata information?
 
-pub struct HandshakeSendAckMessageAction {
-    tx_id: u64,
-}
+                    let nack = (||{
+                        let mut connected_count = 0;
+                        let peers = state.shared.peers.borrow(&state.access(self.tx_id));
 
-impl HandshakeSendAckMessageAction {
-    pub fn new(tx_id: u64) -> Self {
-        Self { tx_id }
-    }
-}
+                        for peer in peers.iter() {
+                            if let Peer::Connected(_, _, precomputed_key, _) = peer {
+                                /*
+                                    NOTE: the following check makes the assumption that the precomputed key resulting
+                                    from a peer's public key and ours is going to be always the same. A better approach
+                                    would be to used the public-key instead.
+                                */
+                                if *precomputed_key == ctx.precomputed_key {
+                                    return Some(NackMotive::AlreadyConnected)
+                                }
 
-impl PureAction for HandshakeSendAckMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+                                connected_count += 1;
+                            }
+                        }
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                let msg = match &tx_state.nack_motive {
-                    Some(motive) => {
+                        if connected_count == conf.max_peer_threshold {
+                            Some(NackMotive::TooManyConnections)
+                        } else {
+                            None
+                        }
+                    })();
+
+                    let msg = if let Some(nack_motive) = nack {
                         let potential_peers = []; // TODO
-                        AckMessage::Nack(NackInfo::new(motive.clone(), &potential_peers))
-                    }
-                    None => AckMessage::Ack,
-                };
+                        AckMessage::Nack(NackInfo::new(nack_motive, &potential_peers))
+                    } else {
+                        AckMessage::Ack
+                    };
 
-                // TODO: properly handle error
-                let tx = TxSendAckMessage::try_new(
-                    self.tx_id,
-                    tx_state.token,
-                    tx_state.local_nonce().clone(),
-                    tx_state.precomputed_key.as_ref().unwrap().clone(),
-                    msg,
-                )
-                .unwrap();
-                drop(transactions);
-                CreateTransactionAction::new(&[], &[], tx.into()).dispatch_pure(state);
+                    // TODO: properly handle error
+                    let tx = TxSendAckMessage::try_new(
+                        ctx.token,
+                        ctx.nonce_pair.local.clone(),
+                        ctx.precomputed_key.clone(),
+                        msg.clone(),
+                    )
+                    .unwrap();
+
+                    tx_state.set(TxHandshake::SendAck(SendAckContext {
+                        token: ctx.token,
+                        address: ctx.address,
+                        nonce_pair: NoncePair { local: ctx.nonce_pair.local, remote: self.nonce.clone() },
+                        precomputed_key: ctx.precomputed_key,
+                        msg
+                    }));
+
+                    //drop(transaction);
+                    //drop(transactions);
+                    CreateTransactionAction::new(0, 0, tx, Some(ParentInfo {
+                        tx_id: self.tx_id,
+                        tx_type: TransactionType::TxHandshake,
+                    })).dispatch_pure(state);
+                },
+                _ => panic!("HandshakeRecvMetadataMessageAction reducer: action dispatched at invalid stage"),
             }
-            _ => panic!("HandshakeSendAckMessageAction reducer: Invalid Transaction type"),
         }
     }
 }
@@ -578,11 +647,11 @@ impl PureAction for HandshakeSendAckMessageAction {
 pub struct HandshakeSendAckMessageCompleteAction {
     tx_id: u64,
     nonce: Nonce,
-    result: SendDataResult,
+    result: Result<(), ()>,
 }
 
 impl HandshakeSendAckMessageCompleteAction {
-    pub fn new(tx_id: u64, nonce: Nonce, result: SendDataResult) -> Self {
+    pub fn new(tx_id: u64, nonce: Nonce, result: Result<(), ()>) -> Self {
         Self {
             tx_id,
             nonce,
@@ -592,41 +661,59 @@ impl HandshakeSendAckMessageCompleteAction {
 }
 
 impl PureAction for HandshakeSendAckMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                *tx_state.local_nonce_mut() = self.nonce.clone();
-
-                if self.result == SendDataResult::Error {
-                    tx_state.result = Some(HandshakeResult::SendAckError);
-                    tx_state.stage.set_stage(HandshakeStage::Finish);
-                    drop(transactions);
-                    CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                } else {
-                    // if we sent a Nack then we won't try to receive one
-                    if tx_state.nack_motive.is_some() {
-                        tx_state.result = Some(HandshakeResult::Nack(None));
-                        tx_state.stage.set_stage(HandshakeStage::Finish);
-                        drop(transactions);
-                        CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                    } else {
-                        let tx = TxRecvAckMessage::new(
-                            self.tx_id,
-                            tx_state.token,
-                            tx_state.remote_nonce().clone(),
-                            tx_state.precomputed_key.as_ref().unwrap().clone(),
-                        );
-
-                        tx_state.stage.set_stage(HandshakeStage::RecvAck);
-                        drop(transactions);
-                        CreateTransactionAction::new(&[], &[], tx.into()).dispatch_pure(state);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::SendAck(ctx) => {
+                    if self.result.is_err() {
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason: HandshakeError::SendAckError})));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                        .dispatch_pure(state);
+                        return
                     }
-                }
+
+                    if let AckMessage::Nack(nack_info) = ctx.msg {
+                        let reason = match nack_info.motive() {
+                            NackMotive::TooManyConnections => HandshakeError::TooManyConnections,
+                            NackMotive::AlreadyConnected => HandshakeError::AlreadyConnected,
+                            _ => unreachable!()
+                        };
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext{token: ctx.token, address: ctx.address, reason})));
+                        //drop(transaction);
+                        //drop(transactions);
+                        CompleteTransactionAction::<TxHandshake>::new(self.tx_id)
+                        .dispatch_pure(state);
+                        return
+                    }
+
+                    let tx = TxRecvAckMessage::new(
+                        ctx.token,
+                        ctx.nonce_pair.remote.clone(),
+                        ctx.precomputed_key.clone(),
+                    );
+
+                    tx_state.set(TxHandshake::RecvAck(RecvAckContext {
+                        token: ctx.token,
+                        address: ctx.address,
+                        nonce_pair: NoncePair { local: self.nonce.clone(), remote: ctx.nonce_pair.remote },
+                        precomputed_key: ctx.precomputed_key,
+                    }));
+
+                    //drop(transaction);
+                    //drop(transactions);
+                    CreateTransactionAction::new(0, 0, tx, Some(ParentInfo {
+                        tx_id: self.tx_id,
+                        tx_type: TransactionType::TxHandshake,
+                    })).dispatch_pure(state);
+                },
+                _ => panic!("HandshakeSendAckMessageCompleteAction reducer: action dispatched at invalid stage"),
             }
-            _ => panic!("HandshakeSendAckMessageCompleteAction reducer: Invalid Transaction type"),
         }
     }
 }
@@ -648,27 +735,46 @@ impl HandshakeRecvAckMessageAction {
 }
 
 impl PureAction for HandshakeRecvAckMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxHandshake::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxHandshake(tx_state) => {
-                *tx_state.remote_nonce_mut() = self.nonce.clone();
-
-                let result = match self.result.clone() {
-                    Ok(AckMessage::Ack) => HandshakeResult::Success,
-                    Ok(AckMessage::NackV0) => HandshakeResult::Nack(None),
-                    Ok(AckMessage::Nack(nack_info)) => HandshakeResult::Nack(Some(nack_info)),
-                    Err(_) => HandshakeResult::RecvAckError,
-                };
-
-                tx_state.result = Some(result);
-                tx_state.stage.set_stage(HandshakeStage::Finish);
-                drop(transactions);
-                CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            match tx_state.clone() {
+                TxHandshake::RecvAck(ctx) => match self.result {
+                    Ok(AckMessage::Ack) => {
+                        tx_state.set(TxHandshake::Completed(Ok(CompletedContext {
+                            token: ctx.token,
+                            address: ctx.address,
+                            nonce_pair: NoncePair {
+                                local: ctx.nonce_pair.local,
+                                remote: self.nonce.clone(),
+                            },
+                            precomputed_key: ctx.precomputed_key,
+                        })))
+                    }
+                    Ok(AckMessage::NackV0) | Ok(AckMessage::Nack(_)) => {
+                        tx_state.set(TxHandshake::Completed(Err(ErrorContext {
+                            token: ctx.token,
+                            address: ctx.address,
+                            reason: HandshakeError::RecvNack,
+                        })))
+                    }
+                    Err(_) => tx_state.set(TxHandshake::Completed(Err(ErrorContext {
+                        token: ctx.token,
+                        address: ctx.address,
+                        reason: HandshakeError::RecvAckError,
+                    }))),
+                },
+                _ => panic!(
+                    "HandshakeRecvAckMessageAction reducer: action dispatched at invalid stage"
+                ),
             }
-            _ => panic!("HandshakeRecvAckMessageAction reducer: Invalid Transaction type"),
+
+            //drop(transaction);
+            //drop(transactions);
+            CompleteTransactionAction::<TxHandshake>::new(self.tx_id).dispatch_pure(state);
         }
     }
 }

@@ -1,8 +1,8 @@
 use crypto::nonce::Nonce;
-use either::Either;
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    cell::RefCell,
+    collections::BTreeMap,
     io::{self, Read, Write},
     net::{IpAddr, SocketAddr},
     time::Duration,
@@ -10,13 +10,15 @@ use std::{
 
 use crate::{
     action::{ImpureAction, PureAction},
-    state::{GlobalState, SharedStateField},
+    state::{GlobalState, TransactionsOps, PEERS_ACCESS_FIELD},
     transaction::{
-        data_transfer::{RecvDataAction, RecvDataStage, SendDataAction, SendDataStage},
+        data_transfer::{
+            RecvContext, RecvDataAction, SendContext, SendDataAction, TxRecvData, TxSendData,
+        },
         handshake::handshake::TxHandshake,
         transaction::{
-            CancelTransactionAction, CancelTransactionReason, CreateTransactionAction,
-            TransactionType,
+            CancelTransactionAction, CancelTransactionReason, CreateTransactionAction, Transaction,
+            TransactionState, Tx,
         },
     },
 };
@@ -62,27 +64,12 @@ impl Peers {
         self.peers.remove(&token).unwrap()
     }
 
-    pub fn get(&self, token: &mio::Token) -> &MioPeer {
-        // TODO: properly handle error
-        self.peers.get(token).unwrap()
+    pub fn get(&self, token: &mio::Token) -> Option<&MioPeer> {
+        self.peers.get(token)
     }
 
-    pub fn get_mut(&mut self, token: &mio::Token) -> &mut MioPeer {
-        // TODO: properly handle error
-        self.peers.get_mut(token).unwrap()
-    }
-
-    pub fn ready(&self) -> BTreeSet<mio::Token> {
-        self.peers
-            .iter()
-            .filter_map(|(token, peer)| {
-                if peer.can_read || peer.can_write {
-                    Some(*token)
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn get_mut(&mut self, token: &mio::Token) -> Option<&mut MioPeer> {
+        self.peers.get_mut(token)
     }
 
     pub fn try_new_token(&mut self) -> Result<mio::Token, MioServiceError> {
@@ -203,7 +190,7 @@ impl MioService {
     }
 
     pub fn send(&mut self, token: &mio::Token, data: &Vec<u8>) -> Result<usize, ()> {
-        let peer = self.peers.get_mut(token);
+        let peer = self.peers.get_mut(token).unwrap();
 
         match peer.stream.write(data.as_slice()) {
             Ok(bytes_written) => Ok(bytes_written),
@@ -220,7 +207,7 @@ impl MioService {
     }
 
     pub fn recv(&mut self, token: &mio::Token, len: usize) -> Result<Vec<u8>, ()> {
-        let peer = self.peers.get_mut(token);
+        let peer = self.peers.get_mut(token).unwrap();
         let mut buffer: Vec<u8> = vec![0; len];
 
         match peer.stream.read(&mut buffer[0..len]) {
@@ -253,6 +240,14 @@ impl MioService {
         if let Err(err) = self.poll.poll(&mut self.events, Some(self.poll_timeout)) {
             panic!("Mio poll error: {:?}", err);
         }
+
+        /*
+            TODO: before polling for events look at the service peer list and the GlobalState peers list,
+            if there are Tokens in the service list but not in the GlobalState peer list it means that a
+            peer was Graylisted but its IP address was shared with other peers that were previously connected
+            to our node. In this case we need to find existing transactions associated to these Tokens and
+            dispatch MioEventConnectionClosedAction to them.
+        */
 
         let events: Vec<(mio::Token, bool, bool, bool)> = self
             .events
@@ -293,9 +288,10 @@ impl MioService {
                                 let nonce = Nonce::random(); // TODO: implement "random" service?
 
                                 CreateTransactionAction::new(
-                                    &[SharedStateField::ConnectedPeers, SharedStateField::Graylist],
-                                    &[SharedStateField::ConnectedPeers],
-                                    TxHandshake::new(token, address, true, nonce).into(),
+                                    PEERS_ACCESS_FIELD,
+                                    PEERS_ACCESS_FIELD,
+                                    TxHandshake::new(token, address, true, nonce),
+                                    None,
                                 )
                                 .dispatch_pure(state);
                             }
@@ -307,7 +303,7 @@ impl MioService {
                     }
                 }
                 token => {
-                    let peer = self.peers.get_mut(&token);
+                    let peer = self.peers.get_mut(&token).unwrap();
 
                     peer.can_read = *can_read;
                     peer.can_write = *can_write;
@@ -326,33 +322,41 @@ impl MioService {
             This is done in a level-triggered fashion: the actions' effects handler must set `can_read`
             and/or `can_write` to `false` to acknowledge the event(s).
         */
-        let peers_set = self.peers.ready();
-        let transactions = state.transactions();
-        let mio_actions: Vec<Either<MioCanReadAction, MioCanWriteAction>> = transactions
+        let read_actions: Vec<MioCanReadAction> = state
+            .transactions
+            .borrow()
             .iter()
-            .filter(|(_, tx)| tx.is_pending())
-            .filter_map(|(tx_id, tx)| match tx.tx_type() {
-                TransactionType::TxRecvData(tx_state)
-                    if peers_set.contains(tx_state.token())
-                        && self.peers.get(tx_state.token()).can_read =>
-                {
-                    Some(Either::Left(MioCanReadAction::new(*tx_id)))
-                }
-                TransactionType::TxSendData(tx_state)
-                    if peers_set.contains(tx_state.token())
-                        && self.peers.get(tx_state.token()).can_write =>
-                {
-                    Some(Either::Right(MioCanWriteAction::new(*tx_id)))
-                }
+            .filter_map(|(tx_id, tx)| match tx.borrow().state {
+                TransactionState::Pending(TxRecvData::Receiving(RecvContext { token, .. })) => self
+                    .peers
+                    .get(&token)
+                    .and_then(|peer| peer.can_read.then(|| MioCanReadAction::new(*tx_id))),
                 _ => None,
             })
             .collect();
 
-        drop(transactions);
-        mio_actions.iter().for_each(|action| match action {
-            Either::Left(read_action) => read_action.dispatch_impure(state, self),
-            Either::Right(write_action) => write_action.dispatch_impure(state, self),
-        })
+        let write_actions: Vec<MioCanWriteAction> = state
+            .transactions
+            .borrow()
+            .iter()
+            .filter_map(|(tx_id, tx)| match tx.borrow().state {
+                TransactionState::Pending(TxSendData::Transmitting(SendContext {
+                    token, ..
+                })) => self
+                    .peers
+                    .get(&token)
+                    .and_then(|peer| peer.can_write.then(|| MioCanWriteAction::new(*tx_id))),
+                _ => None,
+            })
+            .collect();
+
+        for action in read_actions {
+            action.dispatch_impure(state, self);
+        }
+
+        for action in write_actions {
+            action.dispatch_impure(state, self);
+        }
     }
 }
 
@@ -379,35 +383,41 @@ impl MioEventConnectionClosedAction {
 }
 
 impl ImpureAction<MioService> for MioEventConnectionClosedAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        /*
-            Find transactions affected by disconnection event. Even if the transaction is in "Retry"
-            state we will cancel it to free resources ASAP.
-        */
-        let handshake_tx = state
-            .transactions()
-            .iter()
-            .find_map(|(tx_id, tx)| match tx.tx_type() {
-                TransactionType::TxHandshake(tx_state) if *tx_state.token() == self.token => {
-                    Some(*tx_id)
-                }
-                _ => None,
-            });
-
-        if let Some(tx_id) = handshake_tx {
-            drop(handshake_tx);
-            CancelTransactionAction::new(tx_id, CancelTransactionReason::ConnectionClosed)
-                .dispatch_pure(state);
-        } else {
-            panic!("MioEventConnectionClosedAction reducer: transaction not found");
-        }
-    }
-
-    fn effects(&self, _state: &mut GlobalState, service: &mut MioService) {
+    fn effects(&self, state: &GlobalState, service: &mut MioService) {
         service.disconnect(self.token);
+
+        /*
+            Find root transactions affected by disconnection event. The `cancel` handler of these
+            should find decendants (if any) and issue send them further CancelTransactionAction(s).
+            Even if the transaction is in "Retry" state we will cancel it to free resources ASAP.
+        */
+        let transactions: Vec<u64> = state
+            .transactions
+            .borrow()
+            .iter()
+            .filter_map(
+                |(tx_id, tx): (&u64, &RefCell<Tx<TxHandshake>>)| match &tx.borrow().state {
+                    TransactionState::Retry(transaction)
+                    | TransactionState::Pending(transaction) => {
+                        (transaction.token() == self.token).then(|| *tx_id)
+                    }
+                },
+            )
+            .collect();
+
+        for tx_id in transactions {
+            CancelTransactionAction::<TxHandshake>::new(
+                tx_id,
+                CancelTransactionReason::ConnectionClosed,
+            )
+            .dispatch_pure(state);
+        }
+
+        // TODO: handle other (root) transactions in the future
     }
 }
 
+#[derive(Debug)]
 pub struct MioCanReadAction {
     tx_id: u64,
 }
@@ -419,30 +429,31 @@ impl MioCanReadAction {
 }
 
 impl ImpureAction<MioService> for MioCanReadAction {
-    fn reducer(&self, _state: &mut GlobalState) {}
+    fn effects(&self, state: &GlobalState, service: &mut MioService) {
+        let transactions = state.transactions.borrow();
+        let transaction = TxRecvData::get(&transactions, self.tx_id).borrow_mut();
 
-    fn effects(&self, state: &mut GlobalState, service: &mut MioService) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&self.tx_id).unwrap();
+        if let TransactionState::Pending(tx_state) = &transaction.state {
+            if let TxRecvData::Receiving(RecvContext {
+                token,
+                bytes_remaining,
+                ..
+            }) = tx_state
+            {
+                let result = service.recv(&token, *bytes_remaining);
 
-        if let TransactionType::TxRecvData(tx_state) = transaction.tx_type() {
-            match tx_state.stage() {
-                RecvDataStage::Receiving => {
-                    let token = tx_state.token();
-                    let result = service.recv(token, tx_state.bytes_remaining());
-                    let peer = service.peers.get_mut(token);
-
-                    peer.can_read = false;
-                    drop(transactions);
-                    RecvDataAction::new(self.tx_id, result).dispatch_pure(state);
-                }
-                RecvDataStage::Finish => panic!("MioCanReadAction effects called at invalid stage"),
+                service.peers.get_mut(&token).unwrap().can_read = false;
+                //drop(transactions);
+                RecvDataAction::new(self.tx_id, result).dispatch_pure(state);
+                return;
             }
-        } else {
-            panic!("MioCanReadAction effects called with invalid transaction typre")
         }
+
+        println!("Action ignored {:?}", self);
     }
 }
+
+#[derive(Debug)]
 pub struct MioCanWriteAction {
     tx_id: u64,
 }
@@ -454,29 +465,25 @@ impl MioCanWriteAction {
 }
 
 impl ImpureAction<MioService> for MioCanWriteAction {
-    fn reducer(&self, _state: &mut GlobalState) {}
+    fn effects(&self, state: &GlobalState, service: &mut MioService) {
+        let transactions = state.transactions.borrow();
+        let transaction = TxSendData::get(&transactions, self.tx_id).borrow_mut();
 
-    fn effects(&self, state: &mut GlobalState, service: &mut MioService) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&self.tx_id).unwrap();
+        if let TransactionState::Pending(tx_state) = &transaction.state {
+            if let TxSendData::Transmitting(SendContext {
+                token,
+                bytes_to_send,
+            }) = tx_state
+            {
+                let result = service.send(&token, &bytes_to_send);
 
-        if let TransactionType::TxSendData(tx_state) = transaction.tx_type() {
-            match tx_state.stage() {
-                SendDataStage::Transmitting => {
-                    let token = tx_state.token();
-                    let result = service.send(token, tx_state.bytes_to_send());
-                    let peer = service.peers.get_mut(token);
-
-                    peer.can_write = false;
-                    drop(transactions);
-                    SendDataAction::new(self.tx_id, result).dispatch_pure(state);
-                }
-                SendDataStage::Finish => {
-                    panic!("MioCanWriteAction effects called at invalid stage")
-                }
+                service.peers.get_mut(&token).unwrap().can_write = false;
+                //drop(transactions);
+                SendDataAction::new(self.tx_id, result).dispatch_pure(state);
+                return;
             }
-        } else {
-            panic!("MioCanWriteAction effects called with invalid transaction typre")
         }
+
+        println!("Action ignored {:?}", self);
     }
 }

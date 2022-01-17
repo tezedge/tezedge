@@ -1,3 +1,4 @@
+use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::{
     binary_message::{BinaryRead, BinaryWrite},
     encoding::connection::ConnectionMessage,
@@ -8,10 +9,9 @@ use crate::{
     state::GlobalState,
     transaction::{
         chunk::{TxRecvChunk, TxSendChunk},
-        data_transfer::{RecvDataResult, SendDataResult},
         transaction::{
-            CompleteTransactionAction, CreateTransactionAction, Transaction, TransactionStage,
-            TransactionType,
+            CompleteTransactionAction, CreateTransactionAction, ParentInfo, Transaction,
+            TransactionStage, TransactionState, TransactionType, TxOps,
         },
     },
 };
@@ -20,66 +20,80 @@ use super::handshake::{
     HandshakeRecvConnectionMessageAction, HandshakeSendConnectionMessageCompleteAction,
 };
 
-#[derive(PartialEq, Clone)]
-pub enum RecvConnectionMessageStage {
-    Receiving,
-    Finish,
-}
-
-impl TransactionStage for RecvConnectionMessageStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Receiving => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
-    }
-}
-
 #[derive(Clone)]
-pub struct TxRecvConnectionMessage {
-    stage: RecvConnectionMessageStage,
-    result: Option<RecvDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
+pub enum TxRecvConnectionMessage {
+    Receiving(mio::Token),
+    Completed(Result<Vec<u8>, ()>),
 }
 
-impl TxRecvConnectionMessage {
-    pub fn new(parent_tx: u64, token: mio::Token) -> Self {
-        Self {
-            stage: RecvConnectionMessageStage::Receiving,
-            result: None,
-            parent_tx: parent_tx,
-            token: token,
+impl TransactionStage for TxRecvConnectionMessage {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Receiving(_) => next_stage.is_completed(),
+            _ => false,
         }
     }
 
-    fn init_reducer(tx_id: u64, state: &mut GlobalState) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&tx_id).unwrap();
-
-        if let TransactionType::TxRecvConnectionMessage(tx_state) = transaction.tx_type() {
-            let token = tx_state.token.clone();
-            drop(transactions);
-            // message fits in a single chunk
-            CreateTransactionAction::new(&[], &[], TxRecvChunk::new(tx_id, token).into())
-                .dispatch_pure(state);
-        } else {
-            panic!("TxRecvConnectionMessage init_reducer: Invalid Transaction type")
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(_) => true,
+            _ => false,
         }
     }
-
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
 }
 
 impl Transaction for TxRecvConnectionMessage {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
+    fn init(&mut self, tx_id: u64, state: &GlobalState) {
+        match self {
+            TxRecvConnectionMessage::Receiving(token) => {
+                CreateTransactionAction::new(
+                    0,
+                    0,
+                    TxRecvChunk::new(token.clone()),
+                    Some(ParentInfo {
+                        tx_id,
+                        tx_type: TransactionType::TxRecvConnectionMessage,
+                    }),
+                )
+                .dispatch_pure(state);
+            }
+            _ => panic!("Invalid intitial state"),
+        }
     }
 
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxRecvConnectionMessage::Completed(result) = self {
+            let result = result
+                .clone()
+                .and_then(|bytes| ConnectionMessage::from_bytes(bytes).or_else(|_| Err(())));
+
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxHandshake => {
+                        HandshakeRecvConnectionMessageAction::new(tx_id, result)
+                            .dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
+    }
+
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxRecvConnectionMessage {
+    pub fn new(token: mio::Token) -> Self {
+        Self::Receiving(token)
+    }
+
+    fn is_receiving(&self) -> bool {
+        match self {
+            Self::Receiving(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -95,183 +109,120 @@ impl RecvConnectionMessageAction {
 }
 
 impl PureAction for RecvConnectionMessageAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxRecvConnectionMessage::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvConnectionMessage(_) => {
-                let result = match &self.result {
-                    Ok(bytes) => match ConnectionMessage::from_bytes(bytes) {
-                        Ok(msg) => Ok(msg),
-                        _ => Err(()),
-                    },
-                    _ => Err(()),
-                };
-                drop(transactions);
-                RecvConnectionMessageCompleteAction::new(self.tx_id, result).dispatch_pure(state)
-            }
-            _ => panic!("RecvConnectionMessageAction reducer: Invalid Transaction type"),
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_receiving());
+            tx_state.set(TxRecvConnectionMessage::Completed(self.result.clone()));
+            //drop(transaction);
+            //drop(transactions);
+            CompleteTransactionAction::<TxRecvConnectionMessage>::new(self.tx_id)
+                .dispatch_pure(state);
         }
-    }
-}
-
-pub struct RecvConnectionMessageCompleteAction {
-    tx_id: u64,
-    result: Result<ConnectionMessage, ()>,
-}
-
-impl RecvConnectionMessageCompleteAction {
-    pub fn new(tx_id: u64, result: Result<ConnectionMessage, ()>) -> Self {
-        Self { tx_id, result }
-    }
-}
-
-impl PureAction for RecvConnectionMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
-
-        match transaction.tx_type_mut() {
-            TransactionType::TxRecvConnectionMessage(tx_state) => {
-                let parent_tx_id = tx_state.parent_tx;
-                let result = match self.result {
-                    Ok(_) => RecvDataResult::Success,
-                    _ => RecvDataResult::Error,
-                };
-                tx_state.result = Some(result);
-                tx_state.stage.set_stage(RecvConnectionMessageStage::Finish);
-
-                let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-                match parent_transaction.tx_type() {
-                    TransactionType::TxHandshake(_) => {
-                        drop(transactions);
-                        HandshakeRecvConnectionMessageAction::new(parent_tx_id, self.result.clone()).dispatch_pure(state);
-                    },
-                    _ => panic!("RecvConnectionMessageCompleteAction reducer: unknown parent transaction type")
-                }
-
-                CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-            }
-            _ => panic!("RecvConnectionMessageCompleteAction reducer: Invalid Transaction type"),
-        }
-    }
-}
-
-#[derive(PartialEq, Clone)]
-pub enum SendConnectionMessageStage {
-    Transmitting,
-    Finish,
-}
-
-impl TransactionStage for SendConnectionMessageStage {
-    fn is_stage_enabled(&self, stage: &Self) -> bool {
-        let mut enabled_stages = match self {
-            Self::Transmitting => [Self::Finish].iter(),
-            Self::Finish => [].iter(),
-        };
-
-        enabled_stages.any(|s| *s == *stage)
     }
 }
 
 #[derive(Clone)]
-pub struct TxSendConnectionMessage {
-    stage: SendConnectionMessageStage,
-    result: Option<SendDataResult>,
-    parent_tx: u64,
-    token: mio::Token,
-    bytes_to_send: Vec<u8>,
+pub enum TxSendConnectionMessage {
+    Transmitting(mio::Token, Vec<u8>),
+    Completed(Result<(), ()>),
 }
 
-impl TxSendConnectionMessage {
-    pub fn try_new(parent_tx: u64, token: mio::Token, msg: ConnectionMessage) -> Result<Self, ()> {
-        if let Ok(bytes_to_send) = msg.as_bytes() {
-            return Ok(Self {
-                stage: SendConnectionMessageStage::Transmitting,
-                result: None,
-                parent_tx,
-                token,
-                bytes_to_send,
-            });
-        }
-
-        return Err(());
-    }
-
-    fn init_reducer(tx_id: u64, state: &mut GlobalState) {
-        let transactions = state.transactions();
-        let transaction = transactions.get(&tx_id).unwrap();
-
-        if let TransactionType::TxSendConnectionMessage(tx_state) = transaction.tx_type() {
-            let token = tx_state.token.clone();
-            let bytes_to_send = tx_state.bytes_to_send.clone();
-
-            drop(transactions);
-            // TODO: handle errors properly
-            let send_chunk = TxSendChunk::try_new(tx_id, token, bytes_to_send).unwrap();
-            // ConnectionMessage fits in a single chunk
-            CreateTransactionAction::new(&[], &[], send_chunk.into()).dispatch_pure(state);
-        } else {
-            panic!("TxSendConnectionMessage init_reducer: Invalid Transaction type")
+impl TransactionStage for TxSendConnectionMessage {
+    fn is_enabled(&self, next_stage: &Self) -> bool {
+        match self {
+            Self::Transmitting(..) => next_stage.is_completed(),
+            _ => false,
         }
     }
 
-    fn commit_reducer(_tx_id: u64, _state: &mut GlobalState) {}
+    fn is_completed(&self) -> bool {
+        match self {
+            Self::Completed(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Transaction for TxSendConnectionMessage {
-    fn init_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::init_reducer
+    fn init(&mut self, tx_id: u64, state: &GlobalState) {
+        match self {
+            TxSendConnectionMessage::Transmitting(token, bytes_to_send) => {
+                CreateTransactionAction::new(
+                    0,
+                    0,
+                    TxSendChunk::try_new(token.clone(), bytes_to_send.clone()).unwrap(),
+                    Some(ParentInfo {
+                        tx_id,
+                        tx_type: TransactionType::TxSendConnectionMessage,
+                    }),
+                )
+                .dispatch_pure(state);
+            }
+            _ => panic!("Invalid intitial state"),
+        }
     }
 
-    fn commit_reducer_fn(&self) -> fn(u64, &mut GlobalState) {
-        Self::commit_reducer
+    fn commit(&self, _tx_id: u64, parent: Option<ParentInfo>, state: &GlobalState) {
+        assert!(self.is_completed() && parent.is_some());
+
+        if let TxSendConnectionMessage::Completed(result) = self {
+            if let Some(ParentInfo { tx_id, tx_type }) = parent {
+                match tx_type {
+                    TransactionType::TxHandshake => {
+                        HandshakeSendConnectionMessageCompleteAction::new(tx_id, result.clone())
+                            .dispatch_pure(state);
+                    }
+                    _ => panic!("Unhandled parent transaction type"),
+                }
+            }
+        }
+    }
+
+    fn cancel(&self, _tx_id: u64, _parent: Option<ParentInfo>, _state: &GlobalState) {}
+}
+
+impl TxSendConnectionMessage {
+    pub fn try_new(token: mio::Token, msg: ConnectionMessage) -> Result<Self, BinaryWriterError> {
+        let bytes_to_send = msg.as_bytes()?;
+        Ok(Self::Transmitting(token, bytes_to_send))
+    }
+
+    fn is_transmitting(&self) -> bool {
+        match self {
+            Self::Transmitting(..) => true,
+            _ => false,
+        }
     }
 }
 
 pub struct SendConnectionMessageCompleteAction {
     tx_id: u64,
-    result: SendDataResult,
+    result: Result<(), ()>,
 }
 
 impl SendConnectionMessageCompleteAction {
-    pub fn new(tx_id: u64, result: SendDataResult) -> Self {
+    pub fn new(tx_id: u64, result: Result<(), ()>) -> Self {
         Self { tx_id, result }
     }
 }
 
 impl PureAction for SendConnectionMessageCompleteAction {
-    fn reducer(&self, state: &mut GlobalState) {
-        let mut transactions = state.transactions_mut();
-        let transaction = transactions.get_mut(&self.tx_id).unwrap();
+    fn reducer(&self, state: &GlobalState) {
+        let transactions = state.transactions.borrow();
+        let mut transaction = TxSendConnectionMessage::get(&transactions, self.tx_id).borrow_mut();
+        assert!(transaction.is_pending());
 
-        match transaction.tx_type_mut() {
-            TransactionType::TxSendConnectionMessage(tx_state) => match tx_state.stage {
-                SendConnectionMessageStage::Transmitting => {
-                    let parent_tx_id = tx_state.parent_tx;
-                    tx_state.result = Some(self.result.clone());
-                    tx_state.stage.set_stage(SendConnectionMessageStage::Finish);
-
-                    let parent_transaction = transactions.get(&parent_tx_id).unwrap();
-
-                    match parent_transaction.tx_type() {
-                            TransactionType::TxHandshake(_) => {
-                                drop(transactions);
-                                HandshakeSendConnectionMessageCompleteAction::new(parent_tx_id, self.result.clone())
-                                .dispatch_pure(state)
-                            },
-                            _ => panic!("SendConnectionMessageCompleteAction reducer: unknown parent transaction type")
-                        }
-
-                    CompleteTransactionAction::new(self.tx_id).dispatch_pure(state);
-                }
-                SendConnectionMessageStage::Finish => {
-                    panic!("SendConnectionMessageCompleteAction reducer: called at invalid stage")
-                }
-            },
-            _ => panic!("SendConnectionMessageCompleteAction reducer: Invalid Transaction type"),
+        if let TransactionState::Pending(tx_state) = &mut transaction.state {
+            assert!(tx_state.is_transmitting());
+            tx_state.set(TxSendConnectionMessage::Completed(self.result));
+            //drop(transaction);
+            //drop(transactions);
+            CompleteTransactionAction::<TxSendConnectionMessage>::new(self.tx_id)
+                .dispatch_pure(state);
         }
     }
 }
