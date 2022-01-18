@@ -12,7 +12,7 @@ use crypto::hash::{BlockHash, ChainId};
 use crate::request::RequestId;
 use crate::{EnablingCondition, State};
 
-use super::BlockApplierApplyState;
+use super::{BlockApplierApplyError, BlockApplierApplyState};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierEnqueueBlockAction {
@@ -122,6 +122,22 @@ impl EnablingCondition<State> for BlockApplierApplyStoreApplyResultSuccessAction
     fn is_enabled(&self, state: &State) -> bool {
         match &state.block_applier.current {
             BlockApplierApplyState::StoreApplyResultPending { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockApplierApplyErrorAction {
+    pub error: BlockApplierApplyError,
+}
+
+impl EnablingCondition<State> for BlockApplierApplyErrorAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.block_applier.current {
+            BlockApplierApplyState::PrepareDataPending { .. }
+            | BlockApplierApplyState::ProtocolRunnerApplyPending { .. }
+            | BlockApplierApplyState::StoreApplyResultPending { .. } => true,
             _ => false,
         }
     }

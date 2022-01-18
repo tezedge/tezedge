@@ -10,8 +10,9 @@ use crate::storage::request::StorageRequestCreateAction;
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BlockApplierApplyInitAction, BlockApplierApplyPrepareDataPendingAction,
-    BlockApplierApplyPrepareDataSuccessAction, BlockApplierApplyProtocolRunnerApplyPendingAction,
+    BlockApplierApplyError, BlockApplierApplyErrorAction, BlockApplierApplyInitAction,
+    BlockApplierApplyPrepareDataPendingAction, BlockApplierApplyPrepareDataSuccessAction,
+    BlockApplierApplyProtocolRunnerApplyPendingAction,
     BlockApplierApplyProtocolRunnerApplySuccessAction, BlockApplierApplyState,
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction,
@@ -65,7 +66,9 @@ where
                     });
                 }
                 Err(StorageResponseError::PrepareApplyBlockDataError(err)) => {
-                    todo!("handle error {:?}", err);
+                    store.dispatch(BlockApplierApplyErrorAction {
+                        error: BlockApplierApplyError::PrepareData(err.clone()),
+                    });
                 }
                 Ok(StorageResponseSuccess::StoreApplyBlockResultSuccess(data)) => {
                     store.dispatch(BlockApplierApplyStoreApplyResultSuccessAction {
@@ -73,7 +76,9 @@ where
                     });
                 }
                 Err(StorageResponseError::StoreApplyBlockResultError(err)) => {
-                    todo!("handle error {:?}", err);
+                    store.dispatch(BlockApplierApplyErrorAction {
+                        error: BlockApplierApplyError::StoreApplyResult(err.clone()),
+                    });
                 }
                 _ => return,
             }
@@ -97,7 +102,9 @@ where
                 Ok(result) => store.dispatch(BlockApplierApplyProtocolRunnerApplySuccessAction {
                     apply_result: result.clone().into(),
                 }),
-                Err(err) => todo!("handle apply block error: {:?}", err),
+                Err(err) => store.dispatch(BlockApplierApplyErrorAction {
+                    error: BlockApplierApplyError::ProtocolRunnerApply(err.clone()),
+                }),
             };
         }
         Action::BlockApplierApplyProtocolRunnerApplySuccess(_) => {

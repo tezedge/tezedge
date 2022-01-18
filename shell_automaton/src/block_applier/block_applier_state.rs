@@ -1,14 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+
+use crypto::hash::{BlockHash, ChainId};
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
-
-use crypto::hash::{BlockHash, ChainId};
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
@@ -17,9 +19,8 @@ use crate::Config;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BlockApplierApplyError {
     PrepareData(StorageError),
-    BlockHeaderNotFound,
-    PredecessorBlockHeaderGet(StorageError),
-    PredecessorBlockHeaderNotFound,
+    ProtocolRunnerApply(ProtocolServiceError),
+    StoreApplyResult(StorageError),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -102,6 +103,48 @@ pub enum BlockApplierApplyState {
         block_additional_data: Arc<BlockAdditionalData>,
         apply_result: Arc<ApplyBlockResponse>,
     },
+}
+
+impl BlockApplierApplyState {
+    #[inline(always)]
+    pub fn chain_id(&self) -> Option<&Arc<ChainId>> {
+        match self {
+            Self::Idle { .. } => None,
+            Self::Init { chain_id, .. } => Some(chain_id),
+
+            Self::PrepareDataPending { chain_id, .. } => Some(chain_id),
+            Self::PrepareDataSuccess { chain_id, .. } => Some(chain_id),
+
+            Self::ProtocolRunnerApplyPending { chain_id, .. } => Some(chain_id),
+            Self::ProtocolRunnerApplySuccess { chain_id, .. } => Some(chain_id),
+
+            Self::StoreApplyResultPending { chain_id, .. } => Some(chain_id),
+            Self::StoreApplyResultSuccess { chain_id, .. } => Some(chain_id),
+
+            Self::Error { chain_id, .. } => Some(chain_id),
+            Self::Success { chain_id, .. } => Some(chain_id),
+        }
+    }
+
+    #[inline(always)]
+    pub fn block_hash(&self) -> Option<&BlockHash> {
+        match self {
+            Self::Idle { .. } => None,
+            Self::Init { block_hash, .. } => Some(block_hash),
+
+            Self::PrepareDataPending { block_hash, .. } => Some(block_hash),
+            Self::PrepareDataSuccess { block, .. } => Some(&block.hash),
+
+            Self::ProtocolRunnerApplyPending { block, .. } => Some(&block.hash),
+            Self::ProtocolRunnerApplySuccess { block, .. } => Some(&block.hash),
+
+            Self::StoreApplyResultPending { block, .. } => Some(&block.hash),
+            Self::StoreApplyResultSuccess { block, .. } => Some(&block.hash),
+
+            Self::Error { block_hash, .. } => Some(block_hash),
+            Self::Success { block, .. } => Some(&block.hash),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
