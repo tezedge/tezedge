@@ -253,18 +253,8 @@ pub(crate) async fn check_and_get_baking_rights(
         )
         .await
         .map_err(RightsError::from),
-        SupportedProtocol::Proto012 => proto_012::rights_service::check_and_get_baking_rights(
-            context_proto_params,
-            level,
-            delegate,
-            cycle,
-            max_priority,
-            has_all,
-            &cycle_meta_storage,
-            env,
-        )
-        .await
-        .map_err(RightsError::from),
+        // TODO: reimplement in Rust
+        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError { protocol: "".into() }),
     }
 }
 
@@ -434,17 +424,8 @@ pub(crate) async fn check_and_get_endorsing_rights(
         )
         .await
         .map_err(RightsError::from),
-        SupportedProtocol::Proto012 => proto_012::rights_service::check_and_get_endorsing_rights(
-            context_proto_params,
-            level,
-            delegate,
-            cycle,
-            has_all,
-            &cycle_meta_storage,
-            env,
-        )
-        .await
-        .map_err(RightsError::from),
+        // TODO: reimplement in rust
+        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError { protocol: "".into() }),
     }
 }
 
