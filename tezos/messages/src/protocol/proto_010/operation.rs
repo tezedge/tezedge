@@ -17,7 +17,7 @@ pub use super::super::proto_009::operation::{
 
 use std::convert::TryFrom;
 
-use crypto::hash::{HashBase58, HashTrait};
+use crypto::hash::{BlockHash, ContextHash, HashTrait, OperationListListHash, Signature};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::{encoding::HasEncoding, nom::NomReader};
 
@@ -26,11 +26,6 @@ use crate::p2p::encoding::{
     limits::BLOCK_HEADER_FITNESS_MAX_SIZE,
     operation::Operation as P2POperation,
 };
-
-type BlockHash = HashBase58<crypto::hash::BlockHash>;
-type Signature = HashBase58<crypto::hash::Signature>;
-type ContextHash = HashBase58<crypto::hash::ContextHash>;
-type OperationListListHash = HashBase58<crypto::hash::OperationListListHash>;
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
@@ -83,7 +78,7 @@ impl TryFrom<P2POperation> for Operation {
             signature,
         } = OperationContents::from_bytes(operation.data())?;
         Ok(Operation {
-            branch: HashBase58(branch),
+            branch,
             contents,
             signature,
         })

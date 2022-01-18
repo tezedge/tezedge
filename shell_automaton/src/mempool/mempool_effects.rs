@@ -80,7 +80,7 @@ where
                 .mempool
                 .local_head_state
                 .as_ref()
-                .map(|h| h.hash.eq(&key.0))
+                .map(|h| h.hash.eq(key))
                 .unwrap_or(false)
             {
                 let operation_hashes = value
@@ -580,8 +580,8 @@ where
                     .ops
                     .iter()
                     .filter_map(|(hash, _)| {
-                        if !peer.seen_operations.contains(&hash.0) {
-                            Some(hash.0.clone())
+                        if !peer.seen_operations.contains(hash) {
+                            Some(hash.clone())
                         } else {
                             None
                         }
@@ -596,9 +596,9 @@ where
                     .pending_operations
                     .iter()
                     .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(&hash.0) && head_state.hash.eq(op.branch())
+                        !peer.seen_operations.contains(hash) && head_state.hash.eq(op.branch())
                     })
-                    .map(|(hash, _)| hash.0.clone())
+                    .map(|(hash, _)| hash.clone())
                     .collect::<Vec<_>>()
             } else {
                 vec![]
