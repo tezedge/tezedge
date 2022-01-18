@@ -754,7 +754,7 @@ pub async fn describe(
         // TODO: same reasoning as above
         if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()) {
             &Method::POST
-        } else if path.contains(&"storage".to_string()) {
+        } else if path.contains(&"storage".to_string()) || path.contains(&"round".to_string()) || path.contains(&"delegates".to_string()) {
             &Method::GET
         } else {
             allowed_methods.iter().next().unwrap()
