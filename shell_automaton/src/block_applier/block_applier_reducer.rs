@@ -156,6 +156,22 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                 _ => return,
             };
         }
+        Action::BlockApplierApplyError(content) => {
+            let chain_id = match state.block_applier.current.chain_id() {
+                Some(v) => v.clone(),
+                None => return,
+            };
+            let block_hash = match state.block_applier.current.block_hash() {
+                Some(v) => v.clone().into(),
+                None => return,
+            };
+
+            state.block_applier.current = BlockApplierApplyState::Error {
+                error: content.error.clone(),
+                chain_id,
+                block_hash,
+            };
+        }
         Action::BlockApplierApplySuccess(_) => {
             match &state.block_applier.current {
                 BlockApplierApplyState::StoreApplyResultSuccess {

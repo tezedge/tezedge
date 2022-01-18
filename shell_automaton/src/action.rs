@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
 use crate::block_applier::{
-    BlockApplierApplyInitAction, BlockApplierApplyPrepareDataPendingAction,
-    BlockApplierApplyPrepareDataSuccessAction, BlockApplierApplyProtocolRunnerApplyPendingAction,
+    BlockApplierApplyErrorAction, BlockApplierApplyInitAction,
+    BlockApplierApplyPrepareDataPendingAction, BlockApplierApplyPrepareDataSuccessAction,
+    BlockApplierApplyProtocolRunnerApplyPendingAction,
     BlockApplierApplyProtocolRunnerApplySuccessAction,
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction, BlockApplierEnqueueBlockAction,
@@ -250,6 +251,7 @@ pub enum Action {
     BlockApplierApplyStoreApplyResultPending(BlockApplierApplyStoreApplyResultPendingAction),
     BlockApplierApplyStoreApplyResultSuccess(BlockApplierApplyStoreApplyResultSuccessAction),
 
+    BlockApplierApplyError(BlockApplierApplyErrorAction),
     BlockApplierApplySuccess(BlockApplierApplySuccessAction),
 
     PeersDnsLookupInit(PeersDnsLookupInitAction),
