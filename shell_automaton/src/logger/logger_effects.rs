@@ -70,7 +70,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
         Action::PeersCheckTimeoutsSuccess(content) => {
             if !content.peer_timeouts.is_empty() {
                 slog::warn!(log, "Peers timed out";
-                    "timeouts" => format!("{:#?}", content.peer_timeouts));
+                    "timeouts" => format!("{:?}", content.peer_timeouts));
             }
         }
 

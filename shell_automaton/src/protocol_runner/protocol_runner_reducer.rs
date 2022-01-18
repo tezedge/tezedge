@@ -21,6 +21,12 @@ pub fn protocol_runner_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             .into();
         }
+        Action::ProtocolRunnerShutdownPending(_) => {
+            state.protocol_runner = ProtocolRunnerState::ShutdownPending;
+        }
+        Action::ProtocolRunnerShutdownSuccess(_) => {
+            state.protocol_runner = ProtocolRunnerState::ShutdownSuccess;
+        }
         _ => {}
     }
 }

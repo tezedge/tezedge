@@ -78,3 +78,39 @@ impl EnablingCondition<State> for ProtocolRunnerNotifyStatusAction {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolRunnerShutdownInitAction {}
+
+impl EnablingCondition<State> for ProtocolRunnerShutdownInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.protocol_runner {
+            ProtocolRunnerState::ShutdownPending | ProtocolRunnerState::ShutdownSuccess => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolRunnerShutdownPendingAction {}
+
+impl EnablingCondition<State> for ProtocolRunnerShutdownPendingAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.protocol_runner {
+            ProtocolRunnerState::ShutdownPending | ProtocolRunnerState::ShutdownSuccess => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolRunnerShutdownSuccessAction {}
+
+impl EnablingCondition<State> for ProtocolRunnerShutdownSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.protocol_runner {
+            ProtocolRunnerState::ShutdownPending => true,
+            _ => false,
+        }
+    }
+}

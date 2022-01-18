@@ -303,18 +303,13 @@ fn block_on_actors(
         }
 
         info!(log, "Shutting down shell automaton (1/9)");
+        shell_automaton_manager.shutdown_and_wait();
         drop(shell_automaton_manager);
 
         info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
 
         info!(log, "Shutting down of thread workers starting (3/9)");
-        // TODO(zura): gracefull shutdown.
-        // if let Err(e) = block_applier_thread_watcher.stop() {
-        //     warn!(log, "Failed to stop thread watcher";
-        //                "thread_name" => block_applier_thread_watcher.thread_name(),
-        //                "reason" => format!("{}", e));
-        // }
         if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
@@ -344,10 +339,6 @@ fn block_on_actors(
             }
         }
         info!(log, "Thread workers stopped");
-
-        // info!(log, "Shutting down protocol runners (7/9)");
-        // tezos_protocol_api.shutdown().await;
-        // debug!(log, "Protocol runners completed");
 
         info!(log, "Flushing databases (8/9)");
         drop(persistent_storage);
@@ -383,7 +374,6 @@ fn schedule_replay_blocks(
         let result_callback = result_callback_sender.clone();
 
         let now = std::time::Instant::now();
-        let chain_id = chain_id.clone();
         let chain_manager = chain_manager.clone();
 
         let _ =
@@ -395,15 +385,9 @@ fn schedule_replay_blocks(
                     callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
                         let res = result.as_ref().map(|_| ()).map_err(|_| ());
 
-                        if let Ok((_, block, result)) = result {
+                        if let Ok((chain_id, block)) = result {
                             chain_manager.tell(
-                                ProcessValidatedBlock::new(
-                                    block,
-                                    chain_id,
-                                    result.block_metadata_hash.clone(),
-                                    result.ops_metadata_hash.clone(),
-                                    Instant::now(),
-                                ),
+                                ProcessValidatedBlock::new(block, chain_id, Instant::now()),
                                 None,
                             );
                         }
@@ -423,13 +407,13 @@ fn schedule_replay_blocks(
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
         if result.as_ref().is_err() {
-            replay_shutdown(&log, shell_channel);
+            replay_shutdown(&log, shell_channel, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
                 index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
-            replay_shutdown(&log, shell_channel);
+            replay_shutdown(&log, shell_channel, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
                 index, percent, hash, time, fail_above, result
@@ -454,11 +438,15 @@ fn schedule_replay_blocks(
         now.elapsed()
     );
 
-    replay_shutdown(&log, shell_channel);
+    replay_shutdown(&log, shell_channel, shell_automaton_manager);
 }
 
 // TODO(zura):
-fn replay_shutdown(_: &Logger, shell_channel: ShellChannelRef) {
+fn replay_shutdown(
+    _: &Logger,
+    shell_channel: ShellChannelRef,
+    mut shell_automaton_manager: ShellAutomatonManager,
+) {
     shell_channel.tell(
         Publish {
             msg: ShuttingDown.into(),
@@ -467,10 +455,10 @@ fn replay_shutdown(_: &Logger, shell_channel: ShellChannelRef) {
         None,
     );
 
+    shell_automaton_manager.shutdown_and_wait();
+
     // give actors some time to shut down
     std::thread::sleep(Duration::from_secs(2));
-
-    // TODO(zura): graceful shutdown.
 }
 
 fn collect_replayed_blocks(

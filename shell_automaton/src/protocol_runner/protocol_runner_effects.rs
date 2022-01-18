@@ -24,7 +24,8 @@ use super::init::ProtocolRunnerInitAction;
 use super::spawn_server::ProtocolRunnerSpawnServerInitAction;
 use super::{
     ProtocolRunnerNotifyStatusAction, ProtocolRunnerReadyAction,
-    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerState,
+    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerShutdownPendingAction,
+    ProtocolRunnerShutdownSuccessAction, ProtocolRunnerState,
 };
 
 pub fn protocol_runner_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -61,6 +62,20 @@ where
             // TODO: notify failure too.
             store.service.protocol_runner().notify_status(true);
         }
+        Action::ProtocolRunnerShutdownInit(_) => {
+            store.service.protocol_runner().notify_status(false);
+            match &store.state().protocol_runner {
+                ProtocolRunnerState::Idle | ProtocolRunnerState::SpawnServer(_) => {
+                    store.dispatch(ProtocolRunnerShutdownSuccessAction {});
+                    return;
+                }
+                ProtocolRunnerState::ShutdownPending => return,
+                _ => {}
+            };
+
+            store.service.protocol_runner().shutdown();
+            store.dispatch(ProtocolRunnerShutdownPendingAction {});
+        }
         Action::WakeupEvent(_) => {
             while let Ok(result) = store.service.protocol_runner().try_recv() {
                 let init_state = match &store.state().protocol_runner {
@@ -91,6 +106,23 @@ where
                     }
                     ProtocolRunnerState::Ready(_) => {
                         store.dispatch(ProtocolRunnerResponseAction { result });
+                        continue;
+                    }
+                    ProtocolRunnerState::ShutdownPending => {
+                        if let ProtocolRunnerResult::Shutdown(result) = result {
+                            if let Err(err) = result {
+                                slog::warn!(&store.state().log, "protocol runner shutdown failed";
+                                    "error" => format!("{:?}", err));
+                            }
+                            store.dispatch(ProtocolRunnerShutdownSuccessAction {});
+                        } else {
+                            store.dispatch(ProtocolRunnerResponseAction { result });
+                        }
+                        continue;
+                    }
+                    ProtocolRunnerState::ShutdownSuccess => {
+                        slog::warn!(&store.state().log, "message received from protocol runner after shutdown";
+                            "message" => format!("{:?}", result));
                         continue;
                     }
                 };

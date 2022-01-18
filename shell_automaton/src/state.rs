@@ -3,9 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
-use tezos_messages::p2p::encoding::block_header::Level;
 
 use ::storage::persistent::SchemaError;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
 use crate::config::Config;
@@ -16,6 +16,7 @@ use crate::peers::PeersState;
 use crate::prechecker::PrecheckerState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::rights::RightsState;
+use crate::shutdown::ShutdownState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
@@ -66,6 +67,8 @@ pub struct State {
     pub prev_action: ActionIdWithKind,
     pub last_action: ActionIdWithKind,
     pub applied_actions_count: u64,
+
+    pub shutdown: ShutdownState,
 }
 
 impl State {
@@ -99,6 +102,8 @@ impl State {
                 kind: ActionKind::Init,
             },
             applied_actions_count: 0,
+
+            shutdown: ShutdownState::new(),
         }
     }
 
@@ -181,6 +186,11 @@ impl State {
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
+    /// If shutdown was initiated and finished or not.
+    pub fn is_shutdown(&self) -> bool {
+        matches!(self.shutdown, ShutdownState::Success { .. })
     }
 }
 

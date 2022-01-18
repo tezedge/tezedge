@@ -7,6 +7,7 @@ use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
+use crate::shutdown::shutdown_effects;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_effects;
 use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_effects;
 use crate::{Action, ActionId, ActionWithMeta, Store};
@@ -171,4 +172,6 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_cycle_eras_effects(store, action);
     kv_cycle_meta_effects(store, action);
     kv_operations_effects(store, action);
+
+    shutdown_effects(store, action);
 }

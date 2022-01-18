@@ -60,6 +60,8 @@ pub enum ProtocolRunnerResult {
             Result<ApplyBlockResponse, ProtocolServiceError>,
         ),
     ),
+
+    Shutdown(Result<(), ProtocolServiceError>),
 }
 
 impl ProtocolRunnerResult {
@@ -71,6 +73,7 @@ impl ProtocolRunnerResult {
             Self::InitContextIpcServer((token, _)) => Some(*token),
             Self::GenesisCommitResultGet((token, _)) => Some(*token),
             Self::ApplyBlock((token, _)) => Some(*token),
+            Self::Shutdown(_) => None,
         }
     }
 }
@@ -114,6 +117,8 @@ pub trait ProtocolRunnerService {
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, initialized: bool);
+
+    fn shutdown(&mut self);
 }
 
 pub struct ProtocolRunnerServiceDefault {
@@ -159,6 +164,10 @@ impl ProtocolRunnerServiceDefault {
                     .send(ProtocolRunnerResult::ApplyBlock((token, res)))
                     .await;
             }
+            ProtocolMessage::ShutdownCall => {
+                let res = conn.shutdown().await;
+                let _ = channel.send(ProtocolRunnerResult::Shutdown(res)).await;
+            }
             _ => unimplemented!(),
         }
     }
@@ -198,6 +207,9 @@ impl ProtocolRunnerServiceDefault {
                                 }
                                 ProtocolMessage::ApplyBlockCall(_) => {
                                     ProtocolRunnerResult::ApplyBlock((token, Err(err.into())))
+                                }
+                                ProtocolMessage::ShutdownCall => {
+                                    ProtocolRunnerResult::Shutdown(Err(err.into()))
                                 }
                                 _ => unimplemented!(),
                             })
@@ -330,5 +342,13 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
 
     fn notify_status(&mut self, initialized: bool) {
         let _ = self.status_sender.send(initialized);
+    }
+
+    fn shutdown(&mut self) {
+        let token = self.new_token();
+        let message = ProtocolMessage::ShutdownCall;
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
     }
 }

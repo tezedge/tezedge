@@ -6,6 +6,7 @@ use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
+use crate::shutdown::ShutdownInitAction;
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -14,7 +15,7 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             while let Ok(msg) = store.service.actors().try_recv() {
                 match msg {
                     ActorsMessageFrom::Shutdown => {
-                        // TODO
+                        store.dispatch(ShutdownInitAction {});
                     }
                     ActorsMessageFrom::PeerStalled(peer_id) => {
                         store.dispatch(PeersGraylistAddressAction {

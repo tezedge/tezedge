@@ -22,9 +22,7 @@ use itertools::{Itertools, MinMaxResult};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, CryptoboxPublicKeyHash, OperationMetadataListListHash,
-};
+use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash};
 use crypto::seeded_step::Seed;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::PeerId;
@@ -102,8 +100,6 @@ pub struct AskPeersAboutCurrentHead {
 pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
-    block_metadata_hash: Option<BlockMetadataHash>,
-    ops_metadata_hash: Option<OperationMetadataListListHash>,
     result_roundtrip_timer: Arc<Instant>,
 }
 
@@ -111,15 +107,11 @@ impl ProcessValidatedBlock {
     pub fn new(
         block: Arc<BlockHeaderWithHash>,
         chain_id: Arc<ChainId>,
-        block_metadata_hash: Option<BlockMetadataHash>,
-        ops_metadata_hash: Option<OperationMetadataListListHash>,
         result_roundtrip_timer: Instant,
     ) -> Self {
         Self {
             block,
             chain_id,
-            block_metadata_hash,
-            ops_metadata_hash,
             result_roundtrip_timer: Arc::new(result_roundtrip_timer),
         }
     }

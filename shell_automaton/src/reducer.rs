@@ -41,6 +41,7 @@ use crate::protocol_runner::init::runtime::protocol_runner_init_runtime_reducer;
 use crate::protocol_runner::protocol_runner_reducer;
 use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_reducer;
 
+use crate::shutdown::shutdown_reducer;
 use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_reducer;
 use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_reducer;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_reducer;
@@ -124,6 +125,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         kv_cycle_eras_reducer,
         kv_cycle_meta_reducer,
         kv_operations_reducer,
+        shutdown_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer
