@@ -89,7 +89,9 @@ use crate::protocol_runner::spawn_server::{
 };
 use crate::protocol_runner::{
     ProtocolRunnerNotifyStatusAction, ProtocolRunnerReadyAction, ProtocolRunnerResponseAction,
-    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerStartAction,
+    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerShutdownInitAction,
+    ProtocolRunnerShutdownPendingAction, ProtocolRunnerShutdownSuccessAction,
+    ProtocolRunnerStartAction,
 };
 
 use crate::storage::blocks::genesis::check_applied::{
@@ -135,6 +137,8 @@ use crate::storage::{
     kv_block_additional_data, kv_block_header, kv_block_meta, kv_constants, kv_cycle_eras,
     kv_cycle_meta, kv_operations,
 };
+
+use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
 pub use redux_rs::{ActionId, EnablingCondition};
 
@@ -523,6 +527,14 @@ pub enum Action {
     ),
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    ShutdownInit(ShutdownInitAction),
+    ShutdownPending(ShutdownPendingAction),
+    ShutdownSuccess(ShutdownSuccessAction),
+
+    ProtocolRunnerShutdownInit(ProtocolRunnerShutdownInitAction),
+    ProtocolRunnerShutdownPending(ProtocolRunnerShutdownPendingAction),
+    ProtocolRunnerShutdownSuccess(ProtocolRunnerShutdownSuccessAction),
 }
 
 impl Action {

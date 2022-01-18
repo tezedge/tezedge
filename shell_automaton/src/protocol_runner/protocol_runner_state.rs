@@ -26,4 +26,7 @@ pub enum ProtocolRunnerState {
 
     #[from]
     Ready(ProtocolRunnerReadyState),
+
+    ShutdownPending,
+    ShutdownSuccess,
 }

@@ -74,4 +74,6 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, _: bool) {}
+
+    fn shutdown(&mut self) {}
 }

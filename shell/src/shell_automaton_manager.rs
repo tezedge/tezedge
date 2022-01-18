@@ -247,7 +247,7 @@ impl ShellAutomatonManager {
                 .spawn(move || {
                     shell_automaton.init(bootstrap_addresses);
 
-                    loop {
+                    while !shell_automaton.is_shutdown() {
                         shell_automaton.make_progress();
                     }
                 })
@@ -261,6 +261,23 @@ impl ShellAutomatonManager {
 
     pub fn shell_automaton_sender(&self) -> ShellAutomatonSender {
         self.shell_automaton_sender.clone()
+    }
+
+    pub fn send_shutdown_signal(&self) {
+        let _ = self
+            .shell_automaton_sender
+            .send(ShellAutomatonMsg::Shutdown);
+    }
+
+    pub fn shutdown_and_wait(&mut self) {
+        self.send_shutdown_signal();
+
+        match self.shell_automaton_thread_handle.take() {
+            Some(ShellAutomatonThreadHandle::Running(th)) => {
+                th.join().unwrap();
+            }
+            _ => return,
+        }
     }
 }
 

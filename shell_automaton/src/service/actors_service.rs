@@ -12,21 +12,13 @@ use networking::network_channel::{
 };
 use storage::BlockHeaderWithHash;
 use tezedge_actor_system::actors::*;
-use tezos_api::ffi::ApplyBlockResponse;
 use tezos_messages::p2p::encoding::prelude::{
     MetadataMessage, NetworkVersion, PeerMessageResponse,
 };
 
 use crate::peer::PeerId;
 
-pub type ApplyBlockResult = Result<
-    (
-        Arc<ChainId>,
-        Arc<BlockHeaderWithHash>,
-        Arc<ApplyBlockResponse>,
-    ),
-    (),
->;
+pub type ApplyBlockResult = Result<(Arc<ChainId>, Arc<BlockHeaderWithHash>), ()>;
 
 pub trait ActorsService {
     /// Send message to actors.

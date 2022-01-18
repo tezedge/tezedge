@@ -61,6 +61,8 @@ pub mod rights;
 
 pub mod prechecker;
 
+pub mod shutdown;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};
@@ -88,6 +90,10 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         Self { events, store }
     }
 
+    pub fn store(&self) -> &Store<Serv> {
+        &self.store
+    }
+
     pub fn init<P>(&mut self, peers_dns_lookup_addrs: P)
     where
         P: IntoIterator<Item = (String, Port)>,
@@ -113,6 +119,11 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         }
         self.store
             .dispatch(PeerConnectionOutgoingRandomInitAction {});
+    }
+
+    #[inline(always)]
+    pub fn is_shutdown(&self) -> bool {
+        self.store.state().is_shutdown()
     }
 }
 

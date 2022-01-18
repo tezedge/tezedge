@@ -416,15 +416,9 @@ impl DataRequester {
             callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
                 let result_callback_send = move |res| result_callback.map(|cb| cb.send(res));
                 match result {
-                    Ok((chain_id, block, result)) => {
+                    Ok((chain_id, block)) => {
                         chain_manager.tell(
-                            ProcessValidatedBlock::new(
-                                block,
-                                chain_id,
-                                result.block_metadata_hash.clone(),
-                                result.ops_metadata_hash.clone(),
-                                Instant::now(),
-                            ),
+                            ProcessValidatedBlock::new(block, chain_id, Instant::now()),
                             None,
                         );
                         result_callback_send(Ok(()));
@@ -453,15 +447,9 @@ impl DataRequester {
             block_hash,
             callback: ApplyBlockCallback::from(move |block_hash, result: ApplyBlockResult| {
                 match result {
-                    Ok((chain_id, block, result)) => {
+                    Ok((chain_id, block)) => {
                         chain_manager.tell(
-                            ProcessValidatedBlock::new(
-                                block,
-                                chain_id,
-                                result.block_metadata_hash.clone(),
-                                result.ops_metadata_hash.clone(),
-                                Instant::now(),
-                            ),
+                            ProcessValidatedBlock::new(block, chain_id, Instant::now()),
                             None,
                         );
                         bootstrapper.tell(

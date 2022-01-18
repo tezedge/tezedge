@@ -136,14 +136,11 @@ where
         Action::BlockApplierApplySuccess(_) => {
             match &store.state.get().block_applier.current {
                 BlockApplierApplyState::Success {
-                    chain_id,
-                    block,
-                    apply_result,
-                    ..
+                    chain_id, block, ..
                 } => {
                     store.service.actors().call_apply_block_callback(
                         &block.hash,
-                        Ok((chain_id.clone(), block.clone(), apply_result.clone())),
+                        Ok((chain_id.clone(), block.clone())),
                     );
                 }
                 _ => return,
