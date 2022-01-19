@@ -48,3 +48,4 @@ tezos_protocol_ipc_messages = { path = "../tezos/protocol-ipc-messages" }
 
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
 once_cell = "1.8.0"
+ureq = "2.4.0"

@@ -18,6 +18,8 @@ rand = "0.7.3"
 sodiumoxide = "=0.2.6"
 serde = { version = "1.0", features = ["derive"] }
 
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
+
 [dev-dependencies]
 serde_json = "1.0"
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }

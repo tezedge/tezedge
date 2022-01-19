@@ -1,141 +1,95 @@
 #![cfg_attr(test, feature(no_coverage))]
-use fuzzcheck::builder::FuzzTestFunction;
-use serde::{Deserialize, Serialize};
 use fuzzcheck::{DefaultMutator, SerdeSerializer};
-use redux_rs::{ActionWithMeta, ActionId, SafetyCondition, EnablingCondition};
 use once_cell::sync::Lazy;
-use std::ops::{Deref, DerefMut};
-use std::sync::Mutex;
-
-use std::time::{Duration, SystemTime};
-use tezos_identity::Identity;
-use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
-use shell_automaton::Quota;
-use shell_automaton::Config;
-use shell_automaton::State;
+use redux_rs::{ActionId, ActionWithMeta, EnablingCondition, SafetyCondition};
+use serde::{Deserialize, Serialize};
 use shell_automaton::action::Action;
+use shell_automaton::State;
 use shell_automaton::{
     event::{P2pPeerEvent, P2pServerEvent, WakeupEvent},
     paused_loops::{
-        PausedLoopsAddAction,
-        PausedLoopsResumeAllAction,
-        PausedLoopsResumeNextInitAction,
-        PausedLoopsResumeNextSuccessAction
+        PausedLoopsAddAction, PausedLoopsResumeAllAction, PausedLoopsResumeNextInitAction,
+        PausedLoopsResumeNextSuccessAction,
     },
     peer::{
-        PeerTryReadLoopFinishAction,
-        PeerTryReadLoopStartAction,
-        PeerTryWriteLoopFinishAction,
-        PeerTryWriteLoopStartAction,
         binary_message::{
             read::{
-                PeerBinaryMessageReadChunkReadyAction,
-                PeerBinaryMessageReadErrorAction,
-                PeerBinaryMessageReadInitAction,
-                PeerBinaryMessageReadReadyAction,
-                PeerBinaryMessageReadSizeReadyAction
+                PeerBinaryMessageReadChunkReadyAction, PeerBinaryMessageReadErrorAction,
+                PeerBinaryMessageReadInitAction, PeerBinaryMessageReadReadyAction,
+                PeerBinaryMessageReadSizeReadyAction,
             },
             write::{
-                PeerBinaryMessageWriteErrorAction,
-                PeerBinaryMessageWriteNextChunkAction,
-                PeerBinaryMessageWriteReadyAction,
-                PeerBinaryMessageWriteSetContentAction
-            }
+                PeerBinaryMessageWriteErrorAction, PeerBinaryMessageWriteNextChunkAction,
+                PeerBinaryMessageWriteReadyAction, PeerBinaryMessageWriteSetContentAction,
+            },
         },
         chunk::{
             read::{
-                PeerChunkReadDecryptAction,
-                PeerChunkReadErrorAction,
-                PeerChunkReadInitAction,
-                PeerChunkReadPartAction,
-                PeerChunkReadReadyAction
+                PeerChunkReadDecryptAction, PeerChunkReadErrorAction, PeerChunkReadInitAction,
+                PeerChunkReadPartAction, PeerChunkReadReadyAction,
             },
             write::{
-                PeerChunkWriteCreateChunkAction,
-                PeerChunkWriteEncryptContentAction,
-                PeerChunkWriteErrorAction,
-                PeerChunkWritePartAction,
-                PeerChunkWriteReadyAction,
-                PeerChunkWriteSetContentAction
-            }
+                PeerChunkWriteCreateChunkAction, PeerChunkWriteEncryptContentAction,
+                PeerChunkWriteErrorAction, PeerChunkWritePartAction, PeerChunkWriteReadyAction,
+                PeerChunkWriteSetContentAction,
+            },
         },
         connection::{
             closed::PeerConnectionClosedAction,
             incoming::{
-                PeerConnectionIncomingErrorAction,
-                PeerConnectionIncomingSuccessAction,
                 accept::{
-                    PeerConnectionIncomingAcceptAction,
-                    PeerConnectionIncomingAcceptErrorAction,
+                    PeerConnectionIncomingAcceptAction, PeerConnectionIncomingAcceptErrorAction,
                     PeerConnectionIncomingAcceptSuccessAction,
-                    PeerConnectionIncomingRejectedAction
-                }
+                    PeerConnectionIncomingRejectedAction,
+                },
+                PeerConnectionIncomingErrorAction, PeerConnectionIncomingSuccessAction,
             },
             outgoing::{
-                PeerConnectionOutgoingErrorAction,
-                PeerConnectionOutgoingInitAction,
-                PeerConnectionOutgoingPendingAction,
-                PeerConnectionOutgoingRandomInitAction,
-                PeerConnectionOutgoingSuccessAction
-            }
+                PeerConnectionOutgoingErrorAction, PeerConnectionOutgoingInitAction,
+                PeerConnectionOutgoingPendingAction, PeerConnectionOutgoingRandomInitAction,
+                PeerConnectionOutgoingSuccessAction,
+            },
         },
-        disconnection::{ PeerDisconnectAction, PeerDisconnectedAction },
+        disconnection::{PeerDisconnectAction, PeerDisconnectedAction},
         handshaking::{
-            PeerHandshakingAckMessageDecodeAction,
-            PeerHandshakingAckMessageEncodeAction,
-            PeerHandshakingAckMessageInitAction,
-            PeerHandshakingAckMessageReadAction,
-            PeerHandshakingAckMessageWriteAction,
-            PeerHandshakingConnectionMessageDecodeAction,
+            PeerHandshakingAckMessageDecodeAction, PeerHandshakingAckMessageEncodeAction,
+            PeerHandshakingAckMessageInitAction, PeerHandshakingAckMessageReadAction,
+            PeerHandshakingAckMessageWriteAction, PeerHandshakingConnectionMessageDecodeAction,
             PeerHandshakingConnectionMessageEncodeAction,
-            PeerHandshakingConnectionMessageInitAction,
-            PeerHandshakingConnectionMessageReadAction,
-            PeerHandshakingConnectionMessageWriteAction,
-            PeerHandshakingEncryptionInitAction,
-            PeerHandshakingErrorAction,
-            PeerHandshakingFinishAction,
-            PeerHandshakingInitAction,
-            PeerHandshakingMetadataMessageDecodeAction,
-            PeerHandshakingMetadataMessageEncodeAction,
-            PeerHandshakingMetadataMessageInitAction,
-            PeerHandshakingMetadataMessageReadAction,
-            PeerHandshakingMetadataMessageWriteAction
+            PeerHandshakingConnectionMessageInitAction, PeerHandshakingConnectionMessageReadAction,
+            PeerHandshakingConnectionMessageWriteAction, PeerHandshakingEncryptionInitAction,
+            PeerHandshakingErrorAction, PeerHandshakingFinishAction, PeerHandshakingInitAction,
+            PeerHandshakingMetadataMessageDecodeAction, PeerHandshakingMetadataMessageEncodeAction,
+            PeerHandshakingMetadataMessageInitAction, PeerHandshakingMetadataMessageReadAction,
+            PeerHandshakingMetadataMessageWriteAction,
         },
         message::{
             read::{
-                PeerMessageReadErrorAction,
-                PeerMessageReadInitAction,
-                PeerMessageReadSuccessAction
+                PeerMessageReadErrorAction, PeerMessageReadInitAction, PeerMessageReadSuccessAction,
             },
             write::{
-                PeerMessageWriteErrorAction,
-                PeerMessageWriteInitAction,
-                PeerMessageWriteNextAction,
-                PeerMessageWriteSuccessAction
-            }
-        }
+                PeerMessageWriteErrorAction, PeerMessageWriteInitAction,
+                PeerMessageWriteNextAction, PeerMessageWriteSuccessAction,
+            },
+        },
+        PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
+        PeerTryWriteLoopStartAction,
     },
     peers::{
-        add::{ PeersAddIncomingPeerAction, multi::PeersAddMultiAction },
+        add::{multi::PeersAddMultiAction, PeersAddIncomingPeerAction},
         check::timeouts::{
-            PeersCheckTimeoutsCleanupAction,
-            PeersCheckTimeoutsInitAction,
-            PeersCheckTimeoutsSuccessAction
+            PeersCheckTimeoutsCleanupAction, PeersCheckTimeoutsInitAction,
+            PeersCheckTimeoutsSuccessAction,
         },
         dns_lookup::{
-            PeersDnsLookupCleanupAction,
-            PeersDnsLookupErrorAction,
+            PeersDnsLookupCleanupAction, PeersDnsLookupErrorAction, PeersDnsLookupInitAction,
             PeersDnsLookupSuccessAction,
-            PeersDnsLookupInitAction
         },
         graylist::{
-            PeersGraylistAddressAction,
-            PeersGraylistIpAddAction,
-            PeersGraylistIpAddedAction,
-            PeersGraylistIpRemoveAction,
-            PeersGraylistIpRemovedAction
+            PeersGraylistAddressAction, PeersGraylistIpAddAction, PeersGraylistIpAddedAction,
+            PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
         },
-        remove::PeersRemoveAction
+        remove::PeersRemoveAction,
     },
     storage::{
         request::{
@@ -147,23 +101,24 @@ use shell_automaton::{
             //StorageRequestSuccessAction,
             //StorageResponseReceivedAction
         },
-        state_snapshot::create::{
-            //StorageStateSnapshotCreateErrorAction,
-            StorageStateSnapshotCreateInitAction,
-            //StorageStateSnapshotCreatePendingAction,
-            //StorageStateSnapshotCreateSuccessAction
-        }
-    }
+        state_snapshot::create::StorageStateSnapshotCreateInitAction,
+    },
 };
+use std::convert::TryInto;
+use std::env;
+use std::io::Read;
+use std::ops::{Deref, DerefMut};
+use std::sync::Mutex;
+use std::time::SystemTime;
+use storage::persistent::codec::Decoder;
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum AllActionsTest {
     TestControl(ControlActionTest),
     TestPeersDnsAction(PeersDnsLookupActionTest),
     TestPeerActions(PeerActionTest),
     TestMioEvents(MioActionTest),
-    TestStorage(StorageActionTest)
+    TestStorage(StorageActionTest),
 }
 
 impl AllActionsTest {
@@ -173,21 +128,20 @@ impl AllActionsTest {
             Self::TestPeersDnsAction(a) => a.to_action(),
             Self::TestPeerActions(a) => a.to_action(),
             Self::TestMioEvents(a) => a.to_action(),
-            Self::TestStorage(a) => a.to_action()    
+            Self::TestStorage(a) => a.to_action(),
         }
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum StorageActionTest {
     // StorageRequestPayload case in particular is complex
     //TestStorageRequestCreateAction(StorageRequestCreateAction),
     TestStorageRequestInitAction(StorageRequestInitAction),
     TestStorageRequestPendingAction(StorageRequestPendingAction),
-    // Needs ActionId wrapper 
+    // Needs ActionId wrapper
     //TestStorageResponseReceivedAction(StorageResponseReceivedAction),
-    //TestStorageRequestErrorAction(StorageRequestErrorAction), 
+    //TestStorageRequestErrorAction(StorageRequestErrorAction),
     //TestStorageRequestSuccessAction(StorageRequestSuccessAction),
     TestStorageRequestFinishAction(StorageRequestFinishAction),
     TestStorageStateSnapshotCreateInitAction(StorageStateSnapshotCreateInitAction),
@@ -208,16 +162,15 @@ impl StorageActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerActionTest {
-    TestPeersGraylistAction(PeersGraylistActionTest),   
+    TestPeersGraylistAction(PeersGraylistActionTest),
     TestPeersAddMultiAction(PeersAddMultiAction),
     TestPeersRemoveAction(PeersRemoveAction),
     TestPeerConnection(PeerConnectionActionTest),
     TestPeerChunking(PeerChunkActionTest),
     TestPeerMessages(PeerMessageActionTest),
-    TestPeerHandshaking(PeerHandshakingActionTest)
+    TestPeerHandshaking(PeerHandshakingActionTest),
 }
 
 impl PeerActionTest {
@@ -229,20 +182,19 @@ impl PeerActionTest {
             Self::TestPeerConnection(a) => a.to_action(),
             Self::TestPeerChunking(a) => a.to_action(),
             Self::TestPeerMessages(a) => a.to_action(),
-            Self::TestPeerHandshaking(a) => a.to_action()    
+            Self::TestPeerHandshaking(a) => a.to_action(),
         }
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerConnectionActionTest {
     TestPeersTimeout(PeersTimeoutActionTest),
     TestPeerIncomingConnection(PeerIncomingConnectionActionTest),
     TestPeerOutgoingConnection(PeerOutgoingConnectionActionTest),
     TestPeerConnectionClosedAction(PeerConnectionClosedAction),
     TestPeerDisconnectAction(PeerDisconnectAction),
-    TestPeerDisconnectedAction(PeerDisconnectedAction)
+    TestPeerDisconnectedAction(PeerDisconnectedAction),
 }
 
 impl PeerConnectionActionTest {
@@ -258,8 +210,7 @@ impl PeerConnectionActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum ControlActionTest {
     TestPausedLoopsAddAction(PausedLoopsAddAction),
     TestPausedLoopsResumeAllAction(PausedLoopsResumeAllAction),
@@ -268,7 +219,7 @@ enum ControlActionTest {
     TestPeerTryWriteLoopStartAction(PeerTryWriteLoopStartAction),
     TestPeerTryWriteLoopFinishAction(PeerTryWriteLoopFinishAction),
     TestPeerTryReadLoopStartAction(PeerTryReadLoopStartAction),
-    TestPeerTryReadLoopFinishAction(PeerTryReadLoopFinishAction)
+    TestPeerTryReadLoopFinishAction(PeerTryReadLoopFinishAction),
 }
 
 impl ControlActionTest {
@@ -286,12 +237,11 @@ impl ControlActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum MioActionTest {
     TestP2pServerEvent(P2pServerEvent),
     TestP2pPeerEvent(P2pPeerEvent),
-    TestWakeupEvent(WakeupEvent)
+    TestWakeupEvent(WakeupEvent),
 }
 
 impl MioActionTest {
@@ -304,13 +254,12 @@ impl MioActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeersDnsLookupActionTest {
     TestPeersDnsLookupInitAction(PeersDnsLookupInitAction),
     TestPeersDnsLookupErrorAction(PeersDnsLookupErrorAction),
     TestPeersDnsLookupSuccessAction(PeersDnsLookupSuccessAction),
-    TestPeersDnsLookupCleanupAction(PeersDnsLookupCleanupAction)
+    TestPeersDnsLookupCleanupAction(PeersDnsLookupCleanupAction),
 }
 
 impl PeersDnsLookupActionTest {
@@ -324,14 +273,13 @@ impl PeersDnsLookupActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeersGraylistActionTest {
     TestPeersGraylistAddressAction(PeersGraylistAddressAction),
     TestPeersGraylistIpAddAction(PeersGraylistIpAddAction),
     TestPeersGraylistIpAddedAction(PeersGraylistIpAddedAction),
     TestPeersGraylistIpRemoveAction(PeersGraylistIpRemoveAction),
-    TestPeersGraylistIpRemovedAction(PeersGraylistIpRemovedAction)
+    TestPeersGraylistIpRemovedAction(PeersGraylistIpRemovedAction),
 }
 
 impl PeersGraylistActionTest {
@@ -346,12 +294,11 @@ impl PeersGraylistActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeersTimeoutActionTest {
     TestPeersCheckTimeoutsInitAction(PeersCheckTimeoutsInitAction),
     TestPeersCheckTimeoutsSuccessAction(PeersCheckTimeoutsSuccessAction),
-    TestPeersCheckTimeoutsCleanupAction(PeersCheckTimeoutsCleanupAction)
+    TestPeersCheckTimeoutsCleanupAction(PeersCheckTimeoutsCleanupAction),
 }
 
 impl PeersTimeoutActionTest {
@@ -364,8 +311,7 @@ impl PeersTimeoutActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerIncomingConnectionActionTest {
     TestPeersAddIncomingPeerAction(PeersAddIncomingPeerAction),
     TestPeerConnectionIncomingAcceptAction(PeerConnectionIncomingAcceptAction),
@@ -373,7 +319,7 @@ enum PeerIncomingConnectionActionTest {
     TestPeerConnectionIncomingRejectedAction(PeerConnectionIncomingRejectedAction),
     TestPeerConnectionIncomingAcceptSuccessAction(PeerConnectionIncomingAcceptSuccessAction),
     TestPeerConnectionIncomingErrorAction(PeerConnectionIncomingErrorAction),
-    TestPeerConnectionIncomingSuccessAction(PeerConnectionIncomingSuccessAction)
+    TestPeerConnectionIncomingSuccessAction(PeerConnectionIncomingSuccessAction),
 }
 
 impl PeerIncomingConnectionActionTest {
@@ -390,14 +336,13 @@ impl PeerIncomingConnectionActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerOutgoingConnectionActionTest {
     TestPeerConnectionOutgoingRandomInitAction(PeerConnectionOutgoingRandomInitAction),
     TestPeerConnectionOutgoingInitAction(PeerConnectionOutgoingInitAction),
     TestPeerConnectionOutgoingPendingAction(PeerConnectionOutgoingPendingAction),
     TestPeerConnectionOutgoingErrorAction(PeerConnectionOutgoingErrorAction),
-    TestPeerConnectionOutgoingSuccessAction(PeerConnectionOutgoingSuccessAction)
+    TestPeerConnectionOutgoingSuccessAction(PeerConnectionOutgoingSuccessAction),
 }
 
 impl PeerOutgoingConnectionActionTest {
@@ -412,8 +357,7 @@ impl PeerOutgoingConnectionActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerChunkActionTest {
     TestPeerChunkReadInitAction(PeerChunkReadInitAction),
     TestPeerChunkReadPartAction(PeerChunkReadPartAction),
@@ -434,7 +378,7 @@ enum PeerChunkActionTest {
     TestPeerBinaryMessageWriteSetContentAction(PeerBinaryMessageWriteSetContentAction),
     TestPeerBinaryMessageWriteNextChunkAction(PeerBinaryMessageWriteNextChunkAction),
     TestPeerBinaryMessageWriteReadyAction(PeerBinaryMessageWriteReadyAction),
-    TestPeerBinaryMessageWriteErrorAction(PeerBinaryMessageWriteErrorAction)
+    TestPeerBinaryMessageWriteErrorAction(PeerBinaryMessageWriteErrorAction),
 }
 
 impl PeerChunkActionTest {
@@ -464,8 +408,7 @@ impl PeerChunkActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerMessageActionTest {
     TestPeerMessageReadInitAction(PeerMessageReadInitAction),
     TestPeerMessageReadErrorAction(PeerMessageReadErrorAction),
@@ -473,7 +416,7 @@ enum PeerMessageActionTest {
     TestPeerMessageWriteNextAction(PeerMessageWriteNextAction),
     TestPeerMessageWriteInitAction(PeerMessageWriteInitAction),
     TestPeerMessageWriteErrorAction(PeerMessageWriteErrorAction),
-    TestPeerMessageWriteSuccessAction(PeerMessageWriteSuccessAction)
+    TestPeerMessageWriteSuccessAction(PeerMessageWriteSuccessAction),
 }
 
 impl PeerMessageActionTest {
@@ -490,8 +433,7 @@ impl PeerMessageActionTest {
     }
 }
 
-#[derive(fuzzcheck::DefaultMutator)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerHandshakingActionTest {
     TestPeerHandshakingInitAction(PeerHandshakingInitAction),
     TestPeerHandshakingConnectionMessageInitAction(PeerHandshakingConnectionMessageInitAction),
@@ -511,7 +453,7 @@ enum PeerHandshakingActionTest {
     TestPeerHandshakingAckMessageReadAction(PeerHandshakingAckMessageReadAction),
     TestPeerHandshakingAckMessageDecodeAction(PeerHandshakingAckMessageDecodeAction),
     TestPeerHandshakingErrorAction(PeerHandshakingErrorAction),
-    TestPeerHandshakingFinishAction(PeerHandshakingFinishAction)
+    TestPeerHandshakingFinishAction(PeerHandshakingFinishAction),
 }
 
 impl PeerHandshakingActionTest {
@@ -543,35 +485,33 @@ impl PeerHandshakingActionTest {
 static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(initial_state()));
 
 fn initial_state() -> State {
-    let pow_target = 0.0;
-    let initial_time = SystemTime::now();
-        
-    State::new(
-        Config {
-            initial_time,
-            port: 9732,
-            disable_mempool: false,
-            private_node: false,
-            pow_target,
-            identity: Identity::generate(pow_target).unwrap(),
-            shell_compatibility_version: ShellCompatibilityVersion::new(
-                "TEZOS_LOCALNET".to_owned(),
-                vec![1],
-                vec![1],
-            ),
-            check_timeouts_interval: Duration::from_millis(500),
-            peer_connecting_timeout: Duration::from_millis(2000),
-            peer_handshaking_timeout: Duration::from_secs(8),
-            peer_max_io_syscalls: 64,
-            peers_potential_max: 2,
-            peers_connected_max: 2,
-            peers_graylist_disable: false,
-            peers_graylist_timeout: Duration::from_secs(15 * 60),
-            record_state_snapshots_with_interval: None,
-            record_actions: false,
-            quota: Quota { restore_duration_millis: 1000, read_quota: 1024, write_quota: 1024 },
+    let url = env::var("STATE_SNAPSHOT_URL").unwrap_or(String::from(
+        "http://127.0.0.1:18732/dev/shell/automaton/state_raw",
+    ));
+
+    println!("Fetching state from: {}", url);
+
+    let resp = match ureq::get(&url).call() {
+        Ok(resp) => resp,
+        Err(err) => {
+            println!("Fetching state failed {:?}", err);
+            std::process::exit(1);
         }
-    )
+    };
+
+    assert!(resp.has("Content-Length"));
+    let len: usize = resp.header("Content-Length").unwrap().parse().unwrap();
+
+    println!("Current state size: {} bytes", len);
+    let mut bytes: Vec<u8> = Vec::with_capacity(len);
+
+    resp.into_reader()
+        .take(len.try_into().unwrap())
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert_eq!(bytes.len(), len);
+
+    State::decode(&bytes).unwrap()
 }
 
 fn next_action_id() -> ActionId {
@@ -582,7 +522,7 @@ fn next_action_id() -> ActionId {
 fn reduce_with_state(action: &ActionWithMeta<Action>) -> bool {
     let mut guarded_state = STATE.lock().unwrap();
     let state = guarded_state.deref_mut();
-    
+
     if !is_action_enabled(action.action.clone(), state) {
         return true;
     }
@@ -593,8 +533,8 @@ fn reduce_with_state(action: &ActionWithMeta<Action>) -> bool {
         Err(error) => {
             println!("{:?}", error);
             false
-        },
-        _ => true
+        }
+        _ => true,
     }
 }
 
@@ -690,67 +630,65 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::StorageRequestPending(a) => a.is_enabled(state),
         Action::StorageRequestFinish(a) => a.is_enabled(state),
         Action::StorageStateSnapshotCreateInit(a) => a.is_enabled(state),
-        _ => true 
+        _ => true,
     }
 }
 
-
 fn action_test_all(action_test: &AllActionsTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
 }
 
 fn action_test_control(action_test: &ControlActionTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
 }
 
 fn action_test_dns(action_test: &PeersDnsLookupActionTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
 }
 
 fn action_test_peer(action_test: &PeerActionTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
 }
 
 fn action_test_mio(action_test: &MioActionTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
 }
 
-
 fn action_test_storage(action_test: &StorageActionTest) -> bool {
-    let action = ActionWithMeta{
+    let action = ActionWithMeta {
         id: next_action_id(),
         depth: 0,
-        action: action_test.to_action()
+        action: action_test.to_action(),
     };
 
     reduce_with_state(&action)
@@ -759,71 +697,71 @@ fn action_test_storage(action_test: &StorageActionTest) -> bool {
 #[cfg(test)]
 #[test]
 fn test_all() {
-    fuzzcheck::fuzz_test(action_test_all) 
-    .mutator(AllActionsTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+    fuzzcheck::fuzz_test(action_test_all)
+        .mutator(AllActionsTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }
 
 #[cfg(test)]
 #[test]
 fn test_control() {
-    fuzzcheck::fuzz_test(action_test_control) 
-    .mutator(ControlActionTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+    fuzzcheck::fuzz_test(action_test_control)
+        .mutator(ControlActionTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }
 
 #[cfg(test)]
 #[test]
 fn test_dns() {
-    fuzzcheck::fuzz_test(action_test_dns) 
-    .mutator(PeersDnsLookupActionTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+    fuzzcheck::fuzz_test(action_test_dns)
+        .mutator(PeersDnsLookupActionTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }
 
 #[cfg(test)]
 #[test]
-fn test_peer() { 
-    fuzzcheck::fuzz_test(action_test_peer) 
-    .mutator(PeerActionTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+fn test_peer() {
+    fuzzcheck::fuzz_test(action_test_peer)
+        .mutator(PeerActionTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }
 
 #[cfg(test)]
 #[test]
 fn test_mio() {
-    fuzzcheck::fuzz_test(action_test_mio) 
-    .mutator(MioActionTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+    fuzzcheck::fuzz_test(action_test_mio)
+        .mutator(MioActionTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }
 
 #[cfg(test)]
 #[test]
 fn test_storage() {
-    fuzzcheck::fuzz_test(action_test_storage) 
-    .mutator(StorageActionTest::default_mutator())
-    .serializer(SerdeSerializer::default())
-    .default_sensor_and_pool() 
-    .arguments_from_cargo_fuzzcheck()
-    .stop_after_first_test_failure(true)
-    .launch();
+    fuzzcheck::fuzz_test(action_test_storage)
+        .mutator(StorageActionTest::default_mutator())
+        .serializer(SerdeSerializer::default())
+        .default_sensor_and_pool()
+        .arguments_from_cargo_fuzzcheck()
+        .stop_after_first_test_failure(true)
+        .launch();
 }

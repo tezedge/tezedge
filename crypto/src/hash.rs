@@ -63,16 +63,7 @@ pub enum FromBytesError {
 
 macro_rules! define_hash {
     ($name:ident) => {
-        #[derive(
-            Clone,
-            PartialEq,
-            Eq,
-            Serialize,
-            Deserialize,
-            std::cmp::PartialOrd,
-            std::cmp::Ord,
-            std::hash::Hash,
-        )]
+        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(pub Hash);
 
         impl $name {
@@ -115,9 +106,9 @@ macro_rules! define_hash {
             type Mutator = fuzzcheck::mutators::unit::UnitMutator<$name>;
             #[no_coverage]
             fn default_mutator() -> Self::Mutator {
-                fuzzcheck::mutators::unit::UnitMutator::new(
-                    $name([0u8; HashType::$name.size()].into())
-                )
+                fuzzcheck::mutators::unit::UnitMutator::new($name(
+                    [0u8; HashType::$name.size()].into(),
+                ))
             }
         }
 

@@ -292,6 +292,12 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/state_raw",
+        dev_handler::dev_shell_automaton_state_raw_get,
+    );
+
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/shell/automaton/actions",
         dev_handler::dev_shell_automaton_actions_get,
     );
