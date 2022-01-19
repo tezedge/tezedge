@@ -258,7 +258,10 @@ impl ShellAutomatonManager {
     }
 
     pub fn send_shutdown_signal(&self) {
-        if let Err(err) = self.shell_automaton_sender.send(ShellAutomatonMsg::Shutdown) {
+        if let Err(err) = self
+            .shell_automaton_sender
+            .send(ShellAutomatonMsg::Shutdown)
+        {
             warn!(self.log, "Failed to send Shutdown message to ShellAutomaton"; "error" => format!("{:?}", err));
         }
     }
