@@ -13,7 +13,7 @@ pub fn protocol_runner_init_context_reducer(state: &mut State, action: &ActionWi
             let apply_genesis = match &state.protocol_runner {
                 ProtocolRunnerState::Init(
                     ProtocolRunnerInitState::CheckGenesisAppliedSuccess { is_applied },
-                ) => !is_applied,
+                ) => !is_applied || state.config.init_storage_data.replay.is_some(),
                 _ => return,
             };
             state.protocol_runner = ProtocolRunnerState::Init(
