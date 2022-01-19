@@ -258,9 +258,9 @@ impl ShellAutomatonManager {
     }
 
     pub fn send_shutdown_signal(&self) {
-        let _ = self
-            .shell_automaton_sender
-            .send(ShellAutomatonMsg::Shutdown);
+        if let Err(err) = self.shell_automaton_sender.send(ShellAutomatonMsg::Shutdown) {
+            warn!(self.log, "Failed to send Shutdown message to ShellAutomaton"; "error" => format!("{:?}", err));
+        }
     }
 
     pub fn shutdown_and_wait(&mut self) {
@@ -271,18 +271,6 @@ impl ShellAutomatonManager {
                 th.join().unwrap();
             }
             _ => return,
-        }
-    }
-}
-
-impl Drop for ShellAutomatonManager {
-    fn drop(&mut self) {
-        let ShellAutomatonManager {
-            shell_automaton_sender,
-            ..
-        } = self;
-        if let Err(err) = shell_automaton_sender.send(ShellAutomatonMsg::Shutdown) {
-            warn!(self.log, "Failed to send Shutdown message to ShellAutomaton"; "error" => format!("{:?}", err));
         }
     }
 }

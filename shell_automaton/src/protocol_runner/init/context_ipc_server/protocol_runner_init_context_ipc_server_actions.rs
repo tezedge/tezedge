@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use tezos_protocol_ipc_client::ProtocolServiceError;
+
 use crate::protocol_runner::init::context::ProtocolRunnerInitContextState;
 use crate::protocol_runner::init::ProtocolRunnerInitState;
 use crate::protocol_runner::{ProtocolRunnerState, ProtocolRunnerToken};
@@ -47,6 +49,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerPendingActio
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextIpcServerErrorAction {
     pub token: ProtocolRunnerToken,
+    pub error: ProtocolServiceError,
 }
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerErrorAction {
