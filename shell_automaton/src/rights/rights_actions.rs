@@ -9,25 +9,23 @@ use crypto::hash::{BlockHash, ProtocolHash};
 use storage::{cycle_eras_storage::CycleErasData, cycle_storage::CycleData};
 use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::protocol::SupportedProtocol;
 
 use crate::service::rpc_service::RpcId;
 use crate::storage::kv_block_header;
 use crate::{EnablingCondition, State};
 
-use super::{
-    utils::Position, Cycle, EndorsingRights, EndorsingRightsError, EndorsingRightsKey,
-    ProtocolConstants,
-};
-use super::{EndorsingRightsRpcError, Slots};
+use super::{utils::Position, Cycle, EndorsingRights, ProtocolConstants, RightsError, RightsKey};
+use super::{BakingRights, RightsRpcError, Slots};
 
 // Entry actions
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsGetEndorsingRightsAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsGetEndorsingRightsAction {
+impl EnablingCondition<State> for RightsGetAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -35,23 +33,23 @@ impl EnablingCondition<State> for RightsGetEndorsingRightsAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsInitAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsInitAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsInitAction {
+impl EnablingCondition<State> for RightsInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         !state.rights.requests.contains_key(&self.key)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsEndorsingRightsReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsEndorsingReadyAction {
+    pub key: RightsKey,
     pub endorsing_rights: EndorsingRights,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsReadyAction {
+impl EnablingCondition<State> for RightsEndorsingReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -59,12 +57,25 @@ impl EnablingCondition<State> for RightsEndorsingRightsReadyAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsEndorsingRightsErrorAction {
-    pub key: EndorsingRightsKey,
-    pub error: EndorsingRightsError,
+pub struct RightsBakingReadyAction {
+    pub key: RightsKey,
+    pub baking_rights: BakingRights,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsErrorAction {
+impl EnablingCondition<State> for RightsBakingReadyAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RightsErrorAction {
+    pub key: RightsKey,
+    pub error: RightsError,
+}
+
+impl EnablingCondition<State> for RightsErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -74,47 +85,65 @@ impl EnablingCondition<State> for RightsEndorsingRightsErrorAction {
 // RPC actions
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsRpcEndorsingRightsGetAction {
+pub struct RightsRpcGetAction {
+    pub key: RightsKey,
     pub rpc_id: RpcId,
-    pub key: EndorsingRightsKey,
 }
 
-impl EnablingCondition<State> for RightsRpcEndorsingRightsGetAction {
+impl EnablingCondition<State> for RightsRpcGetAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsRpcEndorsingRightsReadyAction {
+pub struct RightsRpcEndorsingReadyAction {
     pub rpc_id: RpcId,
     pub endorsing_rights: BTreeMap<SignaturePublicKeyHash, Slots>,
 }
 
-impl EnablingCondition<State> for RightsRpcEndorsingRightsReadyAction {
+impl EnablingCondition<State> for RightsRpcEndorsingReadyAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsRpcEndorsingRightsErrorAction {
-    pub rpc_id: RpcId,
-    pub error: EndorsingRightsRpcError,
+pub struct BakingRightsPriority {
+    pub delegate: SignaturePublicKeyHash,
+    pub priority: u16,
 }
 
-impl EnablingCondition<State> for RightsRpcEndorsingRightsErrorAction {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RightsRpcBakingReadyAction {
+    pub rpc_id: RpcId,
+    pub baking_rights: Vec<BakingRightsPriority>,
+}
+
+impl EnablingCondition<State> for RightsRpcBakingReadyAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RightsRpcErrorAction {
+    pub rpc_id: RpcId,
+    pub error: RightsRpcError,
+}
+
+impl EnablingCondition<State> for RightsRpcErrorAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsRpcEndorsingRightsPruneAction {
-    pub rpc_id: RpcId,
+pub struct RightsRpcPruneAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsRpcEndorsingRightsPruneAction {
+impl EnablingCondition<State> for RightsRpcPruneAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
@@ -123,11 +152,11 @@ impl EnablingCondition<State> for RightsRpcEndorsingRightsPruneAction {
 // Auxiliary actions
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetBlockHeaderAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetBlockHeaderAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetBlockHeaderAction {
+impl EnablingCondition<State> for RightsGetBlockHeaderAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -135,12 +164,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetBlockHeaderAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsBlockHeaderReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsBlockHeaderReadyAction {
+    pub key: RightsKey,
     pub block_header: BlockHeader,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsBlockHeaderReadyAction {
+impl EnablingCondition<State> for RightsBlockHeaderReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -148,11 +177,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsBlockHeaderReadyAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetProtocolHashAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetProtocolHashAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetProtocolHashAction {
+impl EnablingCondition<State> for RightsGetProtocolHashAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -160,12 +189,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetProtocolHashAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsProtocolHashStorageReadyAction {
+pub struct RightsProtocolHashStorageReadyAction {
     pub key: BlockHash,
     pub proto_hash: ProtocolHash,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashStorageReadyAction {
+impl EnablingCondition<State> for RightsProtocolHashStorageReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -173,12 +202,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashStorageReadyA
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsProtocolHashStorageErrorAction {
+pub struct RightsProtocolHashStorageErrorAction {
     pub key: BlockHash,
     pub error: kv_block_header::Error,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashStorageErrorAction {
+impl EnablingCondition<State> for RightsProtocolHashStorageErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -186,12 +215,13 @@ impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashStorageErrorA
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsProtocolHashReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsProtocolHashReadyAction {
+    pub key: RightsKey,
     pub proto_hash: ProtocolHash,
+    pub protocol: SupportedProtocol,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashReadyAction {
+impl EnablingCondition<State> for RightsProtocolHashReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -199,11 +229,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsProtocolHashReadyAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetProtocolConstantsAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetProtocolConstantsAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetProtocolConstantsAction {
+impl EnablingCondition<State> for RightsGetProtocolConstantsAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -211,12 +241,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetProtocolConstantsActio
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsProtocolConstantsReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsProtocolConstantsReadyAction {
+    pub key: RightsKey,
     pub constants: ProtocolConstants,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsProtocolConstantsReadyAction {
+impl EnablingCondition<State> for RightsProtocolConstantsReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -224,11 +254,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsProtocolConstantsReadyAct
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetCycleErasAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetCycleErasAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetCycleErasAction {
+impl EnablingCondition<State> for RightsGetCycleErasAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -236,12 +266,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetCycleErasAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsCycleErasReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsCycleErasReadyAction {
+    pub key: RightsKey,
     pub cycle_eras: CycleErasData,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsCycleErasReadyAction {
+impl EnablingCondition<State> for RightsCycleErasReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -249,11 +279,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsCycleErasReadyAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetCycleAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetCycleAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetCycleAction {
+impl EnablingCondition<State> for RightsGetCycleAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -261,13 +291,13 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetCycleAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsCycleReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsCycleReadyAction {
+    pub key: RightsKey,
     pub cycle: Cycle,
     pub position: Position,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsCycleReadyAction {
+impl EnablingCondition<State> for RightsCycleReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -275,11 +305,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsCycleReadyAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsGetCycleDataAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsGetCycleDataAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsGetCycleDataAction {
+impl EnablingCondition<State> for RightsGetCycleDataAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -287,12 +317,12 @@ impl EnablingCondition<State> for RightsEndorsingRightsGetCycleDataAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsCycleDataReadyAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsCycleDataReadyAction {
+    pub key: RightsKey,
     pub cycle_data: CycleData,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsCycleDataReadyAction {
+impl EnablingCondition<State> for RightsCycleDataReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -300,11 +330,11 @@ impl EnablingCondition<State> for RightsEndorsingRightsCycleDataReadyAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsEndorsingRightsCalculateAction {
-    pub key: EndorsingRightsKey,
+pub struct RightsCalculateAction {
+    pub key: RightsKey,
 }
 
-impl EnablingCondition<State> for RightsEndorsingRightsCalculateAction {
+impl EnablingCondition<State> for RightsCalculateAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true

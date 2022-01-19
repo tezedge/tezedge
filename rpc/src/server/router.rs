@@ -317,6 +317,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/baking_rights",
+        dev_handler::dev_shell_automaton_baking_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/shell/automaton/endorsements_status",
         dev_handler::dev_shell_automaton_endorsements_status,
     );

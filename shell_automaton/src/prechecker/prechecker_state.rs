@@ -23,7 +23,7 @@ use tezos_messages::{
 };
 
 use crate::{
-    rights::{Delegate, EndorsingRights, EndorsingRightsError},
+    rights::{Delegate, EndorsingRights, RightsError},
     storage::kv_block_additional_data::Error as BlockAdditionalDataStorageError,
 };
 
@@ -179,7 +179,7 @@ pub enum PrecheckerResponseError {
     #[error("Error converting to operation hash: {0}")]
     TypedHash(#[from] FromBytesError),
     #[error("Error getting endorsing righst: {0}")]
-    Rights(#[from] EndorsingRightsError),
+    Rights(#[from] RightsError),
     #[error("Error parsing protocol data: {0}")]
     Decode(#[from] BinaryReaderError),
     #[error("Unknown protocol: {0}")]
@@ -199,7 +199,7 @@ pub enum PrecheckerError {
     #[error("Error decoding protocol specific operation contents: {0}")]
     OperationContentsDecode(#[from] BinaryReaderError),
     #[error("Error getting endorsing rights: {0}")]
-    EndorsingRights(#[from] EndorsingRightsError),
+    EndorsingRights(#[from] RightsError),
     #[error("Unknown protocol: {0}")]
     Protocol(#[from] UnsupportedProtocolError),
     #[error("Storage error: {0}")]

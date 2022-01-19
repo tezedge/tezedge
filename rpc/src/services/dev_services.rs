@@ -879,6 +879,20 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
     Ok(result)
 }
 
+pub(crate) async fn get_shell_automaton_baking_rights(
+    block_hash: BlockHash,
+    level: Option<Level>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBakingRights { block_hash, level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
+
 pub(crate) async fn get_shell_automaton_endorsing_rights(
     block_hash: BlockHash,
     level: Option<Level>,

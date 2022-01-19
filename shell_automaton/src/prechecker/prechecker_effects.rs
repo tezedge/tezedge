@@ -13,7 +13,7 @@ use crate::{
         prechecker_actions::PrecheckerEndorsementValidationRefusedAction, Applied,
         PrecheckerOperationState, Refused,
     },
-    rights::{rights_actions::*, EndorsingRightsKey},
+    rights::{rights_actions::*, RightsKey},
     storage::kv_block_additional_data::{
         StorageBlockAdditionalDataErrorAction, StorageBlockAdditionalDataGetAction,
         StorageBlockAdditionalDataOkAction,
@@ -167,22 +167,22 @@ where
                     .map(|lhs| lhs.hash.clone())
                 {
                     if let Some(level) = operation_decoded_contents.endorsement_level() {
-                        store.dispatch(RightsGetEndorsingRightsAction {
-                            key: EndorsingRightsKey {
-                                current_block_hash,
-                                level: Some(level),
-                            },
+                        store.dispatch(RightsGetAction {
+                            key: RightsKey::endorsing(current_block_hash, Some(level)),
                         });
                     }
                 }
             }
         }
-        Action::RightsEndorsingRightsReady(RightsEndorsingRightsReadyAction {
-            key: EndorsingRightsKey {
-                level: Some(level), ..
-            },
+        Action::RightsEndorsingReady(RightsEndorsingReadyAction {
+            key,
             endorsing_rights,
         }) => {
+            let level = if let Some(level) = key.level() {
+                level
+            } else {
+                return;
+            };
             for key in prechecker_state_operations
                 .iter()
                 .filter_map(|(key, state)| {
@@ -193,7 +193,7 @@ where
                     {
                         if operation_decoded_contents
                             .endorsement_level()
-                            .map(|l| l == *level)
+                            .map(|l| l == level)
                             .unwrap_or(false)
                         {
                             Some(key)
@@ -213,19 +213,25 @@ where
                 });
             }
         }
-        Action::RightsEndorsingRightsError(RightsEndorsingRightsErrorAction {
-            key:
-                EndorsingRightsKey {
-                    current_block_hash,
-                    level: None,
-                },
-            error,
-        }) => {
+        Action::RightsError(RightsErrorAction { key, error }) => {
+            let level = if let Some(level) = key.level() {
+                level
+            } else {
+                return;
+            };
             for key in prechecker_state_operations
                 .iter()
                 .filter_map(|(key, state)| {
-                    if let PrecheckerOperationState::PendingEndorsingRights { .. } = state.state {
-                        if state.operation.branch() == current_block_hash {
+                    if let PrecheckerOperationState::PendingEndorsingRights {
+                        operation_decoded_contents,
+                        ..
+                    } = &state.state
+                    {
+                        if operation_decoded_contents
+                            .endorsement_level()
+                            .map(|l| l == level)
+                            .unwrap_or(false)
+                        {
                             Some(key)
                         } else {
                             None
@@ -371,11 +377,8 @@ where
             level,
         }) => {
             slog::trace!(&store.state.get().log, "precaching endorsing rights"; "level" => level + 1);
-            store.dispatch(RightsGetEndorsingRightsAction {
-                key: EndorsingRightsKey {
-                    current_block_hash: current_head.clone(),
-                    level: Some(level + 1),
-                },
+            store.dispatch(RightsGetAction {
+                key: RightsKey::endorsing(current_head.clone(), Some(level + 1)),
             });
         }
         // prechache next block protocol, applied block is needed for that
