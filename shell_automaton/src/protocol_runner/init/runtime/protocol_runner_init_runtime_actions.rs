@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use tezos_protocol_ipc_client::ProtocolServiceError;
+
 use crate::protocol_runner::init::ProtocolRunnerInitState;
 use crate::protocol_runner::{ProtocolRunnerState, ProtocolRunnerToken};
 use crate::{EnablingCondition, State};
@@ -40,6 +42,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitRuntimePendingAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitRuntimeErrorAction {
     pub token: ProtocolRunnerToken,
+    pub error: ProtocolServiceError,
 }
 
 impl EnablingCondition<State> for ProtocolRunnerInitRuntimeErrorAction {

@@ -45,6 +45,7 @@ pub fn protocol_runner_init_context_ipc_server_reducer(state: &mut State, action
                 ))) => {
                     *state = ProtocolRunnerInitContextIpcServerState::Error {
                         token: content.token,
+                        error: content.error.clone(),
                     }
                 }
                 _ => return,

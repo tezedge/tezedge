@@ -20,6 +20,10 @@ use crate::service::ProtocolRunnerService;
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitAction;
 use crate::{Action, ActionWithMeta, Service, Store};
 
+use super::init::context_ipc_server::{
+    ProtocolRunnerInitContextIpcServerErrorAction, ProtocolRunnerInitContextIpcServerState,
+    ProtocolRunnerInitContextIpcServerSuccessAction,
+};
 use super::init::ProtocolRunnerInitAction;
 use super::spawn_server::ProtocolRunnerSpawnServerInitAction;
 use super::{
@@ -81,8 +85,8 @@ where
                 let init_state = match &store.state().protocol_runner {
                     ProtocolRunnerState::SpawnServer(state) => match state {
                         ProtocolRunnerSpawnServerState::Pending {} => match result {
-                            ProtocolRunnerResult::SpawnServer(Err(_)) => {
-                                store.dispatch(ProtocolRunnerSpawnServerErrorAction {});
+                            ProtocolRunnerResult::SpawnServer(Err(error)) => {
+                                store.dispatch(ProtocolRunnerSpawnServerErrorAction { error });
                                 continue;
                             }
                             ProtocolRunnerResult::SpawnServer(Ok(_)) => {
@@ -130,8 +134,8 @@ where
                     ProtocolRunnerInitState::Runtime(ProtocolRunnerInitRuntimeState::Pending {
                         ..
                     }) => match result {
-                        ProtocolRunnerResult::InitRuntime((token, Err(_))) => {
-                            store.dispatch(ProtocolRunnerInitRuntimeErrorAction { token });
+                        ProtocolRunnerResult::InitRuntime((token, Err(error))) => {
+                            store.dispatch(ProtocolRunnerInitRuntimeErrorAction { token, error });
                         }
                         ProtocolRunnerResult::InitRuntime((token, Ok(_))) => {
                             store.dispatch(ProtocolRunnerInitRuntimeSuccessAction { token });
@@ -143,14 +147,34 @@ where
                     ProtocolRunnerInitState::Context(ProtocolRunnerInitContextState::Pending {
                         ..
                     }) => match result {
-                        ProtocolRunnerResult::InitContext((token, Err(_))) => {
+                        ProtocolRunnerResult::InitContext((token, Err(error))) => {
                             store.dispatch(ProtocolRunnerInitContextErrorAction {
                                 token: Some(token),
+                                error,
                             });
                         }
                         ProtocolRunnerResult::InitContext((token, Ok(result))) => {
                             store
                                 .dispatch(ProtocolRunnerInitContextSuccessAction { token, result });
+                        }
+                        result => {
+                            store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
+                        }
+                    },
+                    ProtocolRunnerInitState::ContextIpcServer((
+                        _,
+                        ProtocolRunnerInitContextIpcServerState::Pending { .. },
+                    )) => match result {
+                        ProtocolRunnerResult::InitContextIpcServer((token, Err(error))) => {
+                            store.dispatch(ProtocolRunnerInitContextIpcServerErrorAction {
+                                token,
+                                error,
+                            });
+                        }
+                        ProtocolRunnerResult::InitContextIpcServer((token, Ok(_))) => {
+                            store.dispatch(ProtocolRunnerInitContextIpcServerSuccessAction {
+                                token: Some(token),
+                            });
                         }
                         result => {
                             store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });

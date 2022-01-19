@@ -89,6 +89,29 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             slog::error!(log, "Block application failed";
                 "error" => format!("{:?}", content.error));
         }
+        Action::ProtocolRunnerReady(_) => {
+            slog::info!(log, "Protocol Runner initialized";
+                // TODO(zura): TMP
+                "state" => format!("{:#?}", store.state()));
+        }
+        Action::ProtocolRunnerNotifyStatus(_) => {
+            slog::info!(
+                log,
+                "Notified Protocol Runner status to the rest of the system"
+            );
+        }
+        Action::ProtocolRunnerInitRuntimeError(content) => {
+            slog::error!(log, "Protocol Runner runtime initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
+        Action::ProtocolRunnerInitContextError(content) => {
+            slog::error!(log, "Protocol Runner context initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
+        Action::ProtocolRunnerInitContextIpcServerError(content) => {
+            slog::error!(log, "Protocol Runner context ipc server initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
         _ => {}
     }
 }

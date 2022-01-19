@@ -13,8 +13,11 @@ pub fn protocol_runner_spawn_server_reducer(state: &mut State, action: &ActionWi
         Action::ProtocolRunnerSpawnServerPending(_) => {
             state.protocol_runner = ProtocolRunnerSpawnServerState::Pending {}.into();
         }
-        Action::ProtocolRunnerSpawnServerError(_) => {
-            state.protocol_runner = ProtocolRunnerSpawnServerState::Error {}.into();
+        Action::ProtocolRunnerSpawnServerError(content) => {
+            state.protocol_runner = ProtocolRunnerSpawnServerState::Error {
+                error: content.error.clone(),
+            }
+            .into();
         }
         Action::ProtocolRunnerSpawnServerSuccess(_) => {
             state.protocol_runner = ProtocolRunnerSpawnServerState::Success {}.into();

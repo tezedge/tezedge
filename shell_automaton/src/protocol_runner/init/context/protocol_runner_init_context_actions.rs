@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+
 use tezos_api::ffi::InitProtocolContextResult;
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::protocol_runner::init::ProtocolRunnerInitState;
 use crate::protocol_runner::{ProtocolRunnerState, ProtocolRunnerToken};
@@ -43,6 +45,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextPendingAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextErrorAction {
     pub token: Option<ProtocolRunnerToken>,
+    pub error: ProtocolServiceError,
 }
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextErrorAction {

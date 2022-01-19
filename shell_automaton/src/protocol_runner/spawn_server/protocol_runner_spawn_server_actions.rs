@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use tezos_protocol_ipc_client::ProtocolRunnerError;
+
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::{EnablingCondition, State};
 
@@ -33,7 +35,9 @@ impl EnablingCondition<State> for ProtocolRunnerSpawnServerPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProtocolRunnerSpawnServerErrorAction {}
+pub struct ProtocolRunnerSpawnServerErrorAction {
+    pub error: ProtocolRunnerError,
+}
 
 impl EnablingCondition<State> for ProtocolRunnerSpawnServerErrorAction {
     fn is_enabled(&self, state: &State) -> bool {

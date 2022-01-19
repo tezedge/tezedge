@@ -35,7 +35,9 @@ where
             );
             match res {
                 Ok(token) => store.dispatch(ProtocolRunnerInitContextPendingAction { token }),
-                Err(_) => store.dispatch(ProtocolRunnerInitContextErrorAction { token: None }),
+                Err(error) => {
+                    store.dispatch(ProtocolRunnerInitContextErrorAction { token: None, error })
+                }
             };
         }
         _ => {}
