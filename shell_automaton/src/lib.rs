@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
-
 pub mod io_error_kind;
 
 pub mod event;
@@ -39,7 +37,6 @@ pub mod shell_compatibility_version;
 pub mod peer;
 
 pub mod peers;
-use peers::dns_lookup::PeersDnsLookupInitAction;
 
 pub mod storage;
 use crate::storage::state_snapshot::create::StorageStateSnapshotCreateInitAction;
@@ -94,10 +91,7 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         &self.store
     }
 
-    pub fn init<P>(&mut self, peers_dns_lookup_addrs: P)
-    where
-        P: IntoIterator<Item = (String, Port)>,
-    {
+    pub fn init(&mut self) {
         // Persist initial state.
         self.store.dispatch(StorageStateSnapshotCreateInitAction {});
 
@@ -112,13 +106,6 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         }
 
         self.store.dispatch(ProtocolRunnerStartAction {});
-
-        for (address, port) in peers_dns_lookup_addrs.into_iter() {
-            self.store
-                .dispatch(PeersDnsLookupInitAction { address, port });
-        }
-        self.store
-            .dispatch(PeerConnectionOutgoingRandomInitAction {});
     }
 
     #[inline(always)]

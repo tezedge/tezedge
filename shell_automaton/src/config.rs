@@ -67,6 +67,10 @@ pub struct Config {
     /// E.g. if it's set to 100ms, every 100ms we will check state for timeouts.
     pub check_timeouts_interval: Duration,
 
+    /// Peers addresses to do dns lookup on to discover initial peers
+    /// to connect to.
+    pub peers_dns_lookup_addresses: Vec<(String, Port)>,
+
     /// Timeout for peer tcp socket connection.
     pub peer_connecting_timeout: Duration,
 
@@ -177,6 +181,8 @@ pub fn default_test_config() -> Config {
         chain_id: ChainId::try_from("NetXdQprcVkpaWU").unwrap(),
 
         check_timeouts_interval: Duration::from_millis(100),
+
+        peers_dns_lookup_addresses: vec![],
         peer_connecting_timeout: Duration::from_secs(4),
         peer_handshaking_timeout: Duration::from_secs(8),
 
