@@ -688,6 +688,48 @@ pub async fn preapply_block(
     )
 }
 
+// TODO: properly implement this handler
+
+#[derive(serde::Serialize)]
+struct P2pStats {
+    total_sent : String,
+    total_recv : String,
+    current_inflow : i64,
+    current_outflow : i64,
+}
+
+pub async fn network_stat(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let dummy = P2pStats {
+        total_sent: "100".into(),
+        total_recv: "100".into(),
+        current_inflow: 10,
+        current_outflow: 10,
+    };
+
+    result_to_json_response(
+        Ok(dummy),
+        env.log(),
+    )
+}
+
+pub async fn network_connections(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let connections: Vec<()> = vec![];
+    result_to_json_response(
+        Ok(connections),
+        env.log(),
+    )
+}
+
 pub async fn node_version(
     _: Request<Body>,
     _: Params,

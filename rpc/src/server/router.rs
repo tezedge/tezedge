@@ -393,6 +393,27 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         dev_handler::block_actions,
     );
 
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/stat",
+        shell_handler::network_stat,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/connections",
+        shell_handler::network_connections,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/peers",
+        shell_handler::network_connections,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/points",
+        shell_handler::network_connections,
+    );
+
     // DEPRECATED in ocaml but still used by python tests
     routes.handle(
         hash_set![Method::GET],
