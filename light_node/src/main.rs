@@ -290,6 +290,14 @@ fn block_on_actors(
     };
     info!(log, "Actors initialized");
 
+    // Init p2p only after actors are initialized, otherwise we will
+    // connect to peers before actors are initialized and actors will
+    // miss a message that peer was handshaked. Because of that actors
+    // will ignore messages from those peers because they are unknown to it.
+    shell_automaton_manager
+        .shell_automaton_sender()
+        .send(ShellAutomatonMsg::P2pInit);
+
     tokio_runtime.block_on(async move {
         use tokio::signal;
         use tokio::time::timeout;

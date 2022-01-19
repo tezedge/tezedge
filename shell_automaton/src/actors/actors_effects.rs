@@ -4,6 +4,7 @@
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::init::PeersInitAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
 use crate::shutdown::ShutdownInitAction;
@@ -16,6 +17,9 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 match msg {
                     ActorsMessageFrom::Shutdown => {
                         store.dispatch(ShutdownInitAction {});
+                    }
+                    ActorsMessageFrom::P2pInit => {
+                        store.dispatch(PeersInitAction {});
                     }
                     ActorsMessageFrom::PeerStalled(peer_id) => {
                         store.dispatch(PeersGraylistAddressAction {

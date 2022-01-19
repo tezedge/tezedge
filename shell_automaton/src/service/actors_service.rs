@@ -78,6 +78,7 @@ impl fmt::Debug for ApplyBlockCallback {
 /// Message from actors.
 #[derive(Debug)]
 pub enum ActorsMessageFrom {
+    P2pInit,
     PeerStalled(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),

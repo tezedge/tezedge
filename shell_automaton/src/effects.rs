@@ -40,6 +40,7 @@ use crate::peers::add::multi::peers_add_multi_effects;
 use crate::peers::check::timeouts::peers_check_timeouts_effects;
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
+use crate::peers::init::peers_init_effects;
 
 use crate::mempool::mempool_effects;
 use crate::protocol::protocol_effects;
@@ -139,6 +140,7 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     peer_handshaking_effects(store, action);
 
+    peers_init_effects(store, action);
     peers_dns_lookup_effects(store, action);
     peers_add_multi_effects(store, action);
     peers_check_timeouts_effects(store, action);

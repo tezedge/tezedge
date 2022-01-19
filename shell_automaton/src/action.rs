@@ -47,7 +47,6 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
-use crate::mempool::mempool_actions::*;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -61,11 +60,14 @@ use crate::peers::graylist::{
     PeersGraylistAddressAction, PeersGraylistIpAddAction, PeersGraylistIpAddedAction,
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
+use crate::peers::init::PeersInitAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::prechecker_actions::*;
 use crate::protocol::ProtocolAction;
 
 use crate::rights::rights_actions::*;
+
+use crate::mempool::mempool_actions::*;
 
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextAction, ProtocolRunnerInitContextErrorAction,
@@ -253,6 +255,8 @@ pub enum Action {
 
     BlockApplierApplyError(BlockApplierApplyErrorAction),
     BlockApplierApplySuccess(BlockApplierApplySuccessAction),
+
+    PeersInit(PeersInitAction),
 
     PeersDnsLookupInit(PeersDnsLookupInitAction),
     PeersDnsLookupError(PeersDnsLookupErrorAction),

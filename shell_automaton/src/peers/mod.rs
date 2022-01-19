@@ -3,6 +3,7 @@
 
 pub mod dns_lookup;
 pub mod graylist;
+pub mod init;
 
 pub mod add;
 pub mod remove;

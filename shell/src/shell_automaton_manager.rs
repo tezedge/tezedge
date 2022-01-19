@@ -30,7 +30,7 @@ use shell_automaton::service::{
     ProtocolServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
-use shell_automaton::{Port, ShellAutomaton};
+use shell_automaton::ShellAutomaton;
 
 use crate::PeerConnectionThreshold;
 
@@ -68,11 +68,7 @@ impl P2p {
 
 enum ShellAutomatonThreadHandle {
     Running(std::thread::JoinHandle<()>),
-    NotRunning(
-        P2p,
-        ShellAutomaton<ServiceDefault, MioInternalEventsContainer>,
-        HashSet<(String, Port)>,
-    ),
+    NotRunning(ShellAutomaton<ServiceDefault, MioInternalEventsContainer>),
 }
 
 pub struct ShellAutomatonManager {
@@ -98,7 +94,7 @@ impl ShellAutomatonManager {
         context_init_status_sender: tokio::sync::watch::Sender<bool>,
     ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
-        let mut bootstrap_addresses = HashSet::from_iter(
+        let mut bootstrap_addresses = HashSet::<_>::from_iter(
             p2p_config
                 .bootstrap_peers
                 .iter()
@@ -187,6 +183,9 @@ impl ShellAutomatonManager {
             chain_id,
 
             check_timeouts_interval: Duration::from_millis(500),
+
+            peers_dns_lookup_addresses: bootstrap_addresses.into_iter().collect(),
+
             peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
 
@@ -225,9 +224,7 @@ impl ShellAutomatonManager {
             log,
             shell_automaton_sender: automaton_sender,
             shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(
-                p2p_config,
                 shell_automaton,
-                bootstrap_addresses,
             )),
         };
 
@@ -235,17 +232,14 @@ impl ShellAutomatonManager {
     }
 
     pub fn start(&mut self) {
-        if let Some(ShellAutomatonThreadHandle::NotRunning(
-            _config,
-            mut shell_automaton,
-            bootstrap_addresses,
-        )) = self.shell_automaton_thread_handle.take()
+        if let Some(ShellAutomatonThreadHandle::NotRunning(mut shell_automaton)) =
+            self.shell_automaton_thread_handle.take()
         {
             // start to listen for incoming p2p connections and state machine processing
             let shell_automaton_thread_handle = std::thread::Builder::new()
                 .name("shell-automaton".to_owned())
                 .spawn(move || {
-                    shell_automaton.init(bootstrap_addresses);
+                    shell_automaton.init();
 
                     while !shell_automaton.is_shutdown() {
                         shell_automaton.make_progress();
