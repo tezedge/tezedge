@@ -202,35 +202,40 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             _ => {}
         },
         Action::BlockApplierApplySuccess(_) => {
+            // TODO: get from protocol
+            const TTL: i32 = 120;
+
             let (chain_id, block) = match &state.block_applier.current {
                 BlockApplierApplyState::Success {
                     chain_id, block, ..
                 } => (chain_id, block),
                 _ => return,
             };
-            // TODO: get from protocol
-            const TTL: i32 = 120;
 
             if config.chain_id.ne(chain_id) {
                 return;
             }
+
+            let old_head_state = mempool_state.local_head_state.clone();
+            mempool_state.branch_changed = old_head_state
+                .as_ref()
+                .map(|old_head| old_head.hash.ne(&block.header.predecessor()))
+                .unwrap_or(false);
+            mempool_state.local_head_state = Some(HeadState {
+                header: (*block.header).clone(),
+                hash: block.hash.clone(),
+                ops_removed: false,
+                prevalidator_ready: false,
+            });
+            mempool_state.prevalidator = None;
+
             if state.is_bootstrapped() {
                 state.mempool.running_since = Some(());
             }
             let mempool_state = &mut state.mempool;
-            mempool_state.prevalidator = None;
-            let old_head_level = mempool_state
-                .local_head_state
-                .as_ref()
-                .map(|v| v.header.level());
-            let changed = if let Some(old_head) = &mempool_state.local_head_state {
-                old_head.hash.ne(&block.header.predecessor())
-            } else {
-                false
-            };
 
             // update last 120 predecessor blocks map.
-            if let Some(pred) = mempool_state.local_head_state.as_ref() {
+            if let Some(pred) = old_head_state.as_ref() {
                 let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
                 last_predecessor_blocks.insert(pred.hash.clone().into(), pred.header.level());
                 if last_predecessor_blocks.len() as i32 > TTL {
@@ -243,14 +248,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
             }
-
-            mempool_state.branch_changed = changed;
-            mempool_state.local_head_state = Some(HeadState {
-                header: (*block.header).clone(),
-                hash: block.hash.clone(),
-                ops_removed: false,
-                prevalidator_ready: false,
-            });
 
             // for (_, op) in &mempool_state.pending_operations {
             //     mempool_state.wait_prevalidator_operations.push(op.clone());
@@ -290,7 +287,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             mempool_state.level_to_operation.retain(|x, _| *x >= level);
 
-            let start_level = old_head_level.unwrap_or(0);
+            let start_level = old_head_state
+                .as_ref()
+                .map(|v| v.header.level())
+                .unwrap_or(0);
             let end_level = block.header.level();
 
             if start_level >= end_level {
