@@ -94,16 +94,16 @@ impl ToRpcJsonMap for FixedConstants {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum DelegateSelection {
-    Random,
-    RoundRobinOver(Vec<Vec<SignaturePublicKeyHash>>),
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+pub struct RoundRobinOverDelegatesVariant {
+    #[encoding(dynamic, list, dynamic, list)]
+    delegates: Vec<Vec<SignaturePublicKeyHash>>
 }
 
-impl HasEncoding for DelegateSelection {
-    fn encoding() -> &'static tezos_encoding::encoding::Encoding {
-        todo!()
-    }
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+pub enum DelegateSelection {
+    RandomDelegateSelection,
+    RoundRobinOverDelegates(RoundRobinOverDelegatesVariant),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
@@ -161,8 +161,7 @@ pub struct ParametricConstants {
     frozen_deposits_percentage: i32,
     double_baking_punishment: Mutez,
     ratio_of_frozen_deposits_slashed_per_double_endorsement: Ratio,
-    // TODO
-    // delegate_selection: DelegateSelection,
+    delegate_selection: DelegateSelection,
 }
 
 impl ToRpcJsonMap for ParametricConstants {
