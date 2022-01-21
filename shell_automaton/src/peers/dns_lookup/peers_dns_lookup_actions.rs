@@ -8,6 +8,11 @@ use crate::{EnablingCondition, Port, State};
 
 use super::DnsLookupError;
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::SocketAddrMutator;
+#[cfg(fuzzing)]
+use fuzzcheck::mutators::vector::VecMutator;
+
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersDnsLookupInitAction {
@@ -36,6 +41,7 @@ impl EnablingCondition<State> for PeersDnsLookupErrorAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersDnsLookupSuccessAction {
+    #[cfg_attr(fuzzing, field_mutator(VecMutator<SocketAddr, SocketAddrMutator>))]
     pub addresses: Vec<SocketAddr>,
 }
 

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::SocketAddrMutator;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -8,8 +10,14 @@ use std::net::SocketAddr;
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PausedLoop {
-    PeerTryWrite { peer_address: SocketAddr },
-    PeerTryRead { peer_address: SocketAddr },
+    PeerTryWrite {
+        #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
+        peer_address: SocketAddr,
+    },
+    PeerTryRead {
+        #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
+        peer_address: SocketAddr,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

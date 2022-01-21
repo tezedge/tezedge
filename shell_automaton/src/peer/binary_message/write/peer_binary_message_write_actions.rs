@@ -9,9 +9,13 @@ use crate::{EnablingCondition, State};
 
 use super::PeerBinaryMessageWriteError;
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::SocketAddrMutator;
+
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerBinaryMessageWriteSetContentAction {
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub message: Vec<u8>,
 }
@@ -25,6 +29,7 @@ impl EnablingCondition<State> for PeerBinaryMessageWriteSetContentAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerBinaryMessageWriteNextChunkAction {
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -37,6 +42,7 @@ impl EnablingCondition<State> for PeerBinaryMessageWriteNextChunkAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerBinaryMessageWriteReadyAction {
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -49,6 +55,7 @@ impl EnablingCondition<State> for PeerBinaryMessageWriteReadyAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerBinaryMessageWriteErrorAction {
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub error: PeerBinaryMessageWriteError,
 }

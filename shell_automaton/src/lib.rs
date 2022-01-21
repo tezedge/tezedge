@@ -3,6 +3,7 @@
 
 #![feature(no_coverage)]
 #![feature(deadline_api)]
+#![cfg_attr(fuzzing, feature(trivial_bounds))]
 
 use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
 
@@ -56,6 +57,9 @@ pub mod block_applier;
 pub mod rpc;
 
 pub mod actors;
+
+//#[cfg(fuzzing)]
+pub mod fuzzing;
 
 pub mod protocol;
 

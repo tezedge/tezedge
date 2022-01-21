@@ -9,6 +9,9 @@ use crate::peers::PeerBlacklistState;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use crate::{EnablingCondition, State};
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::SocketAddrMutator;
+
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingRejectedReason {
@@ -49,6 +52,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptErrorAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingRejectedAction {
     pub token: PeerToken,
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub reason: PeerConnectionIncomingRejectedReason,
 }
@@ -63,6 +67,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptSuccessAction {
     pub token: PeerToken,
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
