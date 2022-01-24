@@ -1439,26 +1439,23 @@ impl Storage {
         let start = self.thin_pointers.len() as u32;
         let pointers_id = PointersId::from((start, &pointers));
 
-        for (_, pointer) in pointers.iter().enumerate() {
-            let pointer = match pointer {
-                Some(pointer) => pointer,
-                None => continue,
-            };
-
+        for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
             let thin_pointer: ThinPointer = if let Some(DirectoryOrInodeId::Inode(inode_id)) =
                 pointer.ptr_id()
             {
+                // The pointer points to an `InodeId`, create a `ThinPointer`.
                 let inode_id: u32 = inode_id.into();
                 ThinPointer::new()
                     .with_ref_kind(ThinPointerKind::InodeId)
                     .with_is_commited(pointer.is_commited())
                     .with_value(inode_id)
-            } else if let Some(thin_pointer) = pointer.thin_pointer.clone() {
+            } else if let Some(thin_pointer) = &pointer.thin_pointer {
                 // `ThinPointer` already exist, use it.
-                // This avoid growing `Self::pointers`.
-                thin_pointer
+                // This avoid growing `Self::fat_pointers`.
+                thin_pointer.clone()
             } else {
-                // Create a new `Pointer`
+                // The pointers points to an `AbsoluteOffset` of `HashId`
+                // Create a new `FatPointer`
                 let fat_pointer: PointerId = self.fat_pointers.push(pointer.fat_pointer.clone())?;
                 let fat_pointer: u32 = fat_pointer.into();
                 ThinPointer::new()
@@ -1570,8 +1567,6 @@ impl Storage {
 
             let new_dir_id = self.copy_sorted(dir_range, strings)?;
 
-            // self.add_inode(Inode::Directory(new_dir_id))
-
             Ok(DirectoryOrInodeId::Directory(new_dir_id))
         } else {
             let nchildren = dir_range_len as u32;
@@ -1616,22 +1611,9 @@ impl Storage {
                     thin_pointer: None,
                     fat_pointer: FatPointer::new(dir_or_inode_id),
                 });
-                // pointers[index as usize] = Some(PointerWithInfo {
-                //     index: 0,
-                //     object_ref: Default::default(),
-                //     // hash_id: None,
-                //     // offset: None,
-                //     pointer: Pointer::new(None, dir_or_inode_id),
-                // });
             }
 
             self.add_inode_pointers(depth, nchildren, pointers)
-            // self.add_inode(Inode::Pointers {
-            //     depth,
-            //     nchildren,
-            //     npointers,
-            //     pointers,
-            // })
         }
     }
 
