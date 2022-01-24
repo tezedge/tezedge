@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, ChainId};
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
-use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse};
 use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::request::RequestId;
@@ -56,6 +56,9 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
         apply_block_req: Arc<ApplyBlockRequest>,
+
+        /// Is retry or not and if yes, what is the reason.
+        retry: Option<ApplyBlockError>,
     },
     ProtocolRunnerApplySuccess {
         time: u64,

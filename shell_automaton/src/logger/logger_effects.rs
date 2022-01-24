@@ -85,6 +85,10 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             slog::error!(log, "Error when getting genesis commit result from protocol";
                 "error" => &content.error);
         }
+        Action::BlockApplierApplyProtocolRunnerApplyRetry(content) => {
+            slog::warn!(log, "Block application failed! Retrying...";
+                "error" => format!("{:?}", content.reason));
+        }
         Action::BlockApplierApplyError(content) => {
             slog::error!(log, "Block application failed";
                 "error" => format!("{:?}", content.error));

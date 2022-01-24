@@ -77,7 +77,17 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                             block: block.clone(),
                             block_meta: block_meta.clone(),
                             apply_block_req: apply_block_req.clone(),
+
+                            retry: None,
                         };
+                }
+                _ => return,
+            };
+        }
+        Action::BlockApplierApplyProtocolRunnerApplyRetry(content) => {
+            match &mut state.block_applier.current {
+                BlockApplierApplyState::ProtocolRunnerApplyPending { retry, .. } => {
+                    *retry = Some(content.reason.clone());
                 }
                 _ => return,
             };

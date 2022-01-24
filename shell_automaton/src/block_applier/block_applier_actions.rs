@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
-use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse};
 
 use crypto::hash::{BlockHash, ChainId};
 
@@ -74,12 +74,42 @@ impl EnablingCondition<State> for BlockApplierApplyPrepareDataSuccessAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockApplierApplyProtocolRunnerApplyInitAction {}
+
+impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.block_applier.current {
+            BlockApplierApplyState::PrepareDataSuccess { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyProtocolRunnerApplyPendingAction {}
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
         match &state.block_applier.current {
             BlockApplierApplyState::PrepareDataSuccess { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockApplierApplyProtocolRunnerApplyRetryAction {
+    /// Block application error because of which we are retrying.
+    /// Because of the issues in the cache, we have to retry if block
+    /// application fails as failure cleans the cache and retry will
+    /// resolve cache related issues.
+    pub reason: ApplyBlockError,
+}
+
+impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyRetryAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.block_applier.current {
+            BlockApplierApplyState::ProtocolRunnerApplyPending { retry, .. } => retry.is_none(),
             _ => false,
         }
     }

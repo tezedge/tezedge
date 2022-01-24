@@ -643,10 +643,8 @@ impl ChainManager {
                                     }
                                 }
                             }
-                            PeerMessage::GetOperations(_) => {
-                                return Ok(());
-                            }
-                            PeerMessage::Operation(_) => {
+                            // Processed inside shell_automaton.
+                            PeerMessage::GetOperations(_) | PeerMessage::Operation(_) => {
                                 return Ok(());
                             }
                             ignored_message => {

@@ -3,6 +3,9 @@
 
 use std::sync::Arc;
 
+use tezos_api::ffi::ProtocolError;
+use tezos_protocol_ipc_client::ProtocolServiceError;
+
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
@@ -14,7 +17,9 @@ use crate::{Action, ActionWithMeta, Service, Store};
 use super::{
     BlockApplierApplyError, BlockApplierApplyErrorAction, BlockApplierApplyInitAction,
     BlockApplierApplyPrepareDataPendingAction, BlockApplierApplyPrepareDataSuccessAction,
+    BlockApplierApplyProtocolRunnerApplyInitAction,
     BlockApplierApplyProtocolRunnerApplyPendingAction,
+    BlockApplierApplyProtocolRunnerApplyRetryAction,
     BlockApplierApplyProtocolRunnerApplySuccessAction, BlockApplierApplyState,
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction,
@@ -64,24 +69,31 @@ where
                 )
             });
 
-            let req = match &store.state().block_applier.current {
+            store.dispatch(BlockApplierApplyProtocolRunnerApplyInitAction {});
+        }
+        Action::BlockApplierApplyProtocolRunnerApplyInit(_)
+        | Action::BlockApplierApplyProtocolRunnerApplyRetry(_) => {
+            let (block_hash, req) = match &store.state.get().block_applier.current {
                 BlockApplierApplyState::PrepareDataSuccess {
-                    apply_block_req, ..
-                } => apply_block_req.clone(),
+                    block,
+                    apply_block_req,
+                    ..
+                } => (&block.hash, apply_block_req.clone()),
+                BlockApplierApplyState::ProtocolRunnerApplyPending {
+                    block,
+                    apply_block_req,
+                    ..
+                } => (&block.hash, apply_block_req.clone()),
                 _ => return,
             };
-            store.service.protocol_runner().apply_block((*req).clone());
-            store.dispatch(BlockApplierApplyProtocolRunnerApplyPendingAction {});
-        }
-        Action::BlockApplierApplyProtocolRunnerApplyPending(_) => {
-            let block_hash = match store.state.get().block_applier.current.block_hash() {
-                Some(v) => v,
-                None => return,
-            };
+
             store
                 .service
                 .statistics()
                 .map(|s| s.block_apply_start(&block_hash, action.time_as_nanos()));
+
+            store.service.protocol_runner().apply_block((*req).clone());
+            store.dispatch(BlockApplierApplyProtocolRunnerApplyPendingAction {});
         }
         Action::ProtocolRunnerResponse(content) => {
             let result = match &content.result {
@@ -92,9 +104,23 @@ where
                 Ok(result) => store.dispatch(BlockApplierApplyProtocolRunnerApplySuccessAction {
                     apply_result: result.clone().into(),
                 }),
-                Err(err) => store.dispatch(BlockApplierApplyErrorAction {
-                    error: BlockApplierApplyError::ProtocolRunnerApply(err.clone()),
-                }),
+                Err(err) => {
+                    if let ProtocolServiceError::ProtocolError {
+                        reason: ProtocolError::ApplyBlockError { reason },
+                    } = err
+                    {
+                        if store.dispatch(BlockApplierApplyProtocolRunnerApplyRetryAction {
+                            reason: reason.clone(),
+                        }) {
+                            // if retrying is enabled, return, otherwise
+                            // dispatch error action.
+                            return;
+                        }
+                    }
+                    store.dispatch(BlockApplierApplyErrorAction {
+                        error: BlockApplierApplyError::ProtocolRunnerApply(err.clone()),
+                    })
+                }
             };
         }
         Action::BlockApplierApplyProtocolRunnerApplySuccess(_) => {

@@ -9,7 +9,9 @@ use storage::persistent::SchemaError;
 use crate::block_applier::{
     BlockApplierApplyErrorAction, BlockApplierApplyInitAction,
     BlockApplierApplyPrepareDataPendingAction, BlockApplierApplyPrepareDataSuccessAction,
+    BlockApplierApplyProtocolRunnerApplyInitAction,
     BlockApplierApplyProtocolRunnerApplyPendingAction,
+    BlockApplierApplyProtocolRunnerApplyRetryAction,
     BlockApplierApplyProtocolRunnerApplySuccessAction,
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction, BlockApplierEnqueueBlockAction,
@@ -247,7 +249,9 @@ pub enum Action {
     BlockApplierApplyPrepareDataPending(BlockApplierApplyPrepareDataPendingAction),
     BlockApplierApplyPrepareDataSuccess(BlockApplierApplyPrepareDataSuccessAction),
 
+    BlockApplierApplyProtocolRunnerApplyInit(BlockApplierApplyProtocolRunnerApplyInitAction),
     BlockApplierApplyProtocolRunnerApplyPending(BlockApplierApplyProtocolRunnerApplyPendingAction),
+    BlockApplierApplyProtocolRunnerApplyRetry(BlockApplierApplyProtocolRunnerApplyRetryAction),
     BlockApplierApplyProtocolRunnerApplySuccess(BlockApplierApplyProtocolRunnerApplySuccessAction),
 
     BlockApplierApplyStoreApplyResultPending(BlockApplierApplyStoreApplyResultPendingAction),
