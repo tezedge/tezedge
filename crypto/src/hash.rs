@@ -551,7 +551,10 @@ impl SeedEd25519 {
         let seed_bytes = v
             .as_slice()
             .try_into()
-            .map_err(|_| CryptoError::InvalidKeySize { expected: 32, actual: v.len() })?;
+            .map_err(|_| CryptoError::InvalidKeySize {
+                expected: 32,
+                actual: v.len(),
+            })?;
         v.zeroize();
         let seed = sodiumoxide::crypto::sign::Seed(seed_bytes);
         let (pk, sk) = sodiumoxide::crypto::sign::keypair_from_seed(&seed);
@@ -563,7 +566,9 @@ pub struct SecretKeyEd25519(sodiumoxide::crypto::sign::SecretKey);
 
 impl PublicKeyEd25519 {
     /// Generates public key hash for public key ed25519
-    pub fn public_key_hash(&self) -> Result<CryptoboxPublicKeyHash, crate::crypto_box::PublicKeyError> {
+    pub fn public_key_hash(
+        &self,
+    ) -> Result<CryptoboxPublicKeyHash, crate::crypto_box::PublicKeyError> {
         CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref())?)
             .map_err(Into::into)
     }
@@ -575,8 +580,7 @@ impl SecretKeyEd25519 {
         T: IntoIterator<Item = I>,
         I: AsRef<[u8]>,
     {
-        let digest = blake2b::digest_all(data, 32)
-            .map_err(|_| CryptoError::InvalidMessage)?;
+        let digest = blake2b::digest_all(data, 32).map_err(|_| CryptoError::InvalidMessage)?;
         let signature = sodiumoxide::crypto::sign::sign_detached(&digest, &self.0);
         Ok(Signature(signature.0.to_vec()))
     }

@@ -1,11 +1,12 @@
-use std::{path::PathBuf, io};
+use std::{io, path::PathBuf};
 
-use thiserror::Error;
 use derive_more::From;
+use thiserror::Error;
 
 use crypto::{
+    base58::FromBase58CheckError,
     hash::{PublicKeyEd25519, SecretKeyEd25519},
-    base58::FromBase58CheckError, CryptoError,
+    CryptoError,
 };
 
 #[derive(Debug, Error, From)]
@@ -15,9 +16,7 @@ pub enum ReadKeyError {
     #[error("{_0}")]
     De(serde_json::Error),
     #[error("key for {baker} not found")]
-    KeyNotFound {
-        baker: String,
-    },
+    KeyNotFound { baker: String },
     #[error("failed to parse key")]
     FailedToParseKey,
     #[error("only unencrypted keys supported")]
@@ -30,10 +29,13 @@ pub enum ReadKeyError {
     Crypto(CryptoError),
 }
 
-pub fn read_key(base_dir: &PathBuf, baker: &str) -> Result<(PublicKeyEd25519, SecretKeyEd25519), ReadKeyError> {
-    use std::fs::File;
-    use serde::Deserialize;
+pub fn read_key(
+    base_dir: &PathBuf,
+    baker: &str,
+) -> Result<(PublicKeyEd25519, SecretKeyEd25519), ReadKeyError> {
     use crypto::hash::SeedEd25519;
+    use serde::Deserialize;
+    use std::fs::File;
 
     #[derive(Deserialize)]
     struct SecretKeyRecord {
@@ -46,7 +48,9 @@ pub fn read_key(base_dir: &PathBuf, baker: &str) -> Result<(PublicKeyEd25519, Se
     let secret_key = &secret_keys
         .iter()
         .find(|v| v.name == baker)
-        .ok_or(ReadKeyError::KeyNotFound { baker: baker.to_owned() })?
+        .ok_or(ReadKeyError::KeyNotFound {
+            baker: baker.to_owned(),
+        })?
         .value;
     let mut it = secret_key.split(':');
     let schema = it.next().ok_or(ReadKeyError::FailedToParseKey)?;
@@ -57,5 +61,7 @@ pub fn read_key(base_dir: &PathBuf, baker: &str) -> Result<(PublicKeyEd25519, Se
     if !secret_key.starts_with("edsk") {
         return Err(ReadKeyError::UnsupportedKey);
     }
-    SeedEd25519::from_base58_check(secret_key)?.keypair().map_err(From::from)
+    SeedEd25519::from_base58_check(secret_key)?
+        .keypair()
+        .map_err(From::from)
 }

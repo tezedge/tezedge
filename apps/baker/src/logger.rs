@@ -40,16 +40,3 @@ pub fn logger(empty: bool, level: Level) -> Logger {
         Logger::root(Discard, o!())
     }
 }
-
-pub fn logger_time() -> Logger {
-    let drain = FullFormat::new(TermDecorator::new().build())
-        .build()
-        .fuse();
-    let drain = Async::new(drain)
-        .chan_size(32768)
-        .overflow_strategy(OverflowStrategy::Block)
-        .build()
-        .filter_level(Level::Info)
-        .fuse();
-    Logger::root(drain, o!())
-}

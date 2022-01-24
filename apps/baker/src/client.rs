@@ -12,7 +12,7 @@ use serde::Deserialize;
 use slog::Logger;
 use thiserror::Error;
 
-use crypto::hash::{ChainId, BlockHash, ContractTz1Hash};
+use crypto::hash::{BlockHash, ChainId, ContractTz1Hash};
 
 #[derive(Debug, Error, From)]
 pub enum TezosClientError {
@@ -34,7 +34,6 @@ pub struct TezosClient {
     inner: Client,
     counter: Cell<usize>,
     log: Logger,
-    time_log: Logger,
 }
 
 #[derive(Deserialize)]
@@ -70,7 +69,6 @@ impl TezosClient {
                 inner: Client::new(),
                 counter: Cell::new(0),
                 log,
-                time_log: crate::logger::logger_time(),
             },
             rx,
         )
@@ -156,23 +154,27 @@ impl TezosClient {
         Ok(handle)
     }
 
-    pub fn inject_operation(&self, chain_id: &ChainId, op_hex: &str) -> Result<serde_json::Value, TezosClientError> {
-        let mut url = self.endpoint
+    pub fn inject_operation(
+        &self,
+        chain_id: &ChainId,
+        op_hex: &str,
+    ) -> Result<serde_json::Value, TezosClientError> {
+        let mut url = self
+            .endpoint
             .join("injection/operation")
             .expect("valid constant url");
-        url.query_pairs_mut().append_pair("chain", &chain_id.to_base58_check());
+        url.query_pairs_mut()
+            .append_pair("chain", &chain_id.to_base58_check());
 
         let counter = self.counter.get();
         self.counter.set(counter + 1);
         slog::info!(self.log, ">>>>{}: {}", counter, url);
-        slog::info!(self.time_log, "");
         let body = serde_json::to_string(op_hex).unwrap();
         slog::info!(self.log, "{}", body);
         let response = self.inner.post(url).body(body).send()?;
         let status = response.status();
         slog::info!(self.log, "<<<<{}: {}", counter, status);
-        let result = serde_json::from_reader(response)
-            .map_err(Into::into);
+        let result = serde_json::from_reader(response).map_err(Into::into);
         match &result {
             Ok(value) => slog::info!(self.log, "{}", serde_json::to_string(value).unwrap()),
             Err(err) => slog::error!(self.log, "{}", err),
@@ -190,20 +192,27 @@ impl TezosClient {
     }
 
     pub fn constants(&self) -> Result<Constants, TezosClientError> {
-        let url = self.endpoint.join("chains/main/blocks/head/context/constants")
+        let url = self
+            .endpoint
+            .join("chains/main/blocks/head/context/constants")
             .expect("valid constant url");
         self.wrap_single_response(url)
     }
 
     pub fn validators(&self, level: u32) -> Result<Vec<Validator>, TezosClientError> {
-        let mut url = self.endpoint.join("chains/main/blocks/head/helpers/validators")
+        let mut url = self
+            .endpoint
+            .join("chains/main/blocks/head/helpers/validators")
             .expect("valid constant url");
-        url.query_pairs_mut().append_pair("level", &level.to_string());
+        url.query_pairs_mut()
+            .append_pair("level", &level.to_string());
         self.wrap_single_response(url)
     }
 
     pub fn chain_id(&self) -> Result<ChainId, TezosClientError> {
-        let url = self.endpoint.join("chains/main/chain_id")
+        let url = self
+            .endpoint
+            .join("chains/main/chain_id")
             .expect("valid constant url");
         self.wrap_single_response(url)
     }
@@ -219,9 +228,7 @@ impl TezosClient {
         serde_json::from_value(value).map_err(Into::into)
     }
 
-    pub fn monitor_main_head(
-        &self,
-    ) -> Result<impl Iterator<Item = BlockHeader>, TezosClientError> {
+    pub fn monitor_main_head(&self) -> Result<impl Iterator<Item = BlockHeader>, TezosClientError> {
         let mut url = self
             .endpoint
             .join("monitor/heads/main")
@@ -249,7 +256,7 @@ impl TezosClient {
 
     fn wrap_response<T>(&self, url: Url) -> Result<impl Iterator<Item = T>, TezosClientError>
     where
-        for<'de > T: Deserialize<'de>,
+        for<'de> T: Deserialize<'de>,
     {
         let (response, counter, status) = self.request_inner(url)?;
         let log = self.log.clone();

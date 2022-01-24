@@ -9,17 +9,18 @@ use crypto::hash::ContractTz1Hash;
 
 use super::{action::*, service::ServiceDefault, state::State};
 use crate::{
+    endorsement::{generate_endorsement, generate_preendorsement},
     key,
-    endorsement::{
-        generate_preendorsement,
-        generate_endorsement,
-    },
 };
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
     match &action.action {
-        Action::RunWithLocalNode(RunWithLocalNodeAction { base_dir, node_dir, baker }) => {
-            let ServiceDefault { client, .. } = &store.service();
+        Action::RunWithLocalNode(RunWithLocalNodeAction {
+            base_dir,
+            node_dir,
+            baker,
+        }) => {
+            let ServiceDefault { client, log } = &store.service();
 
             let _ = node_dir;
             let (public_key, secret_key) = key::read_key(&base_dir, baker).unwrap();
@@ -32,21 +33,21 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let constants = client.constants().unwrap();
             let quorum_size = 2 * constants.consensus_committee_size / 3 + 1;
 
-            let heads = client.monitor_main_head().unwrap();
+            // TODO: avoid double endorsement
 
+            // iterating over current heads
+            let heads = client.monitor_main_head().unwrap();
             for head in heads {
                 let level = head.level;
-                // TODO: cache it somewhere
+                // TODO: cache it, we don't need to ask it for any round
                 let rights = client.validators(level).unwrap();
-                let slots = rights
-                    .iter()
-                    .find_map(|v| {
-                        if v.delegate == public_key_hash {
-                            Some(&v.slots)
-                        } else {
-                            None
-                        }
-                    });
+                let slots = rights.iter().find_map(|v| {
+                    if v.delegate == public_key_hash {
+                        Some(&v.slots)
+                    } else {
+                        None
+                    }
+                });
                 let slot = match slots.and_then(|v| v.first()) {
                     Some(slot) => *slot,
                     // have no rights, skip the block
@@ -58,8 +59,19 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 let round_bytes = hex::decode(&head.protocol_data[64..72]).unwrap();
                 let round = u32::from_be_bytes(round_bytes.try_into().unwrap());
 
-                let op = generate_preendorsement(&branch, slot, level, round, payload_hash.clone(), &chain_id, &secret_key).unwrap();
-                client.inject_operation(&chain_id, &hex::encode(&op)).unwrap();
+                let op = generate_preendorsement(
+                    &branch,
+                    slot,
+                    level,
+                    round,
+                    payload_hash.clone(),
+                    &chain_id,
+                    &secret_key,
+                )
+                .unwrap();
+                if let Err(err) = client.inject_operation(&chain_id, &hex::encode(&op)) {
+                    slog::error!(log, "{}", err);
+                }
 
                 let mut num_preendorsement = 0;
                 let operations = client.monitor_operations().unwrap();
@@ -78,11 +90,16 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                             if kind != "preendorsement" {
                                 continue;
                             }
-                            let payload_hash_str = content_obj.get("block_payload_hash").unwrap().as_str().unwrap();
+                            let payload_hash_str = content_obj
+                                .get("block_payload_hash")
+                                .unwrap()
+                                .as_str()
+                                .unwrap();
                             // TODO: payload hash base58 compare
                             let _ = payload_hash_str;
 
-                            let this_slot = content_obj.get("slot").unwrap().as_u64().unwrap() as u16;
+                            let this_slot =
+                                content_obj.get("slot").unwrap().as_u64().unwrap() as u16;
 
                             for rights_entry in &rights {
                                 if rights_entry.slots.contains(&this_slot) {
@@ -92,8 +109,19 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         }
                     }
                     if num_preendorsement >= quorum_size {
-                        let op = generate_endorsement(&branch, slot, level, round, payload_hash, &chain_id, &secret_key).unwrap();
-                        client.inject_operation(&chain_id, &hex::encode(&op)).unwrap();
+                        let op = generate_endorsement(
+                            &branch,
+                            slot,
+                            level,
+                            round,
+                            payload_hash,
+                            &chain_id,
+                            &secret_key,
+                        )
+                        .unwrap();
+                        client
+                            .inject_operation(&chain_id, &hex::encode(&op))
+                            .unwrap();
                         break;
                     }
                 }

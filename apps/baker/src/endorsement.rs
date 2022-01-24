@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::{hash::{BlockHash, ChainId, SecretKeyEd25519}, CryptoError};
-use tezos_encoding::enc::BinWriter;
-use thiserror::Error;
 use derive_more::From;
-use tezos_encoding::enc::BinError;
+use thiserror::Error;
+
+use crypto::{
+    hash::{BlockHash, ChainId, SecretKeyEd25519},
+    CryptoError,
+};
+use tezos_encoding::enc::{BinError, BinWriter};
 
 #[derive(BinWriter)]
 #[encoding(tags = "u8")]
@@ -105,7 +108,14 @@ fn generate_generic(
         &EndorsementKind::Endorsement => EndorsementWatermarkKind::Endorsement,
         &EndorsementKind::Preendorsement => EndorsementWatermarkKind::Preendorsement,
     };
-    let op = EndorsementOperation { branch, kind, slot, level, round, payload_hash };
+    let op = EndorsementOperation {
+        branch,
+        kind,
+        slot,
+        level,
+        round,
+        payload_hash,
+    };
     let watermark = EndorsementWatermark {
         kind: watermark_kind,
         chain_id: chain_id.clone(),
@@ -120,10 +130,7 @@ fn generate_generic(
         watermark.bin_write(&mut v)?;
         v
     };
-    let signature = secret_key.sign(&[
-        watermark_bytes.as_slice(),
-        op_bytes.as_slice(),
-    ])?;
+    let signature = secret_key.sign(&[watermark_bytes.as_slice(), op_bytes.as_slice()])?;
 
     let mut out = [0; 139];
     out[..75].clone_from_slice(&op_bytes);
