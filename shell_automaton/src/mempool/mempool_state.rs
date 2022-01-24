@@ -9,7 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashBase58, OperationHash};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
@@ -25,7 +25,7 @@ pub struct MempoolState {
     //
     pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
-    pub(super) injecting_rpc_ids: HashMap<HashBase58<OperationHash>, RpcId>,
+    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
     // performed rpc
     pub(super) injected_rpc_ids: Vec<RpcId>,
     // operation streams requested by baker
@@ -38,7 +38,7 @@ pub struct MempoolState {
     // we sent GetOperations and pending full content of those operations
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
-    pub(super) pending_operations: HashMap<HashBase58<OperationHash>, Operation>,
+    pub(super) pending_operations: HashMap<OperationHash, Operation>,
     // operations that passed basic checks, are not sent because prevalidator is not ready
     pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
@@ -46,13 +46,12 @@ pub struct MempoolState {
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
     /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: HashMap<HashBase58<BlockHash>, i32>,
+    pub last_predecessor_blocks: HashMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
-    pub old_operations_state:
-        VecDeque<(Level, BTreeMap<HashBase58<OperationHash>, MempoolOperation>)>,
-    pub operations_state: BTreeMap<HashBase58<OperationHash>, MempoolOperation>,
+    pub old_operations_state: VecDeque<(Level, BTreeMap<OperationHash, MempoolOperation>)>,
+    pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
 
     /// Hash of the latest applied block
     pub latest_current_head: Option<BlockHash>,
@@ -95,8 +94,8 @@ pub struct OperationStream {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
-    pub ops: HashMap<HashBase58<OperationHash>, Operation>,
-    pub refused_ops: HashMap<HashBase58<OperationHash>, Operation>,
+    pub ops: HashMap<OperationHash, Operation>,
+    pub refused_ops: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
@@ -117,7 +116,7 @@ pub struct PeerState {
     pub(super) known_valid_to_send: Vec<OperationHash>,
 }
 
-pub type OperationsStats = HashMap<HashBase58<OperationHash>, OperationStats>;
+pub type OperationsStats = HashMap<OperationHash, OperationStats>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
@@ -129,7 +128,7 @@ pub struct OperationStats {
     /// (time_validation_finished, validation_result, prevalidation_duration)
     pub validation_result: Option<(u64, OperationValidationResult, Option<u64>, Option<u64>)>,
     pub validations: Vec<OperationValidationStats>,
-    pub nodes: HashMap<HashBase58<CryptoboxPublicKeyHash>, OperationNodeStats>,
+    pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
 }
 
 impl OperationStats {

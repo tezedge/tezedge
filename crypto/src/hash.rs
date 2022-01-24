@@ -1,11 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    borrow::Borrow,
-    convert::{TryFrom, TryInto},
-    marker::PhantomData,
-};
+use std::convert::{TryFrom, TryInto};
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
@@ -175,12 +171,6 @@ macro_rules! define_hash {
             type Error = FromBase58CheckError;
             fn try_from(encoded: &str) -> Result<Self, Self::Error> {
                 Self::from_base58_check(encoded)
-            }
-        }
-
-        impl std::convert::From<$name> for HashBase58<$name> {
-            fn from(hash: $name) -> Self {
-                Self(hash)
             }
         }
 
@@ -604,138 +594,6 @@ impl PublicKeySignatureVerifier for PublicKeyP256 {
             .verify_digest(NoHash::default().chain(bytes), &sig)
             .map(|_| true)
             .unwrap_or(false))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct HashBase58<H>(pub H);
-
-impl<H> HashBase58<H>
-where
-    H: HashTrait,
-{
-    pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-        H::from_b58check(data).map(Self)
-    }
-
-    pub fn to_base58_check(&self) -> String {
-        self.0.to_b58check()
-    }
-}
-
-impl<H> serde::Serialize for HashBase58<H>
-where
-    H: HashTrait,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.0.to_b58check())
-    }
-}
-
-struct HashVisitor<H>(PhantomData<H>);
-
-impl<H> Default for HashVisitor<H> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<'de, H> serde::de::Visitor<'de> for HashVisitor<H>
-where
-    H: HashTrait,
-{
-    type Value = H;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("base58 encoded data expected")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Self::Value::from_b58check(v)
-            .map_err(|e| E::custom(format!("error constructing hash from base58check: {}", e)))
-    }
-}
-
-impl<'de, H> serde::Deserialize<'de> for HashBase58<H>
-where
-    H: HashTrait,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        deserializer
-            .deserialize_str(HashVisitor::default())
-            .map(Self)
-    }
-}
-
-impl<H> From<HashBase58<H>> for Vec<u8>
-where
-    H: Into<Vec<u8>>,
-{
-    fn from(hash: HashBase58<H>) -> Self {
-        hash.0.into()
-    }
-}
-
-impl<H> AsRef<Vec<u8>> for HashBase58<H>
-where
-    H: AsRef<Vec<u8>>,
-{
-    fn as_ref(&self) -> &Vec<u8> {
-        self.0.as_ref()
-    }
-}
-
-impl<H> HashTrait for HashBase58<H>
-where
-    H: HashTrait,
-{
-    /// Returns this hash type.
-    fn hash_type() -> HashType {
-        H::hash_type()
-    }
-
-    /// Returns the size of this hash.
-    fn hash_size() -> usize {
-        H::hash_size()
-    }
-
-    /// Tries to create this hash from the `bytes`.
-    fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
-        H::try_from_bytes(bytes).map(Self)
-    }
-
-    fn from_b58check(data: &str) -> Result<Self, FromBase58CheckError> {
-        H::from_b58check(data).map(Self)
-    }
-
-    fn to_b58check(&self) -> String {
-        self.0.to_b58check()
-    }
-}
-
-impl<H> Borrow<H> for HashBase58<H> {
-    fn borrow(&self) -> &H {
-        &self.0
-    }
-}
-
-impl<H> TryFrom<&str> for HashBase58<H>
-where
-    H: HashTrait,
-{
-    type Error = FromBase58CheckError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Ok(Self(H::from_b58check(value)?))
     }
 }
 

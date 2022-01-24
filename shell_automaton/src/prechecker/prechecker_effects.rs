@@ -406,13 +406,13 @@ where
             match SupportedProtocol::try_from(value.next_protocol_hash()) {
                 Ok(proto) => {
                     store.dispatch(PrecheckerNextBlockProtocolReadyAction {
-                        block_hash: key.0.clone(),
+                        block_hash: key.clone(),
                         supported_protocol: proto.clone(),
                     });
                 }
                 Err(err) => {
                     store.dispatch(PrecheckerNextBlockProtocolErrorAction {
-                        block_hash: key.0.clone(),
+                        block_hash: key.clone(),
                         error: err.into(),
                     });
                 }
@@ -423,7 +423,7 @@ where
             error,
         }) => {
             store.dispatch(PrecheckerNextBlockProtocolErrorAction {
-                block_hash: key.0.clone(),
+                block_hash: key.clone(),
                 error: error.clone().into(),
             });
         }
