@@ -13,7 +13,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.57
+          toolchain: 1.58
           components: clippy
           override: true
 
