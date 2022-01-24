@@ -252,11 +252,25 @@ pub enum StorageError {
     InodeInRepositoryNotFound,
     #[error("InodePointerIdNotFound: Inode does not have a PointerId")]
     InodePointerIdNotFound,
+    #[error("FatPointerIdError: Conversion from/to usize of a PointerId failed")]
+    FatPointerIdError,
 }
 
 impl From<DirEntryIdError> for StorageError {
     fn from(_: DirEntryIdError) -> Self {
         Self::DirEntryIdError
+    }
+}
+
+impl From<FatPointerIdError> for StorageError {
+    fn from(_: FatPointerIdError) -> Self {
+        Self::FatPointerIdError
+    }
+}
+
+impl From<std::convert::Infallible> for StorageError {
+    fn from(_: std::convert::Infallible) -> Self {
+        unreachable!()
     }
 }
 
@@ -420,37 +434,6 @@ impl TryFrom<usize> for InodeId {
     }
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-pub struct PointerId(u32);
-
-impl TryInto<usize> for PointerId {
-    type Error = DirEntryIdError;
-
-    fn try_into(self) -> Result<usize, Self::Error> {
-        Ok(self.0 as usize)
-    }
-}
-
-impl From<PointerId> for u32 {
-    fn from(val: PointerId) -> Self {
-        val.0
-    }
-}
-
-impl From<u32> for PointerId {
-    fn from(v: u32) -> Self {
-        Self(v)
-    }
-}
-
-impl TryFrom<usize> for PointerId {
-    type Error = DirEntryIdError;
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        value.try_into().map(PointerId).map_err(|_| DirEntryIdError)
-    }
-}
-
 impl From<u32> for InodeId {
     fn from(v: u32) -> Self {
         Self(v)
@@ -460,6 +443,44 @@ impl From<u32> for InodeId {
 impl From<InodeId> for u32 {
     fn from(v: InodeId) -> Self {
         v.0
+    }
+}
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub struct FatPointerId(u32);
+
+impl TryInto<usize> for FatPointerId {
+    type Error = DirEntryIdError;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        Ok(self.0 as usize)
+    }
+}
+
+impl From<FatPointerId> for u32 {
+    fn from(val: FatPointerId) -> Self {
+        val.0
+    }
+}
+
+impl From<u32> for FatPointerId {
+    fn from(v: u32) -> Self {
+        Self(v)
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Fail to convert the fat pointer index into a FatPointerId")]
+pub struct FatPointerIdError;
+
+impl TryFrom<usize> for FatPointerId {
+    type Error = FatPointerIdError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        value
+            .try_into()
+            .map(FatPointerId)
+            .map_err(|_| FatPointerIdError)
     }
 }
 
@@ -567,8 +588,6 @@ impl Iterator for PointersBitfieldIterator {
     }
 }
 
-// #[bitfield]
-// #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 #[derive(Debug, Clone, Copy)]
 pub struct PointersId {
     start: u32,
@@ -595,11 +614,11 @@ impl PointersId {
         self.bitfield
     }
 
-    fn get_index_for_ptr(&self, ptr_index: usize) -> Option<usize> {
+    fn get_thin_pointer_for_ptr(&self, ptr_index: usize) -> Option<ThinPointerId> {
         let index = self.start as usize;
         let offset = self.bitfield.get_index_for(ptr_index)?;
 
-        Some(index + offset)
+        Some(ThinPointerId(index + offset))
     }
 
     pub fn iter(self) -> InodePointersIter {
@@ -607,21 +626,10 @@ impl PointersId {
     }
 }
 
-// #[bitfield]
-// #[derive(Clone, Copy, Debug)]
-// pub struct PointerToInodeInner {
-//     hash_id: B48,
-//     is_commited: bool,
-//     is_inode_available: bool,
-//     inode_id: B31,
-//     /// Set to `0` when the offset is not set
-//     offset: B63,
-// }
-
 #[derive(BitfieldSpecifier)]
 #[bits = 2]
 #[derive(Debug, Copy, Clone)]
-enum PointerPtrKind {
+enum FatPointerKind {
     Directory,
     HashId,
     Offset,
@@ -632,12 +640,12 @@ enum PointerPtrKind {
 #[derive(Debug, Copy, Clone)]
 enum ThinPointerKind {
     InodeId,
-    BigPointer,
+    FatPointer,
 }
 
 enum ThinPointerValue {
     Inode(InodeId),
-    BigPointer(PointerId),
+    FatPointer(FatPointerId),
 }
 
 #[bitfield]
@@ -645,7 +653,7 @@ enum ThinPointerValue {
 pub struct ThinPointer {
     is_commited: bool,
     ref_kind: ThinPointerKind,
-    /// Depending on `ref_kind`, this is either a `InodeId` or a `BigPointerId`
+    /// Depending on `ref_kind`, this is either a `InodeId` or a `FatPointerId`
     value: B30,
 }
 
@@ -655,16 +663,16 @@ impl ThinPointer {
     fn get_value(&self) -> ThinPointerValue {
         match self.ref_kind() {
             ThinPointerKind::InodeId => ThinPointerValue::Inode(self.value().into()),
-            ThinPointerKind::BigPointer => ThinPointerValue::BigPointer(self.value().into()),
+            ThinPointerKind::FatPointer => ThinPointerValue::FatPointer(self.value().into()),
         }
     }
 }
 
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
-pub struct PointerInner {
+pub struct FatPointerInner {
     is_commited: bool,
-    ptr_kind: PointerPtrKind,
+    ptr_kind: FatPointerKind,
     /// This is either a:
     /// - `DirectoryId`
     /// - `InodeId`
@@ -675,7 +683,7 @@ pub struct PointerInner {
 
 #[derive(Clone, Debug)]
 pub struct FatPointer {
-    inner: Cell<PointerInner>,
+    inner: Cell<FatPointerInner>,
 }
 
 assert_eq_size!([u8; 8], FatPointer);
@@ -697,18 +705,18 @@ impl FatPointer {
     pub fn new(dir_or_inode_id: DirectoryOrInodeId) -> Self {
         Self {
             inner: Cell::new(
-                PointerInner::new()
+                FatPointerInner::new()
                     .with_is_commited(false)
                     .with_ptr_id(dir_or_inode_id.as_u64())
-                    .with_ptr_kind(PointerPtrKind::Directory),
+                    .with_ptr_kind(FatPointerKind::Directory),
             ),
         }
     }
 
     pub fn new_commited(hash_id: Option<HashId>, offset: Option<AbsoluteOffset>) -> Self {
         let (ptr_kind, ptr) = match (hash_id, offset) {
-            (None, Some(offset)) => (PointerPtrKind::Offset, offset.as_u64()),
-            (Some(hash_id), None) => (PointerPtrKind::HashId, hash_id.as_u64()),
+            (None, Some(offset)) => (FatPointerKind::Offset, offset.as_u64()),
+            (Some(hash_id), None) => (FatPointerKind::HashId, hash_id.as_u64()),
             _ => unreachable!(
                 "Self::new_commited must be call with a `HashId` or an `AbsoluteOffset`"
             ),
@@ -716,7 +724,7 @@ impl FatPointer {
 
         Self {
             inner: Cell::new(
-                PointerInner::new()
+                FatPointerInner::new()
                     .with_is_commited(true)
                     .with_ptr_kind(ptr_kind)
                     .with_ptr_id(ptr),
@@ -739,15 +747,15 @@ impl FatPointer {
                 let is_commited: bool = thin_pointer.is_commited();
                 Ok(Self {
                     inner: Cell::new(
-                        PointerInner::new()
+                        FatPointerInner::new()
                             .with_is_commited(is_commited)
-                            .with_ptr_kind(PointerPtrKind::Directory)
+                            .with_ptr_kind(FatPointerKind::Directory)
                             .with_ptr_id(inode_id),
                     ),
                 })
             }
-            ThinPointerKind::BigPointer => {
-                let pointer_id: PointerId = (value as usize).try_into()?;
+            ThinPointerKind::FatPointer => {
+                let pointer_id: FatPointerId = value.into();
                 let fat_pointer = storage
                     .fat_pointers
                     .get(pointer_id)?
@@ -762,7 +770,7 @@ impl FatPointer {
     pub fn ptr_id(&self) -> Option<DirectoryOrInodeId> {
         let inner = self.inner.get();
 
-        if !matches!(inner.ptr_kind(), PointerPtrKind::Directory) {
+        if !matches!(inner.ptr_kind(), FatPointerKind::Directory) {
             return None;
         }
 
@@ -782,12 +790,12 @@ impl FatPointer {
         let ptr_id: u64 = inner.ptr_id();
 
         match inner.ptr_kind() {
-            PointerPtrKind::Directory => None,
-            PointerPtrKind::HashId => {
+            FatPointerKind::Directory => None,
+            FatPointerKind::HashId => {
                 let hash_id = HashId::new(ptr_id).unwrap();
                 Some(ObjectReference::new(Some(hash_id), None))
             }
-            PointerPtrKind::Offset => {
+            FatPointerKind::Offset => {
                 let offset: AbsoluteOffset = ptr_id.into();
                 Some(ObjectReference::new(None, Some(offset)))
             }
@@ -798,7 +806,7 @@ impl FatPointer {
         let mut inner = self.inner.get();
 
         inner.set_ptr_id(ptr_id.as_u64());
-        inner.set_ptr_kind(PointerPtrKind::Directory);
+        inner.set_ptr_kind(FatPointerKind::Directory);
 
         self.inner.set(inner);
     }
@@ -812,6 +820,21 @@ impl FatPointer {
         let mut inner = self.inner.get();
         inner.set_is_commited(value);
         self.inner.set(inner);
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ThinPointerId(usize);
+
+impl From<ThinPointerId> for usize {
+    fn from(value: ThinPointerId) -> Self {
+        value.0
+    }
+}
+
+impl From<usize> for ThinPointerId {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
@@ -832,14 +855,15 @@ impl InodePointersIter {
 }
 
 impl Iterator for InodePointersIter {
-    type Item = (usize, usize);
+    type Item = (usize, ThinPointerId);
 
     fn next(&mut self) -> Option<Self::Item> {
         let next_ptr_index = self.bitfield_iter.next()?;
         let current = self.current;
         self.current += 1;
 
-        Some((next_ptr_index, self.start + current))
+        let thin_pointer_id = ThinPointerId(self.start + current);
+        Some((next_ptr_index, thin_pointer_id))
     }
 }
 
@@ -920,8 +944,9 @@ pub struct Storage {
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
 
-    thin_pointers: ChunkedVec<ThinPointer>,
-    fat_pointers: IndexMap<PointerId, FatPointer>,
+    thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
+    fat_pointers: IndexMap<FatPointerId, FatPointer>,
+
     pointers_data: RefCell<HashMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
@@ -984,57 +1009,11 @@ impl Storage {
             offsets_to_hash_id: Map::default(),
             fat_pointers: IndexMap::with_chunk_capacity(32 * 1024),
             pointers_data: Default::default(),
-            thin_pointers: ChunkedVec::with_chunk_capacity(32 * 1024),
-            // pointers_offsets: Default::default(),
-            // pointers_hash_id: Default::default(),
+            thin_pointers: IndexMap::with_chunk_capacity(32 * 1024),
         } // Total ~27MB
     }
 
     pub fn memory_usage(&self, strings: &StringInterner) -> StorageMemoryUsage {
-        // let mut npointers = 0;
-        // let mut ndir = 0;
-
-        // for inode in self.inodes.iter_values() {
-        //     let mut only_pointers = true;
-        //     for (_, index) in self.iter_pointers_with_index(inode.pointers) {
-        //         let pointer = self.pointers.get(index).unwrap();
-
-        //         if let Some(ptr_id) = pointer.ptr_id() {
-        //             match ptr_id {
-        //                 DirectoryOrInodeId::Directory(_) => only_pointers = false,
-        //                 DirectoryOrInodeId::Inode(_) => {},
-        //             }
-        //         } else {
-        //             only_pointers = false;
-        //         }
-
-        //         if only_pointers {
-        //             npointers += 1;
-        //         }
-        //     }
-        // }
-
-        // let mut unique_dirs = HashSet::<DirectoryId>::default();
-
-        // for pointer in self.pointers.iter() {
-        //     if let Some(ptr_id) = pointer.ptr_id() {
-        //         match ptr_id {
-        //             DirectoryOrInodeId::Directory(dir_id) => {
-        //                 unique_dirs.insert(dir_id);
-        //                 ndir += 1
-        //             }
-        //             DirectoryOrInodeId::Inode(_) => npointers += 1,
-        //         }
-        //     };
-        // }
-
-        // println!(
-        //     "NDIR={:?} NPOINTERS={:?} UNIQUE_DIR={:?}",
-        //     ndir,
-        //     npointers,
-        //     unique_dirs.len()
-        // );
-
         let nodes_cap = self.nodes.capacity();
         let directories_cap = self.directories.capacity();
         let blobs_cap = self.blobs.capacity();
@@ -1243,7 +1222,7 @@ impl Storage {
     }
 
     /// [test only] Return the directory with owned values
-    // #[cfg(test)]
+    #[cfg(test)]
     pub fn get_owned_dir(
         &mut self,
         dir_id: DirectoryId,
@@ -1322,54 +1301,20 @@ impl Storage {
 
                 let index_at_depth = index_of_key(*depth as u32, key) as usize;
 
-                let ref_index = match pointers.get_index_for_ptr(index_at_depth) {
+                let thin_pointer_id = match pointers.get_thin_pointer_for_ptr(index_at_depth) {
                     Some(index) => index,
                     None => return Ok(None),
                 };
 
-                let ptr_id = if let Some(ptr_id) = self.pointer_get_id(ref_index) {
+                let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
                     ptr_id
                 } else {
-                    self.pointer_fetch(ref_index, repository, strings)?
+                    self.pointer_fetch(thin_pointer_id, repository, strings)?
                 };
 
-                // let inode_id = pointer.inode_id();
                 self.dir_find_dir_entry_recursive(ptr_id, key, strings, repository)
             }
         }
-
-        // let inode = self.get_inode(inode_id)?;
-
-        // match inode {
-        //     Inode::Directory(dir_id) => {
-        //         let dir_id = *dir_id;
-        //         self.dir_find_dir_entry(dir_id, key, strings, repository)
-        //     }
-        //     Inode::Pointers {
-        //         depth, pointers, ..
-        //     } => {
-        //         let index_at_depth = index_of_key(*depth, key) as usize;
-
-        //         let pointer = match pointers.get(index_at_depth) {
-        //             Some(Some(ref pointer)) => pointer,
-        //             Some(None) | None => return Ok(None),
-        //         };
-
-        //         let inode_id = if let Some(inode_id) = pointer.inode_id() {
-        //             inode_id
-        //         } else {
-        //             let pointer_inode_id = repository
-        //                 .get_inode(pointer.get_reference(), self, strings)
-        //                 .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-
-        //             self.set_pointer_inode_id(inode_id, index_at_depth, pointer_inode_id)?;
-        //             pointer_inode_id
-        //         };
-
-        //         // let inode_id = pointer.inode_id();
-        //         self.dir_find_dir_entry_recursive(inode_id, key, strings, repository)
-        //     }
-        // }
     }
 
     /// Find `key` in the directory.
@@ -1442,31 +1387,31 @@ impl Storage {
         let pointers_id = PointersId::from((start, &pointers));
 
         for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-            let thin_pointer: ThinPointer = if let Some(DirectoryOrInodeId::Inode(inode_id)) =
-                pointer.ptr_id()
-            {
-                // The pointer points to an `InodeId`, create a `ThinPointer`.
-                let inode_id: u32 = inode_id.into();
-                ThinPointer::new()
-                    .with_ref_kind(ThinPointerKind::InodeId)
-                    .with_is_commited(pointer.is_commited())
-                    .with_value(inode_id)
-            } else if let Some(thin_pointer) = &pointer.thin_pointer {
-                // `ThinPointer` already exist, use it.
-                // This avoid growing `Self::fat_pointers`.
-                thin_pointer.clone()
-            } else {
-                // The pointers points to an `AbsoluteOffset` of `HashId`
-                // Create a new `FatPointer`
-                let fat_pointer: PointerId = self.fat_pointers.push(pointer.fat_pointer.clone())?;
-                let fat_pointer: u32 = fat_pointer.into();
-                ThinPointer::new()
-                    .with_ref_kind(ThinPointerKind::BigPointer)
-                    .with_is_commited(pointer.is_commited())
-                    .with_value(fat_pointer)
-            };
+            let thin_pointer: ThinPointer =
+                if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
+                    // The pointer points to an `InodeId`, create a `ThinPointer`.
+                    let inode_id: u32 = inode_id.into();
+                    ThinPointer::new()
+                        .with_ref_kind(ThinPointerKind::InodeId)
+                        .with_is_commited(pointer.is_commited())
+                        .with_value(inode_id)
+                } else if let Some(thin_pointer) = &pointer.thin_pointer {
+                    // `ThinPointer` already exist, use it.
+                    // This avoid growing `Self::fat_pointers`.
+                    thin_pointer.clone()
+                } else {
+                    // The pointers points to an `AbsoluteOffset` or `HashId`
+                    // Create a new `FatPointer`
+                    let fat_pointer: FatPointerId =
+                        self.fat_pointers.push(pointer.fat_pointer.clone())?;
+                    let fat_pointer: u32 = fat_pointer.into();
+                    ThinPointer::new()
+                        .with_ref_kind(ThinPointerKind::FatPointer)
+                        .with_is_commited(pointer.is_commited())
+                        .with_value(fat_pointer)
+                };
 
-            self.thin_pointers.push(thin_pointer);
+            self.thin_pointers.push(thin_pointer)?;
         }
 
         let current = self.inodes.push(Inode {
@@ -1559,8 +1504,6 @@ impl Storage {
         strings: &StringInterner,
     ) -> Result<DirectoryOrInodeId, StorageError> {
         let dir_range_len = dir_range.end - dir_range.start;
-
-        // println!("CREATE_INODE {:?} {:?}", dir_range, dir_range_len);
 
         if dir_range_len <= INODE_POINTER_THRESHOLD {
             // The directory in `dir_range` is not guaranted to be sorted.
@@ -1658,8 +1601,8 @@ impl Storage {
     ) -> Result<[Option<PointerOnStack>; 32], StorageError> {
         let mut cloned: [Option<PointerOnStack>; 32] = Default::default();
 
-        for (ptr_index, index) in pointers.iter() {
-            let thin_pointer = self.thin_pointers.get(index).cloned().unwrap();
+        for (ptr_index, thin_pointer_id) in pointers.iter() {
+            let thin_pointer = self.thin_pointers.get(thin_pointer_id)?.cloned().unwrap();
 
             cloned[ptr_index] = Some(PointerOnStack {
                 thin_pointer: Some(thin_pointer.clone()),
@@ -1670,20 +1613,21 @@ impl Storage {
         Ok(cloned)
     }
 
-    pub fn pointer_get_id(&self, thin_pointer_index: usize) -> Option<DirectoryOrInodeId> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_index).unwrap();
+    pub fn pointer_get_id(&self, thin_pointer_id: ThinPointerId) -> Option<DirectoryOrInodeId> {
+        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
 
         match thin_pointer.get_value() {
             ThinPointerValue::Inode(inode_id) => Some(DirectoryOrInodeId::Inode(inode_id)),
-            ThinPointerValue::BigPointer(pointer_id) => {
+            ThinPointerValue::FatPointer(pointer_id) => {
+                // The thin pointer points to a fat pointer, dereference it
                 let pointer = self.fat_pointers.get(pointer_id).unwrap().unwrap();
                 pointer.ptr_id()
             }
         }
     }
 
-    pub fn pointer_copy(&self, thin_pointer_index: usize) -> Option<FatPointer> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_index).unwrap();
+    pub fn pointer_copy(&self, thin_pointer_id: ThinPointerId) -> Option<FatPointer> {
+        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
 
         match thin_pointer.get_value() {
             ThinPointerValue::Inode(inode_id) => {
@@ -1691,7 +1635,7 @@ impl Storage {
                 ptr.set_commited(thin_pointer.is_commited());
                 Some(ptr)
             }
-            ThinPointerValue::BigPointer(pointer_id) => {
+            ThinPointerValue::FatPointer(pointer_id) => {
                 let pointer = self.fat_pointers.get(pointer_id).unwrap().unwrap();
                 Some(pointer.clone())
             }
@@ -1719,15 +1663,15 @@ impl Storage {
 
     fn pointer_fetch(
         &mut self,
-        thin_pointer_index: usize,
+        thin_pointer_id: ThinPointerId,
         repository: &ContextKeyValueStore,
         strings: &mut StringInterner,
     ) -> Result<DirectoryOrInodeId, StorageError> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_index).unwrap();
+        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
 
         let pointer_id = match thin_pointer.get_value() {
             ThinPointerValue::Inode(_) => panic!(),
-            ThinPointerValue::BigPointer(pointer_index) => pointer_index,
+            ThinPointerValue::FatPointer(pointer_index) => pointer_index,
         };
 
         let pointer = self.fat_pointers.get(pointer_id)?.unwrap();
@@ -1756,14 +1700,10 @@ impl Storage {
         strings: &mut StringInterner,
         repository: &ContextKeyValueStore,
     ) -> Result<(DirectoryOrInodeId, IsNewKey), StorageError> {
-        // let inode = self.get_inode(inode_id)?;
-
         match ptr_id {
             DirectoryOrInodeId::Directory(dir_id) => {
                 let dir_id = dir_id;
                 let dir_entry_id = self.add_dir_entry(dir_entry)?;
-
-                // println!("INSERT_INODE DIR {:?}", dir_id);
 
                 // Copy the existing directory into `Self::temp_dir` to create an inode
                 let range = self.with_temp_dir_range(|this| {
@@ -1772,8 +1712,6 @@ impl Storage {
                     // We're using `Vec::insert` below and we don't want to invalidate
                     // any existing `TempDirRange`
                     debug_assert_eq!(range.end, this.temp_dir.len());
-
-                    // println!("LA {:?} {:?}", key_id, &this.temp_dir[range.clone()]);
 
                     let start = range.start;
                     match this.binary_search_in_dir(&this.temp_dir[range], key, strings)? {
@@ -1817,16 +1755,6 @@ impl Storage {
                     (inode_id, true)
                 };
 
-                // pointers[index_at_depth] = Some(PointerWithInfo {
-                //     index: 0,
-                //     object_ref: Default::default(),
-                //     // hash_id: None,
-                //     // offset: None,
-                //     pointer: Pointer::new(None, inode_id),
-                // });
-
-                // println!("NEW_KEY={:?} {:?}", is_new_key, inode_id);
-
                 pointers[index_at_depth] = Some(PointerOnStack {
                     thin_pointer: None,
                     fat_pointer: FatPointer::new(inode_id),
@@ -1836,112 +1764,10 @@ impl Storage {
 
                 let ptr_id = self.add_inode_pointers(depth, nchildren, pointers)?;
 
-                // let inode_id = self.add_inode(Inode::Pointers {
-                //     depth,
-                //     nchildren: if is_new_key { nchildren + 1 } else { nchildren },
-                //     npointers,
-                //     pointers,
-                // })?;
-
                 Ok((ptr_id, is_new_key))
             }
         }
     }
-
-    // fn insert_inode(
-    //     &mut self,
-    //     depth: u32,
-    //     inode_id: InodeId,
-    //     key: &str,
-    //     key_id: StringId,
-    //     dir_entry: DirEntry,
-    //     strings: &mut StringInterner,
-    //     repository: &ContextKeyValueStore,
-    // ) -> Result<(InodeId, IsNewKey), StorageError> {
-    //     let inode = self.get_inode(inode_id)?;
-
-    //     match inode {
-    //         Inode::Directory(dir_id) => {
-    //             let dir_id = *dir_id;
-    //             let dir_entry_id = self.add_dir_entry(dir_entry)?;
-
-    //             // Copy the existing directory into `Self::temp_dir` to create an inode
-    //             let range = self.with_temp_dir_range(|this| {
-    //                 let range = this.copy_dir_in_temp_dir(dir_id)?;
-
-    //                 // We're using `Vec::insert` below and we don't want to invalidate
-    //                 // any existing `TempDirRange`
-    //                 debug_assert_eq!(range.end, this.temp_dir.len());
-
-    //                 let start = range.start;
-    //                 match this.binary_search_in_dir(&this.temp_dir[range], key, strings)? {
-    //                     Ok(found) => this.temp_dir[start + found] = (key_id, dir_entry_id),
-    //                     Err(index) => this.temp_dir.insert(start + index, (key_id, dir_entry_id)),
-    //                 }
-
-    //                 Ok(())
-    //             })?;
-
-    //             let new_inode_id = self.create_inode(depth, range, strings)?;
-    //             let is_new_key = self.inode_len(new_inode_id)? != dir_id.small_dir_len();
-
-    //             Ok((new_inode_id, is_new_key))
-    //         }
-    //         Inode::Pointers {
-    //             depth,
-    //             nchildren,
-    //             mut npointers,
-    //             pointers,
-    //         } => {
-    //             let mut pointers = pointers.clone();
-    //             let nchildren = *nchildren;
-    //             let depth = *depth;
-
-    //             let index_at_depth = index_of_key(depth, key) as usize;
-
-    //             let (inode_id, is_new_key) = if let Some(pointer) = &pointers[index_at_depth] {
-    //                 let inode_id = match pointer.inode_id() {
-    //                     Some(inode_id) => inode_id,
-    //                     None => {
-    //                         let inode_id = repository
-    //                             .get_inode(pointer.get_reference(), self, strings)
-    //                             .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-
-    //                         pointer.set_inode_id(inode_id);
-    //                         inode_id
-    //                     }
-    //                 };
-
-    //                 self.insert_inode(
-    //                     depth + 1,
-    //                     inode_id,
-    //                     key,
-    //                     key_id,
-    //                     dir_entry,
-    //                     strings,
-    //                     repository,
-    //                 )?
-    //             } else {
-    //                 npointers += 1;
-
-    //                 let new_dir_id = self.insert_dir_single_dir_entry(key_id, dir_entry)?;
-    //                 let inode_id = self.create_inode(depth, new_dir_id, strings)?;
-    //                 (inode_id, true)
-    //             };
-
-    //             pointers[index_at_depth] = Some(Pointer::new(None, inode_id));
-
-    //             let inode_id = self.add_inode(Inode::Pointers {
-    //                 depth,
-    //                 nchildren: if is_new_key { nchildren + 1 } else { nchildren },
-    //                 npointers,
-    //                 pointers,
-    //             })?;
-
-    //             Ok((inode_id, is_new_key))
-    //         }
-    //     }
-    // }
 
     /// [test only] Remove hash ids in the inode and it's children
     ///
@@ -1950,40 +1776,15 @@ impl Storage {
     pub fn inodes_drop_hash_ids(&mut self, inode_id: InodeId) {
         let inode = self.get_inode(inode_id).unwrap();
 
-        // TODO: Find a way to iterates, without using Cow::Owned
-        // let pointers = self.get_pointers_ref(inode.pointers);
+        for (_, thin_pointer_id) in inode.pointers.iter() {
+            let ptr_id = self.pointer_get_id(thin_pointer_id).unwrap();
 
-        for (_, index) in inode.pointers.iter() {
-            let ptr_id = self.pointer_get_id(index).unwrap();
-
-            // let pointer = self.pointers.get(index).unwrap();
-
-            // let ptr_id = pointer.ptr_id().unwrap().as_u64();
             self.pointers_data.borrow_mut().remove(&ptr_id.as_u64());
-            // pointer.set_hash_id(None);
 
             if let DirectoryOrInodeId::Inode(inode_id) = ptr_id {
                 self.inodes_drop_hash_ids(inode_id);
             }
         }
-
-        // for pointer in pointers.iter() {
-        //     pointer.set_hash_id(None);
-
-        //     if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
-        //         self.inodes_drop_hash_ids(inode_id);
-        //     }
-        // }
-
-        // if let Inode::Pointers { pointers, .. } = inode {
-        //     for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-        //         pointer.set_hash_id(None);
-
-        //         if let Some(inode_id) = pointer.inode_id() {
-        //             self.inodes_drop_hash_ids(inode_id);
-        //         }
-        //     }
-        // };
     }
 
     fn iter_full_inodes_recursive_unsorted<Fun>(
@@ -2006,11 +1807,11 @@ impl Storage {
             DirectoryOrInodeId::Inode(inode_id) => {
                 let inode = self.get_inode(inode_id)?;
 
-                for (_, ref_index) in inode.pointers.iter() {
-                    let ptr_id = if let Some(ptr_id) = self.pointer_get_id(ref_index) {
+                for (_, thin_pointer_id) in inode.pointers.iter() {
+                    let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
                         ptr_id
                     } else {
-                        self.pointer_fetch(ref_index, repository, strings)?
+                        self.pointer_fetch(thin_pointer_id, repository, strings)?
                     };
 
                     self.iter_full_inodes_recursive_unsorted(ptr_id, strings, repository, fun)?;
@@ -2020,53 +1821,6 @@ impl Storage {
 
         Ok(())
     }
-
-    // fn iter_full_inodes_recursive_unsorted<Fun>(
-    //     &mut self,
-    //     inode_id: InodeId,
-    //     strings: &mut StringInterner,
-    //     repository: &ContextKeyValueStore,
-    //     fun: &mut Fun,
-    // ) -> Result<(), MerkleError>
-    // where
-    //     Fun: FnMut(&(StringId, DirEntryId)) -> Result<(), MerkleError>,
-    // {
-    //     let inode = self.get_inode(inode_id)?.clone();
-
-    //     match inode {
-    //         Inode::Pointers { pointers, .. } => {
-    //             // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-    //             for (index, pointer) in pointers.iter().enumerate() {
-    //                 let pointer = match pointer {
-    //                     Some(pointer) => pointer,
-    //                     None => continue,
-    //                 };
-
-    //                 let inode_id = match pointer.inode_id() {
-    //                     Some(inode_id) => inode_id,
-    //                     None => {
-    //                         let pointer_inode_id = repository
-    //                             .get_inode(pointer.get_reference(), self, strings)
-    //                             .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-
-    //                         self.set_pointer_inode_id(inode_id, index, pointer_inode_id)?;
-    //                         pointer_inode_id
-    //                     }
-    //                 };
-
-    //                 self.iter_full_inodes_recursive_unsorted(inode_id, strings, repository, fun)?;
-    //             }
-    //         }
-    //         Inode::Directory(dir_id) => {
-    //             let dir = self.get_small_dir(dir_id)?;
-    //             for elem in dir.as_ref() {
-    //                 fun(elem)?;
-    //             }
-    //         }
-    //     };
-
-    //     Ok(())
-    // }
 
     fn iter_inodes_recursive_unsorted<Fun>(
         &self,
@@ -2086,76 +1840,19 @@ impl Storage {
             DirectoryOrInodeId::Inode(inode_id) => {
                 let inode = self.get_inode(inode_id)?;
 
-                // for pointer in self.iter_pointers(inode.pointers) {
-                for (_, ref_index) in inode.pointers.iter() {
-                    // let pointer = self.pointers_refs.get(index).unwrap();
-
+                for (_, thin_pointer_id) in inode.pointers.iter() {
                     // When the inode is not deserialized, ignore it
                     // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
                     // the full inode
-                    if let Some(ptr_id) = self.pointer_get_id(ref_index) {
-                        // let inode = self.get_inode(inode_id)?;
+                    if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
                         self.iter_inodes_recursive_unsorted(ptr_id, fun)?;
                     }
-
-                    // let pointer = self.pointers_refs.get(index).unwrap();
-
-                    // // When the inode is not deserialized, ignore it
-                    // // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
-                    // // the full inode
-                    // if let Some(ptr_id) = pointer.ptr_id() {
-                    //     // let inode = self.get_inode(inode_id)?;
-                    //     self.iter_inodes_recursive_unsorted(ptr_id, fun)?;
-                    // }
                 }
-
-                // let pointers = self.clone_pointers(inode.pointers);
-
-                // for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-                //     // When the inode is not deserialized, ignore it
-                //     // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
-                //     // the full inode
-                //     if let Some(inode_id) = pointer.inode_id() {
-                //         let inode = self.get_inode(inode_id)?;
-                //         self.iter_inodes_recursive_unsorted(inode, fun)?;
-                //     }
-                // }
             }
         }
 
         Ok(())
     }
-
-    // fn iter_inodes_recursive_unsorted<Fun>(
-    //     &self,
-    //     inode: &Inode,
-    //     fun: &mut Fun,
-    // ) -> Result<(), MerkleError>
-    // where
-    //     Fun: FnMut(&(StringId, DirEntryId)) -> Result<(), MerkleError>,
-    // {
-    //     match inode {
-    //         Inode::Pointers { pointers, .. } => {
-    //             for pointer in pointers.iter().filter_map(|p| p.as_ref()) {
-    //                 // When the inode is not deserialized, ignore it
-    //                 // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
-    //                 // the full inode
-    //                 if let Some(inode_id) = pointer.inode_id() {
-    //                     let inode = self.get_inode(inode_id)?;
-    //                     self.iter_inodes_recursive_unsorted(inode, fun)?;
-    //                 }
-    //             }
-    //         }
-    //         Inode::Directory(dir_id) => {
-    //             let dir = self.get_small_dir(*dir_id)?;
-    //             for elem in dir.as_ref() {
-    //                 fun(elem)?;
-    //             }
-    //         }
-    //     };
-
-    //     Ok(())
-    // }
 
     fn dir_full_iterate_unsorted<Fun>(
         &mut self,
@@ -2386,7 +2083,6 @@ impl Storage {
                     Ok(Some(ptr_id))
                 } else {
                     Ok(Some(DirectoryOrInodeId::Directory(new_dir_id)))
-                    // self.add_inode(Inode::Directory(new_dir_id)).map(Some)
                 }
             }
             DirectoryOrInodeId::Inode(inode_id) => {
@@ -2396,9 +2092,6 @@ impl Storage {
                     pointers,
                 } = self.get_inode(inode_id)?;
 
-                // let depth = *depth;
-                // let mut npointers = *npointers;
-                // let nchildren = *nchildren;
                 let new_nchildren = nchildren - 1;
 
                 let new_inode_id = if new_nchildren as usize <= INODE_POINTER_THRESHOLD {
@@ -2423,12 +2116,10 @@ impl Storage {
                     }
 
                     DirectoryOrInodeId::Directory(new_dir_id)
-                    // self.add_inode(Inode::Directory(new_dir_id))?
                 } else {
                     let mut pointers = self.into_pointers_on_stack(*pointers)?;
                     let index_at_depth = index_of_key(*depth as u32, key) as usize;
                     let depth = *depth;
-                    // let mut pointers = pointers.clone();
 
                     let pointer = match pointers[index_at_depth].as_ref() {
                         Some(pointer) => pointer,
@@ -2450,131 +2141,20 @@ impl Storage {
                                 thin_pointer: None,
                                 fat_pointer: FatPointer::new(new_ptr_inode_id),
                             });
-                            // pointers[index_at_depth] = Some(PointerWithInfo {
-                            //     index: 0,
-                            //     object_ref: Default::default(),
-                            //     // hash_id: None,
-                            //     // offset: None,
-                            //     pointer: Pointer::new(None, new_ptr_inode_id),
-                            // });
                         }
                         None => {
                             // The key was removed and it result in an empty directory.
                             // Remove the pointer: make it `None`.
                             pointers[index_at_depth] = None;
-                            // npointers -= 1; TODO: Is it correct ?
                         }
                     }
 
                     self.add_inode_pointers(depth, new_nchildren, pointers)?
-
-                    // self.add_inode(Inode::Pointers {
-                    //     depth,
-                    //     nchildren: new_nchildren,
-                    //     npointers,
-                    //     pointers,
-                    // })?
                 };
 
                 Ok(Some(new_inode_id))
             }
         }
-
-        // let inode = self.get_inode(inode_id)?;
-
-        // match inode {
-        //     Inode::Directory(dir_id) => {
-        //         let dir_id = *dir_id;
-        //         let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
-
-        //         if new_dir_id.is_empty() {
-        //             // The directory is now empty, return None to indicate that it
-        //             // should be removed from the Inode::Pointers
-        //             Ok(None)
-        //         } else if new_dir_id == dir_id {
-        //             // The key was not found in the directory, so it's the same directory.
-        //             // Do not create a new inode.
-        //             Ok(Some(inode_id))
-        //         } else {
-        //             self.add_inode(Inode::Directory(new_dir_id)).map(Some)
-        //         }
-        //     }
-        //     Inode::Pointers {
-        //         depth,
-        //         nchildren,
-        //         npointers,
-        //         pointers,
-        //     } => {
-        //         let depth = *depth;
-        //         let mut npointers = *npointers;
-        //         let nchildren = *nchildren;
-        //         let new_nchildren = nchildren - 1;
-
-        //         let new_inode_id = if new_nchildren as usize <= INODE_POINTER_THRESHOLD {
-        //             // After removing an element from this `Inode::Pointers`, it remains
-        //             // INODE_POINTER_THRESHOLD items, so it should be converted to a
-        //             // `Inode::Directory`.
-
-        //             let dir_id = self.inodes_to_dir_sorted(inode_id, strings, repository)?;
-        //             let new_dir_id = self.dir_remove(dir_id, key, strings, repository)?;
-
-        //             if dir_id == new_dir_id {
-        //                 // The key was not found.
-
-        //                 // Remove the directory that was just created with
-        //                 // Self::inodes_to_dir_sorted above, it won't be used and save space.
-        //                 self.directories.remove_last_nelems(dir_id.small_dir_len());
-        //                 return Ok(Some(inode_id));
-        //             }
-
-        //             self.add_inode(Inode::Directory(new_dir_id))?
-        //         } else {
-        //             let index_at_depth = index_of_key(depth, key) as usize;
-        //             let mut pointers = pointers.clone();
-
-        //             let pointer = match pointers[index_at_depth].as_ref() {
-        //                 Some(pointer) => pointer,
-        //                 None => return Ok(Some(inode_id)), // The key was not found
-        //             };
-
-        //             let ptr_inode_id = match pointer.inode_id() {
-        //                 Some(inode_id) => inode_id,
-        //                 None => {
-        //                     let pointer_inode_id = repository
-        //                         .get_inode(pointer.get_reference(), self, strings)
-        //                         .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
-        //                     pointer.set_inode_id(pointer_inode_id);
-        //                     pointer_inode_id
-        //                 }
-        //             };
-
-        //             match self.remove_in_inode_recursive(ptr_inode_id, key, strings, repository)? {
-        //                 Some(new_ptr_inode_id) if new_ptr_inode_id == ptr_inode_id => {
-        //                     // The key was not found, don't create a new inode
-        //                     return Ok(Some(inode_id));
-        //                 }
-        //                 Some(new_ptr_inode_id) => {
-        //                     pointers[index_at_depth] = Some(Pointer::new(None, new_ptr_inode_id));
-        //                 }
-        //                 None => {
-        //                     // The key was removed and it result in an empty directory.
-        //                     // Remove the pointer: make it `None`.
-        //                     pointers[index_at_depth] = None;
-        //                     npointers -= 1;
-        //                 }
-        //             }
-
-        //             self.add_inode(Inode::Pointers {
-        //                 depth,
-        //                 nchildren: new_nchildren,
-        //                 npointers,
-        //                 pointers,
-        //             })?
-        //         };
-
-        //         Ok(Some(new_inode_id))
-        //     }
-        // }
     }
 
     /// Convert the Inode into a small directory
@@ -2708,9 +2288,9 @@ impl Storage {
         self.inodes = IndexMap::empty();
         self.data = Vec::new();
         self.offsets_to_hash_id = HashMap::default();
+        self.thin_pointers = IndexMap::empty();
         self.fat_pointers = IndexMap::empty();
         self.pointers_data = Default::default();
-        // self.pointers_offsets = Default::default();
     }
 }
 
@@ -2791,7 +2371,7 @@ mod tool {
             }
 
             for index in 0..self.thin_pointers.len() {
-                let pointer = self.pointer_copy(index).unwrap();
+                let pointer = self.pointer_copy(ThinPointerId(index)).unwrap();
 
                 // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
 
@@ -2834,7 +2414,11 @@ mod tool {
             }
 
             for i in 0..self.thin_pointers.len() {
-                self.thin_pointers[i].forget_reference();
+                self.thin_pointers
+                    .get_mut(ThinPointerId(i))
+                    .unwrap()
+                    .unwrap()
+                    .forget_reference();
             }
 
             // for inode in self.inodes.iter_values() {
@@ -2989,13 +2573,13 @@ mod tests {
 
             let mut iter = InodePointersIter::new(id);
 
-            assert_eq!(iter.next().unwrap(), (0, start));
-            assert_eq!(iter.next().unwrap(), (1, start + 1));
-            assert_eq!(iter.next().unwrap(), (3, start + 2));
-            assert_eq!(iter.next().unwrap(), (4, start + 3));
-            assert_eq!(iter.next().unwrap(), (8, start + 4));
-            assert_eq!(iter.next().unwrap(), (30, start + 5));
-            assert_eq!(iter.next().unwrap(), (31, start + 6));
+            assert_eq!(iter.next().unwrap(), (0, ThinPointerId(start)));
+            assert_eq!(iter.next().unwrap(), (1, ThinPointerId(start + 1)));
+            assert_eq!(iter.next().unwrap(), (3, ThinPointerId(start + 2)));
+            assert_eq!(iter.next().unwrap(), (4, ThinPointerId(start + 3)));
+            assert_eq!(iter.next().unwrap(), (8, ThinPointerId(start + 4)));
+            assert_eq!(iter.next().unwrap(), (30, ThinPointerId(start + 5)));
+            assert_eq!(iter.next().unwrap(), (31, ThinPointerId(start + 6)));
             assert!(iter.next().is_none());
         }
 
@@ -3008,9 +2592,9 @@ mod tests {
 
         let mut iter = InodePointersIter::new(id);
 
-        assert_eq!(iter.next().unwrap(), (5, 0));
-        assert_eq!(iter.next().unwrap(), (30, 1));
-        assert_eq!(iter.next().unwrap(), (31, 2));
+        assert_eq!(iter.next().unwrap(), (5, ThinPointerId(0)));
+        assert_eq!(iter.next().unwrap(), (30, ThinPointerId(1)));
+        assert_eq!(iter.next().unwrap(), (31, ThinPointerId(2)));
         assert!(iter.next().is_none());
     }
 }
