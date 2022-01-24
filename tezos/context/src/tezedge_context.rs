@@ -1037,6 +1037,8 @@ impl ShellContextApi for TezedgeContext {
             storage: storage.memory_usage(&strings),
         };
 
+        println!("MEM_USAGE={:#?}", usage);
+
         Ok(usage)
     }
 }

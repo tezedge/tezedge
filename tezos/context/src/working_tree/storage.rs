@@ -1041,15 +1041,15 @@ impl Storage {
         let temp_dir_cap = self.temp_dir.capacity();
         let temp_inodes_index_cap = self.temp_inodes_index.capacity();
         let inodes_cap = self.inodes.capacity();
-        let pointers_refs_cap = self.thin_pointers.capacity();
-        let pointers_cap = self.fat_pointers.capacity();
+        let thin_pointers_cap = self.thin_pointers.capacity();
+        let fat_pointers_cap = self.fat_pointers.capacity();
         let strings = strings.memory_usage();
         let total_bytes = (nodes_cap * size_of::<DirEntry>())
             .saturating_add(directories_cap * size_of::<(StringId, DirEntryId)>())
             .saturating_add(temp_dir_cap * size_of::<(StringId, DirEntryId)>())
             .saturating_add(temp_inodes_index_cap * size_of::<u8>())
-            .saturating_add(pointers_cap * size_of::<FatPointer>())
-            .saturating_add(pointers_refs_cap * size_of::<ThinPointer>())
+            .saturating_add(fat_pointers_cap * size_of::<FatPointer>())
+            .saturating_add(thin_pointers_cap * size_of::<ThinPointer>())
             .saturating_add(blobs_cap)
             .saturating_add(inodes_cap * size_of::<Inode>());
 
@@ -1064,9 +1064,8 @@ impl Storage {
             blobs_cap,
             inodes_len: self.inodes.len(),
             inodes_cap,
-            pointers_len: self.fat_pointers.len(),
-            pointers_cap,
-            pointers_refs_cap,
+            fat_pointers_cap,
+            thin_pointers_cap,
             strings,
             total_bytes,
         }

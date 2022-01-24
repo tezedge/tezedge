@@ -191,9 +191,8 @@ pub struct StorageMemoryUsage {
     pub blobs_cap: usize,
     pub inodes_len: usize,
     pub inodes_cap: usize,
-    pub pointers_len: usize,
-    pub pointers_cap: usize,
-    pub pointers_refs_cap: usize,
+    pub fat_pointers_cap: usize,
+    pub thin_pointers_cap: usize,
     pub strings: StringsMemoryUsage,
     pub total_bytes: usize,
 }
