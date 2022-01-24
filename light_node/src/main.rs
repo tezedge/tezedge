@@ -296,7 +296,8 @@ fn block_on_actors(
     // will ignore messages from those peers because they are unknown to it.
     shell_automaton_manager
         .shell_automaton_sender()
-        .send(ShellAutomatonMsg::P2pInit);
+        .send(ShellAutomatonMsg::P2pInit)
+        .expect("Failed to initiate p2p");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -312,7 +313,6 @@ fn block_on_actors(
 
         info!(log, "Shutting down shell automaton (1/9)");
         shell_automaton_manager.shutdown_and_wait();
-        drop(shell_automaton_manager);
 
         info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
@@ -453,7 +453,7 @@ fn schedule_replay_blocks(
 fn replay_shutdown(
     _: &Logger,
     shell_channel: ShellChannelRef,
-    mut shell_automaton_manager: ShellAutomatonManager,
+    shell_automaton_manager: ShellAutomatonManager,
 ) {
     shell_channel.tell(
         Publish {

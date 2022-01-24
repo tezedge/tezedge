@@ -163,6 +163,7 @@ impl ShellAutomatonManager {
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
+            statistics: Some(Default::default()),
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
@@ -266,10 +267,10 @@ impl ShellAutomatonManager {
         }
     }
 
-    pub fn shutdown_and_wait(&mut self) {
+    pub fn shutdown_and_wait(self) {
         self.send_shutdown_signal();
 
-        match self.shell_automaton_thread_handle.take() {
+        match self.shell_automaton_thread_handle {
             Some(ShellAutomatonThreadHandle::Running(th)) => {
                 th.join().unwrap();
             }

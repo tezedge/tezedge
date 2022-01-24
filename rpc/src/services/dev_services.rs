@@ -879,6 +879,68 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
     Ok(result)
 }
 
+pub type BlocksStats = Vec<BlockStats>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockStats {
+    /// First time(ns) we saw a block in current head.
+    block_first_seen: u64,
+
+    block_level: Option<Level>,
+
+    /// Time(ns) since block_first_seen in current head.
+    data_ready: Option<u64>,
+
+    /// Time(ns) it took to load data from storage.
+    load_data: Option<u64>,
+
+    /// Time(ns) it took for protocol runner to apply block.
+    apply_block: Option<u64>,
+
+    /// Time(ns) it took to store the result.
+    store_result: Option<u64>,
+}
+
+pub(crate) async fn get_shell_automaton_block_stats_graph(
+    env: &RpcServiceEnvironment,
+) -> Result<Option<BlocksStats>, tokio::sync::oneshot::error::RecvError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBlockStats { channel: tx })
+        .await;
+
+    let stats = match rx.await? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a - b));
+
+    let mut result = stats
+        .into_iter()
+        .map(|(_, stats)| {
+            // TODO(zura): should be time when we actually saw the block
+            // in the current head.
+            let block_first_seen = stats.load_data_start.unwrap_or(0);
+
+            BlockStats {
+                block_first_seen,
+                block_level: stats.level,
+                data_ready: Some(0), // TODO(zura)
+                load_data: times_sub(stats.load_data_end, stats.load_data_start),
+                apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
+                store_result: times_sub(stats.store_result_end, stats.store_result_start),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    result.sort_by_key(|v| v.block_level);
+
+    Ok(Some(result))
+}
+
 pub(crate) async fn get_shell_automaton_baking_rights(
     block_hash: BlockHash,
     level: Option<Level>,

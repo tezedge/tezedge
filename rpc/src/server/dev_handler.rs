@@ -337,6 +337,15 @@ pub async fn dev_shell_automaton_mempool_operation_stats_get(
     make_json_response(&dev_services::get_shell_automaton_mempool_operation_stats(&env).await?)
 }
 
+pub async fn dev_shell_automaton_block_stats_graph_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_block_stats_graph(&env).await?)
+}
+
 pub async fn dev_shell_automaton_baking_rights(
     _: Request<Body>,
     _: Params,
