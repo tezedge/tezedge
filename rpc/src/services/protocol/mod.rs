@@ -254,7 +254,9 @@ pub(crate) async fn check_and_get_baking_rights(
         .await
         .map_err(RightsError::from),
         // TODO: reimplement in Rust
-        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError { protocol: "".into() }),
+        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError {
+            protocol: "".into(),
+        }),
     }
 }
 
@@ -425,7 +427,9 @@ pub(crate) async fn check_and_get_endorsing_rights(
         .await
         .map_err(RightsError::from),
         // TODO: reimplement in rust
-        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError { protocol: "".into() }),
+        SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError {
+            protocol: "".into(),
+        }),
     }
 }
 

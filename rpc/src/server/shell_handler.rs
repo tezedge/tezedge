@@ -692,10 +692,10 @@ pub async fn preapply_block(
 
 #[derive(serde::Serialize)]
 struct P2pStats {
-    total_sent : String,
-    total_recv : String,
-    current_inflow : i64,
-    current_outflow : i64,
+    total_sent: String,
+    total_recv: String,
+    current_inflow: i64,
+    current_outflow: i64,
 }
 
 pub async fn network_stat(
@@ -711,10 +711,7 @@ pub async fn network_stat(
         current_outflow: 10,
     };
 
-    result_to_json_response(
-        Ok(dummy),
-        env.log(),
-    )
+    result_to_json_response(Ok(dummy), env.log())
 }
 
 pub async fn network_connections(
@@ -724,10 +721,7 @@ pub async fn network_connections(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let connections: Vec<()> = vec![];
-    result_to_json_response(
-        Ok(connections),
-        env.log(),
-    )
+    result_to_json_response(Ok(connections), env.log())
 }
 
 pub async fn node_version(
@@ -796,7 +790,10 @@ pub async fn describe(
         // TODO: same reasoning as above
         if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()) {
             &Method::POST
-        } else if path.contains(&"storage".to_string()) || path.contains(&"round".to_string()) || path.contains(&"delegates".to_string()) {
+        } else if path.contains(&"storage".to_string())
+            || path.contains(&"round".to_string())
+            || path.contains(&"delegates".to_string())
+        {
             &Method::GET
         } else {
             allowed_methods.iter().next().unwrap()

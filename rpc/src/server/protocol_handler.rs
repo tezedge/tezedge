@@ -92,10 +92,7 @@ pub async fn baking_rights(
                 &env,
             )
             .await?;
-            make_response_with_status_and_json_string(
-                result.0,
-                &result.1,
-            )
+            make_response_with_status_and_json_string(result.0, &result.1)
         }
         Err(RightsError::ServiceError { reason }) => {
             slog::warn!(env.log(), "Failed to execute RPC function for baking rights"; "reason" => format!("{:?}", &reason));
@@ -149,10 +146,7 @@ pub async fn endorsing_rights(
                 &env,
             )
             .await?;
-            make_response_with_status_and_json_string(
-                result.0,
-                &result.1,
-            )
+            make_response_with_status_and_json_string(result.0, &result.1)
         }
         Err(RightsError::ServiceError { reason }) => {
             slog::warn!(env.log(), "Failed to execute RPC function for endorsing rights"; "reason" => format!("{:?}", &reason));

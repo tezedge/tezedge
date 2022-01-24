@@ -97,7 +97,7 @@ impl ToRpcJsonMap for FixedConstants {
 #[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
 pub struct RoundRobinOverDelegatesVariant {
     #[encoding(dynamic, list, dynamic, list)]
-    delegates: Vec<Vec<SignaturePublicKeyHash>>
+    delegates: Vec<Vec<SignaturePublicKeyHash>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]

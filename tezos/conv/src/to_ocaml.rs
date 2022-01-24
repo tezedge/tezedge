@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    OCamlApplyBlockExecutionTimestamps, OCamlApplyBlockRequest, OCamlBeginApplicationRequest, OCamlBeginConstructionRequest,
-    OCamlBlockHeader, OCamlBlockHeaderShellHeader, OCamlBlockPayloadHash, OCamlComputePathRequest,
-    OCamlContextGetKeyFromHistoryRequest, OCamlContextGetKeyValuesByPrefixRequest,
-    OCamlContextGetTreeByPrefixRequest, OCamlCycleRollsOwnerSnapshot, OCamlGenesisChain,
+    OCamlApplyBlockExecutionTimestamps, OCamlApplyBlockRequest, OCamlBeginApplicationRequest,
+    OCamlBeginConstructionRequest, OCamlBlockHeader, OCamlBlockHeaderShellHeader,
+    OCamlBlockPayloadHash, OCamlComputePathRequest, OCamlContextGetKeyFromHistoryRequest,
+    OCamlContextGetKeyValuesByPrefixRequest, OCamlContextGetTreeByPrefixRequest,
+    OCamlCycleRollsOwnerSnapshot, OCamlDumpContextRequest, OCamlGenesisChain,
     OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
     OCamlJsonEncodeApplyBlockOperationsMetadataParams,
     OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
