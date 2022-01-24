@@ -887,7 +887,7 @@ version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19c6cedffdc8c03a3346d723eb20bd85a13362bb96dc2ac000842c6381ec7bf"
 dependencies = [
- "nix 0.23.0",
+ "nix",
  "winapi",
 ]
 
@@ -2109,7 +2109,7 @@ version = "1.15.0"
 dependencies = [
  "chrono",
  "libflate",
- "nix 0.23.0",
+ "nix",
  "serde 1.0.130",
  "slog",
  "slog-async",
@@ -2320,18 +2320,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
-]
-
-[[package]]
-name = "nix"
-version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -3206,7 +3194,7 @@ dependencies = [
  "colored",
  "hex",
  "itertools 0.10.1",
- "nix 0.23.0",
+ "nix",
  "os_type",
  "rand 0.7.3",
  "serde 1.0.130",
@@ -3404,7 +3392,7 @@ dependencies = [
  "itertools 0.10.1",
  "lazy_static",
  "networking",
- "nix 0.23.0",
+ "nix",
  "nom",
  "page_size",
  "rand 0.7.3",
@@ -3446,6 +3434,7 @@ dependencies = [
  "hex",
  "mio",
  "networking",
+ "nix",
  "rand 0.7.3",
  "redux-rs",
  "rmp",
@@ -4126,7 +4115,7 @@ version = "1.15.0"
 dependencies = [
  "async_ipc",
  "crypto",
- "nix 0.19.1",
+ "nix",
  "serde 1.0.130",
  "slog",
  "tezos_api",
