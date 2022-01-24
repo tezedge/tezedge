@@ -147,15 +147,16 @@ impl ProtocolRunnerApi {
     }
 
     /// Spawns protocol runners and returns once they start accepting connections.
-    pub async fn start(&mut self, timeout: Option<Duration>) -> Result<(), ProtocolRunnerError> {
-        self.spawn()?;
+    pub async fn start(&mut self, timeout: Option<Duration>) -> Result<Child, ProtocolRunnerError> {
+        // TODO: what if wait_for_socket fails? child must be stopped
+        let child = self.spawn()?;
         self.wait_for_socket(timeout).await?;
 
-        Ok(())
+        Ok(child)
     }
 
     /// Spawns the protocol runner process if it is not running already
-    fn spawn(&mut self) -> Result<(), ProtocolRunnerError> {
+    fn spawn(&mut self) -> Result<Child, ProtocolRunnerError> {
         // Remove the socket file so that [`Self::wait_for_socket`] doesn't
         // prematurely find it before the protocol runner has started listening
         std::fs::remove_file(&self.socket_path).ok();
@@ -165,7 +166,7 @@ impl ProtocolRunnerApi {
             log_level,
             ..
         } = &self.configuration;
-        Self::spawn_process(
+        let child = Self::spawn_process(
             executable_path,
             &self.socket_path,
             &self.endpoint_name,
@@ -174,7 +175,7 @@ impl ProtocolRunnerApi {
             &self.tokio_runtime,
         )?;
 
-        Ok(())
+        Ok(child)
     }
 
     /// Wait for socket to be ready (means that protocol-runner server started listening)

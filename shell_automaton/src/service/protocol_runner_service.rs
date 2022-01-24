@@ -7,6 +7,10 @@ use std::thread;
 
 use serde::{Deserialize, Serialize};
 
+use nix::{
+    sys::signal::{self, Signal},
+    unistd::Pid,
+};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult, InitProtocolContextResult,
@@ -19,6 +23,7 @@ use tezos_protocol_ipc_client::{
 use tezos_protocol_ipc_messages::{
     GenesisResultDataParams, InitProtocolContextParams, ProtocolMessage,
 };
+use tokio::process::Child;
 
 use crate::protocol_runner::ProtocolRunnerToken;
 
@@ -32,6 +37,7 @@ pub type ProtocolRunnerResponse = ProtocolRunnerResult;
 #[derive(Debug)]
 pub enum ProtocolRunnerRequest {
     SpawnServer(()),
+    ShutdownServer(()),
     Message((ProtocolRunnerToken, ProtocolMessage)),
 }
 
@@ -61,7 +67,7 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
-    Shutdown(Result<(), ProtocolServiceError>),
+    Shutdown(Result<(), ProtocolRunnerError>),
 }
 
 impl ProtocolRunnerResult {
@@ -164,23 +170,72 @@ impl ProtocolRunnerServiceDefault {
                     .send(ProtocolRunnerResult::ApplyBlock((token, res)))
                     .await;
             }
-            ProtocolMessage::ShutdownCall => {
-                let res = conn.shutdown().await;
-                let _ = channel.send(ProtocolRunnerResult::Shutdown(res)).await;
-            }
             _ => unimplemented!(),
+        }
+    }
+
+    /// Will try to shutdown the children process, first with a SIGINT, and then with a SIGKILL
+    async fn terminate_or_kill(
+        process: &mut Child,
+        reason: String,
+    ) -> Result<(), ProtocolRunnerError> {
+        // try to send SIGINT (ctrl-c)
+        if let Some(pid) = process.id() {
+            let pid = Pid::from_raw(pid as i32);
+            match signal::kill(pid, Signal::SIGINT) {
+                Ok(_) => Ok(()),
+                Err(sigint_error) => {
+                    // (fallback) if SIGINT failed, we just kill process
+                    match process.kill().await {
+                        Ok(_) => Ok(()),
+                        Err(kill_error) => Err(ProtocolRunnerError::TerminateError {
+                            reason: format!(
+                                "Reason for termination: {}, sigint_error: {}, kill_error: {}",
+                                reason, sigint_error, kill_error
+                            ),
+                        }),
+                    }
+                }
+            }
+        } else {
+            Ok(())
         }
     }
 
     fn run(mut channel: ProtocolRunnerResponder, mut api: ProtocolRunnerApi) {
         api.tokio_runtime.clone().block_on(async move {
+            let mut child_process_handle = None;
+
             while let Ok(req) = channel.recv().await {
                 let sender = channel.sender();
 
                 let (token, req) = match req {
                     ProtocolRunnerRequest::SpawnServer(()) => {
+                        let start_result = match api.start(None).await {
+                            Ok(child) => {
+                                child_process_handle = Some(child);
+                                Ok(())
+                            }
+                            Err(err) => Err(err),
+                        };
+
                         sender
-                            .send(ProtocolRunnerResult::SpawnServer(api.start(None).await))
+                            .send(ProtocolRunnerResult::SpawnServer(start_result))
+                            .await
+                            .unwrap();
+                        continue;
+                    }
+                    ProtocolRunnerRequest::ShutdownServer(()) => {
+                        let result = if let Some(mut child) =
+                            std::mem::take(&mut child_process_handle)
+                        {
+                            Self::terminate_or_kill(&mut child, "Shutdown requested".into()).await
+                        } else {
+                            Ok(())
+                        };
+                        // TODO: maybe be explicit the protocol runner not being up when we try to shut it down?
+                        sender
+                            .send(ProtocolRunnerResult::Shutdown(result))
                             .await
                             .unwrap();
                         continue;
@@ -208,9 +263,6 @@ impl ProtocolRunnerServiceDefault {
                                 ProtocolMessage::ApplyBlockCall(_) => {
                                     ProtocolRunnerResult::ApplyBlock((token, Err(err.into())))
                                 }
-                                ProtocolMessage::ShutdownCall => {
-                                    ProtocolRunnerResult::Shutdown(Err(err.into()))
-                                }
                                 _ => unimplemented!(),
                             })
                             .await;
@@ -219,6 +271,14 @@ impl ProtocolRunnerServiceDefault {
                 };
 
                 tokio::spawn(Self::handle_protocol_message(sender, conn, (token, req)));
+            }
+
+            // Shut down the child process if we exit the loop and it is still up
+            if let Some(mut child) = std::mem::take(&mut child_process_handle) {
+                // TODO: if this fails, it should be logged somewhere
+                Self::terminate_or_kill(&mut child, "Protocol Runner Service loop ended".into())
+                    .await
+                    .ok();
             }
         });
     }
@@ -345,10 +405,8 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
     }
 
     fn shutdown(&mut self) {
-        let token = self.new_token();
-        let message = ProtocolMessage::ShutdownCall;
         self.channel
-            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .blocking_send(ProtocolRunnerRequest::ShutdownServer(()))
             .unwrap();
     }
 }
