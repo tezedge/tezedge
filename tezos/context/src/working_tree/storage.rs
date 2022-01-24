@@ -910,6 +910,9 @@ pub struct Storage {
     /// blob is directly inlined in the `BlobId`
     blobs: ChunkedVec<u8>,
     /// Concatenation of all inodes.
+    ///
+    /// A `Inode` refers to a subslice of `Self::thin_pointers`
+    ///
     /// Note that the implementation of `Storage` attempt to hide as much as
     /// possible the existence of inodes to the working tree.
     /// The working tree doesn't manipulate `InodeId` but `DirectoryId` only.
