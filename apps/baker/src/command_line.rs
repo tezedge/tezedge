@@ -18,6 +18,7 @@ pub struct Arguments {
     pub command: Command,
 }
 
+// TODO: multiple baker identities
 #[derive(StructOpt, Debug)]
 pub enum Command {
     RunWithLocalNode {
