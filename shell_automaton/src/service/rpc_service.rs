@@ -65,6 +65,10 @@ pub enum RpcRequest {
     GetEndorsementsStatus {
         block_hash: Option<BlockHash>,
     },
+
+    GetStatsCurrentHead {
+        level: Level,
+    },
 }
 
 #[derive(Debug)]

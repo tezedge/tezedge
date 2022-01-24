@@ -31,7 +31,7 @@ use crate::{
 use super::{
     rights_actions::*,
     utils::{baking_rights_owner, endorser_rights_owner, get_cycle, Position, TezosPRNGError},
-    EndorsingRights, ProtocolConstants, RightsRequest, RightsRpcError, Slot,
+    EndorsingRights, ProtocolConstants, RightsInput, RightsRequest, RightsRpcError, Slot,
 };
 
 pub fn rights_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -44,30 +44,39 @@ where
     match &action.action {
         // Main entry action
         Action::RightsGet(RightsGetAction { key }) => {
-            if let Some((_, rights_result)) = key
-                .level()
-                .as_ref()
-                .and_then(|level| cache.rights.get(level))
-                .cloned()
-            {
-                match rights_result {
-                    crate::rights::RightsResult::Baking(baking_rights) => {
+            match &key.0 {
+                RightsInput::Baking(_) => {
+                    if let Some((_, baking_rights)) = key
+                        .level()
+                        .as_ref()
+                        .and_then(|level| cache.baking.get(level))
+                        .cloned()
+                    {
                         trace!(log, "Baking rights using cache"; "key" => FnValue(|_| format!("{:?}", key)));
                         store.dispatch(RightsBakingReadyAction {
                             key: key.clone(),
                             baking_rights,
                         });
+                        return;
                     }
-                    crate::rights::RightsResult::Endorsing(endorsing_rights) => {
+                }
+                RightsInput::Endorsing(_) => {
+                    if let Some((_, endorsing_rights)) = key
+                        .level()
+                        .as_ref()
+                        .and_then(|level| cache.endorsing.get(level))
+                        .cloned()
+                    {
                         trace!(log, "Endorsing rights using cache"; "key" => FnValue(|_| format!("{:?}", key)));
                         store.dispatch(RightsEndorsingReadyAction {
                             key: key.clone(),
                             endorsing_rights,
                         });
+                        return;
                     }
                 }
-                return;
-            } else if !requests.contains_key(key) {
+            }
+            if !requests.contains_key(key) {
                 trace!(log, "Endorsing rights using full cycle"; "key" => FnValue(|_| format!("{:?}", key)));
                 store.dispatch(RightsInitAction { key: key.clone() });
             } else {

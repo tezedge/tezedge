@@ -3,11 +3,13 @@
 
 use crate::actors::actors_effects;
 use crate::block_applier::block_applier_effects;
+use crate::current_head::current_head_effects;
 use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::shutdown::shutdown_effects;
+use crate::stats::current_head::stats_current_head_effects;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_effects;
 use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_effects;
 use crate::{Action, ActionId, ActionWithMeta, Store};
@@ -164,6 +166,10 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     rpc_effects(store, action);
 
     rights_effects(store, action);
+
+    current_head_effects(store, action);
+
+    stats_current_head_effects(store, action);
 
     prechecker_effects(store, action);
 

@@ -401,7 +401,7 @@ where
                 return;
             }
 
-            slog::trace!(&store.state.get().log, "=== query next block protocol ==="; "proto" => block.header.proto(), "block" => block.hash.to_base58_check());
+            slog::trace!(&store.state.get().log, "query next block protocol"; "proto" => block.header.proto(), "block" => block.hash.to_base58_check());
             let (block_hash, proto) = (block.hash.clone(), block.header.proto());
             store.dispatch(PrecheckerQueryNextBlockProtocolAction { block_hash, proto });
         }

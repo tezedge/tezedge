@@ -52,6 +52,19 @@ impl std::fmt::Debug for SignaturePublicKey {
     }
 }
 
+impl crypto::PublicKeyWithHash for SignaturePublicKey {
+    type Hash = SignaturePublicKeyHash;
+    type Error = ConversionError;
+
+    fn pk_hash(&self) -> Result<Self::Hash, Self::Error> {
+        Ok(match self {
+            SignaturePublicKey::Ed25519(h) => SignaturePublicKeyHash::Ed25519(h.pk_hash()?),
+            SignaturePublicKey::Secp256k1(h) => SignaturePublicKeyHash::Secp256k1(h.pk_hash()?),
+            SignaturePublicKey::P256(h) => SignaturePublicKeyHash::P256(h.pk_hash()?),
+        })
+    }
+}
+
 impl SignaturePublicKey {
     #[inline]
     pub fn to_string_representation(&self) -> String {
@@ -142,7 +155,7 @@ impl SignaturePublicKey {
     pub fn verify_signature<B>(
         &self,
         signature: &Signature,
-        watermark: SignatureWatermark,
+        watermark: &SignatureWatermark,
         bytes: B,
     ) -> Result<bool, CryptoError>
     where

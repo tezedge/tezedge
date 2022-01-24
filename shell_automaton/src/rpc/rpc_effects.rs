@@ -9,6 +9,7 @@ use crate::mempool::mempool_actions::{
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
+use crate::stats::current_head::stats_current_head_actions::StatsCurrentHeadRpcGetAction;
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -76,7 +77,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     }
                     RpcRequest::GetBakingRights { block_hash, level } => {
                         store.dispatch(RightsRpcGetAction {
-                            key: RightsKey::baking(block_hash, level),
+                            key: RightsKey::baking(block_hash, level, None),
                             rpc_id,
                         });
                     }
@@ -89,6 +90,10 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::GetEndorsementsStatus { block_hash } => {
                         store
                             .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
+                    }
+
+                    RpcRequest::GetStatsCurrentHead { level } => {
+                        store.dispatch(StatsCurrentHeadRpcGetAction { rpc_id, level });
                     }
                 }
             }

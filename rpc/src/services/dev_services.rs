@@ -986,3 +986,16 @@ pub(crate) async fn get_shell_automaton_endorsements_status(
     let response = rx.await?;
     Ok(response)
 }
+
+pub(crate) async fn get_shell_automaton_stats_current_head(
+    level: i32,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHead { level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
