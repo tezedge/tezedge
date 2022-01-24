@@ -67,7 +67,7 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
-    Shutdown(Result<(), ProtocolRunnerError>),
+    ShutdownServer(Result<(), ProtocolRunnerError>),
 }
 
 impl ProtocolRunnerResult {
@@ -79,7 +79,7 @@ impl ProtocolRunnerResult {
             Self::InitContextIpcServer((token, _)) => Some(*token),
             Self::GenesisCommitResultGet((token, _)) => Some(*token),
             Self::ApplyBlock((token, _)) => Some(*token),
-            Self::Shutdown(_) => None,
+            Self::ShutdownServer(_) => None,
         }
     }
 }
@@ -226,16 +226,14 @@ impl ProtocolRunnerServiceDefault {
                         continue;
                     }
                     ProtocolRunnerRequest::ShutdownServer(()) => {
-                        let result = if let Some(mut child) =
-                            std::mem::take(&mut child_process_handle)
-                        {
+                        let result = if let Some(mut child) = child_process_handle.take() {
                             Self::terminate_or_kill(&mut child, "Shutdown requested".into()).await
                         } else {
                             Ok(())
                         };
                         // TODO: maybe be explicit the protocol runner not being up when we try to shut it down?
                         sender
-                            .send(ProtocolRunnerResult::Shutdown(result))
+                            .send(ProtocolRunnerResult::ShutdownServer(result))
                             .await
                             .unwrap();
                         continue;

@@ -113,7 +113,7 @@ where
                         continue;
                     }
                     ProtocolRunnerState::ShutdownPending => {
-                        if let ProtocolRunnerResult::Shutdown(result) = result {
+                        if let ProtocolRunnerResult::ShutdownServer(result) = result {
                             if let Err(err) = result {
                                 slog::warn!(&store.state().log, "protocol runner shutdown failed";
                                     "error" => format!("{:?}", err));
