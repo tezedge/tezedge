@@ -16,7 +16,7 @@ use crate::{
     working_tree::{
         shape::ShapeStrings,
         storage::{
-            DirectoryId, DirectoryOrInodeId, Inode, Pointer, PointerOnStack, PointersBitfield,
+            DirectoryId, DirectoryOrInodeId, FatPointer, Inode, PointerOnStack, PointersBitfield,
         },
         string_interner::StringInterner,
         Commit, DirEntryKind, ObjectReference,
@@ -618,8 +618,8 @@ fn deserialize_inode_pointers(
         pos += nbytes;
 
         pointers[index as usize] = Some(PointerOnStack {
-            pointer_ref: None,
-            pointer: Pointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None),
+            thin_pointer: None,
+            fat_pointer: FatPointer::new_commited(Some(hash_id.ok_or(MissingHash)?), None),
         });
     }
 
