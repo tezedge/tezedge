@@ -51,6 +51,10 @@ pub enum RpcRequest {
     },
     MempoolStatus,
     GetPendingOperations,
+    GetBakingRights {
+        block_hash: BlockHash,
+        level: Option<Level>,
+    },
     GetEndorsingRights {
         block_hash: BlockHash,
         level: Option<Level>,

@@ -6,294 +6,307 @@ use std::collections::hash_map::Entry;
 use crate::{Action, State};
 use redux_rs::ActionWithMeta;
 
-use super::{rights_actions::*, EndorsingRightsRequest};
+use super::{rights_actions::*, RightsRequest};
 
 pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
     let requests = &mut state.rights.requests;
     match &action.action {
         // RPC actions
-        Action::RightsRpcEndorsingRightsGet(RightsRpcEndorsingRightsGetAction { rpc_id, key })
-            if !state.rights.rpc_requests.contains_key(rpc_id) =>
-        {
+        Action::RightsRpcGet(RightsRpcGetAction { key, rpc_id }) => {
             state
                 .rights
                 .rpc_requests
-                .insert(rpc_id.clone(), key.clone());
+                .entry(key.clone())
+                .or_default()
+                .push(*rpc_id);
         }
-        Action::RightsRpcEndorsingRightsPrune(RightsRpcEndorsingRightsPruneAction { rpc_id })
-            if state.rights.rpc_requests.contains_key(rpc_id) =>
-        {
-            state.rights.rpc_requests.remove(rpc_id);
+        Action::RightsPruneRpcRequest(RightsRpcPruneAction { key }) => {
+            state.rights.rpc_requests.remove(key);
         }
 
         // Auxiliary actions
-        Action::RightsEndorsingRightsInit(RightsEndorsingRightsInitAction { key })
-            if !requests.contains_key(key) =>
-        {
-            requests.insert(
-                key.clone(),
-                EndorsingRightsRequest::Init { start: action.id },
-            );
+        Action::RightsInit(RightsInitAction { key }) if !requests.contains_key(key) => {
+            requests.insert(key.clone(), RightsRequest::Init { start: action.id });
         }
-        Action::RightsEndorsingRightsGetBlockHeader(
-            RightsEndorsingRightsGetBlockHeaderAction { key },
-        ) => {
+        Action::RightsGetBlockHeader(RightsGetBlockHeaderAction { key }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::Init { start } = request {
-                    *request = EndorsingRightsRequest::PendingBlockHeader { start: *start };
+                if let RightsRequest::Init { start } = request {
+                    *request = RightsRequest::PendingBlockHeader { start: *start };
                 }
             });
         }
-        Action::RightsEndorsingRightsBlockHeaderReady(
-            RightsEndorsingRightsBlockHeaderReadyAction { key, block_header },
-        ) => {
+        Action::RightsBlockHeaderReady(RightsBlockHeaderReadyAction { key, block_header }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingBlockHeader { start } = request {
-                    *request = EndorsingRightsRequest::BlockHeaderReady {
-                        block_header: block_header.clone(),
+                if let RightsRequest::PendingBlockHeader { start } = request {
+                    *request = RightsRequest::BlockHeaderReady {
                         start: *start,
+                        block_header: block_header.clone(),
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsGetProtocolHash(
-            RightsEndorsingRightsGetProtocolHashAction { key },
-        ) => {
+        Action::RightsGetProtocolHash(RightsGetProtocolHashAction { key }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::BlockHeaderReady {
-                    block_header,
+                if let RightsRequest::BlockHeaderReady {
                     start,
+                    block_header,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::PendingProtocolHash {
-                        block_header: block_header.clone(),
+                    *request = RightsRequest::PendingProtocolHash {
                         start: *start,
+                        block_header: block_header.clone(),
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsProtocolHashReady(
-            RightsEndorsingRightsProtocolHashReadyAction { key, proto_hash },
-        ) => {
-            requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingProtocolHash {
-                    block_header,
-                    start,
-                } = request
-                {
-                    *request = EndorsingRightsRequest::ProtocolHashReady {
-                        proto_hash: proto_hash.clone(),
-                        block_header: block_header.clone(),
-                        start: *start,
-                    };
-                }
-            });
-        }
-        Action::RightsEndorsingRightsGetProtocolConstants(
-            RightsEndorsingRightsGetProtocolConstantsAction { key },
-        ) => {
-            requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::ProtocolHashReady {
-                    proto_hash,
-                    block_header,
-                    start,
-                } = request
-                {
-                    *request = EndorsingRightsRequest::PendingProtocolConstants {
-                        proto_hash: proto_hash.clone(),
-                        block_header: block_header.clone(),
-                        start: *start,
-                    };
-                }
-            });
-        }
-        Action::RightsEndorsingRightsProtocolConstantsReady(
-            RightsEndorsingRightsProtocolConstantsReadyAction { key, constants },
-        ) => {
-            requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingProtocolConstants {
-                    proto_hash,
-                    block_header,
-                    start,
-                } = request
-                {
-                    *request = EndorsingRightsRequest::ProtocolConstantsReady {
-                        protocol_constants: constants.clone(),
-                        proto_hash: proto_hash.clone(),
-                        block_header: block_header.clone(),
-                        start: *start,
-                    };
-                }
-            });
-        }
-        Action::RightsEndorsingRightsGetCycleEras(RightsEndorsingRightsGetCycleErasAction {
+        Action::RightsProtocolHashReady(RightsProtocolHashReadyAction {
             key,
+            proto_hash,
+            protocol,
         }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::ProtocolConstantsReady {
-                    protocol_constants,
-                    proto_hash,
-                    block_header,
+                if let RightsRequest::PendingProtocolHash {
                     start,
+                    block_header,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::PendingCycleEras {
-                        protocol_constants: protocol_constants.clone(),
+                    *request = RightsRequest::ProtocolHashReady {
+                        start: *start,
+                        block_header: block_header.clone(),
                         proto_hash: proto_hash.clone(),
-                        block_header: block_header.clone(),
-                        start: *start,
+                        protocol: protocol.clone(),
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsCycleErasReady(
-            RightsEndorsingRightsCycleErasReadyAction { key, cycle_eras },
-        ) => {
+        Action::RightsGetProtocolConstants(RightsGetProtocolConstantsAction { key }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingCycleEras {
-                    protocol_constants,
-                    block_header,
+                if let RightsRequest::ProtocolHashReady {
                     start,
-                    ..
+                    block_header,
+                    proto_hash,
+                    protocol,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::CycleErasReady {
-                        cycle_eras: cycle_eras.clone(),
-                        protocol_constants: protocol_constants.clone(),
-                        block_header: block_header.clone(),
+                    *request = RightsRequest::PendingProtocolConstants {
                         start: *start,
+                        block_header: block_header.clone(),
+                        proto_hash: proto_hash.clone(),
+                        protocol: protocol.clone(),
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsGetCycle(RightsEndorsingRightsGetCycleAction { key }) => {
+        Action::RightsProtocolConstantsReady(RightsProtocolConstantsReadyAction {
+            key,
+            constants,
+        }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::CycleErasReady {
+                if let RightsRequest::PendingProtocolConstants {
+                    start,
+                    block_header,
+                    proto_hash,
+                    protocol,
+                } = request
+                {
+                    *request = RightsRequest::ProtocolConstantsReady {
+                        start: *start,
+                        block_header: block_header.clone(),
+                        proto_hash: proto_hash.clone(),
+                        protocol: protocol.clone(),
+                        protocol_constants: constants.clone(),
+                    };
+                }
+            });
+        }
+        Action::RightsGetCycleEras(RightsGetCycleErasAction { key }) => {
+            requests.get_mut(key).map(|request| {
+                if let RightsRequest::ProtocolConstantsReady {
+                    start,
+                    block_header,
+                    proto_hash,
+                    protocol,
+                    protocol_constants,
+                } = request
+                {
+                    *request = RightsRequest::PendingCycleEras {
+                        start: *start,
+                        block_header: block_header.clone(),
+                        proto_hash: proto_hash.clone(),
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
+                    };
+                }
+            });
+        }
+        Action::RightsCycleErasReady(RightsCycleErasReadyAction { key, cycle_eras }) => {
+            requests.get_mut(key).map(|request| {
+                if let RightsRequest::PendingCycleEras {
+                    start,
+                    block_header,
+                    proto_hash: _,
+                    protocol,
+                    protocol_constants,
+                } = request
+                {
+                    *request = RightsRequest::CycleErasReady {
+                        start: *start,
+                        block_header: block_header.clone(),
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
+                        cycle_eras: cycle_eras.clone(),
+                    };
+                }
+            });
+        }
+        Action::RightsGetCycle(RightsGetCycleAction { key }) => {
+            requests.get_mut(key).map(|request| {
+                if let RightsRequest::CycleErasReady {
+                    start,
+                    block_header,
+                    protocol,
+                    protocol_constants,
                     cycle_eras,
-                    protocol_constants,
-                    block_header,
-                    start,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::PendingCycle {
-                        cycle_eras: cycle_eras.clone(),
-                        protocol_constants: protocol_constants.clone(),
-                        block_header: block_header.clone(),
+                    *request = RightsRequest::PendingCycle {
                         start: *start,
+                        block_header: block_header.clone(),
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
+                        cycle_eras: cycle_eras.clone(),
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsCycleReady(RightsEndorsingRightsCycleReadyAction {
+        Action::RightsCycleReady(RightsCycleReadyAction {
             key,
             cycle,
             position,
         }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingCycle {
-                    protocol_constants,
-                    block_header,
+                if let RightsRequest::PendingCycle {
                     start,
-                    ..
+                    block_header,
+                    protocol,
+                    protocol_constants,
+                    cycle_eras: _,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::CycleReady {
-                        level: key.level.unwrap_or(block_header.level()),
+                    *request = RightsRequest::CycleReady {
+                        start: *start,
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
+                        level: key.level().unwrap_or(block_header.level()),
                         cycle: *cycle,
                         position: *position,
-                        protocol_constants: protocol_constants.clone(),
-                        start: *start,
                     };
                 }
             });
         }
 
-        Action::RightsEndorsingRightsGetCycleData(RightsEndorsingRightsGetCycleDataAction {
-            key,
-        }) => {
+        Action::RightsGetCycleData(RightsGetCycleDataAction { key }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::CycleReady {
+                if let RightsRequest::CycleReady {
+                    start,
+                    protocol,
+                    protocol_constants,
                     level,
                     cycle,
                     position,
-                    protocol_constants,
-                    start,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::PendingCycleData {
+                    *request = RightsRequest::PendingCycleData {
+                        start: *start,
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
                         level: *level,
                         cycle: *cycle,
                         position: *position,
-                        protocol_constants: protocol_constants.clone(),
-                        start: *start,
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsCycleDataReady(
-            RightsEndorsingRightsCycleDataReadyAction { key, cycle_data },
-        ) => {
+        Action::RightsCycleDataReady(RightsCycleDataReadyAction { key, cycle_data }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::PendingCycleData {
-                    level,
-                    position,
-                    protocol_constants,
+                if let RightsRequest::PendingCycleData {
                     start,
-                    ..
+                    protocol,
+                    protocol_constants,
+                    level,
+                    cycle: _,
+                    position,
                 } = request
                 {
-                    *request = EndorsingRightsRequest::CycleDataReady {
+                    *request = RightsRequest::CycleDataReady {
+                        start: *start,
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
                         level: *level,
                         position: *position,
-                        protocol_constants: protocol_constants.clone(),
                         cycle_data: cycle_data.clone(),
-                        start: *start,
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsCalculate(RightsEndorsingRightsCalculateAction { key }) => {
+        Action::RightsCalculateEndorsingRights(RightsCalculateAction { key }) => {
             requests.get_mut(key).map(|request| {
-                if let EndorsingRightsRequest::CycleDataReady {
+                if let RightsRequest::CycleDataReady {
+                    start,
+                    protocol,
+                    protocol_constants,
                     level,
                     cycle_data,
                     position,
-                    protocol_constants,
-                    start,
-                    ..
                 } = request
                 {
-                    *request = EndorsingRightsRequest::PendingRights {
+                    *request = RightsRequest::PendingRightsCalculation {
+                        start: *start,
+                        protocol: protocol.clone(),
+                        protocol_constants: protocol_constants.clone(),
                         level: *level,
                         cycle_data: cycle_data.clone(),
                         position: *position,
-                        protocol_constants: protocol_constants.clone(),
-                        start: *start,
                     };
                 }
             });
         }
-        Action::RightsEndorsingRightsReady(RightsEndorsingRightsReadyAction {
+        Action::RightsBakingReady(RightsBakingReadyAction { key, baking_rights }) => {
+            if let Some(RightsRequest::PendingRightsCalculation { .. }) = requests.remove(key) {
+                let cache = &mut state.rights.cache.rights;
+                let duration = state.rights.cache.time;
+                cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
+                slog::trace!(&state.log, "cached endorsing rights"; "level" => baking_rights.level);
+                cache.insert(
+                    baking_rights.level,
+                    (action.id, baking_rights.clone().into()),
+                );
+            }
+        }
+        Action::RightsEndorsingReady(RightsEndorsingReadyAction {
             key,
             endorsing_rights,
         }) => {
             if let Entry::Occupied(entry) = requests.entry(key.clone()) {
-                if let EndorsingRightsRequest::PendingRights { .. } = entry.get() {
+                if let RightsRequest::PendingRightsCalculation { .. } = entry.get() {
                     entry.remove();
                 }
-                let cache = &mut state.rights.cache.endorsing_rights;
+                let cache = &mut state.rights.cache.rights;
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);
                 cache.insert(
                     endorsing_rights.level,
-                    (action.id, endorsing_rights.clone()),
+                    (action.id, endorsing_rights.clone().into()),
                 );
             }
         }
-        Action::RightsEndorsingRightsError(RightsEndorsingRightsErrorAction { key, error }) => {
-            if let Entry::Occupied(mut entry) = requests.entry(key.clone()) {
-                entry.insert(EndorsingRightsRequest::Error(error.clone()));
+        Action::RightsError(RightsErrorAction { key, error }) => {
+            if let Some(request) = requests.remove(key) {
+                state
+                    .rights
+                    .errors
+                    .push((key.clone().into(), request, error.clone()));
             }
         }
         _ => (),

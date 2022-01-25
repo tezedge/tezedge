@@ -337,6 +337,22 @@ pub async fn dev_shell_automaton_mempool_operation_stats_get(
     make_json_response(&dev_services::get_shell_automaton_mempool_operation_stats(&env).await?)
 }
 
+pub async fn dev_shell_automaton_baking_rights(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let block_hash = query
+        .get_str("block")
+        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `block`"))?;
+    let block_hash = BlockHash::from_base58_check(&block_hash)?;
+    let level = query.get_str("level").map(str::parse).transpose()?;
+    make_json_response(
+        &dev_services::get_shell_automaton_baking_rights(block_hash, level, &env).await?,
+    )
+}
+
 pub async fn dev_shell_automaton_endorsing_rights(
     _: Request<Body>,
     _: Params,

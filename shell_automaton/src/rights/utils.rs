@@ -1,10 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use storage::cycle_eras_storage::{CycleEra, CycleErasData};
+use std::collections::HashMap;
+
+use crypto::blake2b;
+use storage::{
+    cycle_eras_storage::{CycleEra, CycleErasData},
+    cycle_storage::CycleData,
+    num_from_slice,
+};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use super::Cycle;
+use super::{Cycle, Delegate, ProtocolConstants};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum CycleError {
@@ -58,4 +65,136 @@ pub(super) fn get_cycle(
     assert_cycle(cycle, block_cycle, preserved_cycles)?;
 
     Ok((cycle, position))
+}
+
+#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum TezosPRNGError {
+    #[error("Digest error: `{0}`")]
+    Hash(#[from] blake2b::Blake2bError),
+    #[error("Bounds error: `{0}`")]
+    Bounds(String),
+}
+
+struct TezosPRNG {
+    state: Vec<u8>,
+}
+
+impl TezosPRNG {
+    fn initialize(
+        seed_bytes: &[u8],
+        nonce_size: usize,
+        use_: &[u8],
+        cycle_position: i32,
+        offset: i32,
+    ) -> Result<Self, TezosPRNGError> {
+        let zero_bytes = vec![0; nonce_size];
+        let cycle_position_bytes = cycle_position.to_be_bytes();
+
+        // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
+        let mut rd = Self::digest(&[
+            seed_bytes,
+            &zero_bytes,
+            b"level ",
+            use_,
+            b":",
+            &cycle_position_bytes,
+        ])?;
+
+        // set the 4 highest bytes to the result of the xor operation with offset
+        let offset_bytes = offset.to_be_bytes();
+        for i in 0..offset_bytes.len() {
+            rd[i] ^= offset_bytes[i];
+        }
+
+        Ok(Self {
+            state: Self::digest(&[&rd])?,
+        })
+    }
+
+    fn get_next(&mut self, bound: i32) -> Result<i32, TezosPRNGError> {
+        if bound < 1 {
+            return Err(TezosPRNGError::Bounds(format!(
+                "bound is negative: `{bound}`"
+            )));
+        }
+        let num = loop {
+            self.state = Self::digest(&[&self.state])?;
+            // 4 highest bytes
+            let r = num_from_slice!(self.state, 0, i32).abs();
+
+            if r >= i32::MAX - (i32::MAX % bound) {
+                eprintln!("get_next continue: `{r}`");
+                continue;
+            } else {
+                break r % bound;
+            }
+        };
+
+        Ok(num)
+    }
+
+    fn digest(data: &[&[u8]]) -> Result<Vec<u8>, TezosPRNGError> {
+        Ok(blake2b::digest_all(data, 32)?)
+    }
+}
+
+pub(super) fn random_owner(
+    constants: &ProtocolConstants,
+    cycle_meta_data: &CycleData,
+    rolls_map: &HashMap<i32, Delegate>,
+    use_: &[u8],
+    cycle_position: i32,
+    offset: impl Into<i32>,
+) -> Result<Delegate, TezosPRNGError> {
+    let mut prng = TezosPRNG::initialize(
+        cycle_meta_data.seed_bytes(),
+        constants.nonce_length.into(),
+        use_,
+        cycle_position,
+        offset.into(),
+    )?;
+
+    let owner = loop {
+        let next = prng.get_next(*cycle_meta_data.last_roll())?;
+        if let Some(delegate) = rolls_map.get(&next) {
+            break delegate.clone();
+        }
+        eprintln!("random_owner: loop `{next}`");
+    };
+
+    Ok(owner)
+}
+
+pub(super) fn endorser_rights_owner(
+    constants: &ProtocolConstants,
+    cycle_meta_data: &CycleData,
+    rolls_map: &HashMap<i32, Delegate>,
+    cycle_position: i32,
+    slot: u16,
+) -> Result<Delegate, TezosPRNGError> {
+    random_owner(
+        constants,
+        cycle_meta_data,
+        rolls_map,
+        b"endorsement",
+        cycle_position,
+        slot,
+    )
+}
+
+pub(super) fn baking_rights_owner(
+    constants: &ProtocolConstants,
+    cycle_meta_data: &CycleData,
+    rolls_map: &HashMap<i32, Delegate>,
+    cycle_position: i32,
+    priority: u16,
+) -> Result<Delegate, TezosPRNGError> {
+    random_owner(
+        constants,
+        cycle_meta_data,
+        rolls_map,
+        b"baking",
+        cycle_position,
+        priority,
+    )
 }
