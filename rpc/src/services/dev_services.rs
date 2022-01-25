@@ -903,7 +903,10 @@ pub struct BlockStats {
 
 pub(crate) async fn get_shell_automaton_block_stats_graph(
     env: &RpcServiceEnvironment,
+    limit: Option<usize>,
 ) -> Result<Option<BlocksStats>, tokio::sync::oneshot::error::RecvError> {
+    let limit = limit.unwrap_or(2000);
+
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let _ = env
@@ -937,6 +940,8 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
         .collect::<Vec<_>>();
 
     result.sort_by_key(|v| v.block_level);
+    // take last/newest `limit` block stats.
+    result = result.into_iter().rev().take(limit).rev().collect();
 
     Ok(Some(result))
 }

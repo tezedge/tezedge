@@ -43,7 +43,7 @@ impl StatisticsService {
             e.insert(Default::default());
             self.blocks_by_level.push_back(block_hash);
 
-            if self.blocks_by_level.len() > 2000 {
+            if self.blocks_by_level.len() > 100000 {
                 if let Some(oldest_block) = self.blocks_by_level.pop_front() {
                     self.blocks.remove(&oldest_block);
                 }
