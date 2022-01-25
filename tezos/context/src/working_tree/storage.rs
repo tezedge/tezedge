@@ -603,6 +603,7 @@ pub struct PointersId {
     /// Index of first pointer in `Storage::thin_pointers`
     start: u32,
     /// A bitfield, which allow to retrieve the following pointers (after `start`)
+    /// and at which index (0 to 31) they are
     bitfield: PointersBitfield,
 }
 
@@ -884,8 +885,8 @@ pub struct Inode {
     pub depth: u16,
     pub nchildren: u32,
     /// Points to a subslice of `Storage::thin_pointers`
-    /// `PointersId` contains an index and a bitfield, which allow
-    /// to retrieve the subslice
+    /// `PointersId` contains an index and a bitfield, which give
+    /// details about the subslice
     pub pointers: PointersId,
 }
 
