@@ -21,7 +21,7 @@ use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable, ReadSt
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
-use crate::working_tree::storage::{DirEntryId, DirectoryOrInodeId, InodeId, Storage};
+use crate::working_tree::storage::{DirEntryId, DirectoryOrInodeId, Storage};
 use crate::working_tree::string_interner::{StringId, StringInterner};
 use crate::working_tree::working_tree::{PostCommitData, WorkingTree};
 use crate::working_tree::{Object, ObjectReference};

@@ -41,7 +41,7 @@ use crate::{
     },
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
-        storage::{DirEntryId, DirectoryOrInodeId, InodeId, Storage},
+        storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, WorkingTree},
         Object, ObjectReference,

@@ -19,7 +19,7 @@ use crate::{
     serialize::DeserializationError,
     working_tree::{
         shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
-        storage::{DirEntryId, DirectoryOrInodeId, InodeId, Storage},
+        storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{MerkleError, WorkingTree},
         Object, ObjectReference,

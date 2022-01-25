@@ -10,7 +10,7 @@ use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     convert::{TryFrom, TryInto},
     mem::size_of,
     ops::{Range, RangeInclusive},
@@ -25,7 +25,6 @@ use crate::{
     chunks::ChunkedVec,
     hash::HashingError,
     kv_store::{index_map::IndexMap, HashId},
-    persistent::file::FileOffset,
     working_tree::ObjectReference,
     ContextKeyValueStore, Map, ObjectHash,
 };

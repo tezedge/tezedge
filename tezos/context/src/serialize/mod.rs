@@ -16,7 +16,7 @@ use crate::{
     persistent::DBError,
     working_tree::{
         shape::DirectoryShapeError,
-        storage::{DirEntryIdError, FatPointer, PointerOnStack, Storage, StorageError},
+        storage::{DirEntryIdError, Storage, StorageError},
         string_interner::StringInterner,
         Object,
     },
