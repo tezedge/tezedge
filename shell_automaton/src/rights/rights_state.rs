@@ -12,6 +12,7 @@ use storage::{cycle_eras_storage::CycleErasData, cycle_storage::CycleData};
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKey,
     p2p::encoding::block_header::{BlockHeader, Level},
+    protocol::{SupportedProtocol, UnsupportedProtocolError},
 };
 
 use crate::{
@@ -22,29 +23,36 @@ use crate::{
 };
 
 use super::{
-    rights_effects::EndorsingRightsCalculationError,
+    rights_effects::RightsCalculationError,
     utils::{CycleError, Position},
-    Cycle, EndorsingRightsKey,
+    Cycle, RightsInput, RightsKey,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct RightsState {
-    pub requests: HashMap<EndorsingRightsKey, EndorsingRightsRequest>,
-    pub rpc_requests: HashMap<RpcId, EndorsingRightsKey>,
+    pub requests: HashMap<RightsKey, RightsRequest>,
+    pub rpc_requests: HashMap<RightsKey, Vec<RpcId>>,
     pub cache: RightsCache,
+    pub errors: Vec<(RightsInput, RightsRequest, RightsError)>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From)]
+pub enum RightsResult {
+    Baking(BakingRights),
+    Endorsing(EndorsingRights),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCache {
     pub time: Duration,
-    pub endorsing_rights: BTreeMap<Level, (ActionId, EndorsingRights)>,
+    pub rights: BTreeMap<Level, (ActionId, RightsResult)>,
 }
 
 impl Default for RightsCache {
     fn default() -> Self {
         Self {
             time: Duration::from_secs(600),
-            endorsing_rights: Default::default(),
+            rights: Default::default(),
         }
     }
 }
@@ -60,8 +68,14 @@ pub struct EndorsingRights {
     pub delegate_to_slots: HashMap<Delegate, Vec<Slot>>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BakingRights {
+    pub level: Level,
+    pub priorities: Vec<Delegate>,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
-pub enum EndorsingRightsRequest {
+pub enum RightsRequest {
     /// Request for endorsing rights for the given level is initialized.
     Init {
         start: ActionId,
@@ -70,81 +84,92 @@ pub enum EndorsingRightsRequest {
         start: ActionId,
     },
     BlockHeaderReady {
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
     },
     PendingProtocolHash {
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
     },
     ProtocolHashReady {
-        proto_hash: ProtocolHash,
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
+        proto_hash: ProtocolHash,
+        protocol: SupportedProtocol,
     },
     PendingProtocolConstants {
-        proto_hash: ProtocolHash,
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
+        proto_hash: ProtocolHash,
+        protocol: SupportedProtocol,
     },
     ProtocolConstantsReady {
-        protocol_constants: ProtocolConstants,
+        start: ActionId,
         proto_hash: ProtocolHash,
         block_header: BlockHeader,
-        start: ActionId,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
     },
     PendingCycleEras {
-        protocol_constants: ProtocolConstants,
-        proto_hash: ProtocolHash,
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
+        proto_hash: ProtocolHash,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
     },
     CycleErasReady {
-        cycle_eras: CycleErasData,
-        protocol_constants: ProtocolConstants,
-        block_header: BlockHeader,
         start: ActionId,
+        block_header: BlockHeader,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
+        cycle_eras: CycleErasData,
     },
     PendingCycle {
-        cycle_eras: CycleErasData,
-        protocol_constants: ProtocolConstants,
-        block_header: BlockHeader,
         start: ActionId,
+        protocol: SupportedProtocol,
+        block_header: BlockHeader,
+        protocol_constants: ProtocolConstants,
+        cycle_eras: CycleErasData,
     },
     CycleReady {
+        start: ActionId,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
         level: Level,
         cycle: Cycle,
         position: Position,
-        protocol_constants: ProtocolConstants,
-        start: ActionId,
     },
     PendingCycleData {
+        start: ActionId,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
         level: Level,
         cycle: Cycle,
         position: Position,
-        protocol_constants: ProtocolConstants,
-        start: ActionId,
     },
     CycleDataReady {
+        start: ActionId,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
         level: Level,
         position: Position,
-        protocol_constants: ProtocolConstants,
         cycle_data: CycleData,
-        start: ActionId,
     },
-    PendingRights {
+    PendingRightsCalculation {
+        start: ActionId,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
         level: Level,
         position: Position,
-        protocol_constants: ProtocolConstants,
         cycle_data: CycleData,
-        start: ActionId,
     },
     Ready(EndorsingRights),
-    Error(EndorsingRightsError),
+    BakingRightsReady(BakingRights),
+    Error(RightsError),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
-pub enum EndorsingRightsError {
+pub enum RightsError {
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
     #[error("Missing block header")]
@@ -162,26 +187,22 @@ pub enum EndorsingRightsError {
     #[error("Missing cycle meta data")]
     MissingCycleData,
     #[error("Error calculating endorsing rights: {0}")]
-    Calculation(#[from] EndorsingRightsCalculationError),
+    Calculation(#[from] RightsCalculationError),
+    #[error("Unsupported protocol: {0}")]
+    UnsupportedProto(#[from] UnsupportedProtocolError),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
-pub enum EndorsingRightsRpcError {
+pub enum RightsRpcError {
     #[error("Error calculating delegate hash")]
     Hash(#[from] TryFromPKError),
+    #[error("Numeric conversion error")]
+    Num,
     #[error(transparent)]
-    Other(#[from] EndorsingRightsError),
+    Other(#[from] RightsError),
 }
 
-/*
-impl From<CycleError> for EndorsingRightsError {
-    fn from(error: CycleError) -> Self {
-        Self::Cycle(error)
-    }
-}
-*/
-
-impl From<kv_block_header::Error> for EndorsingRightsError {
+impl From<kv_block_header::Error> for RightsError {
     fn from(error: kv_block_header::Error) -> Self {
         match error {
             kv_block_header::Error::Storage(error) => Self::Storage(error),
@@ -190,7 +211,7 @@ impl From<kv_block_header::Error> for EndorsingRightsError {
     }
 }
 
-impl From<kv_block_additional_data::Error> for EndorsingRightsError {
+impl From<kv_block_additional_data::Error> for RightsError {
     fn from(error: kv_block_additional_data::Error) -> Self {
         match error {
             kv_block_additional_data::Error::Storage(error) => Self::Storage(error),
@@ -199,7 +220,7 @@ impl From<kv_block_additional_data::Error> for EndorsingRightsError {
     }
 }
 
-impl From<kv_constants::Error> for EndorsingRightsError {
+impl From<kv_constants::Error> for RightsError {
     fn from(error: kv_constants::Error) -> Self {
         match error {
             kv_constants::Error::Storage(error) => Self::Storage(error),
@@ -208,7 +229,7 @@ impl From<kv_constants::Error> for EndorsingRightsError {
     }
 }
 
-impl From<kv_cycle_eras::Error> for EndorsingRightsError {
+impl From<kv_cycle_eras::Error> for RightsError {
     fn from(error: kv_cycle_eras::Error) -> Self {
         match error {
             kv_cycle_eras::Error::Storage(error) => Self::Storage(error),
@@ -217,7 +238,7 @@ impl From<kv_cycle_eras::Error> for EndorsingRightsError {
     }
 }
 
-impl From<kv_cycle_meta::Error> for EndorsingRightsError {
+impl From<kv_cycle_meta::Error> for RightsError {
     fn from(error: kv_cycle_meta::Error) -> Self {
         match error {
             kv_cycle_meta::Error::Storage(error) => Self::Storage(error),
@@ -226,7 +247,7 @@ impl From<kv_cycle_meta::Error> for EndorsingRightsError {
     }
 }
 
-impl From<serde_json::Error> for EndorsingRightsError {
+impl From<serde_json::Error> for RightsError {
     fn from(error: serde_json::Error) -> Self {
         Self::ParseProtocolConstants(error.to_string())
     }

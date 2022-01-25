@@ -6,7 +6,7 @@ use crate::mempool::mempool_actions::{
     MempoolRegisterOperationsStreamAction, MempoolRemoveAppliedOperationsAction,
     MempoolRpcEndorsementsStatusGetAction,
 };
-use crate::rights::{rights_actions::RightsRpcEndorsingRightsGetAction, EndorsingRightsKey};
+use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
 use crate::{Action, ActionWithMeta, Store};
@@ -70,12 +70,15 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::GetPendingOperations => {
                         store.dispatch(MempoolGetPendingOperationsAction { rpc_id });
                     }
+                    RpcRequest::GetBakingRights { block_hash, level } => {
+                        store.dispatch(RightsRpcGetAction {
+                            key: RightsKey::baking(block_hash, level),
+                            rpc_id,
+                        });
+                    }
                     RpcRequest::GetEndorsingRights { block_hash, level } => {
-                        store.dispatch(RightsRpcEndorsingRightsGetAction {
-                            key: EndorsingRightsKey {
-                                current_block_hash: block_hash,
-                                level,
-                            },
+                        store.dispatch(RightsRpcGetAction {
+                            key: RightsKey::endorsing(block_hash, level),
                             rpc_id,
                         });
                     }
