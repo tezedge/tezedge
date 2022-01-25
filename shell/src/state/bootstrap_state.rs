@@ -20,14 +20,13 @@ use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{GetCurrentBranchMessage, PeerMessageResponse};
-use tokio::sync::Semaphore;
 
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::state::data_requester::{tell_peer, DataRequester, DataRequesterRef};
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
-use crate::state::{ApplyBlockBatch, StateError};
+use crate::state::StateError;
 
 type BlockRef = Arc<BlockHash>;
 
@@ -49,7 +48,6 @@ pub struct BootstrapStateConfiguration {
     pub(crate) missing_new_branch_bootstrap_timeout: Duration,
 
     max_bootstrap_branches_per_peer: usize,
-    apply_block_batch_maxsize: usize,
 }
 
 impl BootstrapStateConfiguration {
@@ -58,14 +56,12 @@ impl BootstrapStateConfiguration {
         block_operations_timeout: Duration,
         missing_new_branch_bootstrap_timeout: Duration,
         max_bootstrap_branches_per_peer: usize,
-        apply_block_batch_maxsize: usize,
     ) -> Self {
         Self {
             block_header_timeout,
             block_operations_timeout,
             missing_new_branch_bootstrap_timeout,
             max_bootstrap_branches_per_peer,
-            apply_block_batch_maxsize,
         }
     }
 }
@@ -78,15 +74,7 @@ pub struct BootstrapState {
     /// Holds unique blocks cache, shared for all branch bootstraps to minimalize memory usage
     block_state_db: BlockStateDb,
 
-    /// We apply blocks by batches, and this queue will be like 'waiting room'
-    /// If one batch will pass, just then we send another one,
-    /// In case of failure, we remove conequent batches
-    apply_block_batch_queue: VecDeque<ApplyBlockBatch>,
-    /// Semaphore for limiting apply block batch queue processing, we need to send next batch, only if previous was done (success or failure)
-    /// We use semaphore with just 1 permit:
-    /// - if we have permit available, we can send next batch
-    /// - if we dont have permit, we cannot send next batch and we need to wait until permit will be returned (or dropped)
-    apply_block_batch_tickets: Arc<Semaphore>,
+    apply_block_queue: VecDeque<Arc<BlockHash>>,
 
     /// Data requester
     data_requester: DataRequesterRef,
@@ -109,8 +97,7 @@ impl BootstrapState {
             block_state_db: BlockStateDb::new(512),
             data_requester,
             peer_branch_synchronization_done_callback,
-            apply_block_batch_queue: VecDeque::with_capacity(1),
-            apply_block_batch_tickets: Arc::new(Semaphore::new(1)),
+            apply_block_queue: VecDeque::with_capacity(1),
             cfg,
         }
     }
@@ -204,7 +191,7 @@ impl BootstrapState {
         disconnect_peer: DP,
     ) {
         // we clear the actual bootstrap state
-        self.apply_block_batch_queue.clear();
+        self.apply_block_queue.clear();
         self.block_state_db.clear();
 
         // randomly disconnect or ask GetCurrentBranch
@@ -275,28 +262,6 @@ impl BootstrapState {
                     },
                 )
             })
-    }
-
-    pub fn apply_block_batch_queue_stats(&self) -> (usize, usize, bool) {
-        // queue stats
-        let (waiting_batch_count, waiting_batch_blocks_count) = self
-            .apply_block_batch_queue
-            .iter()
-            .fold((0, 0), |(batches_count, blocks_count), next_batch| {
-                (
-                    batches_count + 1,
-                    blocks_count + next_batch.batch_total_size(),
-                )
-            });
-
-        // we expect max permits 1, so if no permits available, means that batch is in processing
-        let batch_in_progress = self.apply_block_batch_tickets.available_permits() == 0;
-
-        (
-            waiting_batch_count,
-            waiting_batch_blocks_count,
-            batch_in_progress,
-        )
     }
 
     pub fn next_lowest_missing_blocks(&self) -> Vec<(usize, &BlockRef)> {
@@ -583,8 +548,7 @@ impl BootstrapState {
             peers,
             block_state_db,
             data_requester,
-            cfg,
-            apply_block_batch_queue,
+            apply_block_queue,
             ..
         } = self;
 
@@ -596,8 +560,7 @@ impl BootstrapState {
             let mut branches_to_remove: HashSet<Level> = HashSet::default();
             for branch in branches.iter_mut() {
                 if let Err(error) = branch.schedule_next_block_to_apply(
-                    cfg.apply_block_batch_maxsize,
-                    apply_block_batch_queue,
+                    apply_block_queue,
                     block_state_db,
                     data_requester,
                 ) {
@@ -713,28 +676,24 @@ impl BootstrapState {
         }
     }
 
-    pub fn try_call_apply_block_batch(
+    pub fn try_call_apply_block(
         &mut self,
         chain_id: &Arc<ChainId>,
         chain_manager: &Arc<ChainManagerRef>,
         peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
     ) {
         // just skip for empty queue
-        if self.apply_block_batch_queue.is_empty() {
+        if self.apply_block_queue.is_empty() {
             return;
         }
 
-        // if we can aquire ticket, means that we can sent a next batch for application
-        if let Ok(permit) = self.apply_block_batch_tickets.clone().try_acquire_owned() {
-            if let Some(batch) = self.apply_block_batch_queue.pop_front() {
-                self.data_requester.call_apply_block_batch(
-                    chain_id.clone(),
-                    batch,
-                    chain_manager.clone(),
-                    peer_branch_bootstrapper.clone(),
-                    permit,
-                );
-            }
+        if let Some(block_hash) = self.apply_block_queue.pop_front() {
+            self.data_requester.call_apply_block(
+                chain_id.clone(),
+                block_hash,
+                chain_manager.clone(),
+                peer_branch_bootstrapper.clone(),
+            );
         }
     }
 }
@@ -937,8 +896,7 @@ impl BranchState {
 
     pub fn schedule_next_block_to_apply(
         &mut self,
-        apply_block_batch_maxsize: usize,
-        apply_block_batch_queue: &mut VecDeque<ApplyBlockBatch>,
+        apply_block_queue: &mut VecDeque<Arc<BlockHash>>,
         block_state_db: &mut BlockStateDb,
         data_requester: &DataRequester,
     ) -> Result<(), StateError> {
@@ -958,11 +916,10 @@ impl BranchState {
             }
         }
 
-        let mut batch_for_apply: Option<ApplyBlockBatch> = None;
         let mut last_applied = None;
         let mut last_already_scheduled = None;
 
-        // check blocks for apply - get first non-applied/non-scheduled block and create batch
+        // check blocks for apply - get first non-applied/non-scheduled block.
         for b in self.blocks_to_apply.iter() {
             // get block state
             match block_state_db.blocks.get(b) {
@@ -1024,26 +981,10 @@ impl BranchState {
                             let block_ref = block_state_db.get_block_ref(b.clone());
 
                             block_state_db.blocks.insert(block_ref.clone(), state);
-
-                            // start batch or continue existing one
-                            if let Some(mut batch) = batch_for_apply {
-                                batch.add_successor(block_ref);
-                                if batch.successors_size() >= apply_block_batch_maxsize {
-                                    // schedule batch
-                                    apply_block_batch_queue.push_back(batch);
-                                    // start new one
-                                    batch_for_apply = None;
-                                } else {
-                                    batch_for_apply = Some(batch);
-                                }
-                            } else {
-                                batch_for_apply = Some(ApplyBlockBatch::start_batch(
-                                    block_ref,
-                                    apply_block_batch_maxsize,
-                                ));
-                            }
+                            apply_block_queue.push_back(block_ref);
 
                             last_already_scheduled = Some(b);
+                            break;
                         }
                         None => {
                             return Err(StateError::ProcessingError {
@@ -1056,11 +997,6 @@ impl BranchState {
                     }
                 }
             };
-        }
-
-        if let Some(batch) = batch_for_apply {
-            // schedule last batch
-            apply_block_batch_queue.push_back(batch);
         }
 
         // remove all previous already scheduled

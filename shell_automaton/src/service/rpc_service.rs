@@ -40,6 +40,9 @@ pub enum RpcRequest {
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },
+    GetBlockStats {
+        channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksStats>>,
+    },
 
     InjectOperation {
         operation_hash: OperationHash,

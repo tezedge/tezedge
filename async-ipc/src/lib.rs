@@ -21,23 +21,22 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::time::error::Elapsed;
 
 /// IPC communication errors
-#[derive(Error, Debug)]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum IpcError {
     #[error("Receive message length error: {reason}")]
-    ReceiveMessageLengthError { reason: io::Error },
+    ReceiveMessageLengthError { reason: String },
     #[error("Receive message error: {reason}")]
-    ReceiveMessageError { reason: io::Error },
+    ReceiveMessageError { reason: String },
     #[error("Send error: {reason}")]
-    SendError { reason: io::Error },
+    SendError { reason: String },
     #[error("Accept connection timed out, timout: {timeout:?}")]
     AcceptTimeout { timeout: Duration },
-    #[error("Receive message timed out after {elapsed}")]
-    ReceiveMessageTimeout { elapsed: Elapsed },
+    #[error("Receive message timed out")]
+    ReceiveMessageTimeout,
     #[error("Connection error: {reason}")]
-    ConnectionError { reason: io::Error },
+    ConnectionError { reason: String },
     #[error("Serialization error: {reason}")]
     SerializationError { reason: String },
     #[error("Deserialization error: {reason}")]
@@ -69,15 +68,18 @@ impl<S: Serialize> IpcSender<S> {
         self.0
             .write_all(&msg_len_buf)
             .await
-            .map_err(|err| IpcError::SendError { reason: err })?;
+            .map_err(|err| IpcError::SendError {
+                reason: err.to_string(),
+            })?;
         self.0
             .write_all(&msg_buf)
             .await
-            .map_err(|err| IpcError::SendError { reason: err })?;
-        self.0
-            .flush()
-            .await
-            .map_err(|err| IpcError::SendError { reason: err })
+            .map_err(|err| IpcError::SendError {
+                reason: err.to_string(),
+            })?;
+        self.0.flush().await.map_err(|err| IpcError::SendError {
+            reason: err.to_string(),
+        })
     }
 }
 
@@ -104,17 +106,18 @@ where
     pub async fn try_receive(&mut self, read_timeout: Duration) -> Result<R, IpcError> {
         match tokio::time::timeout(read_timeout, self.receive()).await {
             Ok(result) => result,
-            Err(elapsed) => Err(IpcError::ReceiveMessageTimeout { elapsed }),
+            Err(_) => Err(IpcError::ReceiveMessageTimeout),
         }
     }
 
     /// Read bytes from established IPC channel and deserialize into a rust type.
     pub async fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 4];
-        self.0
-            .read_exact(&mut msg_len_buf)
-            .await
-            .map_err(|err| IpcError::ReceiveMessageLengthError { reason: err })?;
+        self.0.read_exact(&mut msg_len_buf).await.map_err(|err| {
+            IpcError::ReceiveMessageLengthError {
+                reason: err.to_string(),
+            }
+        })?;
 
         let msg_len = i32::from_be_bytes(msg_len_buf) as usize;
 
@@ -122,7 +125,9 @@ where
         self.0
             .read_exact(&mut msg_buf)
             .await
-            .map_err(|err| IpcError::ReceiveMessageError { reason: err })?;
+            .map_err(|err| IpcError::ReceiveMessageError {
+                reason: err.to_string(),
+            })?;
 
         bincode::deserialize(&msg_buf).map_err(|err| IpcError::DeserializationError {
             reason: format!("{:?}", err),
@@ -161,8 +166,9 @@ where
     /// * `path` - path to the unix socket
     pub fn bind_path<P: AsRef<Path>>(path: P) -> Result<Self, IpcError> {
         let path_buf = path.as_ref().into();
-        let listener =
-            UnixListener::bind(path).map_err(|err| IpcError::ConnectionError { reason: err })?;
+        let listener = UnixListener::bind(path).map_err(|err| IpcError::ConnectionError {
+            reason: err.to_string(),
+        })?;
 
         Ok(IpcServer {
             listener,
@@ -184,7 +190,11 @@ where
     ) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = match tokio::time::timeout(timeout, self.listener.accept()).await {
             Ok(Ok(connection)) => connection,
-            Ok(Err(error)) => return Err(IpcError::ConnectionError { reason: error }),
+            Ok(Err(error)) => {
+                return Err(IpcError::ConnectionError {
+                    reason: error.to_string(),
+                })
+            }
             Err(_) => return Err(IpcError::AcceptTimeout { timeout }),
         };
 
@@ -197,7 +207,9 @@ where
             .listener
             .accept()
             .await
-            .map_err(|e| IpcError::ConnectionError { reason: e })?;
+            .map_err(|e| IpcError::ConnectionError {
+                reason: e.to_string(),
+            })?;
 
         split(stream.0)
     }
@@ -241,9 +253,12 @@ where
 
     /// Try to open new connection.
     pub async fn connect(&self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
-        let stream = UnixStream::connect(&self.path)
-            .await
-            .map_err(|err| IpcError::ConnectionError { reason: err })?;
+        let stream =
+            UnixStream::connect(&self.path)
+                .await
+                .map_err(|err| IpcError::ConnectionError {
+                    reason: err.to_string(),
+                })?;
         split(stream)
     }
 }

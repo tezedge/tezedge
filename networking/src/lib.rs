@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-pub mod network_channel;
-
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use crypto::hash::BlockHash;
 use crypto::hash::CryptoboxPublicKeyHash;
+
+pub mod network_channel;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerId {
@@ -26,4 +28,16 @@ impl std::hash::Hash for PeerId {
         self.address.hash(state);
         self.public_key_hash.hash(state);
     }
+}
+
+/// Event is fired, when some batch was finished, so next can go
+#[derive(Clone, Debug)]
+pub struct ApplyBlockDone {
+    pub last_applied: Arc<BlockHash>,
+}
+
+/// Event is fired, when some batch was not applied and error occured
+#[derive(Clone, Debug)]
+pub struct ApplyBlockFailed {
+    pub failed_block: Arc<BlockHash>,
 }

@@ -41,6 +41,10 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let stats = store.state().mempool.operation_stats.clone();
                         let _ = channel.send(stats);
                     }
+                    RpcRequest::GetBlockStats { channel } => {
+                        let stats = store.service().statistics();
+                        let _ = channel.send(stats.map(|s| s.stats_get().clone()));
+                    }
                     RpcRequest::InjectOperation {
                         operation,
                         operation_hash,

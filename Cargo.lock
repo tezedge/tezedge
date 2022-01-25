@@ -887,7 +887,7 @@ version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19c6cedffdc8c03a3346d723eb20bd85a13362bb96dc2ac000842c6381ec7bf"
 dependencies = [
- "nix 0.23.0",
+ "nix",
  "winapi",
 ]
 
@@ -2109,7 +2109,7 @@ version = "1.15.0"
 dependencies = [
  "chrono",
  "libflate",
- "nix 0.23.0",
+ "nix",
  "serde 1.0.130",
  "slog",
  "slog-async",
@@ -2320,18 +2320,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
-]
-
-[[package]]
-name = "nix"
-version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -2994,14 +2982,6 @@ dependencies = [
 [[package]]
 name = "redux-rs"
 version = "0.1.0"
-source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0-1#4303b957d24fbc932c532ea7f8704ca6b0125f65"
-dependencies = [
- "serde 1.0.130",
-]
-
-[[package]]
-name = "redux-rs"
-version = "0.1.0"
 source = "git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.11.0#594a29e8e9a78ad9a2651fcaa4528957b27d7def"
 dependencies = [
  "serde 1.0.130",
@@ -3214,7 +3194,7 @@ dependencies = [
  "colored",
  "hex",
  "itertools 0.10.1",
- "nix 0.23.0",
+ "nix",
  "os_type",
  "rand 0.7.3",
  "serde 1.0.130",
@@ -3412,7 +3392,7 @@ dependencies = [
  "itertools 0.10.1",
  "lazy_static",
  "networking",
- "nix 0.23.0",
+ "nix",
  "nom",
  "page_size",
  "rand 0.7.3",
@@ -3443,6 +3423,7 @@ name = "shell_automaton"
 version = "1.15.0"
 dependencies = [
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
+ "async_ipc",
  "bincode",
  "bytes",
  "crypto",
@@ -3453,8 +3434,9 @@ dependencies = [
  "hex",
  "mio",
  "networking",
+ "nix",
  "rand 0.7.3",
- "redux-rs 0.1.0 (git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.11.0)",
+ "redux-rs",
  "rmp",
  "rmp-serde",
  "serde 1.0.130",
@@ -3466,10 +3448,12 @@ dependencies = [
  "strum_macros",
  "tezedge-actor-system",
  "tezos_api",
+ "tezos_context_api",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
  "tezos_protocol_ipc_client",
+ "tezos_protocol_ipc_messages",
  "thiserror",
  "tokio",
 ]
@@ -3481,15 +3465,18 @@ dependencies = [
  "bytes",
  "crypto",
  "networking",
- "redux-rs 0.1.0 (git+https://github.com/tezedge/redux-rs.git?tag=tezedge-v1.10.0-1)",
  "serde 1.0.130",
  "serde_json",
  "shell_automaton",
+ "slab",
  "storage",
  "tezos_api",
+ "tezos_context_api",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
+ "tezos_protocol_ipc_client",
+ "tezos_protocol_ipc_messages",
 ]
 
 [[package]]
@@ -4128,7 +4115,8 @@ version = "1.15.0"
 dependencies = [
  "async_ipc",
  "crypto",
- "nix 0.19.1",
+ "nix",
+ "serde 1.0.130",
  "slog",
  "tezos_api",
  "tezos_context_api",
@@ -4143,6 +4131,7 @@ name = "tezos_protocol_ipc_messages"
 version = "1.15.0"
 dependencies = [
  "crypto",
+ "enum-kinds",
  "serde 1.0.130",
  "strum_macros",
  "tezos_api",

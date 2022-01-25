@@ -3,7 +3,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crypto::{hash::ChainId, nonce::Nonce};
+use crypto::hash::ChainId;
+use crypto::nonce::Nonce;
+use shell_automaton::config::default_test_config;
 use shell_automaton::peers::check::timeouts::PeersCheckTimeoutsInitAction;
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Config, Quota, State};
@@ -45,6 +47,7 @@ fn build_cluster(pow_target: f64) -> Cluster {
             read_quota: 1024,
             write_quota: 1024,
         },
+        ..default_test_config()
     });
 
     Cluster::new(state, initial_time)
