@@ -253,6 +253,16 @@ pub enum StorageError {
     InodePointerIdNotFound,
     #[error("FatPointerIdError: Conversion from/to usize of a PointerId failed")]
     FatPointerIdError,
+    #[error("InvalidHashIdInPointer: The fat pointer contains a null `HashId`")]
+    InvalidHashIdInPointer,
+    #[error("MissingDataInPointer: The fat pointer is missing its data")]
+    MissingDataInPointer,
+    #[error("PointerDoesNotHaveData: There is no data for this `FatPointer`")]
+    PointerDoesNotHaveData,
+    #[error("ThinPointerNotFound: The `ThinPointer` does not exist")]
+    ThinPointerNotFound,
+    #[error("FatPointerNotFound: The `FatPointer` does not exist")]
+    FatPointerNotFound,
 }
 
 impl From<DirEntryIdError> for StorageError {
@@ -783,20 +793,20 @@ impl FatPointer {
         }
     }
 
-    pub fn get_data(&self) -> Option<ObjectReference> {
+    pub fn get_data(&self) -> Result<Option<ObjectReference>, StorageError> {
         let inner = self.inner.get();
 
         let ptr_id: u64 = inner.ptr_id();
 
         match inner.ptr_kind() {
-            FatPointerKind::Directory => None,
+            FatPointerKind::Directory => Ok(None),
             FatPointerKind::HashId => {
-                let hash_id = HashId::new(ptr_id).unwrap();
-                Some(ObjectReference::new(Some(hash_id), None))
+                let hash_id = HashId::new(ptr_id).ok_or(StorageError::InvalidHashIdInPointer)?;
+                Ok(Some(ObjectReference::new(Some(hash_id), None)))
             }
             FatPointerKind::Offset => {
                 let offset: AbsoluteOffset = ptr_id.into();
-                Some(ObjectReference::new(None, Some(offset)))
+                Ok(Some(ObjectReference::new(None, Some(offset))))
             }
         }
     }
@@ -1141,7 +1151,7 @@ impl Storage {
         &self,
         pointer: &FatPointer,
     ) -> Result<Option<AbsoluteOffset>, StorageError> {
-        if let Some(offset) = pointer.get_data().and_then(|r| r.offset_opt()) {
+        if let Some(offset) = pointer.get_data()?.and_then(|r| r.offset_opt()) {
             return Ok(Some(offset));
         }
 
@@ -1151,7 +1161,9 @@ impl Storage {
             .as_u64();
 
         let refs = self.pointers_data.borrow();
-        let object_ref = refs.get(&ptr_id).unwrap();
+        let object_ref = refs
+            .get(&ptr_id)
+            .ok_or(StorageError::PointerDoesNotHaveData)?;
 
         Ok(object_ref.offset_opt())
     }
@@ -1163,7 +1175,7 @@ impl Storage {
     ) -> Result<Option<HashId>, HashingError> {
         let mut refs = self.pointers_data.borrow_mut();
 
-        let offset = match pointer.get_data() {
+        let offset = match pointer.get_data()? {
             Some(object_ref) => {
                 if let Some(hash_id) = object_ref.hash_id_opt() {
                     return Ok(Some(hash_id));
@@ -1171,7 +1183,10 @@ impl Storage {
                 object_ref.offset()
             }
             None => {
-                let ptr_id = pointer.ptr_id().unwrap().as_u64();
+                let ptr_id = pointer
+                    .ptr_id()
+                    .ok_or(StorageError::InodePointerIdNotFound)?
+                    .as_u64();
                 let object_ref = refs.entry(ptr_id).or_default();
 
                 if let Some(hash_id) = object_ref.hash_id_opt() {
@@ -1308,7 +1323,7 @@ impl Storage {
                     None => return Ok(None),
                 };
 
-                let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
+                let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id)? {
                     ptr_id
                 } else {
                     self.pointer_fetch(thin_pointer_id, repository, strings)?
@@ -1370,7 +1385,7 @@ impl Storage {
     pub fn add_inode(&mut self, inode: Inode) -> Result<InodeId, StorageError> {
         let current = self.inodes.push(inode)?;
 
-        let current_index: usize = current.try_into().unwrap();
+        let current_index: usize = current.try_into().unwrap(); // Does not fail
         if current_index & !FULL_31_BITS != 0 {
             // Must fit in 31 bits (See Pointer) TODO
             return Err(StorageError::InodeIndexTooBig);
@@ -1607,7 +1622,11 @@ impl Storage {
         let mut cloned: [Option<PointerOnStack>; 32] = Default::default();
 
         for (ptr_index, thin_pointer_id) in pointers.iter() {
-            let thin_pointer = self.thin_pointers.get(thin_pointer_id)?.cloned().unwrap();
+            let thin_pointer = self
+                .thin_pointers
+                .get(thin_pointer_id)?
+                .cloned()
+                .ok_or(StorageError::ThinPointerNotFound)?;
 
             cloned[ptr_index] = Some(PointerOnStack {
                 thin_pointer: Some(thin_pointer.clone()),
@@ -1618,32 +1637,46 @@ impl Storage {
         Ok(cloned)
     }
 
-    pub fn pointer_get_id(&self, thin_pointer_id: ThinPointerId) -> Option<DirectoryOrInodeId> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
+    pub fn pointer_get_id(
+        &self,
+        thin_pointer_id: ThinPointerId,
+    ) -> Result<Option<DirectoryOrInodeId>, StorageError> {
+        let thin_pointer = self
+            .thin_pointers
+            .get(thin_pointer_id)?
+            .ok_or(StorageError::ThinPointerNotFound)?;
 
         match thin_pointer.get_value() {
-            ThinPointerValue::Inode(inode_id) => Some(DirectoryOrInodeId::Inode(inode_id)),
+            ThinPointerValue::Inode(inode_id) => Ok(Some(DirectoryOrInodeId::Inode(inode_id))),
             ThinPointerValue::FatPointer(fat_pointer_id) => {
                 // The thin pointer points to a fat pointer, dereference it
-                let fat_pointer = self.fat_pointers.get(fat_pointer_id).unwrap().unwrap();
-                fat_pointer.ptr_id()
+                let fat_pointer = self
+                    .fat_pointers
+                    .get(fat_pointer_id)?
+                    .ok_or(StorageError::FatPointerNotFound)?;
+                Ok(fat_pointer.ptr_id())
             }
         }
     }
 
-    pub fn pointer_copy(&self, thin_pointer_id: ThinPointerId) -> Option<FatPointer> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
+    pub fn pointer_copy(&self, thin_pointer_id: ThinPointerId) -> Result<FatPointer, StorageError> {
+        let thin_pointer = self
+            .thin_pointers
+            .get(thin_pointer_id)?
+            .ok_or(StorageError::ThinPointerNotFound)?;
 
         match thin_pointer.get_value() {
             ThinPointerValue::Inode(inode_id) => {
                 let ptr = FatPointer::new(DirectoryOrInodeId::Inode(inode_id));
                 ptr.set_commited(thin_pointer.is_commited());
-                Some(ptr)
+                Ok(ptr)
             }
             ThinPointerValue::FatPointer(fat_pointer_id) => {
                 // The thin pointer points to a fat pointer, dereference it
-                let fat_pointer = self.fat_pointers.get(fat_pointer_id).unwrap().unwrap();
-                Some(fat_pointer.clone())
+                self.fat_pointers
+                    .get(fat_pointer_id)?
+                    .cloned()
+                    .ok_or(StorageError::FatPointerNotFound)
             }
         }
     }
@@ -1654,7 +1687,9 @@ impl Storage {
         repository: &ContextKeyValueStore,
         strings: &mut StringInterner,
     ) -> Result<DirectoryOrInodeId, StorageError> {
-        let pointer_data = pointer.get_data().unwrap();
+        let pointer_data = pointer
+            .get_data()?
+            .ok_or(StorageError::MissingDataInPointer)?;
 
         let pointer_inode_id = repository
             .get_inode(pointer_data, self, strings)
@@ -1673,21 +1708,32 @@ impl Storage {
         repository: &ContextKeyValueStore,
         strings: &mut StringInterner,
     ) -> Result<DirectoryOrInodeId, StorageError> {
-        let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
+        let thin_pointer = self
+            .thin_pointers
+            .get(thin_pointer_id)?
+            .ok_or(StorageError::ThinPointerNotFound)?;
 
         let fat_pointer_id = match thin_pointer.get_value() {
-            ThinPointerValue::Inode(_) => panic!(),
+            ThinPointerValue::Inode(_) => unreachable!(), // When `Self::pointer_fetch` is called, it's on a `FatPointer`
             ThinPointerValue::FatPointer(fat_pointer_id) => fat_pointer_id,
         };
 
-        let pointer = self.fat_pointers.get(fat_pointer_id)?.unwrap();
-        let pointer_data = pointer.get_data().unwrap();
+        let pointer = self
+            .fat_pointers
+            .get(fat_pointer_id)?
+            .ok_or(StorageError::FatPointerNotFound)?;
+        let pointer_data = pointer
+            .get_data()?
+            .ok_or(StorageError::MissingDataInPointer)?;
 
         let pointer_inode_id = repository
             .get_inode(pointer_data, self, strings)
             .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-        let pointer = self.fat_pointers.get(fat_pointer_id)?.unwrap();
+        let pointer = self
+            .fat_pointers
+            .get(fat_pointer_id)?
+            .ok_or(StorageError::FatPointerNotFound)?;
 
         pointer.set_ptr_id(pointer_inode_id);
         self.set_pointer_data(pointer, pointer_data)?;
@@ -1783,7 +1829,7 @@ impl Storage {
         let inode = self.get_inode(inode_id).unwrap();
 
         for (_, thin_pointer_id) in inode.pointers.iter() {
-            let ptr_id = self.pointer_get_id(thin_pointer_id).unwrap();
+            let ptr_id = self.pointer_get_id(thin_pointer_id).unwrap().unwrap();
 
             self.pointers_data.borrow_mut().remove(&ptr_id.as_u64());
 
@@ -1814,7 +1860,7 @@ impl Storage {
                 let inode = self.get_inode(inode_id)?;
 
                 for (_, thin_pointer_id) in inode.pointers.iter() {
-                    let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
+                    let ptr_id = if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id)? {
                         ptr_id
                     } else {
                         self.pointer_fetch(thin_pointer_id, repository, strings)?
@@ -1850,7 +1896,7 @@ impl Storage {
                     // When the inode is not deserialized, ignore it
                     // See `Self::iter_full_inodes_recursive_unsorted` to iterate on
                     // the full inode
-                    if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id) {
+                    if let Some(ptr_id) = self.pointer_get_id(thin_pointer_id)? {
                         self.iter_inodes_recursive_unsorted(ptr_id, fun)?;
                     }
                 }

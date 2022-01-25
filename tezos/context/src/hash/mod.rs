@@ -64,6 +64,8 @@ pub enum HashingError {
     StorageIdError { error: StorageError },
     #[error("Missing InodeId")]
     MissingInodeId,
+    #[error("Missing Pointer")]
+    MissingPointer,
 }
 
 impl From<DBError> for HashingError {
@@ -185,7 +187,7 @@ fn hash_long_inode(
             // |  index  |  hash  |
 
             for (ptr_index, thin_pointer_id) in pointers.iter() {
-                let pointer = storage.pointer_copy(thin_pointer_id).unwrap();
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
 
                 let ptr_index: u8 = ptr_index as u8;
 

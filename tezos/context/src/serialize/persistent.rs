@@ -611,7 +611,7 @@ impl PointersOffsetsHeader {
         let mut bitfield = Self::default();
 
         for (index, (_, pointer_index)) in pointers.iter().enumerate() {
-            let pointer = storage.pointer_copy(pointer_index).unwrap();
+            let pointer = storage.pointer_copy(pointer_index)?;
 
             let p_offset = storage
                 .pointer_retrieve_offset(&pointer)?
@@ -665,7 +665,7 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for (_, thin_pointer_id) in pointers.iter() {
-                let pointer = storage.pointer_copy(thin_pointer_id).unwrap();
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -676,7 +676,7 @@ fn serialize_inode(
 
                 let hash_id = storage
                     .retrieve_hashid_of_pointer(&pointer, repository)?
-                    .unwrap();
+                    .ok_or(MissingHashId)?;
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 let offset = serialize_inode(
@@ -713,7 +713,7 @@ fn serialize_inode(
             output.write_all(&bitfield_offsets.to_bytes())?;
 
             for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index).unwrap();
+                let pointer = storage.pointer_copy(index)?;
 
                 let pointer_offset = storage
                     .pointer_retrieve_offset(&pointer)?
@@ -1181,8 +1181,7 @@ pub fn deserialize_inode(
         }
         ObjectTag::ShapedDirectory => {
             let dir_id =
-                deserialize_shaped_directory(data, object_offset, storage, repository, strings)
-                    .unwrap();
+                deserialize_shaped_directory(data, object_offset, storage, repository, strings)?;
             Ok(DirectoryOrInodeId::Directory(dir_id))
         }
         _ => Err(UnknownID),
@@ -1589,7 +1588,7 @@ mod tests {
             for (index, (_, thin_pointer_id)) in pointers.iter().enumerate() {
                 let fat_ptr = storage.pointer_copy(thin_pointer_id).unwrap();
 
-                let ptr_data = fat_ptr.get_data().unwrap();
+                let ptr_data = fat_ptr.get_data().unwrap().unwrap();
                 assert_eq!(ptr_data.offset(), offsets[index]);
             }
         } else {

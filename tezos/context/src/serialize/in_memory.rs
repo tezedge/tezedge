@@ -305,7 +305,7 @@ fn serialize_inode(
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
             for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index).unwrap();
+                let pointer = storage.pointer_copy(index)?;
                 let hash_id = storage
                     .retrieve_hashid_of_pointer(&pointer, repository)?
                     .ok_or(MissingHashId)?;
@@ -317,11 +317,7 @@ fn serialize_inode(
 
             // Recursively serialize all children
             for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index).unwrap();
-
-                let hash_id = storage
-                    .retrieve_hashid_of_pointer(&pointer, repository)?
-                    .ok_or(MissingHashId)?;
+                let pointer = storage.pointer_copy(index)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -332,6 +328,10 @@ fn serialize_inode(
                     referenced_older_objects.push(hash_id);
                     continue;
                 }
+
+                let hash_id = storage
+                    .retrieve_hashid_of_pointer(&pointer, repository)?
+                    .ok_or(MissingHashId)?;
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 serialize_inode(
@@ -1035,7 +1035,7 @@ mod tests {
             for (index, (_, thin_pointer_id)) in pointers.iter().enumerate() {
                 let fat_ptr = storage.pointer_copy(thin_pointer_id).unwrap();
 
-                let ptr_data = fat_ptr.get_data().unwrap();
+                let ptr_data = fat_ptr.get_data().unwrap().unwrap();
                 assert_eq!(ptr_data.hash_id().as_u64() as usize, index + 1);
             }
         } else {
