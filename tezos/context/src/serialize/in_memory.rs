@@ -578,7 +578,6 @@ pub fn deserialize_object(
         }
         ObjectTag::InodePointers => {
             let ptr_id = deserialize_inode_pointers(&data[1..], storage)?;
-            // let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(ptr_id.into_dir()))
         }

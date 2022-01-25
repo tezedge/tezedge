@@ -1187,6 +1187,12 @@ impl Storage {
     ) -> Result<Option<HashId>, HashingError> {
         let mut refs = self.pointers_data.borrow_mut();
 
+        // The `HashId` of a `FatPointer` can be in different places:
+        // - Its `ptr_id` value can be a `HashId`
+        // - Its `ptr_id` value can be an offset, we take it and we
+        //   retrieve its `HashId` with `Storage::pointers_data`,
+        //   `Storage::offsets_to_hash_id`, or by reading the repository
+
         let offset = match pointer.get_data()? {
             Some(object_ref) => {
                 if let Some(hash_id) = object_ref.hash_id_opt() {
