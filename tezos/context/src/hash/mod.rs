@@ -184,34 +184,19 @@ fn hash_long_inode(
             // +---------+--------+
             // |  index  |  hash  |
 
-            // for (index, pointer) in pointers.iter().enumerate() {
-            // for (index, pointer) in storage.iter_pointers_with_index(*pointers) {
-            for (ptr_index, index) in pointers.iter() {
-                // When the pointer is `None`, it means that there is no DirEntry
-                // under that index.
+            for (ptr_index, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id).unwrap();
 
-                // let pointer = storage.pointers.get(index).unwrap();
-                let pointer = storage.pointer_copy(index).unwrap();
-
-                // Skip pointers without entries.
-                // if let Some(pointer) = pointer.as_ref() {
                 let ptr_index: u8 = ptr_index as u8;
 
                 hasher.update(&[ptr_index]);
 
                 let hash_id = match storage.retrieve_hashid_of_pointer(&pointer, store)? {
-                    // let hash_id = match pointer.hash_id(storage, store)? {
                     Some(hash_id) => hash_id,
                     None => {
-                        let ptr_id = pointer
-                            .ptr_id()
-                            .ok_or(HashingError::MissingInodeId)
-                            .unwrap_or_else(|_| panic!("LA PTR={:?}", pointer));
-                        // let inode = storage.get_inode(inode_id)?;
+                        let ptr_id = pointer.ptr_id().ok_or(HashingError::MissingInodeId)?;
 
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
-                        // pointer.set_hash_id(Some(hash_id));
-
                         storage.set_hashid_of_pointer(&pointer, hash_id)?;
 
                         hash_id
@@ -221,7 +206,6 @@ fn hash_long_inode(
                 let hash = store.get_hash(ObjectReference::new(Some(hash_id), None))?;
 
                 hasher.update(hash.as_ref());
-                // };
             }
         }
     }

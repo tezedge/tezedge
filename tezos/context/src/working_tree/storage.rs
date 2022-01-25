@@ -107,7 +107,7 @@ impl Default for DirectoryId {
 }
 
 impl DirectoryId {
-    fn try_new_dir(start: usize, end: usize) -> Result<Self, StorageError> {
+    pub fn try_new_dir(start: usize, end: usize) -> Result<Self, StorageError> {
         let length = end
             .checked_sub(start)
             .ok_or(StorageError::DirInvalidStartEnd)?;
@@ -943,10 +943,10 @@ pub struct Storage {
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
 
-    thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
-    fat_pointers: IndexMap<FatPointerId, FatPointer>,
+    pub thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
+    pub fat_pointers: IndexMap<FatPointerId, FatPointer>,
 
-    pointers_data: RefCell<HashMap<u64, ObjectReference>>,
+    pub pointers_data: RefCell<HashMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
@@ -1113,7 +1113,8 @@ impl Storage {
             .as_u64();
 
         let object_ref = pointers_data.entry(ptr_id).or_default();
-        object_ref.offset.replace(offset);
+        let old = object_ref.offset.replace(offset);
+        debug_assert!(old.is_none());
 
         Ok(())
     }
@@ -1640,6 +1641,7 @@ impl Storage {
                 Some(ptr)
             }
             ThinPointerValue::FatPointer(fat_pointer_id) => {
+                // The thin pointer points to a fat pointer, dereference it
                 let fat_pointer = self.fat_pointers.get(fat_pointer_id).unwrap().unwrap();
                 Some(fat_pointer.clone())
             }
