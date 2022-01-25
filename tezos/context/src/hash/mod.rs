@@ -278,7 +278,6 @@ pub(crate) fn hash_directory(
     strings: &StringInterner,
 ) -> Result<HashId, HashingError> {
     if let Some(inode_id) = dir_id.get_inode_id() {
-        // let inode = storage.get_inode(inode_id)?;
         hash_long_inode(DirectoryOrInodeId::Inode(inode_id), store, storage, strings)
     } else {
         hash_short_inode(dir_id, store, storage, strings)
@@ -733,7 +732,6 @@ mod tests {
             {
                 let hash_id = HashId::new(11111).unwrap();
 
-                // for index in 0..3000000 {
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
                     dir_id = storage
@@ -765,10 +763,7 @@ mod tests {
                     assert_eq!(storage.dir_len(a).unwrap(), storage.dir_len(b).unwrap());
                 }
 
-                // println!("ADDED {:#?}", storage.memory_usage(&strings));
-
                 // Remove the elements we just inserted
-                // for index in 0..3000000 {
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
                     dir_id = storage

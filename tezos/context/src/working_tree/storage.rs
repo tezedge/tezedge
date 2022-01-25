@@ -1372,7 +1372,7 @@ impl Storage {
 
         let current_index: usize = current.try_into().unwrap();
         if current_index & !FULL_31_BITS != 0 {
-            // Must fit in 31 bits (See Pointer)
+            // Must fit in 31 bits (See Pointer) TODO
             return Err(StorageError::InodeIndexTooBig);
         }
 
@@ -1899,8 +1899,6 @@ impl Storage {
         Fun: FnMut(&(StringId, DirEntryId)) -> Result<(), MerkleError>,
     {
         if let Some(inode_id) = dir_id.get_inode_id() {
-            // let inode = self.get_inode(inode_id)?;
-
             self.iter_inodes_recursive_unsorted(DirectoryOrInodeId::Inode(inode_id), &mut fun)?;
         } else {
             let dir = self.get_small_dir(dir_id)?;
@@ -1910,17 +1908,6 @@ impl Storage {
         }
         Ok(())
     }
-
-    // fn inode_len(&self, inode_id: InodeId) -> Result<usize, StorageError> {
-    //     let inode = self.get_inode(inode_id)?;
-    //     match inode {
-    //         Inode::Pointers {
-    //             nchildren: children,
-    //             ..
-    //         } => Ok(*children as usize),
-    //         Inode::Directory(dir_id) => Ok(dir_id.small_dir_len()),
-    //     }
-    // }
 
     fn inode_len(&self, ptr_id: DirectoryOrInodeId) -> Result<usize, StorageError> {
         match ptr_id {
@@ -2018,7 +2005,7 @@ impl Storage {
             self.temp_dir.clear();
             self.temp_inodes_index.clear();
 
-            return Ok(inode_id.into_dir()); // TODO
+            return Ok(inode_id.into_dir());
         }
 
         let dir_entry_id = self.nodes.push(dir_entry)?;
@@ -2063,7 +2050,6 @@ impl Storage {
             self.temp_dir.clear();
             self.temp_inodes_index.clear();
 
-            // TODO
             Ok(inode_id.into_dir())
         }
     }
@@ -2311,9 +2297,7 @@ mod tool {
         /// Method used for `context-tool` only.
         pub fn forget_reference(&self) {
             let mut inner = self.inner.get();
-            // inner.set_hash_id(0);
             inner.set_is_commited(false);
-            // inner.set_offset(0);
             self.inner.set(inner);
         }
     }
@@ -2379,8 +2363,6 @@ mod tool {
             for index in 0..self.thin_pointers.len() {
                 let pointer = self.pointer_copy(ThinPointerId(index)).unwrap();
 
-                // let hash_id = pointer.hash_id(storage, repository)?.ok_or(MissingHashId)?;
-
                 let hash_id = match self
                     .retrieve_hashid_of_pointer(&pointer, repository)
                     .unwrap()
@@ -2393,7 +2375,6 @@ mod tool {
                 let new_hash_id: HashId = *unique.entry(hash).or_insert(hash_id);
 
                 self.set_hashid_of_pointer(&pointer, new_hash_id)?;
-                // pointer.set_hash_id(Some(new_hash_id));
             }
 
             Ok(())
@@ -2426,14 +2407,6 @@ mod tool {
                     .unwrap()
                     .forget_reference();
             }
-
-            // for inode in self.inodes.iter_values() {
-            //     if let Inode::Pointers { pointers, .. } = inode {
-            //         for ptr in pointers.iter().filter_map(|p| p.as_ref()) {
-            //             ptr.forget_reference();
-            //         }
-            //     };
-            // }
         }
     }
 }

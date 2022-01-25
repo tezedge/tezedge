@@ -194,7 +194,6 @@ pub fn serialize_object(
             if let Some(inode_id) = dir_id.get_inode_id() {
                 serialize_inode(
                     DirectoryOrInodeId::Inode(inode_id),
-                    // inode_id,
                     output,
                     object_hash_id,
                     storage,
@@ -641,21 +640,14 @@ pub fn deserialize_inode(
         ObjectTag::InodePointers => {
             let ptr_id = deserialize_inode_pointers(&data[1..], storage)?;
             Ok(ptr_id)
-            // storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
             let dir_id = deserialize_directory(data, storage, strings)?;
             Ok(DirectoryOrInodeId::Directory(dir_id))
-            // storage
-            //     .add_inode(Inode::Directory(dir_id))
-            //     .map_err(Into::into)
         }
         ObjectTag::ShapedDirectory => {
             let dir_id = deserialize_shaped_directory(data, storage, strings, repository)?;
             Ok(DirectoryOrInodeId::Directory(dir_id))
-            // storage
-            //     .add_inode(Inode::Directory(dir_id))
-            //     .map_err(Into::into)
         }
         _ => Err(UnknownID),
     }

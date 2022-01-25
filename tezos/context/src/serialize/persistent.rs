@@ -606,42 +606,16 @@ impl PointersOffsetsHeader {
     fn from_pointers(
         object_offset: AbsoluteOffset,
         pointers: PointersId,
-        // pointers: &[Option<Pointer>; 32],
         storage: &Storage,
     ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
-        // for (index, pointer) in storage.iter_pointers(pointers).iter().enumerate() {
         for (index, (_, pointer_index)) in pointers.iter().enumerate() {
             let pointer = storage.pointer_copy(pointer_index).unwrap();
-            // let pointer = storage.pointers.get(pointer_index).unwrap();
-
-            // for (index, pointer) in pointers.iter().filter_map(|p| p.as_ref()).enumerate() {
-            // let p_offset = storage
-            //     .get_pointer_reference(pointer_index)
-            //     .offset_opt()
-            //     .ok_or(SerializationError::MissingOffset)?;
 
             let p_offset = storage
                 .pointer_retrieve_offset(&pointer)?
                 .ok_or(SerializationError::MissingOffset)?;
-
-            // let p_offset = pointer
-            //     .get_reference()
-            //     .and_then(|r| r.offset_opt())
-            //     .unwrap();
-
-            // .ok_or(SerializationError::MissingOffset)?;
-
-            // let p_offset = pointer
-            //     .get_reference()
-            //     .ok_or(SerializationError::MissingOffset)?
-            //     .offset_opt()
-            //     .ok_or(SerializationError::MissingOffset)?;
-
-            // let p_offset = pointer
-            //     .get_offset()
-            //     .ok_or(SerializationError::MissingOffset)?;
 
             let (_, offset_length) = get_relative_offset(object_offset, p_offset);
 
@@ -702,9 +676,7 @@ fn serialize_inode(
 
                 let hash_id = storage
                     .retrieve_hashid_of_pointer(&pointer, repository)?
-                    .unwrap_or_else(|| {
-                        panic!("POINTER={:?}", pointer);
-                    });
+                    .unwrap();
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 let offset = serialize_inode(
@@ -1026,7 +998,6 @@ pub fn deserialize_object(
             .map_err(Into::into),
         ObjectTag::InodePointers => {
             let ptr_id = deserialize_inode_pointers(bytes, object_offset, storage)?;
-            // let inode_id = storage.add_inode(inode)?;
 
             Ok(Object::Directory(ptr_id.into_dir()))
         }
@@ -1203,23 +1174,16 @@ pub fn deserialize_inode(
         ObjectTag::InodePointers => {
             let ptr_id = deserialize_inode_pointers(data, object_offset, storage)?;
             Ok(ptr_id)
-            // storage.add_inode(inode).map_err(Into::into)
         }
         ObjectTag::Directory => {
             let dir_id = deserialize_directory(data, object_offset, storage, strings)?;
             Ok(DirectoryOrInodeId::Directory(dir_id))
-            // storage
-            //     .add_inode(Inode::Directory(dir_id))
-            //     .map_err(Into::into)
         }
         ObjectTag::ShapedDirectory => {
             let dir_id =
                 deserialize_shaped_directory(data, object_offset, storage, repository, strings)
                     .unwrap();
             Ok(DirectoryOrInodeId::Directory(dir_id))
-            // storage
-            //     .add_inode(Inode::Directory(dir_id))
-            //     .map_err(Into::into)
         }
         _ => Err(UnknownID),
     }
