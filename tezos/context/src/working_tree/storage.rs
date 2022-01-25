@@ -943,10 +943,10 @@ pub struct Storage {
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
 
-    pub thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
-    pub fat_pointers: IndexMap<FatPointerId, FatPointer>,
+    thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
+    fat_pointers: IndexMap<FatPointerId, FatPointer>,
 
-    pub pointers_data: RefCell<HashMap<u64, ObjectReference>>,
+    pointers_data: RefCell<HashMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
