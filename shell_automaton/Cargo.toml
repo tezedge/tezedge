@@ -16,6 +16,7 @@ dns-lookup = "1.0.1"
 derive_more = "0.99.16"
 enum-kinds = "0.5.1"
 tokio = { version = "1.12", features = ["time", "rt-multi-thread"] }
+nix = "0.23"
 rmp = "0.8.10"
 rmp-serde = "0.15.5"
 tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
@@ -37,5 +38,8 @@ networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 tezos_api = { path = "../tezos/api" }
+async_ipc = { path = "../async-ipc" }
+tezos_context_api = { path = "../tezos/context-api" }
+tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
+tezos_protocol_ipc_messages = { path = "../tezos/protocol-ipc-messages" }

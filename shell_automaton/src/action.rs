@@ -6,6 +6,16 @@ use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use storage::persistent::SchemaError;
 
+use crate::block_applier::{
+    BlockApplierApplyErrorAction, BlockApplierApplyInitAction,
+    BlockApplierApplyPrepareDataPendingAction, BlockApplierApplyPrepareDataSuccessAction,
+    BlockApplierApplyProtocolRunnerApplyInitAction,
+    BlockApplierApplyProtocolRunnerApplyPendingAction,
+    BlockApplierApplyProtocolRunnerApplyRetryAction,
+    BlockApplierApplyProtocolRunnerApplySuccessAction,
+    BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
+    BlockApplierApplySuccessAction, BlockApplierEnqueueBlockAction,
+};
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 use crate::State;
 
@@ -39,7 +49,6 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
-use crate::mempool::mempool_actions::*;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -53,11 +62,73 @@ use crate::peers::graylist::{
     PeersGraylistAddressAction, PeersGraylistIpAddAction, PeersGraylistIpAddedAction,
     PeersGraylistIpRemoveAction, PeersGraylistIpRemovedAction,
 };
+use crate::peers::init::PeersInitAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::prechecker_actions::*;
 use crate::protocol::ProtocolAction;
 
 use crate::rights::rights_actions::*;
+
+use crate::mempool::mempool_actions::*;
+
+use crate::protocol_runner::init::context::{
+    ProtocolRunnerInitContextAction, ProtocolRunnerInitContextErrorAction,
+    ProtocolRunnerInitContextPendingAction, ProtocolRunnerInitContextSuccessAction,
+};
+use crate::protocol_runner::init::context_ipc_server::{
+    ProtocolRunnerInitContextIpcServerAction, ProtocolRunnerInitContextIpcServerErrorAction,
+    ProtocolRunnerInitContextIpcServerPendingAction,
+    ProtocolRunnerInitContextIpcServerSuccessAction,
+};
+use crate::protocol_runner::init::runtime::{
+    ProtocolRunnerInitRuntimeAction, ProtocolRunnerInitRuntimeErrorAction,
+    ProtocolRunnerInitRuntimePendingAction, ProtocolRunnerInitRuntimeSuccessAction,
+};
+use crate::protocol_runner::init::{
+    ProtocolRunnerInitAction, ProtocolRunnerInitCheckGenesisAppliedAction,
+    ProtocolRunnerInitCheckGenesisAppliedSuccessAction, ProtocolRunnerInitSuccessAction,
+};
+use crate::protocol_runner::spawn_server::{
+    ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerInitAction,
+    ProtocolRunnerSpawnServerPendingAction, ProtocolRunnerSpawnServerSuccessAction,
+};
+use crate::protocol_runner::{
+    ProtocolRunnerNotifyStatusAction, ProtocolRunnerReadyAction, ProtocolRunnerResponseAction,
+    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerShutdownInitAction,
+    ProtocolRunnerShutdownPendingAction, ProtocolRunnerShutdownSuccessAction,
+    ProtocolRunnerStartAction,
+};
+
+use crate::storage::blocks::genesis::check_applied::{
+    StorageBlocksGenesisCheckAppliedGetMetaErrorAction,
+    StorageBlocksGenesisCheckAppliedGetMetaPendingAction,
+    StorageBlocksGenesisCheckAppliedGetMetaSuccessAction,
+    StorageBlocksGenesisCheckAppliedInitAction, StorageBlocksGenesisCheckAppliedSuccessAction,
+};
+use crate::storage::blocks::genesis::init::additional_data_put::{
+    StorageBlocksGenesisInitAdditionalDataPutErrorAction,
+    StorageBlocksGenesisInitAdditionalDataPutInitAction,
+    StorageBlocksGenesisInitAdditionalDataPutPendingAction,
+    StorageBlocksGenesisInitAdditionalDataPutSuccessAction,
+};
+use crate::storage::blocks::genesis::init::commit_result_get::{
+    StorageBlocksGenesisInitCommitResultGetErrorAction,
+    StorageBlocksGenesisInitCommitResultGetInitAction,
+    StorageBlocksGenesisInitCommitResultGetPendingAction,
+    StorageBlocksGenesisInitCommitResultGetSuccessAction,
+};
+use crate::storage::blocks::genesis::init::commit_result_put::{
+    StorageBlocksGenesisInitCommitResultPutErrorAction,
+    StorageBlocksGenesisInitCommitResultPutInitAction,
+    StorageBlocksGenesisInitCommitResultPutSuccessAction,
+};
+use crate::storage::blocks::genesis::init::header_put::{
+    StorageBlocksGenesisInitHeaderPutErrorAction, StorageBlocksGenesisInitHeaderPutInitAction,
+    StorageBlocksGenesisInitHeaderPutPendingAction, StorageBlocksGenesisInitHeaderPutSuccessAction,
+};
+use crate::storage::blocks::genesis::init::{
+    StorageBlocksGenesisInitAction, StorageBlocksGenesisInitSuccessAction,
+};
 use crate::storage::request::{
     StorageRequestCreateAction, StorageRequestErrorAction, StorageRequestFinishAction,
     StorageRequestInitAction, StorageRequestPendingAction, StorageRequestSuccessAction,
@@ -71,6 +142,8 @@ use crate::storage::{
     kv_block_additional_data, kv_block_header, kv_block_meta, kv_constants, kv_cycle_eras,
     kv_cycle_meta, kv_operations,
 };
+
+use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
 pub use redux_rs::{ActionId, EnablingCondition};
 
@@ -131,6 +204,63 @@ pub enum Action {
     PausedLoopsResumeAll(PausedLoopsResumeAllAction),
     PausedLoopsResumeNextInit(PausedLoopsResumeNextInitAction),
     PausedLoopsResumeNextSuccess(PausedLoopsResumeNextSuccessAction),
+
+    ProtocolRunnerStart(ProtocolRunnerStartAction),
+
+    ProtocolRunnerSpawnServerInit(ProtocolRunnerSpawnServerInitAction),
+    ProtocolRunnerSpawnServerPending(ProtocolRunnerSpawnServerPendingAction),
+    ProtocolRunnerSpawnServerError(ProtocolRunnerSpawnServerErrorAction),
+    ProtocolRunnerSpawnServerSuccess(ProtocolRunnerSpawnServerSuccessAction),
+
+    ProtocolRunnerInit(ProtocolRunnerInitAction),
+
+    ProtocolRunnerInitRuntime(ProtocolRunnerInitRuntimeAction),
+    ProtocolRunnerInitRuntimePending(ProtocolRunnerInitRuntimePendingAction),
+    ProtocolRunnerInitRuntimeError(ProtocolRunnerInitRuntimeErrorAction),
+    ProtocolRunnerInitRuntimeSuccess(ProtocolRunnerInitRuntimeSuccessAction),
+
+    ProtocolRunnerInitCheckGenesisApplied(ProtocolRunnerInitCheckGenesisAppliedAction),
+    ProtocolRunnerInitCheckGenesisAppliedSuccess(
+        ProtocolRunnerInitCheckGenesisAppliedSuccessAction,
+    ),
+
+    ProtocolRunnerInitContext(ProtocolRunnerInitContextAction),
+    ProtocolRunnerInitContextPending(ProtocolRunnerInitContextPendingAction),
+    ProtocolRunnerInitContextError(ProtocolRunnerInitContextErrorAction),
+    ProtocolRunnerInitContextSuccess(ProtocolRunnerInitContextSuccessAction),
+
+    ProtocolRunnerInitContextIpcServer(ProtocolRunnerInitContextIpcServerAction),
+    ProtocolRunnerInitContextIpcServerPending(ProtocolRunnerInitContextIpcServerPendingAction),
+    ProtocolRunnerInitContextIpcServerError(ProtocolRunnerInitContextIpcServerErrorAction),
+    ProtocolRunnerInitContextIpcServerSuccess(ProtocolRunnerInitContextIpcServerSuccessAction),
+
+    ProtocolRunnerInitSuccess(ProtocolRunnerInitSuccessAction),
+
+    ProtocolRunnerReady(ProtocolRunnerReadyAction),
+    ProtocolRunnerNotifyStatus(ProtocolRunnerNotifyStatusAction),
+
+    ProtocolRunnerResponse(ProtocolRunnerResponseAction),
+    ProtocolRunnerResponseUnexpected(ProtocolRunnerResponseUnexpectedAction),
+
+    BlockApplierEnqueueBlock(BlockApplierEnqueueBlockAction),
+
+    BlockApplierApplyInit(BlockApplierApplyInitAction),
+
+    BlockApplierApplyPrepareDataPending(BlockApplierApplyPrepareDataPendingAction),
+    BlockApplierApplyPrepareDataSuccess(BlockApplierApplyPrepareDataSuccessAction),
+
+    BlockApplierApplyProtocolRunnerApplyInit(BlockApplierApplyProtocolRunnerApplyInitAction),
+    BlockApplierApplyProtocolRunnerApplyPending(BlockApplierApplyProtocolRunnerApplyPendingAction),
+    BlockApplierApplyProtocolRunnerApplyRetry(BlockApplierApplyProtocolRunnerApplyRetryAction),
+    BlockApplierApplyProtocolRunnerApplySuccess(BlockApplierApplyProtocolRunnerApplySuccessAction),
+
+    BlockApplierApplyStoreApplyResultPending(BlockApplierApplyStoreApplyResultPendingAction),
+    BlockApplierApplyStoreApplyResultSuccess(BlockApplierApplyStoreApplyResultSuccessAction),
+
+    BlockApplierApplyError(BlockApplierApplyErrorAction),
+    BlockApplierApplySuccess(BlockApplierApplySuccessAction),
+
+    PeersInit(PeersInitAction),
 
     PeersDnsLookupInit(PeersDnsLookupInitAction),
     PeersDnsLookupError(PeersDnsLookupErrorAction),
@@ -266,8 +396,6 @@ pub enum Action {
     MempoolOperationDecoded(MempoolOperationDecodedAction),
     MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
 
-    BlockApplied(BlockAppliedAction),
-
     PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction),
     PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction),
     PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction),
@@ -358,6 +486,67 @@ pub enum Action {
     StorageStateSnapshotCreatePending(StorageStateSnapshotCreatePendingAction),
     StorageStateSnapshotCreateError(StorageStateSnapshotCreateErrorAction),
     StorageStateSnapshotCreateSuccess(StorageStateSnapshotCreateSuccessAction),
+
+    StorageBlocksGenesisCheckAppliedInit(StorageBlocksGenesisCheckAppliedInitAction),
+    StorageBlocksGenesisCheckAppliedGetMetaPending(
+        StorageBlocksGenesisCheckAppliedGetMetaPendingAction,
+    ),
+    StorageBlocksGenesisCheckAppliedGetMetaError(
+        StorageBlocksGenesisCheckAppliedGetMetaErrorAction,
+    ),
+    StorageBlocksGenesisCheckAppliedGetMetaSuccess(
+        StorageBlocksGenesisCheckAppliedGetMetaSuccessAction,
+    ),
+    StorageBlocksGenesisCheckAppliedSuccess(StorageBlocksGenesisCheckAppliedSuccessAction),
+
+    StorageBlocksGenesisInit(StorageBlocksGenesisInitAction),
+
+    StorageBlocksGenesisInitHeaderPutInit(StorageBlocksGenesisInitHeaderPutInitAction),
+    StorageBlocksGenesisInitHeaderPutPending(StorageBlocksGenesisInitHeaderPutPendingAction),
+    StorageBlocksGenesisInitHeaderPutError(StorageBlocksGenesisInitHeaderPutErrorAction),
+    StorageBlocksGenesisInitHeaderPutSuccess(StorageBlocksGenesisInitHeaderPutSuccessAction),
+
+    StorageBlocksGenesisInitAdditionalDataPutInit(
+        StorageBlocksGenesisInitAdditionalDataPutInitAction,
+    ),
+    StorageBlocksGenesisInitAdditionalDataPutPending(
+        StorageBlocksGenesisInitAdditionalDataPutPendingAction,
+    ),
+    StorageBlocksGenesisInitAdditionalDataPutError(
+        StorageBlocksGenesisInitAdditionalDataPutErrorAction,
+    ),
+    StorageBlocksGenesisInitAdditionalDataPutSuccess(
+        StorageBlocksGenesisInitAdditionalDataPutSuccessAction,
+    ),
+
+    StorageBlocksGenesisInitCommitResultGetInit(StorageBlocksGenesisInitCommitResultGetInitAction),
+    StorageBlocksGenesisInitCommitResultGetPending(
+        StorageBlocksGenesisInitCommitResultGetPendingAction,
+    ),
+    StorageBlocksGenesisInitCommitResultGetError(
+        StorageBlocksGenesisInitCommitResultGetErrorAction,
+    ),
+    StorageBlocksGenesisInitCommitResultGetSuccess(
+        StorageBlocksGenesisInitCommitResultGetSuccessAction,
+    ),
+
+    StorageBlocksGenesisInitCommitResultPutInit(StorageBlocksGenesisInitCommitResultPutInitAction),
+    StorageBlocksGenesisInitCommitResultPutError(
+        StorageBlocksGenesisInitCommitResultPutErrorAction,
+    ),
+    StorageBlocksGenesisInitCommitResultPutSuccess(
+        StorageBlocksGenesisInitCommitResultPutSuccessAction,
+    ),
+
+    StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    ShutdownInit(ShutdownInitAction),
+    ShutdownPending(ShutdownPendingAction),
+    ShutdownSuccess(ShutdownSuccessAction),
+
+    ProtocolRunnerShutdownInit(ProtocolRunnerShutdownInitAction),
+    ProtocolRunnerShutdownPending(ProtocolRunnerShutdownPendingAction),
+    ProtocolRunnerShutdownSuccess(ProtocolRunnerShutdownSuccessAction),
 }
 
 impl Action {

@@ -6,6 +6,7 @@ use redux_rs::chain_reducers;
 use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
+use crate::block_applier::block_applier_reducer;
 use crate::paused_loops::paused_loops_reducer;
 
 use crate::peer::binary_message::read::peer_binary_message_read_reducer;
@@ -33,6 +34,20 @@ use crate::mempool::mempool_reducer;
 use crate::prechecker::prechecker_reducer;
 use crate::rights::rights_reducer;
 
+use crate::protocol_runner::init::context::protocol_runner_init_context_reducer;
+use crate::protocol_runner::init::context_ipc_server::protocol_runner_init_context_ipc_server_reducer;
+use crate::protocol_runner::init::protocol_runner_init_reducer;
+use crate::protocol_runner::init::runtime::protocol_runner_init_runtime_reducer;
+use crate::protocol_runner::protocol_runner_reducer;
+use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_reducer;
+
+use crate::shutdown::shutdown_reducer;
+use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_reducer;
+use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_reducer;
+use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_reducer;
+use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_reducer;
+use crate::storage::blocks::genesis::init::header_put::storage_blocks_genesis_init_header_put_reducer;
+use crate::storage::blocks::genesis::init::storage_blocks_genesis_init_reducer;
 use crate::storage::request::storage_request_reducer;
 use crate::storage::state_snapshot::create::storage_state_snapshot_create_reducer;
 use crate::storage::{
@@ -67,6 +82,13 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         state,
         action,
         paused_loops_reducer,
+        protocol_runner_spawn_server_reducer,
+        protocol_runner_init_reducer,
+        protocol_runner_init_runtime_reducer,
+        protocol_runner_init_context_reducer,
+        protocol_runner_init_context_ipc_server_reducer,
+        protocol_runner_reducer,
+        block_applier_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
         peer_connection_incoming_accept_reducer,
@@ -89,6 +111,12 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         rights_reducer,
         prechecker_reducer,
         storage_request_reducer,
+        storage_blocks_genesis_check_applied_reducer,
+        storage_blocks_genesis_init_reducer,
+        storage_blocks_genesis_init_header_put_reducer,
+        storage_blocks_genesis_init_additional_data_put_reducer,
+        storage_blocks_genesis_init_commit_result_get_reducer,
+        storage_blocks_genesis_init_commit_result_put_reducer,
         storage_state_snapshot_create_reducer,
         kv_block_meta_reducer,
         kv_block_header_reducer,
@@ -97,6 +125,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         kv_cycle_eras_reducer,
         kv_cycle_meta_reducer,
         kv_operations_reducer,
+        shutdown_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer

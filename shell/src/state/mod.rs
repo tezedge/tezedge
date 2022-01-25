@@ -1,12 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::VecDeque;
-use std::sync::{Arc, PoisonError};
+use std::sync::PoisonError;
 
 use thiserror::Error;
 
-use crypto::hash::BlockHash;
 use storage::StorageError;
 
 pub mod bootstrap_state;
@@ -57,69 +55,6 @@ impl From<anyhow::Error> for StateError {
         StateError::ProcessingError {
             reason: format!("{}", error),
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ApplyBlockBatch {
-    pub block_to_apply: Arc<BlockHash>,
-    successors: VecDeque<Arc<BlockHash>>,
-}
-
-impl ApplyBlockBatch {
-    pub fn one(block_hash: BlockHash) -> Self {
-        Self {
-            block_to_apply: Arc::new(block_hash),
-            successors: VecDeque::new(),
-        }
-    }
-
-    pub fn start_batch(block_hash: Arc<BlockHash>, expected_size: usize) -> Self {
-        Self {
-            block_to_apply: block_hash,
-            successors: VecDeque::with_capacity(expected_size),
-        }
-    }
-
-    pub fn batch<S: Into<VecDeque<Arc<BlockHash>>>>(
-        starting_block: Arc<BlockHash>,
-        successors: S,
-    ) -> Self {
-        Self {
-            block_to_apply: starting_block,
-            successors: successors.into(),
-        }
-    }
-
-    pub fn add_successor(&mut self, block_hash: Arc<BlockHash>) {
-        if !self.successors.contains(&block_hash) {
-            self.successors.push_back(block_hash);
-        }
-    }
-
-    pub fn batch_total_size(&self) -> usize {
-        self.successors_size() + 1
-    }
-
-    pub fn successors_size(&self) -> usize {
-        self.successors.len()
-    }
-
-    pub fn take_all_blocks_to_apply(self) -> VecDeque<Arc<BlockHash>> {
-        let Self {
-            block_to_apply,
-            mut successors,
-        } = self;
-
-        successors.push_front(block_to_apply);
-        successors
-    }
-
-    pub fn shift(self) -> Option<ApplyBlockBatch> {
-        let Self { mut successors, .. } = self;
-        successors
-            .pop_front()
-            .map(|head| ApplyBlockBatch::batch(head, successors))
     }
 }
 

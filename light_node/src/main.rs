@@ -6,23 +6,22 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use slog::{debug, error, info, warn, Logger};
+use slog::{error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
-use shell::chain_feeder::ApplyBlock;
-use shell::chain_feeder::ChainFeederRef;
-use shell::chain_manager::{ChainManager, ChainManagerRef};
+use shell::chain_manager::{ChainManager, ChainManagerRef, ProcessValidatedBlock};
 use shell::connector::ShellConnectorSupport;
-use shell::shell_automaton_manager::ShellAutomatonManager;
+use shell::shell_automaton_manager::{
+    ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
+};
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::ShellCompatibilityVersion;
-use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
-use shell_integration::{create_oneshot_callback, ThreadWatcher};
+use shell_integration::create_oneshot_callback;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -102,26 +101,20 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    info!(log, "Initializing protocol runners... (4/8)");
-
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
+    let (context_init_status_sender, context_init_status_receiver) =
+        tokio::sync::watch::channel(false);
     let protocol_runner_configuration = create_protocol_runner_configuration(&env);
-    let mut tezos_protocol_api = ProtocolRunnerApi::new(
-        protocol_runner_configuration,
+    let tezos_protocol_api = ProtocolRunnerApi::new(
+        protocol_runner_configuration.clone(),
+        context_init_status_receiver,
         tokio_runtime.handle(),
         log.clone(),
     );
-    tokio_runtime
-        .block_on(tezos_protocol_api.start(None))
-        .expect("Failed to launch protocol runner");
 
-    info!(log, "Protocol runners initialized");
-
-    let tezos_protocol_api = Arc::new(tezos_protocol_api);
-
-    info!(log, "Initializing actors... (5/8)";
+    info!(log, "Initializing actors... (4/7)";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
@@ -155,52 +148,29 @@ fn block_on_actors(
 
     // initialize shell automaton manager
     let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
+        tezos_protocol_api.clone(),
         persistent_storage.clone(),
         network_channel.clone(),
-        tezos_protocol_api.clone(),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),
         env.p2p.clone(),
         env.identity.expected_pow,
-        init_storage_data.chain_id.clone(),
+        init_storage_data.clone(),
+        protocol_runner_configuration,
+        context_init_status_sender,
     );
 
+    let tezos_protocol_api = Arc::new(tezos_protocol_api);
+    shell_automaton_manager.start();
+
     // start chain_feeder with controlled startup and wait for ok initialized context
-    info!(log, "Initializing context... (6/8)");
-    let (initialize_context_result_callback, initialize_context_result_callback_receiver) =
-        create_oneshot_callback();
-
-    let (block_applier, mut block_applier_thread_watcher) = ChainFeeder::actor(
-        actor_system.as_ref(),
-        persistent_storage.clone(),
-        Arc::clone(&tezos_protocol_api),
-        init_storage_data.clone(),
-        env.tezos_network_config.clone(),
-        log.clone(),
-        initialize_context_result_callback,
-    )
-    .expect("Failed to create chain feeder");
-
-    match initialize_context_result_callback_receiver
-        .recv_timeout(env.storage.initialize_context_timeout)
-    {
-        Ok(result) => {
-            if let Err(e) = result {
-                panic!(
-                    "Context was not initialized successfully, so cannot continue, reason: {:?}",
-                    e
-                )
-            }
-        }
-        Err(e) => {
-            panic!("Context was not initialized within {:?} timeout, e.g. try increase [--initialize-context-timeout-in-secs], reason: {}", env.storage.initialize_context_timeout, e)
-        }
-    };
-    info!(log, "Context initialized (6/8)");
+    info!(log, "Initializing protocol runners and context... (5/7)");
+    tezos_protocol_api.wait_for_context_init_sync().unwrap();
+    info!(log, "Protocol runners and context initialized (5/7)");
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
-    info!(log, "Hydrating current head... (7/8)");
+    info!(log, "Hydrating current head... (6/7)");
     let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
         hydrate_current_head(&init_storage_data, &persistent_storage)
             .expect("Failed to load current_head from database");
@@ -211,14 +181,14 @@ fn block_on_actors(
     );
     {
         let (head, level, fitness) = hydrated_current_head.to_debug_info();
-        info!(log, "Current head hydrated (7/8)";
+        info!(log, "Current head hydrated (6/7)";
                    "block_hash" => head,
                    "level" => level,
                    "fitness" => fitness);
     }
 
     // start chain_manager with controlled startup and wait for initialization
-    info!(log, "Initializing chain manager... (8/8)");
+    info!(log, "Initializing chain manager... (7/7)");
     let (
         initialize_chain_manager_result_callback,
         initialize_chain_manager_result_callback_receiver,
@@ -226,7 +196,6 @@ fn block_on_actors(
 
     let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
         actor_system.as_ref(),
-        block_applier.clone(),
         network_channel.clone(),
         shell_automaton_manager.shell_automaton_sender(),
         shell_channel.clone(),
@@ -248,7 +217,7 @@ fn block_on_actors(
     {
         panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout-in-secs] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
     };
-    info!(log, "Chain manager initialized (8/8)");
+    info!(log, "Chain manager initialized (7/7)");
 
     let shell_connector = ShellConnectorSupport::new(chain_manager.clone());
 
@@ -302,12 +271,10 @@ fn block_on_actors(
             blocks,
             &init_storage_data,
             chain_manager,
-            block_applier,
-            block_applier_thread_watcher,
+            shell_automaton_manager,
             shell_channel,
             log.clone(),
         );
-        tokio_runtime.block_on(tezos_protocol_api.shutdown());
         return;
     } else {
         // TODO: TE-386 - controlled startup
@@ -323,8 +290,14 @@ fn block_on_actors(
     };
     info!(log, "Actors initialized");
 
-    // start shell_automaton thread.
-    shell_automaton_manager.start();
+    // Init p2p only after actors are initialized, otherwise we will
+    // connect to peers before actors are initialized and actors will
+    // miss a message that peer was handshaked. Because of that actors
+    // will ignore messages from those peers because they are unknown to it.
+    shell_automaton_manager
+        .shell_automaton_sender()
+        .send(ShellAutomatonMsg::P2pInit)
+        .expect("Failed to initiate p2p");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -339,17 +312,12 @@ fn block_on_actors(
         }
 
         info!(log, "Shutting down shell automaton (1/9)");
-        drop(shell_automaton_manager);
+        shell_automaton_manager.shutdown_and_wait();
 
         info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
 
         info!(log, "Shutting down of thread workers starting (3/9)");
-        if let Err(e) = block_applier_thread_watcher.stop() {
-            warn!(log, "Failed to stop thread watcher";
-                       "thread_name" => block_applier_thread_watcher.thread_name(),
-                       "reason" => format!("{}", e));
-        }
         if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
@@ -372,12 +340,6 @@ fn block_on_actors(
         };
 
         info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (6/9)");
-        if let Some(thread) = block_applier_thread_watcher.thread() {
-            thread.thread().unpark();
-            if let Err(e) = thread.join() {
-                warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
-            }
-        }
         if let Some(thread) = chain_manager_p2p_reader_thread_watcher.thread() {
             thread.thread().unpark();
             if let Err(e) = thread.join() {
@@ -385,10 +347,6 @@ fn block_on_actors(
             }
         }
         info!(log, "Thread workers stopped");
-
-        info!(log, "Shutting down protocol runners (7/9)");
-        tezos_protocol_api.shutdown().await;
-        debug!(log, "Protocol runners completed");
 
         info!(log, "Flushing databases (8/9)");
         drop(persistent_storage);
@@ -404,12 +362,12 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
     }
 }
 
+// TODO(zura):
 fn schedule_replay_blocks(
     blocks: Vec<Arc<BlockHash>>,
     init_storage_data: &StorageInitInfo,
     chain_manager: ChainManagerRef,
-    block_applier: ChainFeederRef,
-    block_applier_thread_watcher: ThreadWatcher,
+    shell_automaton_manager: ShellAutomatonManager,
     shell_channel: ShellChannelRef,
     log: Logger,
 ) {
@@ -421,21 +379,32 @@ fn schedule_replay_blocks(
     let now = std::time::Instant::now();
 
     for (index, block) in blocks.into_iter().enumerate() {
-        let batch = ApplyBlockBatch::one((&*block).clone());
-        let result_callback = Some(result_callback_sender.clone());
+        let result_callback = result_callback_sender.clone();
 
         let now = std::time::Instant::now();
-        block_applier.tell(
-            ApplyBlock::new(
-                Arc::clone(&chain_id),
-                batch,
-                chain_manager.clone(),
-                result_callback,
-                None,
-                None,
-            ),
-            None,
-        );
+        let chain_manager = chain_manager.clone();
+
+        let _ =
+            shell_automaton_manager
+                .shell_automaton_sender()
+                .send(ShellAutomatonMsg::ApplyBlock {
+                    chain_id: chain_id.clone(),
+                    block_hash: block.clone(),
+                    callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
+                        let res = result.as_ref().map(|_| ()).map_err(|_| ());
+
+                        if let Ok((chain_id, block)) = result {
+                            chain_manager.tell(
+                                ProcessValidatedBlock::new(block, chain_id, Instant::now()),
+                                None,
+                            );
+                        }
+
+                        result_callback
+                            .send(res)
+                            .expect("Failed to send block application result");
+                    }),
+                });
 
         let result = result_callback_receiver
             .recv()
@@ -446,13 +415,13 @@ fn schedule_replay_blocks(
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
         if result.as_ref().is_err() {
-            replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
+            replay_shutdown(&log, shell_channel, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
                 index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
-            replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
+            replay_shutdown(&log, shell_channel, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
                 index, percent, hash, time, fail_above, result
@@ -477,20 +446,15 @@ fn schedule_replay_blocks(
         now.elapsed()
     );
 
-    replay_shutdown(&log, shell_channel, block_applier_thread_watcher);
+    replay_shutdown(&log, shell_channel, shell_automaton_manager);
 }
 
+// TODO(zura):
 fn replay_shutdown(
-    log: &Logger,
+    _: &Logger,
     shell_channel: ShellChannelRef,
-    mut block_applier_thread_watcher: ThreadWatcher,
+    shell_automaton_manager: ShellAutomatonManager,
 ) {
-    if let Err(e) = block_applier_thread_watcher.stop() {
-        warn!(log, "Failed to stop thread watcher";
-                       "thread_name" => block_applier_thread_watcher.thread_name(),
-                       "reason" => format!("{}", e));
-    }
-
     shell_channel.tell(
         Publish {
             msg: ShuttingDown.into(),
@@ -499,15 +463,10 @@ fn replay_shutdown(
         None,
     );
 
+    shell_automaton_manager.shutdown_and_wait();
+
     // give actors some time to shut down
     std::thread::sleep(Duration::from_secs(2));
-
-    if let Some(thread) = block_applier_thread_watcher.thread() {
-        thread.thread().unpark();
-        if let Err(e) = thread.join() {
-            warn!(log, "Failed to wait for block applier thread"; "reason" => format!("{:?}", e));
-        }
-    }
 }
 
 fn collect_replayed_blocks(

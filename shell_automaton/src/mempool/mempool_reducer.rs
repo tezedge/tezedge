@@ -9,6 +9,7 @@ use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
+use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::OperationKind;
 use crate::peers::remove::PeersRemoveAction;
 use crate::protocol::ProtocolAction;
@@ -200,36 +201,41 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
-        Action::BlockApplied(BlockAppliedAction {
-            chain_id,
-            block,
-            hash,
-            is_bootstrapped,
-            ..
-        }) => {
-            // TODO(vlad) move to separate action
+        Action::BlockApplierApplySuccess(_) => {
             // TODO: get from protocol
             const TTL: i32 = 120;
+
+            let (chain_id, block) = match &state.block_applier.current {
+                BlockApplierApplyState::Success {
+                    chain_id, block, ..
+                } => (chain_id, block),
+                _ => return,
+            };
 
             if config.chain_id.ne(chain_id) {
                 return;
             }
-            if *is_bootstrapped {
-                mempool_state.running_since = Some(());
-            }
-            mempool_state.prevalidator = None;
-            let old_head_level = mempool_state
-                .local_head_state
+
+            let old_head_state = mempool_state.local_head_state.clone();
+            mempool_state.branch_changed = old_head_state
                 .as_ref()
-                .map(|v| v.header.level());
-            let changed = if let Some(old_head) = &mempool_state.local_head_state {
-                old_head.hash.ne(&block.predecessor())
-            } else {
-                false
-            };
+                .map(|old_head| old_head.hash.ne(&block.header.predecessor()))
+                .unwrap_or(false);
+            mempool_state.local_head_state = Some(HeadState {
+                header: (*block.header).clone(),
+                hash: block.hash.clone(),
+                ops_removed: false,
+                prevalidator_ready: false,
+            });
+            mempool_state.prevalidator = None;
+
+            if state.is_bootstrapped() {
+                state.mempool.running_since = Some(());
+            }
+            let mempool_state = &mut state.mempool;
 
             // update last 120 predecessor blocks map.
-            if let Some(pred) = mempool_state.local_head_state.as_ref() {
+            if let Some(pred) = old_head_state.as_ref() {
                 let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
                 last_predecessor_blocks.insert(pred.hash.clone().into(), pred.header.level());
                 if last_predecessor_blocks.len() as i32 > TTL {
@@ -243,19 +249,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
 
-            mempool_state.branch_changed = changed;
-            mempool_state.local_head_state = Some(HeadState {
-                header: block.clone(),
-                hash: hash.clone(),
-                ops_removed: false,
-                prevalidator_ready: false,
-            });
-
             // for (_, op) in &mempool_state.pending_operations {
             //     mempool_state.wait_prevalidator_operations.push(op.clone());
             // }
 
-            let level = block.level().saturating_sub(TTL);
+            let level = block.header.level().saturating_sub(TTL);
 
             // `drain_filter` is unstable for now
             for (_, ops) in mempool_state.level_to_operation.range(..level) {
@@ -289,8 +287,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             mempool_state.level_to_operation.retain(|x, _| *x >= level);
 
-            let start_level = old_head_level.unwrap_or(0);
-            let end_level = block.level();
+            let start_level = old_head_state
+                .as_ref()
+                .map(|v| v.header.level())
+                .unwrap_or(0);
+            let end_level = block.header.level();
 
             if start_level >= end_level {
                 return;

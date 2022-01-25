@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
-
 pub mod io_error_kind;
 
 pub mod event;
@@ -39,12 +37,16 @@ pub mod shell_compatibility_version;
 pub mod peer;
 
 pub mod peers;
-use peers::dns_lookup::PeersDnsLookupInitAction;
 
 pub mod storage;
 use crate::storage::state_snapshot::create::StorageStateSnapshotCreateInitAction;
 
 pub mod mempool;
+
+pub mod protocol_runner;
+use protocol_runner::ProtocolRunnerStartAction;
+
+pub mod block_applier;
 
 pub mod rpc;
 
@@ -55,6 +57,8 @@ pub mod protocol;
 pub mod rights;
 
 pub mod prechecker;
+
+pub mod shutdown;
 
 pub mod service;
 use service::MioService;
@@ -83,10 +87,11 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
         Self { events, store }
     }
 
-    pub fn init<P>(&mut self, peers_dns_lookup_addrs: P)
-    where
-        P: IntoIterator<Item = (String, Port)>,
-    {
+    pub fn store(&self) -> &Store<Serv> {
+        &self.store
+    }
+
+    pub fn init(&mut self) {
         // Persist initial state.
         self.store.dispatch(StorageStateSnapshotCreateInitAction {});
 
@@ -100,12 +105,12 @@ impl<Serv: Service, Events> ShellAutomaton<Serv, Events> {
             eprintln!("P2p: failed to start server. Error: {:?}", err);
         }
 
-        for (address, port) in peers_dns_lookup_addrs.into_iter() {
-            self.store
-                .dispatch(PeersDnsLookupInitAction { address, port });
-        }
-        self.store
-            .dispatch(PeerConnectionOutgoingRandomInitAction {});
+        self.store.dispatch(ProtocolRunnerStartAction {});
+    }
+
+    #[inline(always)]
+    pub fn is_shutdown(&self) -> bool {
+        self.store.state().is_shutdown()
     }
 }
 

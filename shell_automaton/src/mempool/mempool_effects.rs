@@ -20,19 +20,18 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::{mempool::mempool_state::OperationState, protocol::ProtocolAction, rights::Slot};
+use crate::block_applier::BlockApplierApplyState;
+use crate::peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction};
+use crate::protocol::ProtocolAction;
+use crate::storage::kv_operations;
 use crate::{
-    peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
+    mempool::mempool_state::OperationState,
     prechecker::prechecker_actions::{
-        PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
-        PrecheckerPrecheckOperationResponseAction,
+        PrecheckerPrecacheEndorsingRightsAction, PrecheckerPrecheckOperationRequestAction,
+        PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
+        PrecheckerSetNextBlockProtocolAction,
     },
-};
-use crate::{
-    prechecker::prechecker_actions::{
-        PrecheckerPrecacheEndorsingRightsAction, PrecheckerSetNextBlockProtocolAction,
-    },
-    storage::kv_operations,
+    rights::Slot,
 };
 use crate::{
     service::{ProtocolService, RpcService},
@@ -232,28 +231,32 @@ where
                 _ => (),
             }
         }
-        Action::BlockApplied(BlockAppliedAction {
-            chain_id,
-            block,
-            block_metadata_hash,
-            ops_metadata_hash,
-            hash,
-            ..
-        }) => {
+        Action::BlockApplierApplySuccess(_) => {
+            let (chain_id, block, apply_result) = match &store.state().block_applier.current {
+                BlockApplierApplyState::Success {
+                    chain_id,
+                    block,
+                    apply_result,
+                    ..
+                } => (chain_id, block, apply_result),
+                _ => return,
+            };
+
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
-                    chain_id: chain_id.clone(),
-                    predecessor: block.clone(),
+                    chain_id: (**chain_id).clone(),
+                    predecessor: (*block.header).clone(),
                     protocol_data: None,
-                    predecessor_block_metadata_hash: block_metadata_hash.clone(),
-                    predecessor_ops_metadata_hash: ops_metadata_hash.clone(),
+                    predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
+                    predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),
                 };
+                let block_hash = block.hash.clone();
                 store
                     .service()
                     .protocol()
                     .begin_construction_for_prevalidation(req);
                 store.dispatch(kv_operations::StorageOperationsGetAction {
-                    key: hash.clone().into(),
+                    key: block_hash.into(),
                 });
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {

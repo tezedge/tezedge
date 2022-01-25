@@ -160,12 +160,6 @@ fn test_storage() -> Result<(), Error> {
         .expect("Genesis was not stored!");
     assert_eq!(new_context_hash, genesis.header.context().clone());
 
-    // genesis is stored with replaced context hash
-    let genesis = block_storage
-        .get_by_context_hash(&new_context_hash)?
-        .expect("Genesis was not assigned to context_hash!");
-    assert_eq!(new_context_hash, genesis.header.context().clone());
-
     // check genesis jsons
     let (_, data) = block_storage
         .get_with_json_data(&init_data.genesis_block_header_hash)?

@@ -558,6 +558,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                                             crypto: write_crypto,
                                         },
                                     },
+                                    current_head_level: None,
                                 });
                             }
                             _ => {}

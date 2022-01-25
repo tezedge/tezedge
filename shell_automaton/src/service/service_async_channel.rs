@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub type RequestTrySendError<T> = mpsc::error::TrySendError<T>;
+pub type RequestSendError<T> = mpsc::error::SendError<T>;
 pub type ResponseSendError<T> = mpsc::error::SendError<T>;
 
 pub type ResponseTryRecvError = mpsc::error::TryRecvError;
@@ -25,6 +26,10 @@ pub struct ServiceWorkerAsyncRequester<Req, Resp> {
 }
 
 impl<Req, Resp> ServiceWorkerAsyncRequester<Req, Resp> {
+    pub fn blocking_send(&self, req: Req) -> Result<(), RequestSendError<Req>> {
+        Ok(self.sender.blocking_send(req)?)
+    }
+
     pub fn try_send(&self, req: Req) -> Result<(), RequestTrySendError<Req>> {
         Ok(self.sender.try_send(req)?)
     }
