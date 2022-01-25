@@ -279,6 +279,7 @@ impl From<FatPointerIdError> for StorageError {
 
 impl From<std::convert::Infallible> for StorageError {
     fn from(_: std::convert::Infallible) -> Self {
+        // This implementation exists only to be able to use `?` on a Result<_, Infallible>
         unreachable!()
     }
 }
@@ -599,7 +600,9 @@ impl Iterator for PointersBitfieldIterator {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PointersId {
+    /// Index of first pointer in `Storage::thin_pointers`
     start: u32,
+    /// A bitfield, which allow to retrieve the following pointers (after `start`)
     bitfield: PointersBitfield,
 }
 
@@ -880,6 +883,9 @@ impl Iterator for InodePointersIter {
 pub struct Inode {
     pub depth: u16,
     pub nchildren: u32,
+    /// Points to a subslice of `Storage::thin_pointers`
+    /// `PointersId` contains an index and a bitfield, which allow
+    /// to retrieve the subslice
     pub pointers: PointersId,
 }
 
@@ -952,10 +958,16 @@ pub struct Storage {
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
     inodes: IndexMap<InodeId, Inode>,
-
+    /// Sequence of pointers
+    /// `Self::inodes` refers to a subslice of this field.
+    /// A `ThinPointer` contains either a `InodeId` (u32) or a `FatPointerId` (u32)
+    /// This vector is growing very fast when manipulating inodes
     thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
+    /// Contains big pointers
+    /// It's either a `HashId` (6 bytes), an `AbsoluteOffset` (8 bytes) or a
+    /// `DirectoryId` (8 bytes)
     fat_pointers: IndexMap<FatPointerId, FatPointer>,
-
+    /// Store the `ObjectReference` of the inode pointers
     pointers_data: RefCell<HashMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
