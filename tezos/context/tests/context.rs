@@ -115,7 +115,7 @@ pub fn context_hash_from_working_tree(
 
     // init block storage (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context

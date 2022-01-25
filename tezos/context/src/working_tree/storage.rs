@@ -1009,7 +1009,7 @@ impl Storage {
             offsets_to_hash_id: Map::default(),
             fat_pointers: IndexMap::with_chunk_capacity(32 * 1024),
             pointers_data: Default::default(),
-            thin_pointers: IndexMap::with_chunk_capacity(32 * 1024),
+            thin_pointers: IndexMap::with_chunk_capacity(128 * 1024),
         } // Total ~27MB
     }
 
@@ -1022,6 +1022,7 @@ impl Storage {
         let inodes_cap = self.inodes.capacity();
         let thin_pointers_cap = self.thin_pointers.capacity();
         let fat_pointers_cap = self.fat_pointers.capacity();
+        let pointers_data_len = self.pointers_data.borrow().len();
         let strings = strings.memory_usage();
         let total_bytes = (nodes_cap * size_of::<DirEntry>())
             .saturating_add(directories_cap * size_of::<(StringId, DirEntryId)>())
@@ -1045,6 +1046,7 @@ impl Storage {
             inodes_cap,
             fat_pointers_cap,
             thin_pointers_cap,
+            pointers_data_len,
             strings,
             total_bytes,
         }
@@ -1487,12 +1489,15 @@ impl Storage {
 
     fn prepare_temp_hash_inodes(&mut self, dir_range: &TempDirRange) {
         if self.temp_inodes_index.capacity() == 0 {
+            // The capacity never goes above 1024, even during flattening
             self.temp_inodes_index = Vec::with_capacity(1024);
         }
 
         if self.temp_inodes_index.len() < dir_range.end {
             // Make sure that `Self::temp_inodes_index` is at least the same
             // size than `Self::temp_dir[dir_range]`.
+            // So we can access the hash of an inode by its same index:
+            // hash(Self::temp_dir[X]) = Self::temp_inodes_index[X]
             self.temp_inodes_index.resize(dir_range.end, 0);
         }
     }
@@ -1618,10 +1623,10 @@ impl Storage {
 
         match thin_pointer.get_value() {
             ThinPointerValue::Inode(inode_id) => Some(DirectoryOrInodeId::Inode(inode_id)),
-            ThinPointerValue::FatPointer(pointer_id) => {
+            ThinPointerValue::FatPointer(fat_pointer_id) => {
                 // The thin pointer points to a fat pointer, dereference it
-                let pointer = self.fat_pointers.get(pointer_id).unwrap().unwrap();
-                pointer.ptr_id()
+                let fat_pointer = self.fat_pointers.get(fat_pointer_id).unwrap().unwrap();
+                fat_pointer.ptr_id()
             }
         }
     }
@@ -1635,9 +1640,9 @@ impl Storage {
                 ptr.set_commited(thin_pointer.is_commited());
                 Some(ptr)
             }
-            ThinPointerValue::FatPointer(pointer_id) => {
-                let pointer = self.fat_pointers.get(pointer_id).unwrap().unwrap();
-                Some(pointer.clone())
+            ThinPointerValue::FatPointer(fat_pointer_id) => {
+                let fat_pointer = self.fat_pointers.get(fat_pointer_id).unwrap().unwrap();
+                Some(fat_pointer.clone())
             }
         }
     }
@@ -1669,19 +1674,19 @@ impl Storage {
     ) -> Result<DirectoryOrInodeId, StorageError> {
         let thin_pointer = self.thin_pointers.get(thin_pointer_id).unwrap().unwrap();
 
-        let pointer_id = match thin_pointer.get_value() {
+        let fat_pointer_id = match thin_pointer.get_value() {
             ThinPointerValue::Inode(_) => panic!(),
-            ThinPointerValue::FatPointer(pointer_index) => pointer_index,
+            ThinPointerValue::FatPointer(fat_pointer_id) => fat_pointer_id,
         };
 
-        let pointer = self.fat_pointers.get(pointer_id)?.unwrap();
+        let pointer = self.fat_pointers.get(fat_pointer_id)?.unwrap();
         let pointer_data = pointer.get_data().unwrap();
 
         let pointer_inode_id = repository
             .get_inode(pointer_data, self, strings)
             .map_err(|_| StorageError::InodeInRepositoryNotFound)?;
 
-        let pointer = self.fat_pointers.get(pointer_id)?.unwrap();
+        let pointer = self.fat_pointers.get(fat_pointer_id)?.unwrap();
 
         pointer.set_ptr_id(pointer_inode_id);
         self.set_pointer_data(pointer, pointer_data)?;
