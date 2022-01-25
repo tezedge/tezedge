@@ -46,7 +46,7 @@ const INODE_POINTER_THRESHOLD: usize = 32;
 const FULL_60_BITS: usize = 0xFFFFFFFFFFFFFFF;
 const FULL_56_BITS: usize = 0xFFFFFFFFFFFFFF;
 const FULL_32_BITS: usize = 0xFFFFFFFF;
-const FULL_31_BITS: usize = 0x7FFFFFFF;
+const FULL_30_BITS: usize = 0x3FFFFFFF;
 const FULL_28_BITS: usize = 0xFFFFFFF;
 const FULL_4_BITS: usize = 0xF;
 
@@ -1405,8 +1405,8 @@ impl Storage {
         let current = self.inodes.push(inode)?;
 
         let current_index: usize = current.try_into().unwrap(); // Does not fail
-        if current_index & !FULL_31_BITS != 0 {
-            // Must fit in 31 bits (See Pointer) TODO
+        if current_index & !FULL_30_BITS != 0 {
+            // Must fit in 30 bits (See ThinPointer)
             return Err(StorageError::InodeIndexTooBig);
         }
 
