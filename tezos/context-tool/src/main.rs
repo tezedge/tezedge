@@ -313,7 +313,11 @@ fn main() {
                     // Compute the hashes of the whole tree and remove the duplicate ones
                     let mut repo = write_repo.write().unwrap();
                     tree.get_root_directory_hash(&mut *repo).unwrap();
-                    index.storage.borrow_mut().deduplicate_hashes(&*repo);
+                    index
+                        .storage
+                        .borrow_mut()
+                        .deduplicate_hashes(&*repo)
+                        .unwrap();
 
                     log!(" Computing context hash ok {:?}", now.elapsed());
                 }

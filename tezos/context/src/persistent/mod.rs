@@ -19,7 +19,7 @@ use crate::{
     serialize::DeserializationError,
     working_tree::{
         shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
-        storage::{DirEntryId, InodeId, Storage},
+        storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{MerkleError, WorkingTree},
         Object, ObjectReference,
@@ -97,7 +97,7 @@ pub trait KeyValueStoreBackend {
         object_ref: ObjectReference,
         storage: &mut Storage,
         strings: &mut StringInterner,
-    ) -> Result<InodeId, DBError>;
+    ) -> Result<DirectoryOrInodeId, DBError>;
     /// Return the object bytes associated to this `object_ref`.
     ///
     /// The object bytes will be inserted at the beginning of `buffer`.
