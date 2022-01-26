@@ -644,7 +644,7 @@ impl Iterator for PointersBitfieldIterator {
 /// The first pointer is at `start + 0`: Storage::thin_pointers[15]
 /// The second pointer is at `start + 1`: Storage::thin_pointers[16]
 /// The third pointer is at `start + 2`: Storage::thin_pointers[17]
-/// The 4th pointer is at `start + 3`: Storage::thin_pointers[17]
+/// The 4th pointer is at `start + 3`: Storage::thin_pointers[18]
 /// ...
 ///
 /// The first pointer has the index 1
