@@ -790,7 +790,7 @@ assert_eq_size!([u8; 8], FatPointer);
 
 /// A pointer on the stack, This is not stored in `Storage`
 ///
-/// When when want to manipulate inode pointers, we fetch them
+/// When we want to manipulate inode pointers, we fetch them
 /// from `Storage::{thin,fat}_pointers` and we make them
 /// a array: `[Option<PointerOnStack>; 32]`
 ///
@@ -1099,7 +1099,7 @@ pub struct Storage {
     ///
     /// This is used at commit time (when inodes are hashed and serialized)
     /// When an inode is deserialized from the repository, its data (`HashId`
-    /// and/or `AbsoluteOffset` are stored directory in the `FatPointer`),
+    /// and/or `AbsoluteOffset` are stored directly in the `FatPointer`),
     /// not in this `pointers_data`.
     ///
     /// We keep the data out of `FatPointer` and `ThinPointer` because this saves
