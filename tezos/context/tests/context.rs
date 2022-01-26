@@ -115,7 +115,7 @@ pub fn context_hash_from_working_tree(
 
     // init block storage (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -134,14 +134,26 @@ pub fn context_hash_from_working_tree(
     }
 
     // Create 'temporary' hashes
-    context
-        .hash("tezos".to_string(), "hello".to_string(), 123)
+    let hash = context
+        .hash("Tezos".to_string(), "Genesis".to_string(), 0)
         .unwrap();
 
     // Created hashes must be commited, this must not panic
-    context
+    let commit_hash = context
         .commit("Tezos".to_string(), "Genesis".to_string(), 0)
         .unwrap();
+
+    assert_eq!(hash, commit_hash);
+
+    let mut context = context.index.checkout(&commit_hash).unwrap().unwrap();
+
+    // Enough to create inodes
+    for index in 1000..1010 {
+        context = context.add(
+            &context_key!(format!("data/rolls/owner/current/index/{}", index)),
+            &[1, 2, 3, 4, 5, 6],
+        )?;
+    }
 
     Ok(())
 }

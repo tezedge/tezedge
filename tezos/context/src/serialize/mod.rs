@@ -16,7 +16,7 @@ use crate::{
     persistent::DBError,
     working_tree::{
         shape::DirectoryShapeError,
-        storage::{DirEntryIdError, PointerToInode, Storage, StorageError},
+        storage::{DirEntryIdError, Storage, StorageError},
         string_interner::StringInterner,
         Object,
     },
@@ -84,96 +84,6 @@ impl ObjectHeader {
 
     pub fn get_is_persistent(&self) -> bool {
         self.is_persistent()
-    }
-}
-
-/// Describes which pointers are set and at what index.
-///
-/// `Inode::Pointers` is an array of 32 pointers.
-/// Each pointer is either set (`Some`) or not set (`None`).
-///
-/// Example:
-/// Let's say that there are 2 pointers sets in the array, at the index
-/// 1 and 7.
-/// This would be represented in this bitfield as:
-/// `0b01000001_00000000_00000000`
-///
-#[derive(Copy, Clone, Default, Debug)]
-struct PointersHeader {
-    bitfield: u32,
-}
-
-impl PointersHeader {
-    /// Set bit at index in the bitfield
-    fn set(&mut self, index: usize) {
-        self.bitfield |= 1 << index;
-    }
-
-    /// Get bit at index in the bitfield
-    fn get(&self, index: usize) -> bool {
-        self.bitfield & 1 << index != 0
-    }
-
-    fn to_bytes(self) -> [u8; 4] {
-        self.bitfield.to_le_bytes()
-    }
-
-    /// Iterates on all the bit sets in the bitfield.
-    ///
-    /// The iterator returns the index of the bit.
-    fn iter(&self) -> PointersHeaderIterator {
-        PointersHeaderIterator {
-            bitfield: *self,
-            current: 0,
-        }
-    }
-
-    fn from_bytes(bytes: [u8; 4]) -> Self {
-        Self {
-            bitfield: u32::from_le_bytes(bytes),
-        }
-    }
-
-    /// Count number of bit set in the bitfield.
-    fn count(&self) -> u8 {
-        self.bitfield.count_ones() as u8
-    }
-}
-
-impl From<&[Option<PointerToInode>; 32]> for PointersHeader {
-    fn from(pointers: &[Option<PointerToInode>; 32]) -> Self {
-        let mut bitfield = Self::default();
-
-        for (index, pointer) in pointers.iter().enumerate() {
-            if pointer.is_some() {
-                bitfield.set(index);
-            }
-        }
-
-        bitfield
-    }
-}
-
-/// Iterates on all the bit sets in the bitfield.
-///
-/// The iterator returns the index of the bit.
-struct PointersHeaderIterator {
-    bitfield: PointersHeader,
-    current: usize,
-}
-
-impl Iterator for PointersHeaderIterator {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for index in self.current..32 {
-            if self.bitfield.get(index) {
-                self.current = index + 1;
-                return Some(index);
-            }
-        }
-
-        None
     }
 }
 
