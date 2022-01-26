@@ -610,8 +610,8 @@ impl PointersOffsetsHeader {
     ) -> Result<Self, SerializationError> {
         let mut bitfield = Self::default();
 
-        for (index, (_, pointer_index)) in pointers.iter().enumerate() {
-            let pointer = storage.pointer_copy(pointer_index)?;
+        for (index, (_, thin_pointer_id)) in pointers.iter().enumerate() {
+            let pointer = storage.pointer_copy(thin_pointer_id)?;
 
             let p_offset = storage
                 .pointer_retrieve_offset(&pointer)?
@@ -675,7 +675,7 @@ fn serialize_inode(
                 }
 
                 let hash_id = storage
-                    .retrieve_hashid_of_pointer(&pointer, repository)?
+                    .pointer_retrieve_hashid(&pointer, repository)?
                     .ok_or(MissingHashId)?;
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
@@ -690,7 +690,7 @@ fn serialize_inode(
                     strings,
                 )?;
 
-                storage.set_offset_pointer(&pointer, offset)?;
+                storage.pointer_set_offset(&pointer, offset)?;
             }
 
             let start = output.len();

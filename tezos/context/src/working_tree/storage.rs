@@ -229,6 +229,8 @@ pub enum StorageError {
     InodeIndexTooBig,
     #[error("DirEntryIdError: Conversion from/to usize of a DirEntryId failed")]
     DirEntryIdError,
+    #[error("InodeIdError: Conversion from usize of a InodeId failed")]
+    InodeIdError,
     #[error("StringNotFound: String has not been found")]
     StringNotFound,
     #[error("DirNotFound: Dir has not been found")]
@@ -268,6 +270,12 @@ pub enum StorageError {
 impl From<DirEntryIdError> for StorageError {
     fn from(_: DirEntryIdError) -> Self {
         Self::DirEntryIdError
+    }
+}
+
+impl From<InodeIdError> for StorageError {
+    fn from(_: InodeIdError) -> Self {
+        Self::InodeIdError
     }
 }
 
@@ -406,11 +414,9 @@ pub struct DirEntryId(u32);
 #[error("Fail to convert the dir entry id to/from usize")]
 pub struct DirEntryIdError;
 
-impl TryInto<usize> for DirEntryId {
-    type Error = DirEntryIdError;
-
-    fn try_into(self) -> Result<usize, Self::Error> {
-        Ok(self.0 as usize)
+impl From<DirEntryId> for usize {
+    fn from(value: DirEntryId) -> Self {
+        value.0 as usize
     }
 }
 
@@ -428,19 +434,21 @@ impl TryFrom<usize> for DirEntryId {
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct InodeId(u32);
 
-impl TryInto<usize> for InodeId {
-    type Error = DirEntryIdError;
+#[derive(Debug, Error)]
+#[error("Fail to convert the inode id id from usize")]
+pub struct InodeIdError;
 
-    fn try_into(self) -> Result<usize, Self::Error> {
-        Ok(self.0 as usize)
+impl From<InodeId> for usize {
+    fn from(value: InodeId) -> Self {
+        value.0 as usize
     }
 }
 
 impl TryFrom<usize> for InodeId {
-    type Error = DirEntryIdError;
+    type Error = InodeIdError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        value.try_into().map(InodeId).map_err(|_| DirEntryIdError)
+        value.try_into().map(InodeId).map_err(|_| InodeIdError)
     }
 }
 
@@ -459,11 +467,9 @@ impl From<InodeId> for u32 {
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct FatPointerId(u32);
 
-impl TryInto<usize> for FatPointerId {
-    type Error = DirEntryIdError;
-
-    fn try_into(self) -> Result<usize, Self::Error> {
-        Ok(self.0 as usize)
+impl From<FatPointerId> for usize {
+    fn from(value: FatPointerId) -> Self {
+        value.0 as usize
     }
 }
 
@@ -487,20 +493,22 @@ impl TryFrom<usize> for FatPointerId {
     type Error = FatPointerIdError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        value
-            .try_into()
-            .map(FatPointerId)
-            .map_err(|_| FatPointerIdError)
+        if value & !FULL_30_BITS != 0 {
+            // Must fit in 30 bits (See ThinPointer)
+            return Err(FatPointerIdError);
+        }
+
+        Ok(value.try_into().map(FatPointerId).unwrap()) // Do not fail
     }
 }
 
 /// Describes which pointers are set and at what index.
 ///
-/// `Inode::Pointers` is an array of 32 pointers.
-/// Each pointer is either set (`Some`) or not set (`None`).
+/// An inode pointer contains 32 pointers.
+/// Some might be null.
 ///
 /// Example:
-/// Let's say that there are 2 pointers sets in the array, at the index
+/// Let's say that there are 2 pointers sets, at the index
 /// 1 and 7.
 /// This would be represented in this bitfield as:
 /// `0b00000000_00000000_00000000_10000010`
@@ -521,6 +529,22 @@ impl PointersBitfield {
         self.bitfield & 1 << index != 0
     }
 
+    /// Return how many pointers are not null before `index`
+    ///
+    /// This is achieve by shifting (`32 - index` times) the bitfield to the left
+    /// and counting how many bit are left
+    ///
+    /// Example: Consider this bitfield:
+    /// `0b00000000_00001000_00010001_10000010`
+    ///
+    /// We call `get_index_for(8)`, we shift to the left (32 - 8 times):
+    /// `0b10000010_00000000_00000000_00000000`
+    ///
+    /// There are now 2 bits left. This is the number of non-null pointers
+    /// before the `8`th bit in the original bitfield.
+    ///
+    /// This is used to get the index (`ThinPointerId`) of a `ThinPointer` in
+    /// `Storage::thin_pointers`.
     fn get_index_for(&self, index: usize) -> Option<usize> {
         if !self.get(index) {
             return None;
@@ -577,7 +601,7 @@ impl From<&[Option<PointerOnStack>; 32]> for PointersBitfield {
 
 /// Iterates on all the bit sets in the bitfield.
 ///
-/// The iterator returns the index of the bit.
+/// The iterator returns the index (between 0 and 32) of the bit.
 pub struct PointersBitfieldIterator {
     bitfield: PointersBitfield,
     current: usize,
@@ -598,6 +622,37 @@ impl Iterator for PointersBitfieldIterator {
     }
 }
 
+/// Points to a subslice of `Storage::thin_pointers`
+///
+/// An inode pointer may have 0 to 32 pointers.
+/// Some might be null or not.
+/// Each pointer, when not null, has an index associated to it (0 to 31).
+///
+/// - `start` is the index of the first pointer in `Storage::thin_pointers`
+/// - `bitfield` is a 32 bits bitfield, that gives us how many pointers they
+///   are after `start`, and at which index
+///
+/// Example:
+/// PointersId {
+///   start: `15`,
+///   bitfield: `0b00000000_00001000_00010001_10000010`
+/// }
+///
+/// This `PointersId` refers to a subslice of `Storage::thin_pointers` of length
+/// 5 (they are 5 bits set in `bitfield`).
+///
+/// The first pointer is at `start + 0`: Storage::thin_pointers[15]
+/// The second pointer is at `start + 1`: Storage::thin_pointers[16]
+/// The third pointer is at `start + 2`: Storage::thin_pointers[17]
+/// The 4th pointer is at `start + 3`: Storage::thin_pointers[17]
+/// ...
+///
+/// The first pointer has the index 1
+/// The second pointer has the index 7
+/// The third pointer has the index 8
+/// The 4th pointer has the index 12
+/// ...
+///
 #[derive(Debug, Clone, Copy)]
 pub struct PointersId {
     /// Index of first pointer in `Storage::thin_pointers`
@@ -627,6 +682,10 @@ impl PointersId {
         self.bitfield
     }
 
+    /// Returns the `ThinPointerId` for `ptr_index`
+    ///
+    /// Given the `ptr_index` (which is between 0 and 31), returns
+    /// where is it located in `Storage::thin_pointers`
     fn get_thin_pointer_for_ptr(&self, ptr_index: usize) -> Option<ThinPointerId> {
         let index = self.start as usize;
         let offset = self.bitfield.get_index_for(ptr_index)?;
@@ -639,6 +698,8 @@ impl PointersId {
     }
 }
 
+/// A `FatPointer` contains one of the 3 types:
+/// `DirectoryId`, `HashId` or `AbsoluteOffset`
 #[derive(BitfieldSpecifier)]
 #[bits = 2]
 #[derive(Debug, Copy, Clone)]
@@ -648,6 +709,8 @@ enum FatPointerKind {
     Offset,
 }
 
+/// A `ThinPointer` contains one of the 2 types:
+/// `InodeId` or `FatPointerId`
 #[derive(BitfieldSpecifier)]
 #[bits = 1]
 #[derive(Debug, Copy, Clone)]
@@ -661,6 +724,16 @@ enum ThinPointerValue {
     FatPointer(FatPointerId),
 }
 
+/// A `InodeId` (30 bits) or `FatPointerId` (30 bits)
+///
+/// This might be represented as:
+///
+/// ```ignore
+/// struct ThinPointer {
+///   is_commited: bool,
+///   value: ThinPointerValue
+/// }
+/// ```
 #[bitfield]
 #[derive(Debug, Clone)]
 pub struct ThinPointer {
@@ -681,6 +754,21 @@ impl ThinPointer {
     }
 }
 
+/// A `DirectoryId` (8 bytes), `HashId` (6 bytes), or `AbsoluteOffset` (8 bytes).
+///
+/// Note that a `FatPointer` may contain a `HashId` or `AbsoluteOffset` only when
+/// the pointer is deserialized from the repository.
+/// When the pointer is hashed and serialized (at commit), its `HashId` and
+/// `AbsoluteOffset` are stored in `Storage::pointers_data`.
+///
+/// This might be represented as:
+///
+/// ```ignore
+/// struct FatPointer {
+///   is_commited: bool,
+///   value: DirectoryId | HashId | AbsoluteOffset
+/// }
+/// ```
 #[bitfield]
 #[derive(Clone, Copy, Debug)]
 pub struct FatPointerInner {
@@ -688,7 +776,6 @@ pub struct FatPointerInner {
     ptr_kind: FatPointerKind,
     /// This is either a:
     /// - `DirectoryId`
-    /// - `InodeId`
     /// - `HashId`
     /// - `AbsoluteOffset`
     ptr_id: B61,
@@ -701,8 +788,20 @@ pub struct FatPointer {
 
 assert_eq_size!([u8; 8], FatPointer);
 
+/// A pointer on the stack, This is not stored in `Storage`
+///
+/// When when want to manipulate inode pointers, we fetch them
+/// from `Storage::{thin,fat}_pointers` and we make them
+/// a array: `[Option<PointerOnStack>; 32]`
+///
+/// This is used to make pointers manipulation easier
 pub struct PointerOnStack {
+    /// When a pointer is fetch from `Storage::thin_pointers`,
+    /// this field keep its value.
+    /// This is `None` when the pointer has just been deserialized from the repository
+    /// or when the `FatPointer` has just been created (after an insertion with `dir_insert`)
     pub thin_pointer: Option<ThinPointer>,
+    /// Value of the pointer
     pub fat_pointer: FatPointer,
 }
 
@@ -769,6 +868,7 @@ impl FatPointer {
             }
             ThinPointerKind::FatPointer => {
                 let pointer_id: FatPointerId = value.into();
+                // The thin pointer points to a fat pointer, dereference it
                 let fat_pointer = storage
                     .fat_pointers
                     .get(pointer_id)?
@@ -780,6 +880,9 @@ impl FatPointer {
         }
     }
 
+    /// Return the `DirectoryId`
+    ///
+    /// This returns `None` when the inner value is a `HashId` or `AbsoluteOffset`
     pub fn ptr_id(&self) -> Option<DirectoryOrInodeId> {
         let inner = self.inner.get();
 
@@ -797,6 +900,9 @@ impl FatPointer {
         }
     }
 
+    /// Return the `HashId` or `AbsoluteOffset`
+    ///
+    /// This returns `None` when the inner value is a `DirectoryId`
     pub fn get_data(&self) -> Result<Option<ObjectReference>, StorageError> {
         let inner = self.inner.get();
 
@@ -836,6 +942,7 @@ impl FatPointer {
     }
 }
 
+/// Index of a `ThinPointer` in `Storage::thin_pointers`
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ThinPointerId(usize);
 
@@ -851,6 +958,10 @@ impl From<usize> for ThinPointerId {
     }
 }
 
+/// Iterates on pointers.
+///
+/// This iterates on both the pointer index (0 to 31) and the `ThinPointerId`
+/// (index in `Storage::thin_pointers`)
 pub struct InodePointersIter {
     start: usize,
     bitfield_iter: PointersBitfieldIterator,
@@ -886,12 +997,19 @@ pub struct Inode {
     pub nchildren: u32,
     /// Points to a subslice of `Storage::thin_pointers`
     /// `PointersId` contains an index and a bitfield, which give
-    /// details about the subslice
+    /// details about the subslice.
+    ///
+    /// See `PointersId` for more information
     pub pointers: PointersId,
 }
 
 assert_eq_size!([u8; 16], Inode);
 
+/// A `DirectoryId` or `InodeId`
+///
+/// When accessing `FatPointer`, its value (`FatPointer::ptr_id()`) is either
+/// a `DirectoryId` or `InodeId`
+///
 /// This enum is not stored in `Storage`
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DirectoryOrInodeId {
@@ -958,22 +1076,43 @@ pub struct Storage {
     /// The working tree doesn't manipulate `InodeId` but `DirectoryId` only.
     /// A `DirectoryId` might contains an `InodeId` but it's only the root
     /// of an Inode, any children of that root are not visible to the working tree.
+    ///
+    /// See `PointersId` and `Inode` for more information
     inodes: IndexMap<InodeId, Inode>,
-    /// Sequence of pointers
+    /// Concatenation of pointers.
     /// `Self::inodes` refers to a subslice of this field.
     /// A `ThinPointer` contains either a `InodeId` (u32) or a `FatPointerId` (u32)
+    ///
     /// This vector is growing very fast when manipulating inodes
+    ///
+    /// See `PointersId` and `Inode` for more information
     thin_pointers: IndexMap<ThinPointerId, ThinPointer>,
     /// Contains big pointers
     /// It's either a `HashId` (6 bytes), an `AbsoluteOffset` (8 bytes) or a
     /// `DirectoryId` (8 bytes)
+    ///
+    /// There are no duplicate in this vector.
+    /// Many `ThinPointer` may refer to the same `FatPointerId`
+    /// This makes the vector much smaller than `Self::thin_pointers`
     fat_pointers: IndexMap<FatPointerId, FatPointer>,
-    /// Store the `ObjectReference` of the inode pointers
+    /// Store the `ObjectReference` of the inode pointers.
+    ///
+    /// This is used at commit time (when inodes are hashed and serialized)
+    /// When an inode is deserialized from the repository, its data (`HashId`
+    /// and/or `AbsoluteOffset` are stored directory in the `FatPointer`),
+    /// not in this `pointers_data`.
+    ///
+    /// We keep the data out of `FatPointer` and `ThinPointer` because this saves
+    /// a lot of space:
+    /// When inodes are modified, this creates lots of `ThinPointer` and `FatPointer`,
+    /// because they are immutables.
+    /// But those "intermediates" pointers do not need/have a `HashId`/`AbsoluteOffset`
+    /// associated to them, they are required at commit time only.
     pointers_data: RefCell<HashMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
-    pub offsets_to_hash_id: Map<AbsoluteOffset, HashId>,
+    pub offsets_to_hash_id: HashMap<AbsoluteOffset, HashId>,
 }
 
 #[derive(Debug)]
@@ -1016,6 +1155,8 @@ const DEFAULT_DIRECTORIES_CAPACITY: usize = 512 * 1024;
 const DEFAULT_BLOBS_CAPACITY: usize = 128 * 1024;
 const DEFAULT_NODES_CAPACITY: usize = 128 * 1024;
 const DEFAULT_INODES_CAPACITY: usize = 32 * 1024;
+const DEFAULT_FAT_POINTERS_CAPACITY: usize = 32 * 1024;
+const DEFAULT_THIN_POINTERS_CAPACITY: usize = 128 * 1024;
 
 impl Storage {
     pub fn new() -> Self {
@@ -1028,10 +1169,10 @@ impl Storage {
             nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY), // ~3MB
             inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY), // ~20MB
             data: Vec::with_capacity(100_000), // ~97KB
-            offsets_to_hash_id: Map::default(),
-            fat_pointers: IndexMap::with_chunk_capacity(32 * 1024),
+            offsets_to_hash_id: HashMap::default(),
+            fat_pointers: IndexMap::with_chunk_capacity(DEFAULT_FAT_POINTERS_CAPACITY), // ~262KB
             pointers_data: Default::default(),
-            thin_pointers: IndexMap::with_chunk_capacity(128 * 1024),
+            thin_pointers: IndexMap::with_chunk_capacity(DEFAULT_THIN_POINTERS_CAPACITY), // ~525KB
         } // Total ~27MB
     }
 
@@ -1105,7 +1246,8 @@ impl Storage {
         self.nodes.push(dir_entry).map_err(|_| DirEntryIdError)
     }
 
-    pub fn set_hashid_of_pointer(
+    /// Set the `HashId` of `pointer` in `Self::pointers_data`
+    pub fn pointer_set_hashid(
         &self,
         pointer: &FatPointer,
         hash_id: HashId,
@@ -1123,7 +1265,8 @@ impl Storage {
         Ok(())
     }
 
-    pub fn set_offset_pointer(
+    /// Set the `AbsoluteOffset` of `pointer` in `Self::pointers_data`
+    pub fn pointer_set_offset(
         &self,
         pointer: &FatPointer,
         offset: AbsoluteOffset,
@@ -1142,7 +1285,9 @@ impl Storage {
         Ok(())
     }
 
-    pub fn set_pointer_data(
+    /// Set the `ObjectReference` (Both `HashId` and `AbsoluteOffset`) of
+    /// `pointer` in `Self::pointers_data`
+    pub fn pointer_set_data(
         &self,
         pointer: &FatPointer,
         object_ref: ObjectReference,
@@ -1160,6 +1305,9 @@ impl Storage {
         Ok(())
     }
 
+    /// Returns the `AbsoluteOffset` of `pointer`
+    ///
+    /// This returns `None` when the pointer has not been {se/de}serialized
     pub fn pointer_retrieve_offset(
         &self,
         pointer: &FatPointer,
@@ -1181,7 +1329,10 @@ impl Storage {
         Ok(object_ref.offset_opt())
     }
 
-    pub fn retrieve_hashid_of_pointer(
+    /// Returns the `HashId` of `pointer`
+    ///
+    /// This returns `None` when the pointer has not been {se/de}serialized/hashed
+    pub fn pointer_retrieve_hashid(
         &self,
         pointer: &FatPointer,
         repository: &ContextKeyValueStore,
@@ -1191,7 +1342,7 @@ impl Storage {
         // The `HashId` of a `FatPointer` can be in different places:
         // - Its `ptr_id` value can be a `HashId`
         // - Its `ptr_id` value can be an offset, we take it and we
-        //   retrieve its `HashId` with `Storage::pointers_data`,
+        //   use it to retrieve its `HashId` from `Storage::pointers_data`,
         //   `Storage::offsets_to_hash_id`, or by reading the repository
 
         let offset = match pointer.get_data()? {
@@ -1433,10 +1584,10 @@ impl Storage {
                         .with_value(inode_id)
                 } else if let Some(thin_pointer) = &pointer.thin_pointer {
                     // `ThinPointer` already exist, use it.
-                    // This avoid growing `Self::fat_pointers`.
+                    // This avoid growing `Self::fat_pointers`, and it does't make duplicate `FatPointer`
                     thin_pointer.clone()
                 } else {
-                    // The pointers points to an `AbsoluteOffset` or `HashId`
+                    // The pointers points to an `AbsoluteOffset`, `HashId` or `DirectoryId`
                     // Create a new `FatPointer`
                     let fat_pointer: FatPointerId =
                         self.fat_pointers.push(pointer.fat_pointer.clone())?;
@@ -1634,6 +1785,13 @@ impl Storage {
         })
     }
 
+    /// Returns an array `[Option<PointerOnStack>; 32]` from `pointers`
+    ///
+    /// `pointers` refers to a subslice of `Self::thin_pointers`
+    /// Use it to create a list of 32 `Option<PointerOnStack>`
+    /// When a pointer is null, it will make a `None` in the array.
+    ///
+    /// See `PointersId` for more information
     pub fn into_pointers_on_stack(
         &self,
         pointers: PointersId,
@@ -1656,6 +1814,10 @@ impl Storage {
         Ok(cloned)
     }
 
+    /// Returns the `DirectoryOrInodeId` of the `thin_pointer_id`
+    ///
+    /// This returns `None` when the thin pointer points to an `AbsoluteOffset`
+    /// or `HashId`
     pub fn pointer_get_id(
         &self,
         thin_pointer_id: ThinPointerId,
@@ -1678,6 +1840,13 @@ impl Storage {
         }
     }
 
+    /// Copy the `FatPointer` of `thin_pointer_id`
+    ///
+    /// When the thin pointer points to an `InodeId`, a new `FatPointer` is created from it
+    /// When it points to a `FatPointer`, it is dereferenced and cloned
+    ///
+    /// Any modification made to the resulting `FatPointer` will not be reflected/updated
+    /// into `Storage`, this is not a reference.
     pub fn pointer_copy(&self, thin_pointer_id: ThinPointerId) -> Result<FatPointer, StorageError> {
         let thin_pointer = self
             .thin_pointers
@@ -1700,6 +1869,11 @@ impl Storage {
         }
     }
 
+    /// Fetch the pointer from the repository
+    ///
+    /// `pointer` is an `HashId` or `AbsoluteOffset` and we need to get its value
+    /// from the repository.
+    /// Once fetched, the `pointer` (`PointerOnStack`) is updated
     fn pointer_fetch_on_stack(
         &mut self,
         pointer: &PointerOnStack,
@@ -1716,11 +1890,15 @@ impl Storage {
 
         pointer.set_ptr_id(pointer_inode_id);
 
-        self.set_pointer_data(pointer, pointer_data)?;
+        self.pointer_set_data(pointer, pointer_data)?;
 
         Ok(pointer_inode_id)
     }
 
+    /// Fetch the pointer from the repository
+    ///
+    /// The difference with `Self::pointer_fetch_on_stack` is that it is
+    /// directly updating `Self::pointers_data` and the `FatPointer`.
     fn pointer_fetch(
         &mut self,
         thin_pointer_id: ThinPointerId,
@@ -1755,7 +1933,7 @@ impl Storage {
             .ok_or(StorageError::FatPointerNotFound)?;
 
         pointer.set_ptr_id(pointer_inode_id);
-        self.set_pointer_data(pointer, pointer_data)?;
+        self.pointer_set_data(pointer, pointer_data)?;
 
         Ok(pointer_inode_id)
     }
@@ -2310,32 +2488,6 @@ impl Storage {
         })
     }
 
-    pub fn clear(&mut self) {
-        if self.blobs.capacity() > DEFAULT_BLOBS_CAPACITY {
-            self.blobs = ChunkedVec::with_chunk_capacity(DEFAULT_BLOBS_CAPACITY);
-        } else {
-            self.blobs.clear();
-        }
-
-        if self.nodes.capacity() > DEFAULT_NODES_CAPACITY {
-            self.nodes = IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY);
-        } else {
-            self.nodes.clear();
-        }
-
-        if self.directories.capacity() > DEFAULT_DIRECTORIES_CAPACITY {
-            self.directories = ChunkedVec::with_chunk_capacity(DEFAULT_DIRECTORIES_CAPACITY);
-        } else {
-            self.directories.clear();
-        }
-
-        if self.inodes.capacity() > DEFAULT_INODES_CAPACITY {
-            self.inodes = IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY);
-        } else {
-            self.inodes.clear();
-        }
-    }
-
     pub fn deallocate(&mut self) {
         self.nodes = IndexMap::empty();
         self.directories = ChunkedVec::empty();
@@ -2428,10 +2580,7 @@ mod tool {
             for index in 0..self.thin_pointers.len() {
                 let pointer = self.pointer_copy(ThinPointerId(index)).unwrap();
 
-                let hash_id = match self
-                    .retrieve_hashid_of_pointer(&pointer, repository)
-                    .unwrap()
-                {
+                let hash_id = match self.pointer_retrieve_hashid(&pointer, repository).unwrap() {
                     Some(hash_id) => hash_id,
                     None => continue,
                 };
@@ -2439,7 +2588,7 @@ mod tool {
                 let hash: ObjectHash = repository.get_hash(hash_id.into()).unwrap().into_owned();
                 let new_hash_id: HashId = *unique.entry(hash).or_insert(hash_id);
 
-                self.set_hashid_of_pointer(&pointer, new_hash_id)?;
+                self.pointer_set_hashid(&pointer, new_hash_id)?;
             }
 
             Ok(())

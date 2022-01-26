@@ -193,13 +193,13 @@ fn hash_long_inode(
 
                 hasher.update(&[ptr_index]);
 
-                let hash_id = match storage.retrieve_hashid_of_pointer(&pointer, store)? {
+                let hash_id = match storage.pointer_retrieve_hashid(&pointer, store)? {
                     Some(hash_id) => hash_id,
                     None => {
                         let ptr_id = pointer.ptr_id().ok_or(HashingError::MissingInodeId)?;
 
                         let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
-                        storage.set_hashid_of_pointer(&pointer, hash_id)?;
+                        storage.pointer_set_hashid(&pointer, hash_id)?;
 
                         hash_id
                     }
