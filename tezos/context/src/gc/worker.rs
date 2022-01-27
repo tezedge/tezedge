@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, RecvError};
 
 use crate::{kv_store::HashId, serialize::in_memory::iter_hash_ids};
 
@@ -92,8 +92,11 @@ impl Cycles {
 impl GCThread {
     pub(crate) fn run(mut self) {
         loop {
-            self.debug();
-            match self.recv.recv() {
+            let msg = self.recv.recv();
+
+            self.debug(&msg);
+
+            match msg {
                 Ok(Command::StartNewCycle {
                     values_in_cycle,
                     new_ids,
@@ -112,8 +115,15 @@ impl GCThread {
         eprintln!("GC exited");
     }
 
-    fn debug(&self) {
-        println!("CYCLES_LENGTH = {:?}", self.cycles.list.len());
+    fn debug(&self, msg: &Result<Command, RecvError>) {
+        let msg = match msg {
+            Ok(Command::StartNewCycle { .. }) => "CYCLE_STARTED",
+            Ok(Command::MarkReused { .. }) => "MARK_REUSED",
+            Ok(Command::Close { .. }) => "CLOSE",
+            Err(_) => "ERR",
+        };
+
+        println!("CYCLES_LENGTH = {:?} MSG={:?}", self.cycles.list.len(), msg);
         for (index, c) in self.cycles.list.iter().enumerate() {
             println!("CYCLE[{:?}]_LENGTH = {:?}", index, c.len());
         }

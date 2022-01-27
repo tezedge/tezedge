@@ -274,16 +274,21 @@ ocaml_export! {
     fn tezedge_index_block_applied(
         rt,
         index: OCamlRef<DynBox<TezedgeIndexFFI>>,
-        _context_hash: OCamlRef<Option<OCamlContextHash>>,
+        context_hash: OCamlRef<Option<OCamlContextHash>>,
         cycle_position: OCamlRef<Option<OCamlInt>>,
     ) -> OCaml<Result<(), String>> {
         let ocaml_index = rt.get(index);
         let index: &TezedgeIndexFFI = ocaml_index.borrow();
         let mut index = index.0.borrow().clone();
         let cycle_position: Option<i64> = cycle_position.to_rust(rt);
+        let context_hash: Option<ContextHash> = context_hash.to_rust(rt);
 
         let result = if let Some(0) = cycle_position {
-            index.cycle_started().map_err(|err| format!("BlockApplied->CycleStarted: {:?}", err))
+            if context_hash.is_some() {
+                index.cycle_started().map_err(|err| format!("BlockApplied->CycleStarted: {:?}", err))
+            } else {
+                Ok(())
+            }
         } else {
             Ok(())
         };
