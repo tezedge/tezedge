@@ -22,7 +22,11 @@ mod utils;
 pub struct RightsKey(RightsInput);
 
 impl RightsKey {
-    pub(super) fn baking(current_block_hash: BlockHash, level: Option<Level>) -> Self {
+    pub(super) fn baking(
+        current_block_hash: BlockHash,
+        level: Option<Level>,
+        _max_priority: Option<u16>,
+    ) -> Self {
         Self(RightsInput::Baking(BakingRightsInput {
             current_block_hash,
             level,
@@ -149,7 +153,7 @@ mod tests {
         let s: String = serde_json::to_string(&key).unwrap();
         assert_eq!(key, serde_json::from_str(&s).unwrap());
 
-        let key = RightsKey::baking(hash.clone(), None);
+        let key = RightsKey::baking(hash.clone(), None, None);
         let s: String = serde_json::to_string(&key).unwrap();
         assert_eq!(key, serde_json::from_str(&s).unwrap());
     }

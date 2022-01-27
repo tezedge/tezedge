@@ -45,14 +45,16 @@ pub enum RightsResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCache {
     pub time: Duration,
-    pub rights: BTreeMap<Level, (ActionId, RightsResult)>,
+    pub baking: BTreeMap<Level, (ActionId, BakingRights)>,
+    pub endorsing: BTreeMap<Level, (ActionId, EndorsingRights)>,
 }
 
 impl Default for RightsCache {
     fn default() -> Self {
         Self {
             time: Duration::from_secs(600),
-            rights: Default::default(),
+            baking: Default::default(),
+            endorsing: Default::default(),
         }
     }
 }

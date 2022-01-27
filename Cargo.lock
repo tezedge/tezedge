@@ -3422,6 +3422,7 @@ dependencies = [
 name = "shell_automaton"
 version = "1.15.0"
 dependencies = [
+ "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
  "async_ipc",
  "bincode",
@@ -3431,6 +3432,7 @@ dependencies = [
  "derive_more",
  "dns-lookup",
  "enum-kinds",
+ "getset",
  "hex",
  "mio",
  "networking",

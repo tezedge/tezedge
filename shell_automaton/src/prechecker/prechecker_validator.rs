@@ -322,7 +322,7 @@ fn validate_inlined_endorsement(
     let verifying = Instant::now();
     match delegate.verify_signature(
         signature,
-        SignatureWatermark::Endorsement(chain_id.clone()),
+        &SignatureWatermark::Endorsement(chain_id.clone()),
         encoded,
     ) {
         Ok(true) => (),

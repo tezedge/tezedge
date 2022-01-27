@@ -8,7 +8,7 @@ use hex::FromHexError;
 use thiserror::Error;
 
 use crypto::base58::FromBase58CheckError;
-use crypto::hash::FromBytesError;
+use crypto::hash::{FromBytesError, TryFromPKError};
 
 pub mod fitness_comparator;
 pub mod rpc_support;
@@ -71,6 +71,17 @@ impl From<<SignatureCurve as FromStr>::Err> for ConversionError {
     fn from(error: <SignatureCurve as FromStr>::Err) -> Self {
         Self::InvalidCurveTag {
             curve_tag: error.to_string(),
+        }
+    }
+}
+
+impl From<TryFromPKError> for ConversionError {
+    fn from(error: TryFromPKError) -> Self {
+        match error {
+            TryFromPKError::Digest(_) => Self::Blake2bError,
+            TryFromPKError::Size(e) => Self::InvalidHash {
+                hash: e.to_string(),
+            },
         }
     }
 }

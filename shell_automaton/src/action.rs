@@ -16,6 +16,7 @@ use crate::block_applier::{
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction, BlockApplierEnqueueBlockAction,
 };
+use crate::current_head::current_head_actions::*;
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 use crate::State;
 
@@ -99,6 +100,7 @@ use crate::protocol_runner::{
     ProtocolRunnerStartAction,
 };
 
+use crate::stats::current_head::stats_current_head_actions::*;
 use crate::storage::blocks::genesis::check_applied::{
     StorageBlocksGenesisCheckAppliedGetMetaErrorAction,
     StorageBlocksGenesisCheckAppliedGetMetaPendingAction,
@@ -443,6 +445,22 @@ pub enum Action {
     RightsEndorsingReady(RightsEndorsingReadyAction),
     RightsBakingReady(RightsBakingReadyAction),
     RightsError(RightsErrorAction),
+
+    CurrentHeadReceived(CurrentHeadReceivedAction),
+    CurrentHeadPrecheck(CurrentHeadPrecheckAction),
+    CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction),
+    CurrentHeadPrecheckRejected(CurrentHeadPrecheckRejectedAction),
+    CurrentHeadError(CurrentHeadErrorAction),
+    CurrentHeadApply(CurrentHeadApplyAction),
+    CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction),
+
+    StatsCurrentHeadReceived(StatsCurrentHeadReceivedAction),
+    StatsCurrentHeadPrecheckSuccess(StatsCurrentHeadPrecheckSuccessAction),
+    StatsCurrentHeadPrepareSend(StatsCurrentHeadPrepareSendAction),
+    StatsCurrentHeadSent(StatsCurrentHeadSentAction),
+    StatsCurrentHeadSentError(StatsCurrentHeadSentErrorAction),
+    StatsCurrentHeadRpcGet(StatsCurrentHeadRpcGetAction),
+    StatsCurrentHeadPrune(StatsCurrentHeadPruneAction),
 
     StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),
     StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction),

@@ -60,6 +60,10 @@ pub mod prechecker;
 
 pub mod shutdown;
 
+pub mod current_head;
+
+pub mod stats;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};

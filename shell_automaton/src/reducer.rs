@@ -7,6 +7,7 @@ use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::block_applier::block_applier_reducer;
+use crate::current_head::current_head_reducer;
 use crate::paused_loops::paused_loops_reducer;
 
 use crate::peer::binary_message::read::peer_binary_message_read_reducer;
@@ -42,6 +43,7 @@ use crate::protocol_runner::protocol_runner_reducer;
 use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_reducer;
 
 use crate::shutdown::shutdown_reducer;
+use crate::stats::current_head::stats_current_head_reducer;
 use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_reducer;
 use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_reducer;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_reducer;
@@ -109,6 +111,8 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_graylist_reducer,
         mempool_reducer,
         rights_reducer,
+        current_head_reducer,
+        stats_current_head_reducer,
         prechecker_reducer,
         storage_request_reducer,
         storage_blocks_genesis_check_applied_reducer,

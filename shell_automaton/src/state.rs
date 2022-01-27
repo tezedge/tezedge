@@ -9,6 +9,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
 use crate::config::Config;
+use crate::current_head::CurrentHeads;
 use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
@@ -61,6 +62,10 @@ pub struct State {
 
     pub rights: RightsState,
 
+    pub current_heads: CurrentHeads,
+
+    pub stats: super::stats::Stats,
+
     pub paused_loops: PausedLoopsState,
 
     /// Action before the `last_action`.
@@ -90,6 +95,10 @@ impl State {
             block_applier,
 
             prechecker: PrecheckerState::default(),
+
+            current_heads: CurrentHeads::default(),
+
+            stats: super::stats::Stats::default(),
 
             paused_loops: PausedLoopsState::new(),
 

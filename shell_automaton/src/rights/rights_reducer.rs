@@ -273,7 +273,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
         }
         Action::RightsBakingReady(RightsBakingReadyAction { key, baking_rights }) => {
             if let Some(RightsRequest::PendingRightsCalculation { .. }) = requests.remove(key) {
-                let cache = &mut state.rights.cache.rights;
+                let cache = &mut state.rights.cache.baking;
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => baking_rights.level);
@@ -291,7 +291,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 if let RightsRequest::PendingRightsCalculation { .. } = entry.get() {
                     entry.remove();
                 }
-                let cache = &mut state.rights.cache.rights;
+                let cache = &mut state.rights.cache.endorsing;
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);

@@ -7,7 +7,7 @@ use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
     blake2b::{self, Blake2bError},
     crypto_box::CRYPTO_KEY_SIZE,
-    CryptoError, PublicKeySignatureVerifier,
+    CryptoError, PublicKeySignatureVerifier, PublicKeyWithHash,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -435,6 +435,25 @@ pub enum TryFromPKError {
     #[error("Invalid hash size")]
     Size(#[from] FromBytesError),
 }
+
+macro_rules! pk_with_hash {
+    ($pk:ident, $pkh:ident) => {
+        impl PublicKeyWithHash for $pk {
+            type Hash = $pkh;
+            type Error = TryFromPKError;
+
+            fn pk_hash(&self) -> Result<Self::Hash, Self::Error> {
+                let hash = blake2b::digest_160(&self.0)?;
+                let typed_hash = Self::Hash::from_bytes(&hash)?;
+                Ok(typed_hash)
+            }
+        }
+    };
+}
+
+pk_with_hash!(PublicKeyEd25519, ContractTz1Hash);
+pk_with_hash!(PublicKeySecp256k1, ContractTz2Hash);
+pk_with_hash!(PublicKeyP256, ContractTz3Hash);
 
 impl TryFrom<PublicKeyEd25519> for ContractTz1Hash {
     type Error = TryFromPKError;
