@@ -238,6 +238,8 @@ pub struct RepositoryMemoryUsage {
     pub shapes_total_bytes: usize,
     /// Bytes occupied by commit index in the repository
     pub commit_index_total_bytes: usize,
+    ///
+    pub new_ids_cap: usize,
 }
 
 #[derive(Debug)]

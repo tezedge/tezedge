@@ -78,7 +78,7 @@ impl Cycles {
     }
 
     fn roll(&mut self, new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>) -> Vec<HashId> {
-        let unused = self.list.pop_front().unwrap_or_else(BTreeMap::new);
+        let unused = self.list.pop_front().unwrap_or_default();
         self.list.push_back(new_cycle);
 
         let mut vec = Vec::with_capacity(unused.len());
@@ -92,6 +92,7 @@ impl Cycles {
 impl GCThread {
     pub(crate) fn run(mut self) {
         loop {
+            self.debug();
             match self.recv.recv() {
                 Ok(Command::StartNewCycle {
                     values_in_cycle,
@@ -109,6 +110,14 @@ impl GCThread {
             }
         }
         eprintln!("GC exited");
+    }
+
+    fn debug(&self) {
+        println!("CYCLES_LENGTH = {:?}", self.cycles.list.len());
+        for (index, c) in self.cycles.list.iter().enumerate() {
+            println!("CYCLE[{:?}]_LENGTH = {:?}", index, c.len());
+        }
+        println!("PENDING={:?}", self.pending.len());
     }
 
     fn start_new_cycle(

@@ -978,6 +978,7 @@ impl KeyValueStoreBackend for Persistent {
             strings_total_bytes,
             shapes_total_bytes,
             commit_index_total_bytes,
+            new_ids_cap: 0,
         }
     }
 
