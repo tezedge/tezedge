@@ -199,13 +199,6 @@ fn test_operations_list_list_roundtrip_one() {
     assert!(test_operations_list_list_roundtrip(1, sample_operations3(), 5, 1).is_ok());
 }
 
-fn test_operations_list_list_roundtrip_for_bench(iteration: i32) -> Result<(), anyhow::Error> {
-    let result = test_operations_list_list_roundtrip(iteration, sample_operations(), 4, 1);
-    assert!(result.is_ok());
-    let _unwrapped_result = result?;
-    Ok(())
-}
-
 fn test_operations_list_list_roundtrip(
     iteration: i32,
     operations: Vec<Option<Vec<RustBytes>>>,

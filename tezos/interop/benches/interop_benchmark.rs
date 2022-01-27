@@ -122,6 +122,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         new_protocol_constants_json: None,
         new_cycle_eras_json: None,
         commit_time: 1.0,
+        execution_timestamps: Default::default(),
     };
 
     let _ignored = runtime::execute(move |rt: &mut OCamlRuntime| {
