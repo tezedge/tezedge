@@ -33,8 +33,25 @@ pub struct StatisticsService {
 }
 
 impl StatisticsService {
-    pub fn stats_get(&self) -> &BlocksStats {
+    pub fn block_stats_get_all(&self) -> &BlocksStats {
         &self.blocks
+    }
+
+    pub fn block_stats_get_by_level(&self, level: Level) -> Option<&BlockStats> {
+        let first_block_level = self
+            .blocks_by_level
+            .get(0)
+            .and_then(|hash| self.blocks.get(hash))
+            .and_then(|block| block.level)?;
+
+        let index = level.checked_sub(first_block_level)?;
+        if index < 0 {
+            return None;
+        }
+
+        self.blocks_by_level
+            .get(index as usize)
+            .and_then(|hash| self.blocks.get(hash))
     }
 
     pub fn block_new(&mut self, block_hash: Arc<BlockHash>) {
@@ -43,7 +60,7 @@ impl StatisticsService {
             e.insert(Default::default());
             self.blocks_by_level.push_back(block_hash);
 
-            if self.blocks_by_level.len() > 100000 {
+            if self.blocks_by_level.len() > 50000 {
                 if let Some(oldest_block) = self.blocks_by_level.pop_front() {
                     self.blocks.remove(&oldest_block);
                 }

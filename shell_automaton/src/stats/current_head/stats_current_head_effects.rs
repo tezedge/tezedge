@@ -94,6 +94,11 @@ where
                 #[serde(flatten)]
                 times: HashMap<String, u64>,
             }
+            let block_application_stats = store
+                .service
+                .statistics()
+                .and_then(|stats| stats.block_stats_get_by_level(*level).cloned());
+
             let rpc = store.service.rpc();
             store
                 .state
@@ -103,6 +108,8 @@ where
                 .level_stats
                 .get(level)
                 .and_then(|level_stats| {
+                    let min_time = u64::from(level_stats.first_action);
+
                     let current_heads = level_stats
                         .peer_stats
                         .iter()
@@ -111,6 +118,54 @@ where
                             let head_data = level_stats.head_stats.get(&stats.hash);
                             head_data.map(|hd| {
                                 times.insert("prechecked_time".to_string(), hd.prechecked_time)
+                            });
+                            block_application_stats.as_ref().map(|s| {
+                                times.insert("download_data_start".to_owned(), 0);
+                                times.insert(
+                                    "download_data_end".to_owned(),
+                                    s.load_data_start
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+
+                                times.insert(
+                                    "load_data_start".to_owned(),
+                                    s.load_data_start
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+                                times.insert(
+                                    "load_data_end".to_owned(),
+                                    s.load_data_end
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+
+                                times.insert(
+                                    "apply_block_start".to_owned(),
+                                    s.apply_block_start
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+                                times.insert(
+                                    "apply_block_end".to_owned(),
+                                    s.apply_block_end
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+
+                                times.insert(
+                                    "store_result_start".to_owned(),
+                                    s.store_result_start
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
+                                times.insert(
+                                    "store_result_end".to_owned(),
+                                    s.store_result_end
+                                        .and_then(|t| t.checked_sub(min_time))
+                                        .unwrap_or(0),
+                                );
                             });
                             CurrentHeadStat {
                                 address: *peer,
