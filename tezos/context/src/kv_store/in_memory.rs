@@ -161,8 +161,8 @@ impl HashValueStore {
     }
 
     fn take_new_ids(&mut self) -> Vec<HashId> {
-        let new_ids = self.new_ids.clone();
-        self.new_ids.clear();
+        let new_ids = std::mem::take(&mut self.new_ids);
+        self.new_ids = Vec::with_capacity(128 * 1024);
         new_ids
     }
 }
