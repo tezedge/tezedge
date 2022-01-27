@@ -8,7 +8,8 @@ use std::{
     collections::{hash_map::DefaultHasher, BTreeMap, VecDeque},
     hash::Hasher,
     mem::size_of,
-    sync::{atomic::Ordering, Arc},
+    rc::Rc,
+    sync::{atomic::Ordering, Arc, RwLock},
     thread::JoinHandle,
 };
 
@@ -31,15 +32,15 @@ use crate::{
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, WorkingTree},
-        Object, ObjectReference,
+        Commit, Object, ObjectReference,
     },
-    Map,
+    ContextKeyValueStore, IndexApi, Map, Persistent, TezedgeIndex,
 };
 use crate::{persistent::get_commit_hash, serialize::in_memory};
 
 use tezos_spsc::Consumer;
 
-use super::{index_map::IndexMap, HashIdError};
+use super::{index_map::IndexMap, persistent::PersistentConfiguration, HashIdError};
 use super::{HashId, VacantObjectHash};
 
 #[derive(Debug)]
@@ -205,6 +206,7 @@ impl Persistable for InMemory {
 
 impl KeyValueStoreBackend for InMemory {
     fn reload_database(&mut self) -> Result<(), DBError> {
+        self.reload_database();
         Ok(())
     }
 
@@ -341,7 +343,16 @@ impl KeyValueStoreBackend for InMemory {
     }
 
     fn take_strings_on_reload(&mut self) -> Option<StringInterner> {
-        None
+        // On reload, `Self::string_interner` contains all strings and their hashes
+        let string_interner = std::mem::take(&mut self.string_interner);
+
+        // In the repository, we only want strings without their hashes
+        self.synchronize_strings_from(&string_interner);
+
+        self.string_interner
+            .set_to_serialize_index(string_interner.get_to_serialize_index());
+
+        Some(string_interner)
     }
 
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
@@ -412,6 +423,87 @@ impl InMemory {
             shapes: DirectoryShapes::default(),
             string_interner: StringInterner::default(),
         })
+    }
+
+    fn reload_database(&mut self) {
+        let (tree, parent_hash, commit) = {
+            let mut ondisk = Persistent::try_new(PersistentConfiguration {
+                db_path: Some("/tmp/tezedge/context".to_string()),
+                // db_path: Some("/home/sebastien/tmp/replay/context".to_string()),
+                startup_check: true,
+                read_mode: true,
+            })
+            .unwrap();
+
+            ondisk.reload_database().unwrap();
+
+            // let checkout_context_hash = ContextHash::from_base58_check("CoW9AT5QuvSm3zYnxGdWgM56f1QyfF4miyNezsHveSsWap2WVqjL").unwrap();
+            let checkout_context_hash: ContextHash = ondisk.get_last_context_hash().unwrap();
+
+            println!("CHECKOUT {:?}", checkout_context_hash);
+
+            let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(ondisk));
+            let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
+            let context = index.checkout(&checkout_context_hash).unwrap().unwrap();
+
+            // Take the commit from repository
+            let commit: Commit = index
+                .fetch_commit_from_context_hash(&checkout_context_hash)
+                .unwrap()
+                .unwrap();
+
+            // If the commit has a parent, fetch it
+            // It is necessary for the snapshot to have it in its db
+            let parent_hash: Option<ObjectHash> = match commit.parent_commit_ref {
+                Some(parent) => {
+                    let repo = read_repo.read().unwrap();
+                    Some(repo.get_hash(parent).unwrap().into_owned())
+                }
+                None => None,
+            };
+
+            // Traverse the tree, to store it in the `Storage`
+            context.tree.traverse_working_tree(false).unwrap();
+
+            context.index.storage.borrow_mut().forget_references();
+
+            // Extract the `Storage`, `StringInterner` and `WorkingTree` from
+            // the index
+            (
+                Rc::try_unwrap(context.tree).ok().unwrap(),
+                // context.index.storage.take(),
+                // context.index.string_interner.take().unwrap(),
+                parent_hash,
+                commit,
+            )
+        };
+
+        {
+            // Put the parent hash in the new repository
+            let parent_ref: Option<ObjectReference> =
+                parent_hash.map(|parent_hash| self.put_hash(parent_hash).unwrap().into());
+
+            let commit = self
+                .commit(
+                    &tree,
+                    parent_ref,
+                    commit.author,
+                    commit.message,
+                    commit.time,
+                )
+                .unwrap();
+
+            println!("COMMIT {:?}", commit);
+
+            self.string_interner = tree.index.string_interner.take().unwrap();
+        }
+    }
+
+    pub fn put_hash(&mut self, hash: ObjectHash) -> Result<HashId, DBError> {
+        let hash_id = self
+            .get_vacant_object_hash()?
+            .write_with(|entry| *entry = hash);
+        Ok(hash_id)
     }
 
     pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantObjectHash, DBError> {
