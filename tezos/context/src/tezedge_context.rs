@@ -1120,8 +1120,12 @@ impl TezedgeContext {
             repository.commit(&self.tree, self.parent_commit_ref, author, message, date)?
         };
 
+        let mem = self.get_memory_usage()?;
+
+        println!("MEMORY_USAGE={:#?}", mem);
+
         send_statistics(BlockMemoryUsage {
-            context: Box::new(self.get_memory_usage()?),
+            context: Box::new(mem),
             serialize: serialize_stats,
         });
 
