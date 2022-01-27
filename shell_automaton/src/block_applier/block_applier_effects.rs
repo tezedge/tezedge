@@ -140,7 +140,7 @@ where
             store
                 .service
                 .statistics()
-                .map(|s| s.block_apply_end(&block_hash, action.time_as_nanos()));
+                .map(|s| s.block_apply_end(&block_hash, action.time_as_nanos(), &block_result));
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::StoreApplyBlockResult {
                     block_hash,

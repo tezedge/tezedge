@@ -9,8 +9,7 @@ use std::{
 use crate::ActionId;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use tezos_messages::{
-    base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
-    p2p::encoding::block_header::Level,
+    base::signature_public_key::SignaturePublicKey, p2p::encoding::block_header::Level,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -32,9 +31,11 @@ pub struct CurrentHeadLevelStats {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, getset::Getters)]
 #[getset(get = "pub(super)")]
 pub struct CurrentHeadData {
-    pub baker: SignaturePublicKey,
-    pub priority: u16,
-    pub prechecked_time: u64,
+    pub block_timestamp: u64,
+    pub received_timestamp: u64,
+    pub baker: Option<SignaturePublicKey>,
+    pub priority: Option<u16>,
+    pub times: HashMap<String, u64>,
 }
 
 pub type CurrentHeadPeerStats = HashMap<SocketAddr, PeerCurrentHeadData>;
@@ -43,6 +44,5 @@ pub type CurrentHeadPeerStats = HashMap<SocketAddr, PeerCurrentHeadData>;
 pub struct PeerCurrentHeadData {
     pub node_id: Option<CryptoboxPublicKeyHash>,
     pub hash: BlockHash,
-    pub baker: Option<SignaturePublicKeyHash>,
     pub times: HashMap<String, u64>,
 }

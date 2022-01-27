@@ -66,7 +66,10 @@ pub enum RpcRequest {
         block_hash: Option<BlockHash>,
     },
 
-    GetStatsCurrentHead {
+    GetStatsCurrentHeadPeers {
+        level: Level,
+    },
+    GetStatsCurrentHeadApplication {
         level: Level,
     },
 }

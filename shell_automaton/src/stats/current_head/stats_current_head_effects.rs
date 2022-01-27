@@ -9,10 +9,7 @@ use crypto::{
 };
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKeyHash,
-    p2p::{
-        binary_message::MessageHash,
-        encoding::{block_header::Level, peer::PeerMessage},
-    },
+    p2p::{binary_message::MessageHash, encoding::peer::PeerMessage},
 };
 
 use crate::{
@@ -23,7 +20,6 @@ use crate::{
     },
     rights::{rights_actions::RightsGetAction, RightsKey},
     service::RpcService,
-    stats::current_head::CurrentHeadData,
     Action,
 };
 
@@ -78,23 +74,27 @@ where
         Action::PeerMessageWriteError(PeerMessageWriteErrorAction { address, .. }) => {
             store.dispatch(StatsCurrentHeadSentErrorAction { address: *address });
         }
-        Action::StatsCurrentHeadRpcGet(StatsCurrentHeadRpcGetAction { rpc_id, level }) => {
+        Action::StatsCurrentHeadRpcGetApplication(StatsCurrentHeadRpcGetApplicationAction {
+            rpc_id,
+            level,
+        }) => {
             #[derive(Debug, serde::Serialize)]
-            struct Stats {
-                block_level: Level,
-                current_heads: Vec<CurrentHeadStat>,
-            }
-            #[derive(Debug, serde::Serialize)]
-            struct CurrentHeadStat {
-                address: SocketAddr,
-                node_id: Option<CryptoboxPublicKeyHash>,
+            struct CurrentHeadAppStat {
                 block_hash: BlockHash,
+                block_timestamp: u64,
+                receive_timestamp: u64,
                 baker: Option<SignaturePublicKeyHash>,
                 baker_priority: Option<u16>,
                 #[serde(flatten)]
                 times: HashMap<String, u64>,
+                protocol_times: HashMap<String, u64>,
             }
-            let rpc = store.service.rpc();
+
+            let block_application_stats = store
+                .service
+                .statistics()
+                .map(|stats| stats.block_stats_get_all());
+
             store
                 .state
                 .get()
@@ -102,43 +102,141 @@ where
                 .current_head
                 .level_stats
                 .get(level)
-                .and_then(|level_stats| {
-                    let current_heads = level_stats
-                        .peer_stats
+                .map(|level_stats| {
+                    let min_time = u64::from(level_stats.first_action);
+                    let delta_time = |time: Option<u64>| time.map(|t| t.saturating_sub(min_time));
+                    level_stats
+                        .head_stats
                         .iter()
-                        .map(|(peer, stats)| {
-                            let mut times = stats.times.clone();
-                            let head_data = level_stats.head_stats.get(&stats.hash);
-                            head_data.map(|hd| {
-                                times.insert("prechecked_time".to_string(), hd.prechecked_time)
-                            });
-                            CurrentHeadStat {
-                                address: *peer,
-                                node_id: stats.node_id.clone(),
-                                block_hash: stats.hash.clone(),
-                                baker: head_data
-                                    .map(CurrentHeadData::baker)
+                        .map(|(hash, stats)| {
+                            let times = block_application_stats
+                                .and_then(|bas| bas.get(hash))
+                                .map(|bas| {
+                                    IntoIterator::into_iter([
+                                        ("download_data_start", Some(0)),
+                                        ("download_data_end", bas.load_data_start),
+                                        ("load_data_start", bas.load_data_start),
+                                        ("load_data_end", bas.load_data_end),
+                                        ("apply_block_start", bas.apply_block_start),
+                                        ("apply_block_end", bas.apply_block_end),
+                                        ("store_result_start", bas.store_result_start),
+                                        ("store_result_end", bas.store_result_end),
+                                    ])
+                                    .map(|(k, v)| {
+                                        (k.to_string(), delta_time(v).unwrap_or_default())
+                                    })
+                                    .chain(stats.times.clone())
+                                    .collect::<HashMap<_, _>>()
+                                })
+                                .unwrap_or_default();
+
+                            let protocol_times = block_application_stats
+                                .and_then(|bas| bas.get(hash))
+                                .and_then(|bas| bas.apply_block_stats.as_ref())
+                                .map(|abs| {
+                                    [
+                                        ("apply_start", abs.apply_start),
+                                        (
+                                            "operations_decoding_start",
+                                            abs.operations_decoding_start,
+                                        ),
+                                        ("operations_decoding_end", abs.operations_decoding_end),
+                                        //("operations_application", ...),
+                                        (
+                                            "operations_metadata_encoding_start",
+                                            abs.operations_metadata_encoding_start,
+                                        ),
+                                        (
+                                            "operations_metadata_encoding_end",
+                                            abs.operations_metadata_encoding_end,
+                                        ),
+                                        ("begin_application_start", abs.begin_application_start),
+                                        ("begin_application_end", abs.begin_application_end),
+                                        ("finalize_block_start", abs.finalize_block_start),
+                                        ("finalize_block_end", abs.finalize_block_end),
+                                        (
+                                            "collect_new_rolls_owner_snapshots_start",
+                                            abs.collect_new_rolls_owner_snapshots_start,
+                                        ),
+                                        (
+                                            "collect_new_rolls_owner_snapshots_end",
+                                            abs.collect_new_rolls_owner_snapshots_end,
+                                        ),
+                                        ("commit_start", abs.commit_start),
+                                        ("commit_end", abs.commit_end),
+                                        ("apply_end", abs.apply_end),
+                                    ]
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.saturating_sub(min_time)))
+                                    .collect::<HashMap<_, _>>()
+                                })
+                                .unwrap_or(HashMap::new());
+
+                            CurrentHeadAppStat {
+                                block_hash: hash.clone(),
+                                block_timestamp: stats.block_timestamp,
+                                receive_timestamp: stats.received_timestamp,
+                                baker: stats
+                                    .baker
+                                    .as_ref()
                                     .and_then(|b| b.pk_hash().map_or(None, Some)),
-                                baker_priority: head_data.map(CurrentHeadData::priority).cloned(),
+                                baker_priority: stats.priority,
                                 times,
+                                protocol_times,
                             }
                         })
-                        .collect::<Vec<_>>();
-                    rpc.respond(
-                        *rpc_id,
-                        Stats {
-                            block_level: *level,
-                            current_heads,
-                        },
-                    );
-                    Some(())
+                        .collect::<Vec<_>>()
                 })
-                .or_else(|| {
+                .map(|d| {
+                    store.service.rpc().respond(*rpc_id, d);
+                })
+                .unwrap_or_else(|| {
                     store.service.rpc().respond(
                         *rpc_id,
                         serde_json::json!({ "error": format!("No stats for level `{level}`") }),
                     );
-                    None
+                });
+        }
+        Action::StatsCurrentHeadRpcGetPeers(StatsCurrentHeadRpcGetPeersAction {
+            rpc_id,
+            level,
+        }) => {
+            #[derive(Debug, serde::Serialize)]
+            struct CurrentHeadStat {
+                address: SocketAddr,
+                node_id: Option<CryptoboxPublicKeyHash>,
+                block_hash: BlockHash,
+                #[serde(flatten)]
+                times: HashMap<String, u64>,
+            }
+
+            store
+                .state
+                .get()
+                .stats
+                .current_head
+                .level_stats
+                .get(level)
+                .map(|level_stats| {
+                    level_stats
+                        .peer_stats
+                        .iter()
+                        .map(|(peer, stats)| CurrentHeadStat {
+                            address: *peer,
+                            node_id: stats.node_id.clone(),
+                            block_hash: stats.hash.clone(),
+                            times: stats.times.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .map(|d| {
+                    store.service.rpc().respond(*rpc_id, d);
+                })
+                .unwrap_or_else(|| {
+                    store.service.rpc().respond(
+                        *rpc_id,
+                        serde_json::json!({ "error": format!("No stats for level `{level}`") }),
+                    );
                 });
         }
 

@@ -19,7 +19,8 @@ pub fn stats_current_head_reducer(state: &mut crate::State, action: &crate::Acti
             address,
             level,
             hash,
-            timestamp,
+            block_timestamp,
+            receive_timestamp,
             empty_mempool,
         }) if *empty_mempool => {
             add_current_head_time(
@@ -28,8 +29,25 @@ pub fn stats_current_head_reducer(state: &mut crate::State, action: &crate::Acti
                 *address,
                 *level,
                 hash.clone(),
-                *timestamp,
+                *receive_timestamp,
             );
+            state
+                .stats
+                .current_head
+                .level_stats
+                .get_mut(&level)
+                .map(|level_stats| {
+                    level_stats
+                        .head_stats
+                        .entry(hash.clone())
+                        .or_insert(CurrentHeadData {
+                            block_timestamp: *block_timestamp,
+                            received_timestamp: (*receive_timestamp).into(),
+                            baker: None,
+                            priority: None,
+                            times: HashMap::default(),
+                        })
+                });
         }
         Action::StatsCurrentHeadPrecheckSuccess(StatsCurrentHeadPrecheckSuccessAction {
             hash,
@@ -47,17 +65,18 @@ pub fn stats_current_head_reducer(state: &mut crate::State, action: &crate::Acti
                 .level_stats
                 .get_mut(&level)
                 .map(|level_stats| {
-                    level_stats.head_stats.insert(
-                        hash.clone(),
-                        CurrentHeadData {
-                            baker: baker.clone(),
-                            priority: *priority,
-                            prechecked_time: action
+                    if let Some(stats) = level_stats.head_stats.get_mut(hash) {
+                        stats.baker = Some(baker.clone());
+                        stats.priority = Some(*priority);
+                        stats.times.insert("precheck_start".to_string(), 0);
+                        stats.times.insert(
+                            "precheck_end".to_string(),
+                            action
                                 .id
                                 .duration_since(level_stats.first_action)
                                 .as_nanos() as u64,
-                        },
-                    )
+                        );
+                    }
                 });
         }
         Action::StatsCurrentHeadPrepareSend(StatsCurrentHeadPrepareSendAction {
@@ -74,7 +93,22 @@ pub fn stats_current_head_reducer(state: &mut crate::State, action: &crate::Acti
         }
         Action::StatsCurrentHeadSent(StatsCurrentHeadSentAction { address, timestamp }) => {
             if let Some((level, hash)) = state.stats.current_head.pending_messages.remove(address) {
-                add_current_head_time(state, "sent_time", *address, level, hash, *timestamp)
+                state
+                    .stats
+                    .current_head
+                    .level_stats
+                    .get_mut(&level)
+                    .map(|level_stats| {
+                        if let Some(stats) = level_stats.head_stats.get_mut(&hash) {
+                            let time = action
+                                .id
+                                .duration_since(level_stats.first_action)
+                                .as_nanos() as u64;
+                            stats.times.entry("send_start".to_string()).or_insert(time);
+                            stats.times.insert("send_end".to_string(), time);
+                        }
+                    });
+                add_current_head_time(state, "sent_time", *address, level, hash, *timestamp);
             }
         }
         Action::StatsCurrentHeadSentError(StatsCurrentHeadSentErrorAction { address }) => {
@@ -124,7 +158,6 @@ fn add_current_head_time(
                 .and_then(|peer| peer.status.as_handshaked())
                 .map(|hs| &hs.public_key_hash)
                 .cloned(),
-            baker: None,
             hash,
             times: HashMap::new(),
         });
