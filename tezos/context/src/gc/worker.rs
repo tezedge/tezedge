@@ -58,17 +58,28 @@ impl Default for Cycles {
 
 impl Cycles {
     fn move_to_last_cycle(&mut self, hash_id: HashId) -> Option<Arc<[u8]>> {
-        let len = self.list.len();
         let mut value = None;
 
-        for store in self.list.iter_mut().take(len - 1) {
+        for store in self.list.iter_mut().take(PRESERVE_CYCLE_COUNT - 1) {
+            // if let Some(v) = store.get(&hash_id) {
+            //     println!("SOME {:?}", v.is_some());
+            // }
+
             if let Some(item) = store.remove(&hash_id).flatten() {
+                // println!("FOUND SOME");
                 value = Some(item);
             };
         }
 
-        if let Some(v) = self.list.back_mut() {
-            v.insert(hash_id, value.clone());
+        value.as_ref()?;
+
+        if let Some(last_cycle) = self.list.back_mut() {
+            last_cycle.insert(hash_id, value.clone());
+            // if let Some(v) = last_cycle.get(&hash_id) {
+            //     println!("SOME1 {:?}", v.is_some());
+            // } else {
+            //     println!("NONE");
+            // }
         } else {
             eprintln!("GC: Failed to insert value in Cycles")
         }
@@ -116,15 +127,31 @@ impl GCThread {
 
     fn debug(&self, msg: &Result<Command, RecvError>) {
         let msg = match msg {
-            Ok(Command::StartNewCycle { .. }) => "CYCLE_STARTED",
-            Ok(Command::MarkReused { .. }) => "MARK_REUSED",
-            Ok(Command::Close { .. }) => "CLOSE",
-            Err(_) => "ERR",
+            Ok(Command::StartNewCycle {
+                values_in_cycle,
+                new_ids,
+            }) => format!(
+                "START_NEW_CYCLE VALUES_IN_CYCLE={:?} NEW_IDS={:?}",
+                values_in_cycle.len(),
+                new_ids.len()
+            ),
+            Ok(Command::MarkReused { reused }) => format!("REUSED {:?}", reused.len()),
+            Ok(Command::Close { .. }) => "CLOSE".to_owned(),
+            Err(_) => "ERR".to_owned(),
         };
 
         println!("CYCLES_LENGTH = {:?} MSG={:?}", self.cycles.list.len(), msg);
         for (index, c) in self.cycles.list.iter().enumerate() {
-            println!("CYCLE[{:?}]_LENGTH = {:?}", index, c.len());
+            let n_none = c
+                .values()
+                .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
+
+            println!(
+                "CYCLE[{:?}]_LENGTH = {:?} NONE={:?}",
+                index,
+                c.len(),
+                n_none
+            );
         }
         println!("PENDING={:?}", self.pending.len());
     }
@@ -145,7 +172,17 @@ impl GCThread {
             });
         }
 
-        println!("GC_WORKER: Got HashId without value: {:?}", without_value);
+        let n_none = new_cycle
+            .values()
+            .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
+
+        println!(
+            "GC_WORKER: START_NEW_CYCLE Got HashId without value: {:?} NEW_CYCLE_NONE={:?} NEW_CYCLE={:?} DIFF={:?}",
+            without_value,
+            n_none,
+            new_cycle.len(),
+            new_cycle.len() - n_none,
+        );
 
         let unused = self.cycles.roll(new_cycle);
         self.send_unused(unused);
@@ -201,16 +238,27 @@ impl GCThread {
     fn mark_reused(&mut self, mut reused: Vec<HashId>) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
 
+        let mut none = 0;
+        let mut total = 0;
+
         while let Some(hash_id) = reused.pop() {
+            total += 1;
+
             let value = match self.cycles.move_to_last_cycle(hash_id) {
                 Some(v) => v,
-                None => continue,
+                None => {
+                    none += 1;
+                    continue;
+                }
             };
 
             for hash_id in iter_hash_ids(&value) {
                 reused.push(hash_id);
             }
         }
+
+        println!("MARK_REUSED NONE_VALUES={:?} TOTAL={:?}", none, total);
+
         self.send_pending();
     }
 }
