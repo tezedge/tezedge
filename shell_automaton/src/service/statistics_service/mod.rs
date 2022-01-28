@@ -11,6 +11,10 @@ use crypto::hash::BlockHash;
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::p2p::encoding::block_header::Level;
 
+fn ocaml_time_normalize(ocaml_time: f64) -> u64 {
+    (ocaml_time * 1_000_000_000.0) as u64
+}
+
 pub type BlocksStats = HashMap<Arc<BlockHash>, BlockStats>;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -22,10 +26,69 @@ pub struct BlockStats {
 
     pub apply_block_start: Option<u64>,
     pub apply_block_end: Option<u64>,
-    pub apply_block_stats: Option<ApplyBlockExecutionTimestamps>,
+    pub apply_block_stats: Option<ApplyBlockProtocolStats>,
 
     pub store_result_start: Option<u64>,
     pub store_result_end: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct ApplyBlockProtocolStats {
+    pub apply_start: u64,
+    pub operations_decoding_start: u64,
+    pub operations_decoding_end: u64,
+    pub operations_application: Vec<Vec<(u64, u64)>>,
+    pub operations_metadata_encoding_start: u64,
+    pub operations_metadata_encoding_end: u64,
+    pub begin_application_start: u64,
+    pub begin_application_end: u64,
+    pub finalize_block_start: u64,
+    pub finalize_block_end: u64,
+    pub collect_new_rolls_owner_snapshots_start: u64,
+    pub collect_new_rolls_owner_snapshots_end: u64,
+    pub commit_start: u64,
+    pub commit_end: u64,
+    pub apply_end: u64,
+}
+
+impl From<&ApplyBlockExecutionTimestamps> for ApplyBlockProtocolStats {
+    fn from(v: &ApplyBlockExecutionTimestamps) -> Self {
+        Self {
+            apply_start: ocaml_time_normalize(v.apply_start_t),
+            operations_decoding_start: ocaml_time_normalize(v.operations_decoding_start_t),
+            operations_decoding_end: ocaml_time_normalize(v.operations_decoding_end_t),
+            operations_application: v
+                .operations_application_timestamps
+                .iter()
+                .map(|l| {
+                    l.iter()
+                        .map(|(start, end)| {
+                            (ocaml_time_normalize(*start), ocaml_time_normalize(*end))
+                        })
+                        .collect()
+                })
+                .collect(),
+            operations_metadata_encoding_start: ocaml_time_normalize(
+                v.operations_metadata_encoding_start_t,
+            ),
+            operations_metadata_encoding_end: ocaml_time_normalize(
+                v.operations_metadata_encoding_end_t,
+            ),
+            begin_application_start: ocaml_time_normalize(v.begin_application_start_t),
+            begin_application_end: ocaml_time_normalize(v.begin_application_end_t),
+            finalize_block_start: ocaml_time_normalize(v.finalize_block_start_t),
+            finalize_block_end: ocaml_time_normalize(v.finalize_block_end_t),
+            collect_new_rolls_owner_snapshots_start: ocaml_time_normalize(
+                v.collect_new_rolls_owner_snapshots_start_t,
+            ),
+            collect_new_rolls_owner_snapshots_end: ocaml_time_normalize(
+                v.collect_new_rolls_owner_snapshots_end_t,
+            ),
+            commit_start: ocaml_time_normalize(v.commit_start_t),
+            commit_end: ocaml_time_normalize(v.commit_end_t),
+            apply_end: ocaml_time_normalize(v.apply_end_t),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -115,7 +178,7 @@ impl StatisticsService {
         result: &ApplyBlockResponse,
     ) {
         self.blocks.get_mut(block_hash).map(|v| {
-            v.apply_block_stats = Some(result.execution_timestamps.clone());
+            v.apply_block_stats = Some((&result.execution_timestamps).into());
             v.apply_block_end = Some(time)
         });
     }
