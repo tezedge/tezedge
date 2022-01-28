@@ -87,6 +87,7 @@ where
                 baker_priority: Option<u16>,
                 #[serde(flatten)]
                 times: HashMap<String, u64>,
+                protocol_times: HashMap<String, u64>,
             }
 
             let block_application_stats = store
@@ -124,69 +125,52 @@ where
                                     .map(|(k, v)| {
                                         (k.to_string(), delta_time(v).unwrap_or_default())
                                     })
-                                    .chain(
-                                        bas.apply_block_stats
-                                            .as_ref()
-                                            .map(|abs| {
-                                                [
-                                                    ("apply_start", abs.apply_start),
-                                                    (
-                                                        "operations_decoding_start",
-                                                        abs.operations_decoding_start,
-                                                    ),
-                                                    (
-                                                        "operations_decoding_end",
-                                                        abs.operations_decoding_end,
-                                                    ),
-                                                    //("operations_application", ...),
-                                                    (
-                                                        "operations_metadata_encoding_start",
-                                                        abs.operations_metadata_encoding_start,
-                                                    ),
-                                                    (
-                                                        "operations_metadata_encoding_end",
-                                                        abs.operations_metadata_encoding_end,
-                                                    ),
-                                                    (
-                                                        "begin_application_start",
-                                                        abs.begin_application_start,
-                                                    ),
-                                                    (
-                                                        "begin_application_end",
-                                                        abs.begin_application_end,
-                                                    ),
-                                                    (
-                                                        "finalize_block_start",
-                                                        abs.finalize_block_start,
-                                                    ),
-                                                    ("finalize_block_end", abs.finalize_block_end),
-                                                    (
-                                                        "collect_new_rolls_owner_snapshots_start",
-                                                        abs.collect_new_rolls_owner_snapshots_start,
-                                                    ),
-                                                    (
-                                                        "collect_new_rolls_owner_snapshots_end",
-                                                        abs.collect_new_rolls_owner_snapshots_end,
-                                                    ),
-                                                    ("commit_start", abs.commit_start),
-                                                    ("commit_end", abs.commit_end),
-                                                    ("apply_end", abs.apply_end),
-                                                ]
-                                                .to_vec()
-                                            })
-                                            .unwrap_or(Vec::new())
-                                            .into_iter()
-                                            .map(|(k, v)| {
-                                                (
-                                                    format!("protocol_{k}"),
-                                                    v.saturating_sub(min_time),
-                                                )
-                                            }),
-                                    )
                                     .chain(stats.times.clone())
                                     .collect::<HashMap<_, _>>()
                                 })
                                 .unwrap_or_default();
+
+                            let protocol_times = block_application_stats
+                                .and_then(|bas| bas.get(hash))
+                                .and_then(|bas| bas.apply_block_stats.as_ref())
+                                .map(|abs| {
+                                    [
+                                        ("apply_start", abs.apply_start),
+                                        (
+                                            "operations_decoding_start",
+                                            abs.operations_decoding_start,
+                                        ),
+                                        ("operations_decoding_end", abs.operations_decoding_end),
+                                        //("operations_application", ...),
+                                        (
+                                            "operations_metadata_encoding_start",
+                                            abs.operations_metadata_encoding_start,
+                                        ),
+                                        (
+                                            "operations_metadata_encoding_end",
+                                            abs.operations_metadata_encoding_end,
+                                        ),
+                                        ("begin_application_start", abs.begin_application_start),
+                                        ("begin_application_end", abs.begin_application_end),
+                                        ("finalize_block_start", abs.finalize_block_start),
+                                        ("finalize_block_end", abs.finalize_block_end),
+                                        (
+                                            "collect_new_rolls_owner_snapshots_start",
+                                            abs.collect_new_rolls_owner_snapshots_start,
+                                        ),
+                                        (
+                                            "collect_new_rolls_owner_snapshots_end",
+                                            abs.collect_new_rolls_owner_snapshots_end,
+                                        ),
+                                        ("commit_start", abs.commit_start),
+                                        ("commit_end", abs.commit_end),
+                                        ("apply_end", abs.apply_end),
+                                    ]
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.saturating_sub(min_time)))
+                                    .collect::<HashMap<_, _>>()
+                                })
+                                .unwrap_or(HashMap::new());
 
                             CurrentHeadAppStat {
                                 block_hash: hash.clone(),
@@ -198,6 +182,7 @@ where
                                     .and_then(|b| b.pk_hash().map_or(None, Some)),
                                 baker_priority: stats.priority,
                                 times,
+                                protocol_times,
                             }
                         })
                         .collect::<Vec<_>>()
