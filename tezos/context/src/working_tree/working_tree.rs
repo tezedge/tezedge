@@ -1124,7 +1124,7 @@ impl WorkingTree {
                         data.add_older_object(dir_entry, storage, strings)?;
                         return Ok(());
                     }
-                    dir_entry.set_commited(true);
+                    // dir_entry.set_commited(true);
 
                     if let Some(offset) = data.get_dedup_object(object_hash_id) {
                         dir_entry.set_offset(offset);
