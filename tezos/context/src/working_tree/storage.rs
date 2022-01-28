@@ -1154,7 +1154,7 @@ impl Default for Storage {
 type IsNewKey = bool;
 
 const DEFAULT_DIRECTORIES_CAPACITY: usize = 512 * 1024;
-const DEFAULT_BLOBS_CAPACITY: usize = 128 * 1024;
+const DEFAULT_BLOBS_CAPACITY: usize = 256 * 1024;
 const DEFAULT_NODES_CAPACITY: usize = 128 * 1024;
 const DEFAULT_INODES_CAPACITY: usize = 32 * 1024;
 const DEFAULT_FAT_POINTERS_CAPACITY: usize = 32 * 1024;

@@ -304,8 +304,8 @@ fn serialize_inode(
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
-            for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index)?;
+            for (_, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
                 let hash_id = storage
                     .pointer_retrieve_hashid(&pointer, repository)?
                     .ok_or(MissingHashId)?;
@@ -316,8 +316,8 @@ fn serialize_inode(
             batch.push((hash_id, Arc::from(output.as_slice())));
 
             // Recursively serialize all children
-            for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index)?;
+            for (_, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
 
                 let hash_id = storage
                     .pointer_retrieve_hashid(&pointer, repository)?

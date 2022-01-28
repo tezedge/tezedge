@@ -135,12 +135,18 @@ impl GCThread {
         new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
+
+        let mut without_value = 0;
+
         for hash_id in new_ids.iter() {
             new_cycle.entry(*hash_id).or_insert_with(|| {
-                println!("GC_WORKER: Got HashId without value");
+                without_value += 1;
                 None
             });
         }
+
+        println!("GC_WORKER: Got HashId without value: {:?}", without_value);
+
         let unused = self.cycles.roll(new_cycle);
         self.send_unused(unused);
     }
