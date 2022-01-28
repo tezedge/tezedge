@@ -319,6 +319,10 @@ fn serialize_inode(
             for (_, index) in pointers.iter() {
                 let pointer = storage.pointer_copy(index)?;
 
+                let hash_id = storage
+                    .pointer_retrieve_hashid(&pointer, repository)?
+                    .ok_or(MissingHashId)?;
+
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
                     // We skip inodes that were previously serialized and already
@@ -328,10 +332,6 @@ fn serialize_inode(
                     referenced_older_objects.push(hash_id);
                     continue;
                 }
-
-                let hash_id = storage
-                    .pointer_retrieve_hashid(&pointer, repository)?
-                    .ok_or(MissingHashId)?;
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 serialize_inode(
@@ -767,7 +767,7 @@ impl<'a> Iterator for HashIdIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
+    use std::{collections::HashSet, convert::TryFrom, iter::FromIterator};
 
     use tezos_timing::SerializeStats;
 
@@ -1002,6 +1002,7 @@ mod tests {
 
         let hash_id = HashId::new(123).unwrap();
         batch.clear();
+        older_objects.clear();
         serialize_inode(
             inode,
             &mut data,
@@ -1014,6 +1015,9 @@ mod tests {
             &mut repo,
         )
         .unwrap();
+
+        let older: HashSet<HashId> = HashSet::from_iter(older_objects.clone().into_iter());
+        assert_eq!(older.len(), 32);
 
         let new_inode_id =
             deserialize_inode(&batch[0].1, &mut storage, &mut strings, &repo).unwrap();
