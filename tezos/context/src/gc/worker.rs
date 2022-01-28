@@ -140,18 +140,25 @@ impl GCThread {
             Err(_) => "ERR".to_owned(),
         };
 
-        println!("CYCLES_LENGTH = {:?} MSG={:?}", self.cycles.list.len(), msg);
+        println!(
+            "CYCLES_LENGTH={:?} NMSG={:?} MSG={:?}",
+            self.cycles.list.len(),
+            self.recv.len(),
+            msg
+        );
         for (index, c) in self.cycles.list.iter().enumerate() {
-            let n_none = c
-                .values()
-                .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
+            // let n_none = c
+            //     .values()
+            //     .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
 
-            println!(
-                "CYCLE[{:?}]_LENGTH = {:?} NONE={:?}",
-                index,
-                c.len(),
-                n_none
-            );
+            // println!(
+            //     "CYCLE[{:?}]_LENGTH = {:?} NONE={:?}",
+            //     index,
+            //     c.len(),
+            //     n_none
+            // );
+
+            println!("CYCLE[{:?}]_LENGTH={:?}", index, c.len(),);
         }
         println!("PENDING={:?}", self.pending.len());
     }
