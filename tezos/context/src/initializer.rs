@@ -64,7 +64,9 @@ fn spawn_reload_database(
     let (sender, recv) = std::sync::mpsc::channel();
 
     let result = thread.spawn(move || {
+        let start_time = std::time::Instant::now();
         log!("Reloading context");
+
         let mut repository = match repository.write() {
             Ok(repository) => repository,
             Err(e) => {
@@ -81,7 +83,7 @@ fn spawn_reload_database(
         if let Err(e) = repository.reload_database() {
             elog!("Failed to reload repository: {:?}", e);
         }
-        log!("Context reloaded");
+        log!("Context reloaded in {:?}", start_time.elapsed());
     });
 
     // Wait for the spawned thread to lock the repository.
