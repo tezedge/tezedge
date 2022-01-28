@@ -9,10 +9,7 @@ use crypto::{
 };
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKeyHash,
-    p2p::{
-        binary_message::MessageHash,
-        encoding::{block_header::Level, peer::PeerMessage},
-    },
+    p2p::{binary_message::MessageHash, encoding::peer::PeerMessage},
 };
 
 use crate::{
@@ -208,23 +205,17 @@ where
                 .map(|d| {
                     store.service.rpc().respond(*rpc_id, d);
                 })
-                .or_else(|| {
+                .unwrap_or_else(|| {
                     store.service.rpc().respond(
                         *rpc_id,
                         serde_json::json!({ "error": format!("No stats for level `{level}`") }),
                     );
-                    None
                 });
         }
         Action::StatsCurrentHeadRpcGetPeers(StatsCurrentHeadRpcGetPeersAction {
             rpc_id,
             level,
         }) => {
-            #[derive(Debug, serde::Serialize)]
-            struct Stats {
-                block_level: Level,
-                current_heads: Vec<CurrentHeadStat>,
-            }
             #[derive(Debug, serde::Serialize)]
             struct CurrentHeadStat {
                 address: SocketAddr,
@@ -234,7 +225,6 @@ where
                 times: HashMap<String, u64>,
             }
 
-            let rpc = store.service.rpc();
             store
                 .state
                 .get()
@@ -242,8 +232,8 @@ where
                 .current_head
                 .level_stats
                 .get(level)
-                .and_then(|level_stats| {
-                    let current_heads = level_stats
+                .map(|level_stats| {
+                    level_stats
                         .peer_stats
                         .iter()
                         .map(|(peer, stats)| CurrentHeadStat {
@@ -252,22 +242,16 @@ where
                             block_hash: stats.hash.clone(),
                             times: stats.times.clone(),
                         })
-                        .collect::<Vec<_>>();
-                    rpc.respond(
-                        *rpc_id,
-                        Stats {
-                            block_level: *level,
-                            current_heads,
-                        },
-                    );
-                    Some(())
+                        .collect::<Vec<_>>()
                 })
-                .or_else(|| {
+                .map(|d| {
+                    store.service.rpc().respond(*rpc_id, d);
+                })
+                .unwrap_or_else(|| {
                     store.service.rpc().respond(
                         *rpc_id,
                         serde_json::json!({ "error": format!("No stats for level `{level}`") }),
                     );
-                    None
                 });
         }
 
