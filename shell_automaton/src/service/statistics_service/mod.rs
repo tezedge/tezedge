@@ -39,7 +39,7 @@ impl StatisticsService {
         &self.blocks
     }
 
-    pub fn block_stats_get_by_level(&self, level: Level) -> Option<&BlockStats> {
+    fn find_min_index_for_block_level(&self, level: Level) -> Option<usize> {
         let first_block_level = self
             .blocks_by_level
             .get(0)
@@ -51,10 +51,26 @@ impl StatisticsService {
             return None;
         }
 
+        Some(index as usize)
+    }
+
+    fn blocks_for_level_iter<'a>(
+        &'a self,
+        level: Level,
+    ) -> impl 'a + Iterator<Item = &'a BlockStats> {
+        let start_index = self
+            .find_min_index_for_block_level(level)
+            .unwrap_or(usize::MAX);
+
         self.blocks_by_level
-            .get(index as usize)
-            .and_then(|hash| self.blocks.get(hash))
-            .filter(|v| v.level.filter(|l| *l == level).is_some())
+            .iter()
+            .skip(start_index)
+            .filter_map(move |hash| self.blocks.get(hash))
+            .filter(move |v| v.level.filter(|l| *l == level).is_some())
+    }
+
+    pub fn block_stats_get_by_level(&self, level: Level) -> Option<&BlockStats> {
+        self.blocks_for_level_iter(level).nth(0)
     }
 
     pub fn block_new(&mut self, block_hash: Arc<BlockHash>) {
