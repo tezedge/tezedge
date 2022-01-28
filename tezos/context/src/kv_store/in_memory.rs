@@ -317,32 +317,7 @@ impl KeyValueStoreBackend for InMemory {
         message: String,
         date: u64,
     ) -> Result<(ContextHash, Box<SerializeStats>), DBError> {
-        let PostCommitData {
-            commit_ref,
-            batch,
-            reused,
-            serialize_stats,
-            ..
-        } = working_tree
-            .prepare_commit(
-                date,
-                author,
-                message,
-                parent_commit_ref,
-                self,
-                Some(in_memory::serialize_object),
-                None,
-                true,
-                false,
-            )
-            .map_err(Box::new)?;
-
-        self.write_batch(batch)?;
-        self.put_context_hash(commit_ref)?;
-        self.block_applied(reused);
-
-        let commit_hash = get_commit_hash(commit_ref, self).map_err(Box::new)?;
-        Ok((commit_hash, serialize_stats))
+        self.commit_impl(working_tree, parent_commit_ref, author, message, date, true)
     }
 
     fn get_hash_id(&self, object_ref: ObjectReference) -> Result<HashId, DBError> {
@@ -491,12 +466,13 @@ impl InMemory {
                 parent_hash.map(|parent_hash| self.put_hash(parent_hash).unwrap().into());
 
             let commit = self
-                .commit(
+                .commit_impl(
                     &tree,
                     parent_ref,
                     commit.author,
                     commit.message,
                     commit.time,
+                    false,
                 )
                 .unwrap();
 
@@ -504,6 +480,45 @@ impl InMemory {
 
             self.string_interner = tree.index.string_interner.take().unwrap();
         }
+    }
+
+    fn commit_impl(
+        &mut self,
+        working_tree: &WorkingTree,
+        parent_commit_ref: Option<ObjectReference>,
+        author: String,
+        message: String,
+        date: u64,
+        mark_as_applied: bool,
+    ) -> Result<(ContextHash, Box<SerializeStats>), DBError> {
+        let PostCommitData {
+            commit_ref,
+            batch,
+            reused,
+            serialize_stats,
+            ..
+        } = working_tree
+            .prepare_commit(
+                date,
+                author,
+                message,
+                parent_commit_ref,
+                self,
+                Some(in_memory::serialize_object),
+                None,
+                true,
+                false,
+            )
+            .map_err(Box::new)?;
+
+        self.write_batch(batch)?;
+        self.put_context_hash(commit_ref)?;
+        if mark_as_applied {
+            self.block_applied(reused);
+        }
+
+        let commit_hash = get_commit_hash(commit_ref, self).map_err(Box::new)?;
+        Ok((commit_hash, serialize_stats))
     }
 
     pub fn put_hash(&mut self, hash: ObjectHash) -> Result<HashId, DBError> {
