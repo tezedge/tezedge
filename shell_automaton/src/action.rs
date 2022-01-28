@@ -459,7 +459,8 @@ pub enum Action {
     StatsCurrentHeadPrepareSend(StatsCurrentHeadPrepareSendAction),
     StatsCurrentHeadSent(StatsCurrentHeadSentAction),
     StatsCurrentHeadSentError(StatsCurrentHeadSentErrorAction),
-    StatsCurrentHeadRpcGet(StatsCurrentHeadRpcGetAction),
+    StatsCurrentHeadRpcGetPeers(StatsCurrentHeadRpcGetPeersAction),
+    StatsCurrentHeadRpcGetApplication(StatsCurrentHeadRpcGetApplicationAction),
     StatsCurrentHeadPrune(StatsCurrentHeadPruneAction),
 
     StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),

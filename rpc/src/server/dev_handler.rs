@@ -394,7 +394,7 @@ pub async fn dev_shell_automaton_endorsements_status(
     )
 }
 
-pub async fn dev_shell_automaton_stats_current_head(
+pub async fn dev_shell_automaton_stats_current_head_peers(
     _: Request<Body>,
     _: Params,
     query: Query,
@@ -404,5 +404,22 @@ pub async fn dev_shell_automaton_stats_current_head(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
-    make_json_response(&dev_services::get_shell_automaton_stats_current_head(level, &env).await?)
+    make_json_response(
+        &dev_services::get_shell_automaton_stats_current_head_peers(level, &env).await?,
+    )
+}
+
+pub async fn dev_shell_automaton_stats_current_head_application(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let level = query
+        .get_str("level")
+        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
+        .and_then(|str| Ok(str.parse()?))?;
+    make_json_response(
+        &dev_services::get_shell_automaton_stats_current_head_application(level, &env).await?,
+    )
 }

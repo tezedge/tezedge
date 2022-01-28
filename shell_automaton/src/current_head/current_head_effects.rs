@@ -38,7 +38,9 @@ where
                 address: *address,
                 level: current_block_header.level(),
                 hash: block_hash.clone(),
-                timestamp: action.id,
+                block_timestamp: current_block_header.timestamp().try_into().unwrap_or(0)
+                    * 1_000_000_000,
+                receive_timestamp: action.id,
                 empty_mempool: current_head.current_mempool().is_empty(),
             });
 

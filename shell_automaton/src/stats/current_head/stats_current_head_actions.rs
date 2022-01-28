@@ -12,12 +12,24 @@ use tezos_messages::{
 use crate::{ActionId, State};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct StatsCurrentHeadRpcGetAction {
+pub struct StatsCurrentHeadRpcGetPeersAction {
     pub rpc_id: RpcId,
     pub level: Level,
 }
 
-impl EnablingCondition<State> for StatsCurrentHeadRpcGetAction {
+impl EnablingCondition<State> for StatsCurrentHeadRpcGetPeersAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StatsCurrentHeadRpcGetApplicationAction {
+    pub rpc_id: RpcId,
+    pub level: Level,
+}
+
+impl EnablingCondition<State> for StatsCurrentHeadRpcGetApplicationAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
@@ -28,7 +40,8 @@ pub struct StatsCurrentHeadReceivedAction {
     pub address: SocketAddr,
     pub level: Level,
     pub hash: BlockHash,
-    pub timestamp: ActionId,
+    pub block_timestamp: u64,
+    pub receive_timestamp: ActionId,
     pub empty_mempool: bool,
 }
 

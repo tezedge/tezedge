@@ -23,7 +23,6 @@ use crate::{
     },
     rights::{rights_actions::RightsGetAction, RightsKey},
     service::RpcService,
-    stats::current_head::CurrentHeadData,
     Action,
 };
 
@@ -78,7 +77,90 @@ where
         Action::PeerMessageWriteError(PeerMessageWriteErrorAction { address, .. }) => {
             store.dispatch(StatsCurrentHeadSentErrorAction { address: *address });
         }
-        Action::StatsCurrentHeadRpcGet(StatsCurrentHeadRpcGetAction { rpc_id, level }) => {
+        Action::StatsCurrentHeadRpcGetApplication(StatsCurrentHeadRpcGetApplicationAction {
+            rpc_id,
+            level,
+        }) => {
+            #[derive(Debug, serde::Serialize)]
+            struct CurrentHeadAppStat {
+                block_hash: BlockHash,
+                block_timestamp: u64,
+                receive_timestamp: u64,
+                baker: Option<SignaturePublicKeyHash>,
+                baker_priority: Option<u16>,
+                #[serde(flatten)]
+                times: HashMap<String, u64>,
+            }
+
+            let block_application_stats = store
+                .service
+                .statistics()
+                .map(|stats| stats.block_stats_get_all());
+
+            store
+                .state
+                .get()
+                .stats
+                .current_head
+                .level_stats
+                .get(level)
+                .map(|level_stats| {
+                    let min_time = u64::from(level_stats.first_action);
+                    let delta_time = |time: Option<u64>| {
+                        time.map(|t| t.saturating_sub(min_time)).unwrap_or_default()
+                    };
+                    level_stats
+                        .head_stats
+                        .iter()
+                        .map(|(hash, stats)| {
+                            let times = block_application_stats
+                                .and_then(|bas| bas.get(hash))
+                                .map(|bas| {
+                                    IntoIterator::into_iter([
+                                        ("download_data_start", Some(0)),
+                                        ("download_data_end", bas.load_data_start),
+                                        ("load_data_start", bas.load_data_start),
+                                        ("load_data_end", bas.load_data_end),
+                                        ("apply_block_start", bas.apply_block_start),
+                                        ("apply_block_end", bas.apply_block_end),
+                                        ("store_result_start", bas.store_result_start),
+                                        ("store_result_end", bas.store_result_end),
+                                    ])
+                                    .map(|(k, v)| (k.to_string(), delta_time(v)))
+                                    .chain(stats.times.clone())
+                                    .collect::<HashMap<_, _>>()
+                                })
+                                .unwrap_or_default();
+
+                            CurrentHeadAppStat {
+                                block_hash: hash.clone(),
+                                block_timestamp: stats.block_timestamp,
+                                receive_timestamp: stats.received_timestamp,
+                                baker: stats
+                                    .baker
+                                    .as_ref()
+                                    .and_then(|b| b.pk_hash().map_or(None, Some)),
+                                baker_priority: stats.priority,
+                                times,
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .map(|d| {
+                    store.service.rpc().respond(*rpc_id, d);
+                })
+                .or_else(|| {
+                    store.service.rpc().respond(
+                        *rpc_id,
+                        serde_json::json!({ "error": format!("No stats for level `{level}`") }),
+                    );
+                    None
+                });
+        }
+        Action::StatsCurrentHeadRpcGetPeers(StatsCurrentHeadRpcGetPeersAction {
+            rpc_id,
+            level,
+        }) => {
             #[derive(Debug, serde::Serialize)]
             struct Stats {
                 block_level: Level,
@@ -89,15 +171,9 @@ where
                 address: SocketAddr,
                 node_id: Option<CryptoboxPublicKeyHash>,
                 block_hash: BlockHash,
-                baker: Option<SignaturePublicKeyHash>,
-                baker_priority: Option<u16>,
                 #[serde(flatten)]
                 times: HashMap<String, u64>,
             }
-            let block_application_stats = store
-                .service
-                .statistics()
-                .and_then(|stats| stats.block_stats_get_by_level(*level).cloned());
 
             let rpc = store.service.rpc();
             store
@@ -108,75 +184,14 @@ where
                 .level_stats
                 .get(level)
                 .and_then(|level_stats| {
-                    let min_time = u64::from(level_stats.first_action);
-
                     let current_heads = level_stats
                         .peer_stats
                         .iter()
-                        .map(|(peer, stats)| {
-                            let mut times = stats.times.clone();
-                            let head_data = level_stats.head_stats.get(&stats.hash);
-                            head_data.map(|hd| {
-                                times.insert("prechecked_time".to_string(), hd.prechecked_time)
-                            });
-                            block_application_stats.as_ref().map(|s| {
-                                times.insert("download_data_start".to_owned(), 0);
-                                times.insert(
-                                    "download_data_end".to_owned(),
-                                    s.load_data_start
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-
-                                times.insert(
-                                    "load_data_start".to_owned(),
-                                    s.load_data_start
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-                                times.insert(
-                                    "load_data_end".to_owned(),
-                                    s.load_data_end
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-
-                                times.insert(
-                                    "apply_block_start".to_owned(),
-                                    s.apply_block_start
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-                                times.insert(
-                                    "apply_block_end".to_owned(),
-                                    s.apply_block_end
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-
-                                times.insert(
-                                    "store_result_start".to_owned(),
-                                    s.store_result_start
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-                                times.insert(
-                                    "store_result_end".to_owned(),
-                                    s.store_result_end
-                                        .and_then(|t| t.checked_sub(min_time))
-                                        .unwrap_or(0),
-                                );
-                            });
-                            CurrentHeadStat {
-                                address: *peer,
-                                node_id: stats.node_id.clone(),
-                                block_hash: stats.hash.clone(),
-                                baker: head_data
-                                    .map(CurrentHeadData::baker)
-                                    .and_then(|b| b.pk_hash().map_or(None, Some)),
-                                baker_priority: head_data.map(CurrentHeadData::priority).cloned(),
-                                times,
-                            }
+                        .map(|(peer, stats)| CurrentHeadStat {
+                            address: *peer,
+                            node_id: stats.node_id.clone(),
+                            block_hash: stats.hash.clone(),
+                            times: stats.times.clone(),
                         })
                         .collect::<Vec<_>>();
                     rpc.respond(

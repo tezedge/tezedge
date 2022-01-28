@@ -9,7 +9,9 @@ use crate::mempool::mempool_actions::{
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
-use crate::stats::current_head::stats_current_head_actions::StatsCurrentHeadRpcGetAction;
+use crate::stats::current_head::stats_current_head_actions::{
+    StatsCurrentHeadRpcGetApplicationAction, StatsCurrentHeadRpcGetPeersAction,
+};
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -92,8 +94,11 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
                     }
 
-                    RpcRequest::GetStatsCurrentHead { level } => {
-                        store.dispatch(StatsCurrentHeadRpcGetAction { rpc_id, level });
+                    RpcRequest::GetStatsCurrentHeadPeers { level } => {
+                        store.dispatch(StatsCurrentHeadRpcGetPeersAction { rpc_id, level });
+                    }
+                    RpcRequest::GetStatsCurrentHeadApplication { level } => {
+                        store.dispatch(StatsCurrentHeadRpcGetApplicationAction { rpc_id, level });
                     }
                 }
             }
