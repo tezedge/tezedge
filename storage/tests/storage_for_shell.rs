@@ -216,6 +216,7 @@ fn test_storage() -> Result<(), Error> {
         new_protocol_constants_json: None,
         new_cycle_eras_json: None,
         commit_time: 1.0,
+        execution_timestamps: Default::default(),
     };
     let block_additional_data = store_applied_block_result(
         &block_storage,

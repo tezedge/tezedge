@@ -109,6 +109,7 @@ pub struct OCamlInitProtocolContextParams {}
 
 pub struct OCamlApplied {}
 pub struct OCamlApplyBlockResponse {}
+pub struct OCamlApplyBlockExecutionTimestamps {}
 pub struct OCamlBeginApplicationResponse {}
 pub struct OCamlTezosContextTezedgeOnDiskBackendOptions {}
 pub struct OCamlContextKvStoreConfiguration {}

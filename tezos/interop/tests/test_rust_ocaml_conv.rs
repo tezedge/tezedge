@@ -84,6 +84,7 @@ mod tezos_ffi {
             new_protocol_constants_json: Option<String>,
             new_cycle_eras_json: Option<String>,
             commit_time: OCamlFloat,
+            execution_timestamps: OCamlApplyBlockExecutionTimestamps,
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
             begin_construction_request: OCamlBeginConstructionRequest,
@@ -325,6 +326,7 @@ fn test_apply_block_response_conv() {
         new_protocol_constants_json: None,
         new_cycle_eras_json: None,
         commit_time: 1.0,
+        execution_timestamps: Default::default(),
     };
 
     let (into, from): (bool, bool) = runtime::execute(move |rt: &mut OCamlRuntime| {
@@ -349,6 +351,7 @@ fn test_apply_block_response_conv() {
         let new_protocol_constants_json = response.new_protocol_constants_json.to_boxroot(rt);
         let new_cycle_eras_json = response.new_cycle_eras_json.to_boxroot(rt);
         let commit_time = response.commit_time.to_boxroot(rt);
+        let execution_timestamps = response.execution_timestamps.to_boxroot(rt);
 
         let into_result: bool = tezos_ffi::construct_and_compare_apply_block_response(
             rt,
@@ -371,6 +374,7 @@ fn test_apply_block_response_conv() {
             &new_protocol_constants_json,
             &new_cycle_eras_json,
             &commit_time,
+            &execution_timestamps,
         )
         .to_rust(rt);
 

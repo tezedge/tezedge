@@ -115,6 +115,27 @@ pub struct ApplyBlockResponse {
     pub new_protocol_constants_json: Option<String>,
     pub new_cycle_eras_json: Option<String>,
     pub commit_time: f64,
+    pub execution_timestamps: ApplyBlockExecutionTimestamps,
+}
+
+/// Block application execution timestamps
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct ApplyBlockExecutionTimestamps {
+    pub apply_start_t: f64,
+    pub operations_decoding_start_t: f64,
+    pub operations_decoding_end_t: f64,
+    pub operations_application_timestamps: Vec<Vec<(f64, f64)>>,
+    pub operations_metadata_encoding_start_t: f64,
+    pub operations_metadata_encoding_end_t: f64,
+    pub begin_application_start_t: f64,
+    pub begin_application_end_t: f64,
+    pub finalize_block_start_t: f64,
+    pub finalize_block_end_t: f64,
+    pub collect_new_rolls_owner_snapshots_start_t: f64,
+    pub collect_new_rolls_owner_snapshots_end_t: f64,
+    pub commit_start_t: f64,
+    pub commit_end_t: f64,
+    pub apply_end_t: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

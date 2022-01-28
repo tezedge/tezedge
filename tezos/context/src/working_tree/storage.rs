@@ -26,7 +26,7 @@ use crate::{
     hash::HashingError,
     kv_store::{index_map::IndexMap, HashId},
     working_tree::ObjectReference,
-    ContextKeyValueStore, Map, ObjectHash,
+    ContextKeyValueStore, ObjectHash,
 };
 use crate::{hash::index as index_of_key, serialize::persistent::AbsoluteOffset};
 
