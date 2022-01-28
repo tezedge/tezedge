@@ -11,11 +11,11 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvError};
 
-use crate::{kv_store::HashId, serialize::in_memory::iter_hash_ids};
+use crate::{chunks::ChunkedVec, kv_store::HashId, serialize::in_memory::iter_hash_ids};
 
 use tezos_spsc::Producer;
 
-pub(crate) const PRESERVE_CYCLE_COUNT: usize = 7;
+pub(crate) const PRESERVE_CYCLE_COUNT: usize = 8;
 
 /// Used for statistics
 ///
@@ -32,7 +32,7 @@ pub(crate) struct GCThread {
 pub(crate) enum Command {
     StartNewCycle {
         values_in_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
-        new_ids: Vec<HashId>,
+        new_ids: ChunkedVec<HashId>,
     },
     MarkReused {
         reused: Vec<HashId>,
@@ -61,20 +61,19 @@ impl Cycles {
         let len = self.list.len();
         let mut value = None;
 
-        for store in &mut self.list.iter_mut().take(len - 1) {
+        for store in self.list.iter_mut().take(len - 1) {
             if let Some(item) = store.remove(&hash_id).flatten() {
                 value = Some(item);
             };
         }
 
-        let value = value?;
         if let Some(v) = self.list.back_mut() {
-            v.insert(hash_id, Some(Arc::clone(&value)));
+            v.insert(hash_id, value.clone());
         } else {
             eprintln!("GC: Failed to insert value in Cycles")
         }
 
-        Some(value)
+        value
     }
 
     fn roll(&mut self, new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>) -> Vec<HashId> {
@@ -133,11 +132,14 @@ impl GCThread {
     fn start_new_cycle(
         &mut self,
         mut new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
-        new_ids: Vec<HashId>,
+        new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
-        for hash_id in new_ids.into_iter() {
-            new_cycle.entry(hash_id).or_insert(None);
+        for hash_id in new_ids.iter() {
+            new_cycle.entry(*hash_id).or_insert_with(|| {
+                println!("GC_WORKER: Got HashId without value");
+                None
+            });
         }
         let unused = self.cycles.roll(new_cycle);
         self.send_unused(unused);

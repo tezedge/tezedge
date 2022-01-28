@@ -1142,6 +1142,8 @@ impl<'a> std::ops::Deref for Blob<'a> {
 
 assert_eq_size!([u32; 2], (StringId, DirEntryId));
 
+assert_eq_size!([u8; 7], Option<[u8; 6]>);
+
 impl Default for Storage {
     fn default() -> Self {
         Self::new()

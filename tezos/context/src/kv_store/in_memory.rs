@@ -21,6 +21,7 @@ use crypto::hash::ContextHash;
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
 use crate::{
+    chunks::ChunkedVec,
     gc::{
         worker::{Command, Cycles, GCThread, GC_PENDING_HASHIDS, PRESERVE_CYCLE_COUNT},
         GarbageCollectionError, GarbageCollector,
@@ -48,7 +49,7 @@ pub struct HashValueStore {
     hashes: IndexMap<HashId, ObjectHash>,
     values: IndexMap<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
-    new_ids: Vec<HashId>,
+    new_ids: ChunkedVec<HashId>,
     values_bytes: usize,
 }
 
@@ -61,7 +62,7 @@ impl HashValueStore {
             hashes: IndexMap::with_chunk_capacity(10_000_000), // ~320MB
             values: IndexMap::with_chunk_capacity(10_000_000), // ~80MB
             free_ids: consumer.into(),
-            new_ids: Vec::with_capacity(1024), // ~8KB
+            new_ids: ChunkedVec::with_chunk_capacity(512 * 1024), // ~8KB
             values_bytes: 0,
         } // Total ~400MB
     }
@@ -107,7 +108,7 @@ impl HashValueStore {
             hashes: IndexMap::empty(),
             values: IndexMap::empty(),
             free_ids: self.free_ids.take(),
-            new_ids: Vec::new(),
+            new_ids: ChunkedVec::empty(),
             values_bytes: 0,
         }
     }
@@ -160,9 +161,14 @@ impl HashValueStore {
         Ok(self.values.get(hash_id)?.unwrap_or(&None).is_some())
     }
 
-    fn take_new_ids(&mut self) -> Vec<HashId> {
-        let new_ids = std::mem::take(&mut self.new_ids);
-        self.new_ids = Vec::with_capacity(128 * 1024);
+    fn take_new_ids(&mut self) -> ChunkedVec<HashId> {
+        let new_ids = std::mem::replace(
+            &mut self.new_ids,
+            ChunkedVec::with_chunk_capacity(512 * 1024),
+        );
+        // let new_ids = self.new_ids;
+        // let new_ids = std::mem::take(&mut self.new_ids);
+        // self.new_ids = ChunkedVec::with_chunk_capacity(512 * 1024);
         new_ids
     }
 }
