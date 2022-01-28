@@ -8,6 +8,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
+use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::p2p::encoding::block_header::Level;
 
 pub type BlocksStats = HashMap<Arc<BlockHash>, BlockStats>;
@@ -21,6 +22,7 @@ pub struct BlockStats {
 
     pub apply_block_start: Option<u64>,
     pub apply_block_end: Option<u64>,
+    pub apply_block_stats: Option<ApplyBlockExecutionTimestamps>,
 
     pub store_result_start: Option<u64>,
     pub store_result_end: Option<u64>,
@@ -52,6 +54,7 @@ impl StatisticsService {
         self.blocks_by_level
             .get(index as usize)
             .and_then(|hash| self.blocks.get(hash))
+            .filter(|v| v.level.filter(|l| *l == level).is_some())
     }
 
     pub fn block_new(&mut self, block_hash: Arc<BlockHash>) {
@@ -60,7 +63,7 @@ impl StatisticsService {
             e.insert(Default::default());
             self.blocks_by_level.push_back(block_hash);
 
-            if self.blocks_by_level.len() > 50000 {
+            if self.blocks_by_level.len() > 20000 {
                 if let Some(oldest_block) = self.blocks_by_level.pop_front() {
                     self.blocks.remove(&oldest_block);
                 }
@@ -89,10 +92,16 @@ impl StatisticsService {
             .map(|v| v.apply_block_start = Some(time));
     }
 
-    pub fn block_apply_end(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks
-            .get_mut(block_hash)
-            .map(|v| v.apply_block_end = Some(time));
+    pub fn block_apply_end(
+        &mut self,
+        block_hash: &BlockHash,
+        time: u64,
+        result: &ApplyBlockResponse,
+    ) {
+        self.blocks.get_mut(block_hash).map(|v| {
+            v.apply_block_stats = Some(result.execution_timestamps.clone());
+            v.apply_block_end = Some(time)
+        });
     }
 
     pub fn block_store_result_start(&mut self, block_hash: &BlockHash, time: u64) {
