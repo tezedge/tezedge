@@ -95,7 +95,7 @@ impl Cycles {
             eprintln!("GC: Failed to insert value in Cycles")
         }
 
-        Some(value)
+        value
     }
 
     fn roll(&mut self, new_cycle: BTreeMap<HashId, Arc<[u8]>>) -> Vec<HashId> {
