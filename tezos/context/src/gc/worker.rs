@@ -31,7 +31,7 @@ pub(crate) struct GCThread {
 
 pub(crate) enum Command {
     StartNewCycle {
-        values_in_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
+        values_in_cycle: BTreeMap<HashId, Arc<[u8]>>,
         new_ids: ChunkedVec<HashId>,
     },
     MarkReused {
@@ -41,7 +41,7 @@ pub(crate) enum Command {
 }
 
 pub(crate) struct Cycles {
-    list: VecDeque<BTreeMap<HashId, Option<Arc<[u8]>>>>,
+    list: VecDeque<BTreeMap<HashId, Arc<[u8]>>>,
 }
 
 impl Default for Cycles {
@@ -65,16 +65,27 @@ impl Cycles {
             //     println!("SOME {:?}", v.is_some());
             // }
 
-            if let Some(item) = store.remove(&hash_id).flatten() {
+            if let Some(item) = store.remove(&hash_id) {
                 // println!("FOUND SOME");
                 value = Some(item);
             };
         }
 
-        value.as_ref()?;
+        let value = value?;
+
+        // let value = match value {
+        //     Some(value) => value,
+        //     None => return None,
+        // };
+
+        // if value.is_none() {
+        //     return None;
+        // }
+
+        // value.as_ref()?;
 
         if let Some(last_cycle) = self.list.back_mut() {
-            last_cycle.insert(hash_id, value.clone());
+            last_cycle.insert(hash_id, Arc::clone(&value));
             // if let Some(v) = last_cycle.get(&hash_id) {
             //     println!("SOME1 {:?}", v.is_some());
             // } else {
@@ -84,10 +95,10 @@ impl Cycles {
             eprintln!("GC: Failed to insert value in Cycles")
         }
 
-        value
+        Some(value)
     }
 
-    fn roll(&mut self, new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>) -> Vec<HashId> {
+    fn roll(&mut self, new_cycle: BTreeMap<HashId, Arc<[u8]>>) -> Vec<HashId> {
         let unused = self.list.pop_front().unwrap_or_default();
         self.list.push_back(new_cycle);
 
@@ -174,31 +185,40 @@ impl GCThread {
 
     fn start_new_cycle(
         &mut self,
-        mut new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
+        new_cycle: BTreeMap<HashId, Arc<[u8]>>,
         new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
 
-        let mut without_value = 0;
+        let mut hashid_without_value = Vec::with_capacity(1024);
+
+        // let mut without_value = 0;
 
         for hash_id in new_ids.iter() {
-            new_cycle.entry(*hash_id).or_insert_with(|| {
-                without_value += 1;
-                None
-            });
+            if !new_cycle.contains_key(hash_id) {
+                hashid_without_value.push(*hash_id);
+            }
+            // new_cycle.entry(*hash_id).or_insert_with(|| {
+            //     without_value += 1;
+            //     None
+            // });
         }
 
-        let n_none = new_cycle
-            .values()
-            .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
+        self.send_unused(hashid_without_value);
 
-        println!(
-            "GC_WORKER: START_NEW_CYCLE Got HashId without value: {:?} NEW_CYCLE_NONE={:?} NEW_CYCLE={:?} DIFF={:?}",
-            without_value,
-            n_none,
-            new_cycle.len(),
-            new_cycle.len() - n_none,
-        );
+        // let n_none = new_cycle
+        //     .values()
+        //     .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
+
+        // println!(
+        //     "GC_WORKER: START_NEW_CYCLE Got HashId without value: {:?} NEW_CYCLE_NONE={:?} NEW_CYCLE={:?} DIFF={:?}",
+        //     without_value,
+        //     n_none,
+        //     new_cycle.len(),
+        //     new_cycle.len() - n_none,
+        // );
+
+        println!("GC_WORKER: START_NEW_CYCLE NEW_CYCLE={:?}", new_cycle.len(),);
 
         let unused = self.cycles.roll(new_cycle);
         self.send_unused(unused);
@@ -273,7 +293,12 @@ impl GCThread {
             }
         }
 
-        println!("MARK_REUSED NONE_VALUES={:?} TOTAL={:?}", none, total);
+        println!(
+            "MARK_REUSED NONE_VALUES={:?} TOTAL={:?} MOVED={:?}",
+            none,
+            total,
+            total - none
+        );
 
         self.send_pending();
     }

@@ -174,7 +174,7 @@ impl HashValueStore {
 }
 
 pub struct InMemory {
-    current_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
+    current_cycle: BTreeMap<HashId, Arc<[u8]>>,
     pub hashes: HashValueStore,
     sender: Option<Sender<Command>>,
     pub context_hashes: Map<u64, HashId>,
@@ -551,7 +551,7 @@ impl InMemory {
     pub fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
         for (hash_id, value) in batch {
             self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
-            self.current_cycle.insert(hash_id, Some(value));
+            self.current_cycle.insert(hash_id, value);
         }
         Ok(())
     }
