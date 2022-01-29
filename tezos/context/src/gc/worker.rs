@@ -146,6 +146,9 @@ impl GCThread {
             self.recv.len(),
             msg
         );
+
+        let mut total = 0;
+
         for (index, c) in self.cycles.list.iter().enumerate() {
             // let n_none = c
             //     .values()
@@ -159,8 +162,14 @@ impl GCThread {
             // );
 
             println!("CYCLE[{:?}]_LENGTH={:?}", index, c.len(),);
+
+            total += c.len();
         }
-        println!("PENDING={:?}", self.pending.len());
+        println!(
+            "PENDING={:?} TOTAL_IN_CYCLES={:?}",
+            self.pending.len(),
+            total
+        );
     }
 
     fn start_new_cycle(

@@ -4,8 +4,8 @@
 //! This sub module provides different implementations of the `repository` used to store objects.
 
 use std::convert::{TryFrom, TryInto};
-use std::num::NonZeroU64;
 
+use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::ObjectHash;
@@ -18,8 +18,36 @@ pub mod readonly_ipc;
 
 pub const INMEM: &str = "inmem";
 
+#[bitfield]
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct HashId(NonZeroU64); // NonZeroU64 so that `Option<HashId>` is 8 bytes
+struct NonZero6BytesInner {
+    bytes: B48,
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct NonZero6Bytes {
+    inner: NonZero6BytesInner,
+}
+
+impl NonZero6Bytes {
+    fn get(self) -> u64 {
+        self.inner.bytes()
+    }
+
+    fn new(n: u64) -> Option<Self> {
+        if n == 0 || n > 0xFFFFFFFFFFFF {
+            return None;
+        } else {
+            Some(NonZero6Bytes {
+                inner: NonZero6BytesInner::new().with_bytes(n),
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HashId(NonZero6Bytes); // NonZeroU64 so that `Option<HashId>` is 8 bytes
 
 #[derive(Debug)]
 pub struct HashIdError;
@@ -40,7 +68,7 @@ impl TryFrom<usize> for HashId {
 
         value
             .checked_add(1)
-            .and_then(NonZeroU64::new)
+            .and_then(NonZero6Bytes::new)
             .map(HashId)
             .ok_or(HashIdError)
     }
@@ -57,7 +85,7 @@ const IN_WORKING_TREE: u64 = 1 << SHIFT;
 
 impl HashId {
     pub fn new(value: u64) -> Option<Self> {
-        Some(HashId(NonZeroU64::new(value)?))
+        Some(HashId(NonZero6Bytes::new(value)?))
     }
 
     pub fn as_u64(&self) -> u64 {
@@ -67,7 +95,7 @@ impl HashId {
     pub fn set_in_working_tree(&mut self) -> Result<(), HashIdError> {
         let hash_id = self.0.get();
 
-        self.0 = NonZeroU64::new(hash_id | IN_WORKING_TREE).ok_or(HashIdError)?;
+        self.0 = NonZero6Bytes::new(hash_id | IN_WORKING_TREE).ok_or(HashIdError)?;
 
         Ok(())
     }
@@ -76,7 +104,7 @@ impl HashId {
         let hash_id = self.0.get();
         if hash_id & IN_WORKING_TREE != 0 {
             Ok(Some(HashId(
-                NonZeroU64::new(hash_id & !IN_WORKING_TREE).ok_or(HashIdError)?,
+                NonZero6Bytes::new(hash_id & !IN_WORKING_TREE).ok_or(HashIdError)?,
             )))
         } else {
             Ok(None)
