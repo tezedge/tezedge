@@ -74,11 +74,8 @@ where
                 Some(PrecheckerOperationState::Init { .. }) => {
                     store.dispatch(PrecheckerGetProtocolVersionAction { key: key.clone() });
                 }
-                Some(PrecheckerOperationState::Applied { protocol_data }) => {
-                    let action = PrecheckerEndorsementValidationAppliedAction {
-                        key: key.clone(),
-                        protocol_data: protocol_data.clone(),
-                    };
+                Some(PrecheckerOperationState::Applied { .. }) => {
+                    let action = PrecheckerEndorsementValidationAppliedAction { key: key.clone() };
                     store.dispatch(action);
                 }
                 Some(PrecheckerOperationState::Error { error, .. }) => {
@@ -134,19 +131,14 @@ where
             }) = prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 let is_endorsement = operation_decoded_contents.is_endorsement();
-                let protocol_data = operation_decoded_contents.as_json();
-                let protocol_data_clone = protocol_data.clone();
-
+                let operation_decoded_contents = operation_decoded_contents.clone();
                 store.dispatch(MempoolOperationDecodedAction {
                     operation: key.operation.clone(),
-                    protocol_data,
+                    operation_decoded_contents,
                 });
 
                 if !is_endorsement {
-                    store.dispatch(PrecheckerProtocolNeededAction {
-                        key: key.clone(),
-                        protocol_data: protocol_data_clone,
-                    });
+                    store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
                 } else {
                     store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
                 }
@@ -278,19 +270,14 @@ where
                 );
 
                 match validation_result {
-                    Ok(Applied { protocol_data }) => {
+                    Ok(Applied { .. }) => {
                         store.dispatch(PrecheckerEndorsementValidationAppliedAction {
                             key: key.clone(),
-                            protocol_data: protocol_data.clone(),
                         });
                     }
-                    Err(Refused {
-                        protocol_data,
-                        error,
-                    }) => {
+                    Err(Refused { error, .. }) => {
                         store.dispatch(PrecheckerEndorsementValidationRefusedAction {
                             key: key.clone(),
-                            protocol_data,
                             error,
                         });
                     }
@@ -309,14 +296,16 @@ where
         }
 
         Action::PrecheckerEndorsementValidationApplied(
-            PrecheckerEndorsementValidationAppliedAction { key, protocol_data },
+            PrecheckerEndorsementValidationAppliedAction { key },
         ) => {
-            if let Some(PrecheckerOperationState::Applied { .. }) =
-                prechecker_state_operations.get(key).map(|op| &op.state)
+            if let Some(PrecheckerOperationState::Applied {
+                operation_decoded_contents,
+            }) = prechecker_state_operations.get(key).map(|op| &op.state)
             {
+                let operation_decoded_contents = operation_decoded_contents.clone();
                 store.dispatch(PrecheckerPrecheckOperationResponseAction::valid(
                     &key.operation,
-                    protocol_data.clone(),
+                    operation_decoded_contents,
                 ));
             }
             store.dispatch(PrecheckerPruneOperationAction { key: key.clone() });
@@ -327,7 +316,7 @@ where
             if let Some(PrecheckerOperation {
                 state:
                     PrecheckerOperationState::Refused {
-                        protocol_data,
+                        operation_decoded_contents,
                         error,
                     },
                 ..
@@ -335,7 +324,7 @@ where
             {
                 let action = PrecheckerPrecheckOperationResponseAction::reject(
                     &key.operation,
-                    protocol_data.clone(),
+                    operation_decoded_contents.clone(),
                     serde_json::to_string(error).unwrap_or("<unserialized>".to_string()),
                 );
                 store.dispatch(action);

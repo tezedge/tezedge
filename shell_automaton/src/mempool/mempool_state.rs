@@ -3,7 +3,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    convert::TryInto,
     net::SocketAddr,
 };
 
@@ -16,7 +15,9 @@ use tezos_messages::p2p::encoding::{
     operation::Operation,
 };
 
-use crate::{rights::Slot, service::rpc_service::RpcId, ActionWithMeta};
+use crate::{
+    prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
+};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
@@ -480,7 +481,7 @@ pub struct MempoolOperation {
     pub first_current_head: i64,
     pub state: OperationState,
     pub broadcast: bool,
-    pub protocol_data: Option<serde_json::Value>,
+    pub operation_decoded_contents: Option<OperationDecodedContents>,
     #[serde(flatten)]
     pub times: HashMap<String, i64>,
 }
@@ -505,7 +506,7 @@ impl MempoolOperation {
         Self {
             block_timestamp,
             first_current_head,
-            protocol_data: None,
+            operation_decoded_contents: None,
             state,
             broadcast: false,
             times: HashMap::from([(
@@ -526,7 +527,7 @@ impl MempoolOperation {
         Self {
             block_timestamp,
             first_current_head,
-            protocol_data: None,
+            operation_decoded_contents: None,
             state,
             broadcast: false,
             times: HashMap::from([(
@@ -538,7 +539,7 @@ impl MempoolOperation {
 
     pub(super) fn decoded(
         &self,
-        protocol_data: &serde_json::Value,
+        operation_decoded_contents: OperationDecodedContents,
         action: &ActionWithMeta,
     ) -> Self {
         let state = OperationState::Decoded;
@@ -547,7 +548,7 @@ impl MempoolOperation {
         Self {
             times,
             state,
-            protocol_data: Some(protocol_data.clone()),
+            operation_decoded_contents: Some(operation_decoded_contents.clone()),
             ..self.clone()
         }
     }
@@ -575,24 +576,7 @@ impl MempoolOperation {
     }
 
     pub(super) fn endorsement_slot(&self) -> Option<Slot> {
-        let contents = self
-            .protocol_data
-            .as_ref()?
-            .as_object()?
-            .get("contents")?
-            .as_array()?;
-        let contents_0 = if contents.len() == 1 {
-            contents.get(0)?.as_object()?
-        } else {
-            return None;
-        };
-        let slot_json = match contents_0.get("kind")?.as_str()? {
-            "endorsement_with_slot" => contents_0.get("slot")?,
-            _ => return None,
-        };
-        slot_json
-            .as_u64()
-            .and_then(|u| u.try_into().map_or(None, Some))
+        self.operation_decoded_contents.as_ref()?.endorsement_slot()
     }
 }
 
