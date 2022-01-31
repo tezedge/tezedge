@@ -61,25 +61,13 @@ impl From<serde_json::Error> for EndorsementValidationError {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Applied {
-    pub protocol_data: serde_json::Value,
+    pub decoded_contents: OperationDecodedContents,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Refused {
-    pub protocol_data: serde_json::Value,
+    pub decoded_contents: OperationDecodedContents,
     pub error: EndorsementValidationError,
-}
-
-impl Refused {
-    fn new<E>(protocol_data: serde_json::Value, error: E) -> Self
-    where
-        E: Into<EndorsementValidationError>,
-    {
-        Self {
-            protocol_data,
-            error: error.into(),
-        }
-    }
 }
 
 pub(super) trait OperationProtocolData {
@@ -153,163 +141,133 @@ impl EndorsementValidator for OperationDecodedContents {
         rights: &EndorsingRights,
         log: &Logger,
     ) -> Result<Applied, Refused> {
-        match self {
+        let result = match self {
             OperationDecodedContents::Proto010(operation) => {
-                operation.validate_endorsement(chain_id, block_hash, rights, log)
+                validate_endorsement_010_granada(operation, chain_id, block_hash, rights, log)
             }
             OperationDecodedContents::Proto011(operation) => {
-                operation.validate_endorsement(chain_id, block_hash, rights, log)
+                validate_endorsement_011_hangzhou(operation, chain_id, block_hash, rights, log)
             }
+        };
+        match result {
+            Ok(_) => Ok(Applied {
+                decoded_contents: self.clone(),
+            }),
+            Err(error) => Err(Refused {
+                decoded_contents: self.clone(),
+                error,
+            }),
         }
     }
 }
 
-impl EndorsementValidator for tezos_messages::protocol::proto_010::operation::Operation {
-    fn validate_endorsement(
-        &self,
-        chain_id: &ChainId,
-        block_hash: &BlockHash,
-        rights: &EndorsingRights,
-        log: &Logger,
-    ) -> Result<Applied, Refused> {
-        use tezos_messages::protocol::proto_010::operation::*;
+fn validate_endorsement_010_granada(
+    operation: &tezos_messages::protocol::proto_010::operation::Operation,
+    chain_id: &ChainId,
+    block_hash: &BlockHash,
+    rights: &EndorsingRights,
+    log: &Logger,
+) -> Result<(), EndorsementValidationError> {
+    use tezos_messages::protocol::proto_010::operation::*;
 
-        let start = Instant::now();
+    let start = Instant::now();
 
-        let json = self.as_json();
+    let contents = if operation.contents.len() == 1 {
+        &operation.contents[0]
+    } else {
+        return Err(EndorsementValidationError::InvalidContents);
+    };
 
-        let contents = if self.contents.len() == 1 {
-            &self.contents[0]
-        } else {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::InvalidContents,
-            ));
-        };
-
-        match contents {
-            Contents::Endorsement(EndorsementOperation { level: _ }) => Err(Refused::new(
-                json,
-                EndorsementValidationError::UnwrappedEndorsement,
-            )),
-            Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
-                if self.signature.as_ref().iter().any(|b| *b != 0)
-                    || self.branch != endorsement.branch
-                {
-                    return Err(Refused::new(
-                        json,
-                        EndorsementValidationError::InvalidEndorsementWrapper,
-                    ));
-                }
-
-                validate_inlined_endorsement(
-                    endorsement,
-                    block_hash,
-                    json,
-                    *slot,
-                    rights,
-                    chain_id,
-                    start,
-                    log,
-                )
-            }
-            _ => Err(Refused::new(
-                json,
-                EndorsementValidationError::InvalidContents,
-            )),
+    match contents {
+        Contents::Endorsement(EndorsementOperation { level: _ }) => {
+            Err(EndorsementValidationError::UnwrappedEndorsement)
         }
+        Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
+            if operation.signature.as_ref().iter().any(|b| *b != 0)
+                || operation.branch != endorsement.branch
+            {
+                return Err(EndorsementValidationError::InvalidEndorsementWrapper);
+            }
+
+            validate_inlined_endorsement(
+                endorsement,
+                block_hash,
+                *slot,
+                rights,
+                chain_id,
+                start,
+                log,
+            )
+        }
+        _ => Err(EndorsementValidationError::InvalidContents),
     }
 }
 
-impl EndorsementValidator for tezos_messages::protocol::proto_011::operation::Operation {
-    fn validate_endorsement(
-        &self,
-        chain_id: &ChainId,
-        block_hash: &BlockHash,
-        rights: &EndorsingRights,
-        log: &Logger,
-    ) -> Result<Applied, Refused> {
-        use tezos_messages::protocol::proto_011::operation::*;
+fn validate_endorsement_011_hangzhou(
+    operation: &tezos_messages::protocol::proto_011::operation::Operation,
+    chain_id: &ChainId,
+    block_hash: &BlockHash,
+    rights: &EndorsingRights,
+    log: &Logger,
+) -> Result<(), EndorsementValidationError> {
+    use tezos_messages::protocol::proto_011::operation::*;
 
-        let start = Instant::now();
+    let start = Instant::now();
 
-        let json = self.as_json();
+    let contents = if operation.contents.len() == 1 {
+        &operation.contents[0]
+    } else {
+        return Err(EndorsementValidationError::InvalidContents);
+    };
 
-        let contents = if self.contents.len() == 1 {
-            &self.contents[0]
-        } else {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::InvalidContents,
-            ));
-        };
-
-        match contents {
-            Contents::Endorsement(EndorsementOperation { level: _ }) => Err(Refused::new(
-                json,
-                EndorsementValidationError::UnwrappedEndorsement,
-            )),
-            Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
-                if self.signature.as_ref().iter().any(|b| *b != 0)
-                    || self.branch != endorsement.branch
-                {
-                    return Err(Refused::new(
-                        json,
-                        EndorsementValidationError::InvalidEndorsementWrapper,
-                    ));
-                }
-
-                validate_inlined_endorsement(
-                    endorsement,
-                    block_hash,
-                    json,
-                    *slot,
-                    rights,
-                    chain_id,
-                    start,
-                    log,
-                )
-            }
-            _ => Err(Refused::new(
-                json,
-                EndorsementValidationError::InvalidContents,
-            )),
+    match contents {
+        Contents::Endorsement(EndorsementOperation { level: _ }) => {
+            Err(EndorsementValidationError::UnwrappedEndorsement)
         }
+        Contents::EndorsementWithSlot(EndorsementWithSlotOperation { endorsement, slot }) => {
+            if operation.signature.as_ref().iter().any(|b| *b != 0)
+                || operation.branch != endorsement.branch
+            {
+                return Err(EndorsementValidationError::InvalidEndorsementWrapper);
+            }
+
+            validate_inlined_endorsement(
+                endorsement,
+                block_hash,
+                *slot,
+                rights,
+                chain_id,
+                start,
+                log,
+            )
+        }
+        _ => Err(EndorsementValidationError::InvalidContents),
     }
 }
 
 fn validate_inlined_endorsement(
     endorsement: &tezos_messages::protocol::proto_005_2::operation::InlinedEndorsement,
     block_hash: &BlockHash,
-    json: serde_json::Value,
     slot: u16,
     rights: &EndorsingRights,
     chain_id: &ChainId,
     start: Instant,
     log: &Logger,
-) -> Result<Applied, Refused> {
+) -> Result<(), EndorsementValidationError> {
     if &endorsement.branch != block_hash {
-        return Err(Refused::new(
-            json,
-            EndorsementValidationError::WrongEndorsementPredecessor,
-        ));
+        return Err(EndorsementValidationError::WrongEndorsementPredecessor);
     }
     let slot = slot as usize;
     let delegate = if slot < rights.slot_to_delegate.len() {
         &rights.slot_to_delegate[slot]
     } else {
-        return Err(Refused::new(json, EndorsementValidationError::InvalidSlot));
+        return Err(EndorsementValidationError::InvalidSlot);
     };
     let signature = &endorsement.signature;
     let mut encoded = endorsement.branch.as_ref().to_vec();
     let binary_endorsement = match endorsement.operations.as_bytes() {
         Ok(bytes) => bytes,
-        Err(_) => {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::EncodingError,
-            ))
-        }
+        Err(_) => return Err(EndorsementValidationError::EncodingError),
     };
     encoded.extend(binary_endorsement);
     debug!(log, "Validating endorsement";
@@ -326,31 +284,15 @@ fn validate_inlined_endorsement(
         encoded,
     ) {
         Ok(true) => (),
-        Ok(_) => {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::InlinedSignatureMismatch,
-            ))
-        }
+        Ok(_) => return Err(EndorsementValidationError::InlinedSignatureMismatch),
         Err(CryptoError::Unsupported(_)) => {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::UnsupportedPublicKey,
-            ))
+            return Err(EndorsementValidationError::UnsupportedPublicKey)
         }
-        Err(_) => {
-            return Err(Refused::new(
-                json,
-                EndorsementValidationError::SignatureError,
-            ))
-        }
+        Err(_) => return Err(EndorsementValidationError::SignatureError),
     }
     let done = Instant::now();
     debug!(log, "Endorsement signature verified";
            "total" => FnValue(|_| format!("{:?}", done - start)),
-           "crypto" => FnValue(|_| format!("{:?}", done - verifying)),
-           "json" => FnValue(|_| json.to_string()));
-    Ok(Applied {
-        protocol_data: json,
-    })
+           "crypto" => FnValue(|_| format!("{:?}", done - verifying)));
+    Ok(())
 }

@@ -838,7 +838,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::MempoolOperationDecoded(MempoolOperationDecodedAction {
             operation,
-            protocol_data,
+            operation_decoded_contents,
         }) => {
             if let Some(operation_state) = mempool_state.operations_state.get_mut(operation) {
                 if let MempoolOperation {
@@ -846,7 +846,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     ..
                 } = operation_state
                 {
-                    *operation_state = operation_state.decoded(protocol_data, action);
+                    *operation_state =
+                        operation_state.decoded(operation_decoded_contents.clone(), action);
                 }
             }
         }

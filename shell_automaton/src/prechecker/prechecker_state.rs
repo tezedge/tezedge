@@ -23,7 +23,7 @@ use tezos_messages::{
 };
 
 use crate::{
-    rights::{Delegate, EndorsingRights, RightsError},
+    rights::{Delegate, EndorsingRights, RightsError, Slot},
     storage::kv_block_additional_data::Error as BlockAdditionalDataStorageError,
 };
 
@@ -158,10 +158,10 @@ pub enum PrecheckerOperationState {
         endorsing_rights: EndorsingRights,
     },
     Applied {
-        protocol_data: serde_json::Value,
+        operation_decoded_contents: OperationDecodedContents,
     },
     Refused {
-        protocol_data: serde_json::Value,
+        operation_decoded_contents: OperationDecodedContents,
         error: EndorsementValidationError,
     },
     ProtocolNeeded,
@@ -261,7 +261,31 @@ impl OperationDecodedContents {
         }
     }
 
-    pub(super) fn as_json(&self) -> serde_json::Value {
+    pub(crate) fn endorsement_slot(&self) -> Option<Slot> {
+        match self {
+            OperationDecodedContents::Proto010(operation) if operation.contents.len() == 1 => {
+                use tezos_messages::protocol::proto_010::operation::*;
+                match operation.contents[0] {
+                    Contents::EndorsementWithSlot(EndorsementWithSlotOperation {
+                        slot, ..
+                    }) => Some(slot),
+                    _ => None,
+                }
+            }
+            OperationDecodedContents::Proto011(operation) if operation.contents.len() == 1 => {
+                use tezos_messages::protocol::proto_011::operation::*;
+                match operation.contents[0] {
+                    Contents::EndorsementWithSlot(EndorsementWithSlotOperation {
+                        slot, ..
+                    }) => Some(slot),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_json(&self) -> serde_json::Value {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.as_json(),
             OperationDecodedContents::Proto011(operation) => operation.as_json(),

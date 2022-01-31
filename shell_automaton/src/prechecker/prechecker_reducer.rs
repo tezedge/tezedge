@@ -133,14 +133,14 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 });
         }
         Action::PrecheckerEndorsementValidationApplied(
-            PrecheckerEndorsementValidationAppliedAction { key, protocol_data },
+            PrecheckerEndorsementValidationAppliedAction { key },
         ) => {
             let log = &state.log;
             prechecker_state
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingOperationPrechecking { .. } =
+                    if let PrecheckerOperationState::PendingOperationPrechecking { operation_decoded_contents, .. } =
                         &state.state
                     {
                         trace!(log, "Prechecking  successfull";
@@ -148,24 +148,20 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                                "duration" => FnValue(|_| format!("{:?}", action.id.duration_since(state.start)))
                         );
                         state.state = PrecheckerOperationState::Applied {
-                            protocol_data: protocol_data.clone(),
+                            operation_decoded_contents: operation_decoded_contents.clone(),
                         };
                     }
                 });
         }
         Action::PrecheckerEndorsementValidationRefused(
-            PrecheckerEndorsementValidationRefusedAction {
-                key,
-                protocol_data,
-                error,
-            },
+            PrecheckerEndorsementValidationRefusedAction { key, error },
         ) => {
             let log = &state.log;
             prechecker_state
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingOperationPrechecking { .. } =
+                    if let PrecheckerOperationState::PendingOperationPrechecking { operation_decoded_contents, .. } =
                         &state.state
                     {
                         trace!(log, "Prechecking refused";
@@ -173,13 +169,13 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                                "duration" => FnValue(|_| format!("{:?}", action.id.duration_since(state.start)))
                         );
                         state.state = PrecheckerOperationState::Refused {
-                            protocol_data: protocol_data.clone(),
+                            operation_decoded_contents: operation_decoded_contents.clone(),
                             error: error.clone(),
                         };
                     }
                 });
         }
-        Action::PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction { key, .. }) => {
+        Action::PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction { key }) => {
             let log = &state.log;
             prechecker_state
                 .operations

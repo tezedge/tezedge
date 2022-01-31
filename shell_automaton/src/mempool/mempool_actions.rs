@@ -9,6 +9,7 @@ use crypto::hash::{BlockHash, OperationHash};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
+use crate::prechecker::OperationDecodedContents;
 use crate::service::rpc_service::RpcId;
 
 use crate::{action::EnablingCondition, state::State};
@@ -256,7 +257,7 @@ impl EnablingCondition<State> for MempoolGetPendingOperationsAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MempoolOperationDecodedAction {
     pub operation: OperationHash,
-    pub protocol_data: serde_json::Value,
+    pub operation_decoded_contents: OperationDecodedContents,
 }
 
 impl EnablingCondition<State> for MempoolOperationDecodedAction {
