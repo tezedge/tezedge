@@ -81,7 +81,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 });
         }
-        Action::PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction { key }) => {
+        Action::PrecheckerWaitForBlockPrechecked(PrecheckerWaitForBlockPrecheckedAction {
+            key,
+            ..
+        }) => {
             prechecker_state
                 .operations
                 .entry(key.clone())
@@ -90,10 +93,75 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                         operation_decoded_contents,
                     } = &state.state
                     {
+                        state.state = PrecheckerOperationState::PendingBlockPrechecked {
+                            operation_decoded_contents: operation_decoded_contents.clone(),
+                        };
+                    }
+                });
+        }
+        Action::PrecheckerBlockPrechecked(PrecheckerBlockPrecheckedAction { key }) => {
+            prechecker_state
+                .operations
+                .entry(key.clone())
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingBlockPrechecked {
+                        operation_decoded_contents,
+                    } = &state.state
+                    {
+                        state.state = PrecheckerOperationState::BlockPrecheckedReady {
+                            operation_decoded_contents: operation_decoded_contents.clone(),
+                        };
+                    }
+                });
+        }
+        Action::PrecheckerWaitForBlockApplied(PrecheckerWaitForBlockAppliedAction {
+            key, ..
+        }) => {
+            prechecker_state
+                .operations
+                .entry(key.clone())
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingBlockPrechecked {
+                        operation_decoded_contents,
+                    } = &state.state
+                    {
+                        state.state = PrecheckerOperationState::PendingBlockApplied {
+                            operation_decoded_contents: operation_decoded_contents.clone(),
+                        };
+                    }
+                });
+        }
+        Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
+            prechecker_state
+                .operations
+                .entry(key.clone())
+                .and_modify(|state| {
+                    if let PrecheckerOperationState::PendingBlockApplied {
+                        operation_decoded_contents,
+                    } = &state.state
+                    {
+                        state.state = PrecheckerOperationState::BlockAppliedReady {
+                            operation_decoded_contents: operation_decoded_contents.clone(),
+                        };
+                    }
+                });
+        }
+        Action::PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction { key }) => {
+            prechecker_state
+                .operations
+                .entry(key.clone())
+                .and_modify(|state| match &state.state {
+                    PrecheckerOperationState::BlockPrecheckedReady {
+                        operation_decoded_contents,
+                    }
+                    | PrecheckerOperationState::BlockAppliedReady {
+                        operation_decoded_contents,
+                    } => {
                         state.state = PrecheckerOperationState::PendingEndorsingRights {
                             operation_decoded_contents: operation_decoded_contents.clone(),
-                        }
+                        };
                     }
+                    _ => (),
                 });
         }
         Action::PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction {

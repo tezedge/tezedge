@@ -201,9 +201,20 @@ pub struct PrecheckerOperationDecodedAction {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerWaitForBlockApplicationAction {
+pub struct PrecheckerWaitForBlockPrecheckedAction {
     pub key: Key,
-    pub level: Level,
+    pub branch: BlockHash,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrecheckerBlockPrecheckedAction {
+    pub key: Key,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrecheckerWaitForBlockAppliedAction {
+    pub key: Key,
+    pub branch: BlockHash,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -383,7 +394,19 @@ impl EnablingCondition<State> for PrecheckerOperationDecodedAction {
         true
     }
 }
-impl EnablingCondition<State> for PrecheckerWaitForBlockApplicationAction {
+impl EnablingCondition<State> for PrecheckerWaitForBlockPrecheckedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+impl EnablingCondition<State> for PrecheckerBlockPrecheckedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+impl EnablingCondition<State> for PrecheckerWaitForBlockAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true

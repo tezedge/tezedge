@@ -20,10 +20,14 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::block_applier::BlockApplierApplyState;
-use crate::peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction};
 use crate::protocol::ProtocolAction;
 use crate::storage::kv_operations;
+use crate::{block_applier::BlockApplierApplyState, current_head::CurrentHeadState};
+use crate::{
+    current_head::current_head_actions::CurrentHeadPrecheckSuccessAction,
+    peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
+    prechecker::prechecker_actions::{PrecheckerApplied, PrecheckerErrored},
+};
 use crate::{
     mempool::mempool_state::OperationState,
     prechecker::prechecker_actions::{
@@ -182,6 +186,7 @@ where
                         address: *address,
                         send_operations: true,
                         requested_explicitly: true,
+                        prechecked_head: None,
                     });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -261,6 +266,7 @@ where
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         send_operations: false,
+                        prechecked_head: None,
                     });
                 }
             }
@@ -417,10 +423,17 @@ where
             PrecheckerPrecheckOperationResponseAction { response },
         ) => {
             match response {
-                PrecheckerPrecheckOperationResponse::Applied(_)
-                | PrecheckerPrecheckOperationResponse::Refused(_) => {
+                PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
+                    operation_decoded_contents,
+                    ..
+                })
+                | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
+                    operation_decoded_contents,
+                    ..
+                }) => {
                     store.dispatch(MempoolBroadcastAction {
                         send_operations: true,
+                        prechecked_head: Some(operation_decoded_contents.branch().clone()),
                     });
                     // respond
                     let resp = if store.state().mempool.local_head_state.is_some() {
@@ -468,13 +481,17 @@ where
                 });
             }
         }
-        Action::MempoolBroadcast(MempoolBroadcastAction { send_operations }) => {
+        Action::MempoolBroadcast(MempoolBroadcastAction {
+            send_operations,
+            prechecked_head,
+        }) => {
             let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
                     send_operations: *send_operations,
                     requested_explicitly: false,
+                    prechecked_head: prechecked_head.clone(),
                 });
             }
         }
@@ -504,10 +521,14 @@ where
             };
 
             let known_valid = peer.known_valid_to_send.clone();
+            let current_mempool = Mempool::new(known_valid.clone(), vec![]);
+            if current_mempool.is_empty() {
+                return;
+            }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
                 head_state.header.clone(),
-                Mempool::new(known_valid.clone(), vec![]),
+                current_mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
 
@@ -526,14 +547,27 @@ where
             address,
             send_operations,
             requested_explicitly,
+            prechecked_head,
         }) => {
-            let head_state = match &store.state().mempool.local_head_state {
+            let applied_block = match &store.state().mempool.local_head_state {
                 Some(v) => v,
                 None => {
                     // should always have current head here
                     // TODO(vlad): should be forbidden by enabling condition
                     return;
                 }
+            };
+            let (block_is_applied, header, head_hash) = match prechecked_head.as_ref() {
+                Some(prechecked_head) if prechecked_head != &applied_block.hash => {
+                    if let Some(CurrentHeadState::Prechecked { block_header, .. }) =
+                        store.state().current_heads.candidates.get(prechecked_head)
+                    {
+                        (false, block_header, prechecked_head)
+                    } else {
+                        return;
+                    }
+                }
+                _ => (true, &applied_block.header, &applied_block.hash),
             };
             let peer = match store.state().mempool.peer_state.get(&address) {
                 Some(v) => v,
@@ -582,8 +616,11 @@ where
                     .validated_operations
                     .ops
                     .iter()
-                    .filter_map(|(hash, _)| {
-                        if !peer.seen_operations.contains(hash) {
+                    .filter_map(|(hash, op)| {
+                        if !peer.seen_operations.contains(hash)
+                            // when broadcasting prechecked head, only include operations for that head
+                            && (block_is_applied || head_hash == op.branch())
+                        {
                             Some(hash.clone())
                         } else {
                             None
@@ -591,6 +628,7 @@ where
                     })
                     .collect::<Vec<_>>()
             };
+
             // TODO(vlad):
             let pending = if *requested_explicitly && !debug {
                 store
@@ -598,10 +636,13 @@ where
                     .mempool
                     .pending_operations
                     .iter()
-                    .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(hash) && head_state.hash.eq(op.branch())
+                    .filter_map(|(hash, op)| {
+                        if !peer.seen_operations.contains(hash) && head_hash.eq(op.branch()) {
+                            Some(hash.clone())
+                        } else {
+                            None
+                        }
                     })
-                    .map(|(hash, _)| hash.clone())
                     .collect::<Vec<_>>()
             } else {
                 vec![]
@@ -617,11 +658,10 @@ where
             };
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                head_state.header.clone(),
+                header.clone(),
                 mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
-
             store.dispatch(PeerMessageWriteInitAction {
                 address: address.clone(),
                 message,
@@ -631,6 +671,14 @@ where
                 pending,
                 known_valid,
                 cleanup_known_valid: false,
+            });
+        }
+        Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
+            block_hash, ..
+        }) => {
+            store.dispatch(MempoolBroadcastAction {
+                send_operations: false,
+                prechecked_head: Some(block_hash.clone()),
             });
         }
 

@@ -80,7 +80,11 @@ where
         }
         Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction { block_hash }) => {
             match store.state.get().current_heads.candidates.get(block_hash) {
-                Some(CurrentHeadState::Prechecked { baker, priority }) => {
+                Some(CurrentHeadState::Prechecked {
+                    block_header: _,
+                    baker,
+                    priority,
+                }) => {
                     let baker = baker.clone();
                     let priority = *priority;
                     store.dispatch(CurrentHeadPrecheckSuccessAction {
@@ -159,4 +163,45 @@ fn max_priority_to_precache(
         ((now - prev_timestamp - block_times.0) / block_times.1 + 1).try_into()?
     };
     Ok(priority)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::current_head::current_head_reducer::TIME_BETWEEN_BLOCKS;
+
+    #[test]
+    fn test_max_priority_to_precache_0() {
+        let prev_timestamp = 100;
+        let now = prev_timestamp + 1;
+        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
+        assert_eq!(res, Ok(0));
+
+        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 - 1;
+        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
+        assert_eq!(res, Ok(0));
+    }
+
+    #[test]
+    fn test_max_priority_to_precache_1() {
+        let prev_timestamp = 100;
+        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0;
+        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
+        assert_eq!(res, Ok(1));
+    }
+
+    #[test]
+    fn test_max_priority_to_precache_n() {
+        const N: u16 = 10;
+
+        let prev_timestamp = 100;
+        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 + TIME_BETWEEN_BLOCKS.1 * (N as i64) - 1;
+        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
+        assert_eq!(res, Ok(N));
+
+        let prev_timestamp = 100;
+        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 + TIME_BETWEEN_BLOCKS.1 * (N as i64);
+        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
+        assert_eq!(res, Ok(N + 1));
+    }
 }

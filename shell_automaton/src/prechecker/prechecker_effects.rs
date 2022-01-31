@@ -3,12 +3,18 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use crypto::blake2b;
+use crypto::{blake2b, hash::BlockHash};
 use slog::error;
 use tezos_messages::{p2p::binary_message::BinaryWrite, protocol::SupportedProtocol};
 
 use crate::{
     block_applier::BlockApplierApplyState,
+    current_head::{
+        current_head_actions::{
+            CurrentHeadPrecheckRejectedAction, CurrentHeadPrecheckSuccessAction,
+        },
+        CurrentHeadState,
+    },
     mempool::mempool_actions::MempoolOperationDecodedAction,
     prechecker::{
         prechecker_actions::PrecheckerEndorsementValidationRefusedAction, Applied,
@@ -19,12 +25,12 @@ use crate::{
         StorageBlockAdditionalDataErrorAction, StorageBlockAdditionalDataGetAction,
         StorageBlockAdditionalDataOkAction,
     },
-    Action, ActionWithMeta, Service, Store,
+    Action, ActionWithMeta, Service, State, Store,
 };
 
 use super::{
-    prechecker_actions::*, Key, OperationDecodedContents, PrecheckerError, PrecheckerOperation,
-    SupportedProtocolState,
+    prechecker_actions::*, EndorsementValidationError, Key, OperationDecodedContents,
+    PrecheckerError, PrecheckerOperation, SupportedProtocolState,
 };
 
 pub fn prechecker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -131,7 +137,10 @@ where
             }) = prechecker_state_operations.get(key).map(|op| &op.state)
             {
                 let is_endorsement = operation_decoded_contents.is_endorsement();
+                let endorsement_level = operation_decoded_contents.endorsement_level();
+                let block = operation_decoded_contents.branch().clone();
                 let operation_decoded_contents = operation_decoded_contents.clone();
+
                 store.dispatch(MempoolOperationDecodedAction {
                     operation: key.operation.clone(),
                     operation_decoded_contents,
@@ -139,12 +148,101 @@ where
 
                 if !is_endorsement {
                     store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
-                } else {
-                    store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
+                } else if store.state.get().current_heads.current_level() == endorsement_level {
+                    store.dispatch(PrecheckerWaitForBlockPrecheckedAction {
+                        key: key.clone(),
+                        branch: block,
+                    });
                 }
             }
         }
-
+        Action::PrecheckerWaitForBlockPrechecked(PrecheckerWaitForBlockPrecheckedAction {
+            key,
+            branch,
+        }) => {
+            if let Some(PrecheckerOperationState::PendingBlockPrechecked { .. }) =
+                prechecker_state_operations.get(key).map(|op| &op.state)
+            {
+                match endorsement_branch_is_valid(store.state.get(), branch) {
+                    Some(true) => {
+                        store.dispatch(PrecheckerBlockPrecheckedAction { key: key.clone() });
+                    }
+                    Some(false) => {
+                        store.dispatch(PrecheckerEndorsementValidationRefusedAction {
+                            key: key.clone(),
+                            error: EndorsementValidationError::InvalidBranch,
+                        });
+                    }
+                    None => {
+                        slog::trace!(&store.state.get().log, "=== prechecker cannot decide on `{op}` as `{branch}` is not yet prechecked", op = key.operation.to_base58_check());
+                    }
+                }
+            }
+        }
+        Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
+            block_hash, ..
+        }) => {
+            for key in store
+                .state
+                .get()
+                .prechecker
+                .operations
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let PrecheckerOperationState::PendingBlockPrechecked {
+                        operation_decoded_contents,
+                    } = &v.state
+                    {
+                        if operation_decoded_contents.branch() == block_hash {
+                            Some(k.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(PrecheckerBlockPrecheckedAction { key });
+            }
+        }
+        Action::CurrentHeadPrecheckRejected(CurrentHeadPrecheckRejectedAction {
+            block_hash,
+            ..
+        }) => {
+            for key in store
+                .state
+                .get()
+                .prechecker
+                .operations
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let PrecheckerOperationState::PendingBlockPrechecked {
+                        operation_decoded_contents,
+                    } = &v.state
+                    {
+                        if operation_decoded_contents.branch() == block_hash {
+                            Some(k.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(PrecheckerWaitForBlockAppliedAction {
+                    key,
+                    branch: block_hash.clone(),
+                });
+            }
+        }
+        Action::PrecheckerBlockPrechecked(PrecheckerBlockPrecheckedAction { key })
+        | Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
+            store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
+        }
         Action::PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction { key }) => {
             if let Some(PrecheckerOperationState::PendingEndorsingRights {
                 operation_decoded_contents,
@@ -378,21 +476,46 @@ where
                 _ => return,
             };
 
-            if !prechecker_state
-                .next_protocol
-                .as_ref()
-                .map_or(true, |(proto, state)| {
-                    (*proto == block.header.proto()
-                        && matches!(state, SupportedProtocolState::None))
-                        || proto + 1 == block.header.proto()
+            let need_proto_update =
+                prechecker_state
+                    .next_protocol
+                    .as_ref()
+                    .map_or(true, |(proto, state)| {
+                        (*proto == block.header.proto()
+                            && matches!(state, SupportedProtocolState::None))
+                            || proto + 1 == block.header.proto()
+                    });
+
+            let (block_hash, proto) = (block.hash.clone(), block.header.proto());
+            for key in store
+                .state
+                .get()
+                .prechecker
+                .operations
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let PrecheckerOperationState::PendingBlockApplied {
+                        operation_decoded_contents,
+                    } = &v.state
+                    {
+                        if operation_decoded_contents.branch() == &block_hash {
+                            Some(k.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 })
+                .collect::<Vec<_>>()
             {
-                return;
+                store.dispatch(PrecheckerBlockAppliedAction { key });
             }
 
-            slog::trace!(&store.state.get().log, "query next block protocol"; "proto" => block.header.proto(), "block" => block.hash.to_base58_check());
-            let (block_hash, proto) = (block.hash.clone(), block.header.proto());
-            store.dispatch(PrecheckerQueryNextBlockProtocolAction { block_hash, proto });
+            if need_proto_update {
+                slog::trace!(&store.state.get().log, "query next block protocol"; "proto" => proto, "block" => block_hash.to_base58_check());
+                store.dispatch(PrecheckerQueryNextBlockProtocolAction { block_hash, proto });
+            }
         }
         Action::PrecheckerQueryNextBlockProtocol(PrecheckerQueryNextBlockProtocolAction {
             block_hash,
@@ -476,5 +599,21 @@ where
         }
 
         _ => (),
+    }
+}
+
+fn endorsement_branch_is_valid(state: &State, branch: &BlockHash) -> Option<bool> {
+    if state.current_heads.candidates.is_empty() {
+        state
+            .current_heads
+            .applied_heads
+            .last()
+            .map(|l| &l.block_hash == branch)
+    } else {
+        match state.current_heads.candidates.get(branch) {
+            Some(CurrentHeadState::Prechecked { .. }) => Some(true),
+            Some(CurrentHeadState::Rejected { .. }) | None => Some(false),
+            _ => None,
+        }
     }
 }

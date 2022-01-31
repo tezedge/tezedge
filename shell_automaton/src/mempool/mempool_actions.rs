@@ -154,6 +154,7 @@ pub struct MempoolSendAction {
     pub address: SocketAddr,
     pub send_operations: bool,
     pub requested_explicitly: bool,
+    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {
@@ -191,6 +192,7 @@ impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {
     pub send_operations: bool,
+    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastAction {
