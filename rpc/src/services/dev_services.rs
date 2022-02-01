@@ -987,13 +987,26 @@ pub(crate) async fn get_shell_automaton_endorsements_status(
     Ok(response)
 }
 
-pub(crate) async fn get_shell_automaton_stats_current_head(
+pub(crate) async fn get_shell_automaton_stats_current_head_peers(
     level: i32,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<serde_json::Value> {
     let rx = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetStatsCurrentHead { level })
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadPeers { level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_stats_current_head_application(
+    level: i32,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadApplication { level })
         .await?;
 
     let response = rx.await?;

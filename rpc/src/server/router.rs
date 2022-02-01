@@ -333,7 +333,17 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     routes.handle(
         hash_set![Method::GET],
         "/dev/shell/automaton/stats/current_head",
-        dev_handler::dev_shell_automaton_stats_current_head,
+        dev_handler::dev_shell_automaton_stats_current_head_peers,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/current_head/peers",
+        dev_handler::dev_shell_automaton_stats_current_head_peers,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/current_head/application",
+        dev_handler::dev_shell_automaton_stats_current_head_application,
     );
 
     routes.handle(
