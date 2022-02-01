@@ -11,7 +11,7 @@ use crate::{EnablingCondition, State};
 use super::PeerConnectionOutgoingStatePhase;
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
 
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -56,6 +56,7 @@ impl EnablingCondition<State> for PeerConnectionOutgoingInitAction {
 pub struct PeerConnectionOutgoingPendingAction {
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
 }
 

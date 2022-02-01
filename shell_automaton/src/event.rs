@@ -9,7 +9,7 @@ use crate::peer::PeerToken;
 use crate::{EnablingCondition, State};
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
 
 /// Event coming from `Manager`.
 ///
@@ -67,6 +67,7 @@ impl EnablingCondition<State> for P2pServerEvent {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pPeerEvent {
+    #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,

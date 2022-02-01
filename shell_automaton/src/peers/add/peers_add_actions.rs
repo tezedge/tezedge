@@ -8,12 +8,13 @@ use crate::peer::PeerToken;
 use crate::{EnablingCondition, State};
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
 
 /// Add incoming peer to peers.
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersAddIncomingPeerAction {
+    #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,

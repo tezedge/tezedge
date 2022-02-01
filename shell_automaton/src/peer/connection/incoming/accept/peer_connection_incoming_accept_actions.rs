@@ -10,7 +10,7 @@ use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use crate::{EnablingCondition, State};
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
 
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,6 +51,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptErrorAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingRejectedAction {
+    #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
@@ -66,6 +67,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptSuccessAction {
+    #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,

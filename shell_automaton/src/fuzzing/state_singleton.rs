@@ -4,9 +4,21 @@ use storage::persistent::Decoder;
 
 use crate::State;
 
-pub static FUZZER_STATE: Lazy<RwLock<State>> = Lazy::new(|| RwLock::new(initial_state()));
+pub struct FuzzerState {
+    pub initial_target_state: State,
+    pub current_target_state: State,
+    pub iteration_count: u64,
+    pub reset_count: u64,
+}
 
-fn initial_state() -> State {
+pub static FUZZER_STATE: Lazy<RwLock<FuzzerState>> = Lazy::new(|| RwLock::new(initial_state()));
+
+fn initial_state() -> FuzzerState {
+    let reset_count = match env::var("STATE_RESET_COUNT") {
+        Ok(count) => count.parse().unwrap(),
+        _ => 1u64,
+    };
+
     let url = env::var("STATE_SNAPSHOT_URL").unwrap_or(String::from(
         "http://127.0.0.1:18732/dev/shell/automaton/state_raw",
     ));
@@ -33,5 +45,12 @@ fn initial_state() -> State {
         .unwrap();
     assert_eq!(bytes.len(), len);
 
-    State::decode(&bytes).unwrap()
+    let state = State::decode(&bytes).unwrap();
+
+    FuzzerState {
+        initial_target_state: state.clone(),
+        current_target_state: state,
+        iteration_count: 0,
+        reset_count,
+    }
 }

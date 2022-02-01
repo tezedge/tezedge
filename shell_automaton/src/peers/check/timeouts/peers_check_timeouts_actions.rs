@@ -12,14 +12,14 @@ use super::PeersTimeouts;
 #[cfg(fuzzing)]
 use super::PeerTimeout;
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{IpAddrMutator, SocketAddrMutator};
 #[cfg(fuzzing)]
 use fuzzcheck::{
     mutators::{
         tuples::{Tuple2, Tuple2Mutator, TupleMutatorWrapper},
         vector::VecMutator,
     },
-    DefaultMutator,
+    DefaultMutator, Mutator,
 };
 #[cfg(fuzzing)]
 use std::net::SocketAddr;
@@ -40,11 +40,12 @@ pub struct PeersCheckTimeoutsSuccessAction {
     /*
     #[cfg_attr(fuzzing, field_mutator(
         VecMutator<(SocketAddr, PeerTimeout), TupleMutatorWrapper<
-            Tuple2Mutator<SocketAddrMutator, <PeerTimeout as DefaultMutator>::Mutator>,
+            Tuple2Mutator<fuzzcheck::mutators::net::SocketAddrMutator, <PeerTimeout as DefaultMutator>::Mutator>,
             Tuple2<SocketAddr, PeerTimeout>>>
         ))]
         */
-    pub peer_timeouts: PeersTimeouts,
+    pub peer_timeouts: Vec<(SocketAddr, PeerTimeout)>,
+    #[cfg_attr(fuzzing, field_mutator(VecMutator<IpAddr, IpAddrMutator>))]
     pub graylist_timeouts: Vec<IpAddr>,
 }
 

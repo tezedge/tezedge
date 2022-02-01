@@ -166,7 +166,7 @@ impl StorageActionTest {
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PeerActionTest {
-    TestPeersGraylistAction(PeersGraylistActionTest),
+    //TestPeersGraylistAction(PeersGraylistActionTest),
     TestPeersAddMultiAction(PeersAddMultiAction),
     TestPeersRemoveAction(PeersRemoveAction),
     TestPeerConnection(PeerConnectionActionTest),
@@ -178,7 +178,7 @@ enum PeerActionTest {
 impl PeerActionTest {
     fn to_action(&self) -> Action {
         match self.clone() {
-            Self::TestPeersGraylistAction(a) => a.to_action(),
+            //Self::TestPeersGraylistAction(a) => a.to_action(),
             Self::TestPeersAddMultiAction(a) => a.into(),
             Self::TestPeersRemoveAction(a) => a.into(),
             Self::TestPeerConnection(a) => a.to_action(),
@@ -485,20 +485,32 @@ impl PeerHandshakingActionTest {
 }
 
 fn next_action_id() -> ActionId {
-    let time_ns = FUZZER_STATE.read().unwrap().last_action.time_as_nanos();
+    let time_ns = FUZZER_STATE
+        .read()
+        .unwrap()
+        .current_target_state
+        .last_action
+        .time_as_nanos();
     ActionId::new_unchecked(time_ns + 1)
 }
 
 fn reduce_with_state(action: &ActionWithMeta<Action>) -> bool {
     let mut state = FUZZER_STATE.write().unwrap();
 
-    if !is_action_enabled(action.action.clone(), &state) {
+    if state.reset_count != 0 && (state.iteration_count % state.reset_count) == 0 {
+        //println!("Resetting state: iteration {}", state.iteration_count);
+        state.current_target_state = state.initial_target_state.clone();
+    }
+
+    state.iteration_count += 1;
+
+    if !is_action_enabled(action.action.clone(), &state.current_target_state) {
         return true;
     }
 
-    println!("{:?}", action);
-    shell_automaton::reducer(&mut state, action);
-    match state.check_safety_condition() {
+    //println!("{:?}", action);
+    shell_automaton::reducer(&mut state.current_target_state, action);
+    match state.current_target_state.check_safety_condition() {
         Err(error) => {
             println!("{:?}", error);
             false

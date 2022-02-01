@@ -7,7 +7,7 @@ use std::net::{IpAddr, SocketAddr};
 use crate::{EnablingCondition, State};
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{IpAddrMutator, SocketAddrMutator};
 
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,6 +25,7 @@ impl EnablingCondition<State> for PeersGraylistAddressAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpAddAction {
+    #[cfg_attr(fuzzing, field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -37,6 +38,7 @@ impl EnablingCondition<State> for PeersGraylistIpAddAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpAddedAction {
+    #[cfg_attr(fuzzing, field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -49,6 +51,7 @@ impl EnablingCondition<State> for PeersGraylistIpAddedAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpRemoveAction {
+    #[cfg_attr(fuzzing, field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 
@@ -61,6 +64,7 @@ impl EnablingCondition<State> for PeersGraylistIpRemoveAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistIpRemovedAction {
+    #[cfg_attr(fuzzing, field_mutator(IpAddrMutator))]
     pub ip: IpAddr,
 }
 

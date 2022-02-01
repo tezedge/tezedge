@@ -1,0 +1,357 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap');
+
+/* Based upon the lcov CSS style, style files can be reused */
+
+body {
+    background-color: #1b1b1d;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    height: 100%;
+    margin: 0;
+}
+
+td {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+body > table {
+    max-width: 90%;
+    margin: 0 auto;
+    border-top: none;
+}
+
+body > table > tbody > tr:last-child {
+    display: none;
+}
+
+body > table > tbody > tr:nth-child(2) > td.ruler {
+    display: none;
+}
+
+body > table > tbody > tr:nth-child(3) > td {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+
+.tablesorter th {
+    border-top: none;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.tablesorter th:first-child {
+    border-left: none;
+}
+
+.tablesorter th:last-child {
+    border-right: none;
+}
+
+.tablesorter th:hover::before,
+.tablesorter th:hover::after {
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-bottom-color: rgba(255, 255, 255, 0.8);
+}
+
+td.title {
+    height: 15vh;
+    font-weight: 300;
+    font-size: 20px;
+    text-align: center;
+}
+
+table table {
+    justify-content: space-between;
+    padding: 14px 30px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+table table tr td:nth-child(odd) {
+    text-align: right;
+}
+
+table table tr td:first-child,
+table table tr td:nth-child(6) {
+    width: 10%;
+}
+
+table table tr td:nth-child(2) {
+    width: 50%;
+}
+
+table table tr td:nth-child(5) {
+    width: 25%;
+}
+
+table table tr td:nth-child(3) {
+    width: 18%;
+}
+
+table table tr td:nth-child(4) {
+    width: 12%;
+}
+
+.coverPerLeftMed {
+    color: #FFD60A;
+}
+
+.coverPerLeftLo {
+    color: #EB5368;
+}
+
+.coverPerLeftHi {
+    color: #32D74B;
+}
+
+td.ruler {
+    background-color: rgba(255, 255, 255, 0.1);
+    height: 1px;
+    display: block;
+}
+
+table:last-child td.ruler {
+    display: none;
+}
+
+.headerValue {
+    color: #fff;
+}
+
+.headerItem {
+    margin-right: 6px;
+}
+
+.tablesorter {
+    background-color: unset;
+    max-width: 90%;
+    width: 90%;
+    margin: 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: none;
+    font-family: 'Inter', sans-serif;
+}
+
+.tablesorter th {
+    background-color: unset !important;
+    text-shadow: unset;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 400;
+    font-family: inherit;
+    padding: 4px 18px 4px 8px !important;
+}
+
+.tablesorter th:first-child {
+    color: #fff;
+}
+
+.tablesorter tr td {
+    background-color: unset;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    text-align: left;
+    padding-left: 8px;
+    vertical-align: middle;
+}
+
+.tablesorter tbody tr:nth-child(odd) {
+    background-color: #3F3F43;
+}
+
+.tablesorter tr {
+    height: 40px;
+}
+
+.tablesorter tbody tr {
+    height: 32px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tablesorter-blue tbody > tr:hover > td {
+    background: unset;
+}
+
+span.lineCov {
+    color: #32D74B;
+    background-color: unset;
+}
+
+span.linePartCov {
+    color: #FFD60A;
+    background-color: unset;
+}
+
+span.lineNoCov {
+    color: #EB5368;
+    background-color: unset;
+}
+
+a:link {
+    color: #fff;
+    text-decoration: underline;
+}
+
+a:visited {
+    color: #bd86f3;
+    text-decoration: underline;
+}
+
+td.versionInfo {
+    font-size: 10px;
+    padding: 10px 4% 10px;
+    text-align: right;
+}
+
+td.ruler img {
+    display: none;
+}
+
+.tablesorter-blue .tablesorter-header {
+    background-image: unset !important;
+    position: relative;
+}
+
+.tablesorter-blue .tablesorter-header::before {
+    position: absolute;
+    content: '';
+    width: 0;
+    height: 0;
+    transform: translateY(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    right: 4px;
+    top: 50%;
+}
+
+.tablesorter-blue .tablesorter-headerAsc::before {
+    border-bottom: 5px solid rgba(255, 255, 255, 0.5);
+}
+
+.tablesorter-blue .tablesorter-headerDesc::before {
+    border-top: 5px solid rgba(255, 255, 255, 0.5);
+}
+
+.tablesorter-blue .tablesorter-headerUnSorted::before {
+    top: calc(50% - 4px);
+    border-bottom: 5px solid rgba(255, 255, 255, 0.5);
+}
+
+.tablesorter-blue .tablesorter-headerUnSorted::after {
+    position: absolute;
+    content: '';
+    width: 0;
+    height: 0;
+    right: 4px;
+    top: calc(50% + 4px);
+    transform: translateY(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid rgba(255, 255, 255, 0.5);
+}
+
+pre {
+    margin: 0 auto 30px;
+    color: #fff;
+    white-space: unset;
+    width: calc(90% - 0.5px);
+    padding-bottom: 100px;
+    border-radius: 2px;
+}
+
+pre source-line:first-child {
+    padding-top: 25px;
+}
+
+pre source-line:first-child span.coverHits,
+pre source-line:first-child span.orderNum {
+    position: relative;
+}
+
+pre source-line:first-child span.coverHits::before,
+pre source-line:first-child span.orderNum::before {
+    position: absolute;
+    content: '';
+    top: -25px;
+    left: 0;
+    right: 0;
+    height: 25px;
+}
+
+pre source-line:first-child span.coverHits::before {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+pre source-line:first-child span.orderNum::before {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+pre source-line:last-child {
+    overflow: hidden;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+
+pre source-line {
+    display: flex;
+    flex-direction: row;
+    flex-flow: row;
+    box-sizing: border-box;
+    width: 100%;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+pre source-line span:nth-child(3) {
+    order: 1;
+    white-space: pre;
+}
+
+pre source-line span:nth-child(1) {
+    order: 1;
+}
+
+pre span.lineNoCov {
+    background-color: rgba(255, 69, 58, 0.5);
+    color: white;
+}
+
+pre span.lineCov {
+    background-color: rgba(50, 215, 75, 0.5);
+    color: white;
+}
+
+pre span.linePartCov {
+    background-color: rgba(255, 214, 10, 0.5);
+    color: white;
+}
+
+span.lineNum {
+    min-width: 3em;
+    color: rgba(255, 255, 255, 0.4);
+    width: unset;
+    text-align: right;
+    padding-right: 6px;
+}
+
+span.orderNum {
+    float: unset;
+    min-width: 2.7em;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.4);
+    width: unset;
+    text-align: right;
+    padding-right: 6px;
+}
+
+span.coverHits {
+    background-color: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    min-width: 5em;
+    width: unset;
+    text-align: right;
+    padding-right: 6px;
+}

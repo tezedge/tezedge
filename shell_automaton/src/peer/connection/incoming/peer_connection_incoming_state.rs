@@ -8,21 +8,31 @@ use crate::peer::PeerToken;
 
 use super::PeerConnectionIncomingError;
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::PeerTokenMutator;
+
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
-#[enum_kind(PeerConnectionIncomingStatePhase, derive(Serialize, Deserialize), cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator)))]
+#[enum_kind(
+    PeerConnectionIncomingStatePhase,
+    derive(Serialize, Deserialize),
+    cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))
+)]
 pub enum PeerConnectionIncomingState {
     Pending {
         time: u64,
+        #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
         token: PeerToken,
     },
     Error {
         time: u64,
+        #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
         token: PeerToken,
         error: PeerConnectionIncomingError,
     },
     Success {
         time: u64,
+        #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
         token: PeerToken,
     },
 }

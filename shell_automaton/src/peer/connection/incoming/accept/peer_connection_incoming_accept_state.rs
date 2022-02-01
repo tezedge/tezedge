@@ -10,7 +10,7 @@ use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use super::PeerConnectionIncomingRejectedReason;
 
 #[cfg(fuzzing)]
-use crate::fuzzing::net::SocketAddrMutator;
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
 
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -20,6 +20,7 @@ pub enum PeerConnectionIncomingAcceptState {
     },
     Success {
         time: u64,
+        #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
         token: PeerToken,
         #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
         address: SocketAddr,
@@ -30,6 +31,7 @@ pub enum PeerConnectionIncomingAcceptState {
     },
     Rejected {
         time: u64,
+        #[cfg_attr(fuzzing, field_mutator(PeerTokenMutator))]
         token: PeerToken,
         #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
         address: SocketAddr,
