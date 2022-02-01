@@ -1,18 +1,20 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, sync::mpsc, thread};
+use std::{cell::Cell, io, str, sync::mpsc, thread};
 
 use derive_more::From;
 use reqwest::{
     blocking::{Client, Response},
     StatusCode, Url,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use slog::Logger;
 use thiserror::Error;
 
-use crypto::hash::{BlockHash, ChainId, ContractTz1Hash};
+use crypto::hash::{
+    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, NonceHash, SecretKeyEd25519,
+};
 
 #[derive(Debug, Error, From)]
 pub enum TezosClientError {
@@ -20,6 +22,10 @@ pub enum TezosClientError {
     Reqwest(reqwest::Error),
     #[error("{_0}")]
     SerdeJson(serde_json::Error),
+    #[error("{_0}")]
+    Io(io::Error),
+    #[error("{_0}")]
+    Utf8(str::Utf8Error),
 }
 
 #[derive(Debug)]
@@ -39,14 +45,23 @@ pub struct TezosClient {
 #[derive(Deserialize)]
 pub struct Constants {
     pub consensus_committee_size: u32,
+    pub minimal_block_delay: String,
+    pub delay_increment_per_round: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct BlockHeader {
-    pub level: u32,
+    pub level: i32,
     pub hash: BlockHash,
     pub predecessor: BlockHash,
     pub protocol_data: String,
+
+    proto: u8,
+    pub timestamp: String,
+    validation_pass: u8,
+    operations_hash: String,
+    fitness: Vec<String>,
+    context: String,
 }
 
 #[derive(Deserialize)]
@@ -56,9 +71,17 @@ pub struct Validator {
     pub slots: Vec<u16>,
 }
 
+#[derive(Deserialize)]
+pub struct BakingRights {
+    pub level: i32,
+    pub delegate: ContractTz1Hash,
+    pub round: u32,
+    pub estimated_time: Option<String>,
+}
+
 impl TezosClient {
-    // 012_PsiThaCa
-    const PROTOCOL: &'static str = "PsiThaCaT47Zboaw71QWScM8sXeMM7bbQFncK9FLqYc6EKdpjVP";
+    // 012-Psithaca
+    const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
     pub fn new(log: Logger, endpoint: Url) -> (Self, mpsc::Receiver<TezosClientEvent>) {
         let (tx, rx) = mpsc::channel();
@@ -154,6 +177,96 @@ impl TezosClient {
         Ok(handle)
     }
 
+    pub fn preapply_block(
+        &self,
+        secret_key: &SecretKeyEd25519,
+        chain_id: &ChainId,
+        payload_hash: BlockPayloadHash,
+        payload_round: u32,
+        proof_of_work_nonce: Vec<u8>,
+        seed_nonce_hash: NonceHash,
+        liquidity_baking_escape_vote: bool,
+        mut operations: [Vec<serde_json::Value>; 4],
+        timestamp: String,
+    ) -> Result<serde_json::Value, TezosClientError> {
+        use crypto::hash::ProtocolHash;
+
+        use super::types::ProtocolBlockHeader;
+
+        #[derive(Serialize)]
+        struct BlockData {
+            protocol_data: serde_json::Value,
+            operations: [Vec<serde_json::Value>; 4],
+        }
+
+        let proof_of_work_str = hex::encode(&proof_of_work_nonce);
+        let protocol_block_header = ProtocolBlockHeader {
+            protocol: ProtocolHash::from_base58_check(Self::PROTOCOL).expect("valid protocol name"),
+            payload_hash,
+            payload_round,
+            seed_nonce_hash,
+            proof_of_work_nonce,
+            liquidity_baking_escape_vote,
+        };
+        let signature = protocol_block_header
+            .sign(secret_key, chain_id)
+            .expect("successful encode");
+        let mut protocol_data = serde_json::to_value(&protocol_block_header)?;
+        let protocol_block_header_obj = protocol_data
+            .as_object_mut()
+            .expect("`ProtocolBlockHeader` is a structure");
+        protocol_block_header_obj.insert(
+            "signature".to_string(),
+            serde_json::Value::String(signature.to_base58_check().to_string()),
+        );
+        protocol_block_header_obj.insert(
+            "proof_of_work_nonce".to_string(),
+            serde_json::Value::String(proof_of_work_str),
+        );
+
+        for i in 0..4 {
+            for op in &mut operations[i] {
+                if let Some(op_obj) = op.as_object_mut() {
+                    op_obj.remove("hash");
+                }
+            }
+        }
+
+        let block_data = BlockData {
+            protocol_data,
+            operations,
+        };
+
+        let mut url = self
+            .endpoint
+            .join("chains/main/blocks/head/helpers/preapply/block")
+            .expect("valid constant url");
+        url.query_pairs_mut().append_pair("timestamp", &timestamp);
+
+        let counter = self.counter.get();
+        self.counter.set(counter + 1);
+        slog::info!(self.log, ">>>>{}: {}", counter, url);
+        let body = serde_json::to_string(&block_data)?;
+        slog::info!(self.log, "{}", body);
+        let mut response = self.inner.post(url).body(body).send()?;
+        let status = response.status();
+        slog::info!(self.log, "<<<<{}: {}", counter, status);
+        if status.is_success() {
+            let result = serde_json::from_reader(response).map_err(Into::into);
+            match &result {
+                Ok(value) => slog::info!(self.log, "{}", serde_json::to_string(value)?),
+                Err(err) => slog::error!(self.log, "{}", err),
+            }
+            result
+        } else {
+            let mut buf = [0; 0x1000];
+            io::Read::read(&mut response, &mut buf)?;
+            let s = str::from_utf8(&buf)?.trim_end_matches('\0');
+            slog::info!(self.log, "{}", s);
+            Ok(serde_json::Value::String(s.to_string()))
+        }
+    }
+
     pub fn inject_operation(
         &self,
         chain_id: &ChainId,
@@ -169,14 +282,14 @@ impl TezosClient {
         let counter = self.counter.get();
         self.counter.set(counter + 1);
         slog::info!(self.log, ">>>>{}: {}", counter, url);
-        let body = serde_json::to_string(op_hex).unwrap();
+        let body = format!("{:?}", op_hex);
         slog::info!(self.log, "{}", body);
         let response = self.inner.post(url).body(body).send()?;
         let status = response.status();
         slog::info!(self.log, "<<<<{}: {}", counter, status);
         let result = serde_json::from_reader(response).map_err(Into::into);
         match &result {
-            Ok(value) => slog::info!(self.log, "{}", serde_json::to_string(value).unwrap()),
+            Ok(value) => slog::info!(self.log, "{}", serde_json::to_string(value)?),
             Err(err) => slog::error!(self.log, "{}", err),
         }
         result
@@ -199,13 +312,28 @@ impl TezosClient {
         self.wrap_single_response(url)
     }
 
-    pub fn validators(&self, level: u32) -> Result<Vec<Validator>, TezosClientError> {
+    pub fn validators(&self, level: i32) -> Result<Vec<Validator>, TezosClientError> {
         let mut url = self
             .endpoint
             .join("chains/main/blocks/head/helpers/validators")
             .expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("level", &level.to_string());
+        self.wrap_single_response(url)
+    }
+
+    pub fn baking_rights(
+        &self,
+        level: i32,
+        delegate: &ContractTz1Hash,
+    ) -> Result<Vec<BakingRights>, TezosClientError> {
+        let mut url = self
+            .endpoint
+            .join("chains/main/blocks/head/helpers/baking_rights")
+            .expect("valid constant url");
+        url.query_pairs_mut()
+            .append_pair("level", &level.to_string())
+            .append_pair("delegate", &delegate.to_base58_check());
         self.wrap_single_response(url)
     }
 
@@ -240,7 +368,7 @@ impl TezosClient {
 
     pub fn monitor_operations(
         &self,
-    ) -> Result<impl Iterator<Item = serde_json::Value>, TezosClientError> {
+    ) -> Result<impl Iterator<Item = Vec<serde_json::Value>>, TezosClientError> {
         let mut url = self
             .endpoint
             .join("chains/main/mempool/monitor_operations")

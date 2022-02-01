@@ -5,6 +5,17 @@ use slog::{o, Discard, Drain as _, Level, Logger};
 use slog_async::{Async, OverflowStrategy};
 use slog_term::{FullFormat, TermDecorator};
 
+pub fn main_logger() -> Logger {
+    let drain = FullFormat::new(TermDecorator::new().build()).build().fuse();
+    let drain = Async::new(drain)
+        .chan_size(32768)
+        .overflow_strategy(OverflowStrategy::Block)
+        .build()
+        .filter_level(Level::Info)
+        .fuse();
+    Logger::root(drain, o!())
+}
+
 pub fn logger(empty: bool, level: Level) -> Logger {
     use std::io::{self, Write};
 

@@ -9,7 +9,7 @@ mod logger;
 mod client;
 use self::client::TezosClient;
 
-mod endorsement;
+mod types;
 
 mod key;
 
@@ -54,9 +54,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::endorsement::generate_preendorsement;
+    use super::types::generate_preendorsement;
 
-    use crypto::hash::{BlockHash, ChainId, SeedEd25519};
+    use crypto::hash::{BlockHash, BlockPayloadHash, ChainId, SeedEd25519};
 
     #[test]
     fn endorsement_encoding_signing() {
@@ -64,7 +64,7 @@ mod tests {
         let branch = BlockHash::from_base58_check(branch_str).unwrap();
 
         let payload_hash_str = "a9d4e49a39e397fea1a11bc3e358d954a45cea0d01ffeb735bc9ddc0587d17c8";
-        let payload_hash = hex::decode(payload_hash_str).unwrap();
+        let payload_hash = BlockPayloadHash(hex::decode(payload_hash_str).unwrap());
 
         let chain_id_str = "NetXdQprcVkpaWU";
         let chain_id = ChainId::from_base58_check(chain_id_str).unwrap();

@@ -36,6 +36,7 @@ mod prefix_bytes {
     pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
     pub const NONCE_HASH: [u8; 3] = [69, 220, 169];
+    pub const OPERATION_LIST_HASH: [u8; 2] = [133, 233];
 }
 
 pub type Hash = Vec<u8>;
@@ -293,6 +294,7 @@ define_hash!(SeedEd25519);
 define_hash!(Ed25519Signature);
 define_hash!(Signature);
 define_hash!(NonceHash);
+define_hash!(OperationListHash);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
 #[derive(Debug, Copy, Clone, PartialEq, strum_macros::AsRefStr)]
@@ -341,6 +343,8 @@ pub enum HashType {
     Signature,
     // "\069\220\169" (* nce(53) *)
     NonceHash,
+    // "\133\233" (* Lo(52) *)
+    OperationListHash,
 }
 
 impl HashType {
@@ -370,6 +374,7 @@ impl HashType {
             HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
             HashType::NonceHash => &NONCE_HASH,
+            HashType::OperationListHash => &OPERATION_LIST_HASH,
         }
     }
 
@@ -387,7 +392,8 @@ impl HashType {
             | HashType::OperationMetadataHash
             | HashType::OperationMetadataListListHash
             | HashType::PublicKeyEd25519
-            | HashType::NonceHash => 32,
+            | HashType::NonceHash
+            | HashType::OperationListHash => 32,
             HashType::CryptoboxPublicKeyHash => 16,
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
@@ -686,6 +692,28 @@ impl PublicKeySignatureVerifier for PublicKeyP256 {
             .verify_digest(NoHash::default().chain(bytes), &sig)
             .map(|_| true)
             .unwrap_or(false))
+    }
+}
+
+impl OperationListHash {
+    pub fn calculate(list: &[OperationHash]) -> Result<Self, Blake2bError> {
+        blake2b::merkle_tree(list).map(OperationListHash)
+    }
+}
+
+impl BlockPayloadHash {
+    pub fn calculate(
+        predecessor: &BlockHash,
+        round: u32,
+        operation_list_hash: &OperationListHash,
+    ) -> Result<Self, Blake2bError> {
+        let round = round.to_be_bytes();
+        let input = [
+            predecessor.0.as_ref(),
+            round.as_ref(),
+            operation_list_hash.0.as_ref(),
+        ];
+        blake2b::digest_all(&input, 32).map(BlockPayloadHash)
     }
 }
 
@@ -1155,5 +1183,30 @@ mod tests {
         test!(ed25519_sig, Ed25519Signature, ["edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q"]);
 
         test!(generic_sig, Signature, ["sigNCaj9CnmD94eZH9C7aPPqBbVCJF72fYmCFAXqEbWfqE633WNFWYQJFnDUFgRUQXR8fQ5tKSfJeTe6UAi75eTzzQf7AEc1"]);
+    }
+
+    #[test]
+    fn block_payload_hash() {
+        let operation_0 = "oom9d3PpjjaMzgg9mZ1pDrF8kjdyzDb41Bd2XE6Y3kRtFHXLku3";
+        let operation_1 = "oojiRXrrXHgukj8Q7d2AV8QCmJHTM4qpxhZqqbAnuG1RHtnbvim";
+        let operation_2 = "oo3h4gpQBjXaL63GDSiK54mP7sLydhgDQwBfjBWDhGt1gAcnGfA";
+        let operation_list_hash = OperationListHash::calculate(&[
+            OperationHash::from_base58_check(operation_0).unwrap(),
+            OperationHash::from_base58_check(operation_1).unwrap(),
+            OperationHash::from_base58_check(operation_2).unwrap(),
+        ])
+        .unwrap();
+
+        let predecessor = "BLc1ntjBDjsszZkGrbyHMoQ6gByJzkEjMs94T7UaM1ogGXa1PzF";
+        let payload_hash = BlockPayloadHash::calculate(
+            &BlockHash::from_base58_check(predecessor).unwrap(),
+            53,
+            &operation_list_hash,
+        )
+        .unwrap();
+        assert_eq!(
+            payload_hash.to_base58_check(),
+            "vh3Ed4mvDcNYVtskGLCYKKk1aBxJTpQNc46Hyi4EedpGCmgZ4LiG",
+        );
     }
 }

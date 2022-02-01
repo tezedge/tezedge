@@ -5,14 +5,15 @@
     "**/target/debug/incremental/**": true
   },
   "cSpell.words": [
-    "tezos",
-    "thiserror",
+    "merkle",
+    "preendorsement",
     "reqwest",
-    "structopt",
     "Seedable",
-    "Tezedge",
     "shiplift",
     "simplestakingcom",
-    "preendorsement",
+    "structopt",
+    "Tezedge",
+    "tezos",
+    "thiserror"
   ]
 }
