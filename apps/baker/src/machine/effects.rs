@@ -22,8 +22,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             node_dir,
             baker,
         }) => {
-            let ServiceDefault { client, log } = &store.service();
-            let main_log = crate::logger::main_logger();
+            let ServiceDefault { log, main_logger, client } = &store.service();
 
             let _ = node_dir;
             let (public_key, secret_key) = key::read_key(&base_dir, baker).unwrap();
@@ -32,7 +31,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let chain_id = client.chain_id().unwrap();
 
             client.wait_bootstrapped().unwrap();
-            slog::info!(main_log, "bootstrapped");
+            slog::info!(main_logger, "bootstrapped");
 
             let constants = client.constants().unwrap();
             let quorum_size = 2 * constants.consensus_committee_size / 3 + 1;
@@ -63,7 +62,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         Some(slot) => *slot,
                         // have no rights, skip the block
                         None => {
-                            slog::info!(main_log, "have no slot at level: {}", level,);
+                            slog::info!(main_logger, "have no slot at level: {}", level,);
                             continue;
                         }
                     };
@@ -81,7 +80,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                     let round = u32::from_be_bytes(round_bytes.try_into().unwrap());
 
                     slog::info!(
-                        main_log,
+                        main_logger,
                         "inject preendorsement, level: {}, slot: {}, round: {}",
                         level,
                         slot,
@@ -92,7 +91,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                     if let Some(endorsed_payload_hash) = &endorsed_payload_hash {
                         if endorsed_level == level && payload_hash.ne(endorsed_payload_hash) {
                             slog::warn!(
-                                main_log,
+                                main_logger,
                                 "level: {}, already endorsed: {}, skip: {}",
                                 level,
                                 endorsed_payload_hash,
@@ -168,7 +167,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                             }
                         }
                         if num_preendorsement >= quorum_size {
-                            slog::info!(main_log, "inject endorsement");
+                            slog::info!(main_logger, "inject endorsement");
                             let op = generate_endorsement(
                                 &branch,
                                 slot,

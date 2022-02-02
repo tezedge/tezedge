@@ -34,9 +34,10 @@ fn main() {
     } else {
         logger::logger(true, slog::Level::Info)
     };
-    let (client, _) = TezosClient::new(requests_logger, endpoint);
+    let main_logger = logger::main_logger();
+    let (client, _) = TezosClient::new(requests_logger, main_logger.clone(), endpoint);
 
-    let service = ServiceDefault { log, client };
+    let service = ServiceDefault { log, main_logger, client };
     let initial_time = SystemTime::now();
     let initial_state = State::default();
 

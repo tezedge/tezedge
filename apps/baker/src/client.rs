@@ -40,6 +40,7 @@ pub struct TezosClient {
     inner: Client,
     counter: Cell<usize>,
     log: Logger,
+    main_logger: Logger,
 }
 
 #[derive(Deserialize)]
@@ -83,7 +84,7 @@ impl TezosClient {
     // 012-Psithaca
     const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
-    pub fn new(log: Logger, endpoint: Url) -> (Self, mpsc::Receiver<TezosClientEvent>) {
+    pub fn new(log: Logger, main_logger: Logger, endpoint: Url) -> (Self, mpsc::Receiver<TezosClientEvent>) {
         let (tx, rx) = mpsc::channel();
         (
             TezosClient {
@@ -92,6 +93,7 @@ impl TezosClient {
                 inner: Client::new(),
                 counter: Cell::new(0),
                 log,
+                main_logger,
             },
             rx,
         )
@@ -149,6 +151,7 @@ impl TezosClient {
             serde_json::Deserializer::from_reader(response).into_iter::<serde_json::Value>();
 
         let log = self.log.clone();
+        let main_logger = self.main_logger.clone();
         let tx = self.tx.clone();
         let handle = thread::Builder::new()
             .spawn(move || {
@@ -168,7 +171,7 @@ impl TezosClient {
                         }
                         Err(err) => {
                             slog::info!(log, "<<<<{}: {}", counter, status);
-                            slog::error!(log, "{}", err);
+                            slog::error!(main_logger, "{status}, {err}");
                         }
                     }
                 }
@@ -262,7 +265,7 @@ impl TezosClient {
             let mut buf = [0; 0x1000];
             io::Read::read(&mut response, &mut buf)?;
             let s = str::from_utf8(&buf)?.trim_end_matches('\0');
-            slog::info!(self.log, "{}", s);
+            slog::info!(self.main_logger, "{status}, {s}");
             Ok(serde_json::Value::String(s.to_string()))
         }
     }
@@ -288,9 +291,12 @@ impl TezosClient {
         let status = response.status();
         slog::info!(self.log, "<<<<{}: {}", counter, status);
         let result = serde_json::from_reader(response).map_err(Into::into);
+        if !status.is_success() {
+            slog::error!(self.main_logger, "{status}, {:?}", result);
+        }
         match &result {
             Ok(value) => slog::info!(self.log, "{}", serde_json::to_string(value)?),
-            Err(err) => slog::error!(self.log, "{}", err),
+            Err(err) => slog::error!(self.main_logger, "{status}, {err}"),
         }
         result
     }
@@ -353,6 +359,9 @@ impl TezosClient {
         slog::info!(self.log, "<<<<{}: {}", counter, status);
         let value = serde_json::from_reader::<_, serde_json::Value>(response)?;
         slog::info!(self.log, "{}", value);
+        if !status.is_success() {
+            slog::error!(self.main_logger, "{status}, {value}");
+        }
         serde_json::from_value(value).map_err(Into::into)
     }
 
@@ -388,6 +397,7 @@ impl TezosClient {
     {
         let (response, counter, status) = self.request_inner(url)?;
         let log = self.log.clone();
+        let main_logger = self.main_logger.clone();
         let it = serde_json::Deserializer::from_reader(response)
             .into_iter::<serde_json::Value>()
             .filter_map(move |v| match v {
@@ -403,7 +413,7 @@ impl TezosClient {
                 }
                 Err(err) => {
                     slog::info!(log, "<<<<{}: {}", counter, status);
-                    slog::error!(log, "{}", err);
+                    slog::error!(main_logger, "{status}, {err}");
                     None
                 }
             });

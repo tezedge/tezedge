@@ -9,6 +9,7 @@ use crate::TezosClient;
 
 pub struct ServiceDefault {
     pub log: Logger,
+    pub main_logger: Logger,
     pub client: TezosClient,
 }
 
