@@ -100,8 +100,7 @@ pub fn stats_current_head_reducer(state: &mut crate::State, action: &crate::Acti
                     .get_mut(&level)
                     .map(|level_stats| {
                         if let Some(stats) = level_stats.head_stats.get_mut(&hash) {
-                            let time = action
-                                .id
+                            let time = timestamp
                                 .duration_since(level_stats.first_action)
                                 .as_nanos() as u64;
                             stats.times.entry("send_start".to_string()).or_insert(time);

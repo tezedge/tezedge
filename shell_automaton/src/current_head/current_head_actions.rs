@@ -29,6 +29,14 @@ impl EnablingCondition<State> for CurrentHeadReceivedAction {
             .current_heads
             .candidate_level()
             .map_or(true, |l| l == self.block_header.level())
+            && !state
+                .current_heads
+                .applied_hashes
+                .contains_key(&self.block_hash)
+            && !state
+                .current_heads
+                .candidates
+                .contains_key(&self.block_hash)
     }
 }
 

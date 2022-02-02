@@ -146,6 +146,18 @@ pub enum PrecheckerOperationState {
     DecodedContentReady {
         operation_decoded_contents: OperationDecodedContents,
     },
+    PendingBlockPrechecked {
+        operation_decoded_contents: OperationDecodedContents,
+    },
+    BlockPrecheckedReady {
+        operation_decoded_contents: OperationDecodedContents,
+    },
+    PendingBlockApplied {
+        operation_decoded_contents: OperationDecodedContents,
+    },
+    BlockAppliedReady {
+        operation_decoded_contents: OperationDecodedContents,
+    },
     PendingEndorsingRights {
         operation_decoded_contents: OperationDecodedContents,
     },
@@ -238,7 +250,7 @@ impl OperationDecodedContents {
         })
     }
 
-    pub(super) fn branch(&self) -> &BlockHash {
+    pub(crate) fn branch(&self) -> &BlockHash {
         match self {
             OperationDecodedContents::Proto010(op) => &op.branch,
             OperationDecodedContents::Proto011(op) => &op.branch,

@@ -32,8 +32,18 @@ impl CurrentHeads {
         self.applied_heads.last()
     }
 
-    pub fn candidate_level(&self) -> Option<Level> {
+    pub(crate) fn candidate_level(&self) -> Option<Level> {
         self.applied_head().map(|h| h.level + 1)
+    }
+
+    pub(crate) fn current_level(&self) -> Option<Level> {
+        self.applied_head().map(|h| {
+            if self.candidates.is_empty() {
+                h.level
+            } else {
+                h.level + 1
+            }
+        })
     }
 }
 
@@ -48,6 +58,7 @@ pub enum CurrentHeadState {
     Prechecked {
         baker: SignaturePublicKey,
         priority: u16,
+        block_header: BlockHeader,
     },
     Rejected,
     Error {
@@ -70,12 +81,18 @@ pub enum CurrentHeadPrecheckError {
 
 // ====================
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum BakingPriorityError {
     #[error("timestamp `{timestamp}` is too far in the future, now is `{now}`")]
     TimeInFuture { now: u64, timestamp: i64 },
     #[error("timestamp `{timestamp}` is before previous timestamp `{prev_timestamp}`")]
     TimeInPast { prev_timestamp: i64, timestamp: i64 },
+    #[error("timestamp `{timestamp}` is too early after `{prev_timestamp}`, earliest is {min_timestamp}")]
+    TooEarly {
+        timestamp: i64,
+        prev_timestamp: i64,
+        min_timestamp: i64,
+    },
     #[error("Too many priorities")]
     Overflow,
 }
