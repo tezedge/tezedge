@@ -1,24 +1,45 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use tezos_messages::p2p::encoding::peer::PeerMessage;
+
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::{PeerCrypto, PeerHandshaked, PeerStatus};
 use crate::{Action, ActionWithMeta, State};
 
 pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
-        Action::PeerMessageWriteInit(action) => {
-            if let Some(peer) = state.peers.get_mut(&action.address) {
-                match &mut peer.status {
-                    PeerStatus::Handshaked(PeerHandshaked { message_write, .. }) => {
-                        message_write.queue.push_back(action.message.clone());
-                    }
-                    _ => {}
+        Action::PeerMessageWriteInit(content) => {
+            let peer = match state
+                .peers
+                .get_mut(&content.address)
+                .and_then(|v| v.status.as_handshaked_mut())
+            {
+                Some(v) => v,
+                None => return,
+            };
+            peer.message_write.queue.push_back(content.message.clone());
+
+            if !matches!(
+                &peer.message_write.current,
+                PeerBinaryMessageWriteState::Init { .. }
+            ) {
+                return;
+            }
+            match content.message.message() {
+                PeerMessage::GetBlockHeaders(m) => {
+                    m.get_block_headers().iter().for_each(|b| {
+                        state
+                            .peers
+                            .pending_block_header_requests
+                            .insert(b.clone(), action.time_as_nanos());
+                    });
                 }
+                _ => {}
             }
         }
-        Action::PeerMessageWriteSuccess(action) => {
-            if let Some(peer) = state.peers.get_mut(&action.address) {
+        Action::PeerMessageWriteSuccess(content) => {
+            if let Some(peer) = state.peers.get_mut(&content.address) {
                 match &mut peer.status {
                     PeerStatus::Handshaked(PeerHandshaked {
                         crypto,

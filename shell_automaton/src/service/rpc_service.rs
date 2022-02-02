@@ -41,7 +41,7 @@ pub enum RpcRequest {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },
     GetBlockStats {
-        channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksStats>>,
+        channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksApplyStats>>,
     },
 
     InjectOperation {

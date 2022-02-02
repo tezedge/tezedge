@@ -4,7 +4,8 @@
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-use crypto::{crypto_box::PublicKey, hash::CryptoboxPublicKeyHash};
+use crypto::crypto_box::PublicKey;
+use crypto::hash::CryptoboxPublicKeyHash;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::{ActionId, Port};
@@ -49,6 +50,13 @@ pub enum PeerStatus {
 
 impl PeerStatus {
     pub fn as_handshaked(&self) -> Option<&PeerHandshaked> {
+        match self {
+            Self::Handshaked(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn as_handshaked_mut(&mut self) -> Option<&mut PeerHandshaked> {
         match self {
             Self::Handshaked(v) => Some(v),
             _ => None,

@@ -924,14 +924,18 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
     let mut result = stats
         .into_iter()
         .map(|(_, stats)| {
-            // TODO(zura): should be time when we actually saw the block
-            // in the current head.
-            let block_first_seen = stats.load_data_start.unwrap_or(0);
+            let block_first_seen = stats.first_seen.unwrap_or(0);
+            let data_ready_start = stats
+                .first_seen
+                .or(stats.download_block_header_start)
+                .or(stats.download_block_header_end)
+                .or(stats.download_block_operations_start)
+                .or(stats.download_block_operations_end);
 
             BlockStats {
                 block_first_seen,
                 block_level: stats.level,
-                data_ready: Some(0), // TODO(zura)
+                data_ready: times_sub(stats.load_data_start, data_ready_start),
                 load_data: times_sub(stats.load_data_end, stats.load_data_start),
                 apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
                 store_result: times_sub(stats.store_result_end, stats.store_result_start),

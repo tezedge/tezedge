@@ -113,8 +113,22 @@ where
                                 .and_then(|bas| bas.get(hash))
                                 .map(|bas| {
                                     IntoIterator::into_iter([
-                                        ("download_data_start", Some(0)),
-                                        ("download_data_end", bas.load_data_start),
+                                        (
+                                            "download_block_header_start",
+                                            bas.download_block_header_start,
+                                        ),
+                                        (
+                                            "download_block_header_end",
+                                            bas.download_block_header_end,
+                                        ),
+                                        (
+                                            "download_block_operations_start",
+                                            bas.download_block_operations_start,
+                                        ),
+                                        (
+                                            "download_block_operations_end",
+                                            bas.download_block_operations_end,
+                                        ),
                                         ("load_data_start", bas.load_data_start),
                                         ("load_data_end", bas.load_data_end),
                                         ("apply_block_start", bas.apply_block_start),
