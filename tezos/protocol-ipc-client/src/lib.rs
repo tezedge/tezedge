@@ -307,7 +307,7 @@ impl ProtocolRunnerApi {
 }
 
 pub struct ProtocolRunnerConnection {
-    configuration: ProtocolRunnerConfiguration,
+    pub configuration: ProtocolRunnerConfiguration,
     io: IpcIO,
 }
 
@@ -829,6 +829,46 @@ impl ProtocolRunnerConnection {
             ContextGetTreeByPrefix(params),
             ContextGetTreeByPrefixResult(result),
             ContextGetKeyValuesByPrefixError,
+            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
+        )
+    }
+
+    pub async fn dump_context(
+        &mut self,
+        context_hash: ContextHash,
+        dump_into_path: String,
+    ) -> Result<i64, ProtocolServiceError> {
+        let request = DumpContextRequest {
+            context_hash,
+            dump_into_path,
+        };
+
+        handle_request!(
+            self.io,
+            DumpContext(request),
+            DumpContextResponse(result),
+            DumpContextError,
+            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
+        )
+    }
+
+    pub async fn restore_context(
+        &mut self,
+        expected_context_hash: ContextHash,
+        restore_from_path: String,
+        nb_context_elements: i64,
+    ) -> Result<(), ProtocolServiceError> {
+        let request = RestoreContextRequest {
+            expected_context_hash,
+            restore_from_path,
+            nb_context_elements,
+        };
+
+        handle_request!(
+            self.io,
+            RestoreContext(request),
+            RestoreContextResponse(result),
+            RestoreContextError,
             Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
         )
     }

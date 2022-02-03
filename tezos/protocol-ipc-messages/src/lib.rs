@@ -12,9 +12,10 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper,
-    ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+    ComputePathResponse, DumpContextError, FfiJsonEncoderError, GetDataError,
+    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
+    ProtocolRpcRequest, ProtocolRpcResponse, RestoreContextError, RustBytes,
     TezosRuntimeConfiguration, TezosStorageInitError, ValidateOperationError,
     ValidateOperationRequest, ValidateOperationResponse,
 };
@@ -47,6 +48,8 @@ pub enum ProtocolMessage {
     ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest),
     ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest),
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
+    DumpContext(DumpContextRequest),
+    RestoreContext(RestoreContextRequest),
     ShutdownCall,
 }
 
@@ -67,6 +70,19 @@ pub struct ContextGetTreeByPrefixRequest {
     pub context_hash: ContextHash,
     pub prefix: ContextKeyOwned,
     pub depth: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DumpContextRequest {
+    pub context_hash: ContextHash,
+    pub dump_into_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RestoreContextRequest {
+    pub expected_context_hash: ContextHash,
+    pub restore_from_path: String,
+    pub nb_context_elements: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -130,6 +146,8 @@ pub enum NodeMessage {
     ContextGetKeyFromHistoryResult(Result<Option<ContextValue>, String>),
     ContextGetKeyValuesByPrefixResult(Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, String>),
     ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
+    DumpContextResponse(Result<i64, DumpContextError>),
+    RestoreContextResponse(Result<(), RestoreContextError>),
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),

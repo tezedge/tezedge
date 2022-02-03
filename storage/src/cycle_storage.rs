@@ -12,7 +12,7 @@ use tezos_api::ffi::CycleRollsOwnerSnapshot;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
-use crate::{PersistentStorage, StorageError};
+use crate::{IteratorMode, PersistentStorage, StorageError};
 
 pub type CycleMetaStorageKV = dyn TezedgeDatabaseWithIterator<CycleMetaStorage> + Sync + Send;
 
@@ -73,12 +73,27 @@ impl CycleMetaStorage {
     }
 
     #[inline]
-    fn put(&self, key: &CycleKey, data: &CycleData) -> Result<(), StorageError> {
+    pub fn put(&self, key: &CycleKey, data: &CycleData) -> Result<(), StorageError> {
         self.kv.put(key, data).map_err(StorageError::from)
     }
 
     pub fn get(&self, key: &CycleKey) -> Result<Option<CycleData>, StorageError> {
         self.kv.get(key).map_err(StorageError::from)
+    }
+
+    pub fn iterator(&self) -> Result<Vec<(CycleKey, CycleData)>, StorageError> {
+        self.kv
+            .find(IteratorMode::Start)?
+            .map(|result| {
+                let result = result?;
+                let k = {
+                    use crate::persistent::codec::Decoder;
+                    <Self as KeyValueSchema>::Key::decode(&result.0)?
+                };
+                let v = <Self as KeyValueSchema>::Value::decode(&result.1)?;
+                Ok((k, v))
+            })
+            .collect()
     }
 }
 

@@ -41,12 +41,14 @@ use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::configuration::Environment;
 use crate::notification_integration::RpcNotificationCallbackActor;
+use crate::snapshot_command::snapshot_storage;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::initialize_maindb;
 
 mod configuration;
 mod identity;
 mod notification_integration;
+mod snapshot_command;
 mod system;
 
 extern crate jemallocator;
@@ -622,8 +624,62 @@ fn main() {
     };
 
     // create/initialize databases
-    info!(log, "Loading databases... (3/8)");
+    info!(log, "Loading databases... (3/7)");
     let instant = Instant::now();
+
+    {
+        let persistent_storage = initialize_persistent_storage(&env, &log);
+
+        match resolve_storage_init_chain_data(
+            &env.tezos_network_config,
+            &env.storage.db_path,
+            &env.storage.context_storage_configuration,
+            &env.storage.patch_context,
+            &env.storage.context_stats_db_path,
+            &env.replay,
+            &log,
+        ) {
+            Ok(init_storage_data) => {
+                let blocks_replay = env
+                    .replay
+                    .as_ref()
+                    .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
+
+                info!(
+                    log,
+                    "Databases loaded successfully {} ms",
+                    instant.elapsed().as_millis()
+                );
+
+                if let Some(snapshot) = &env.snapshot {
+                    let target_block = snapshot.block.clone();
+                    let target_path = snapshot.target_path.clone();
+                    snapshot_storage(
+                        env,
+                        persistent_storage,
+                        init_storage_data,
+                        target_block,
+                        target_path,
+                        log,
+                    )
+                } else {
+                    block_on_actors(
+                        env,
+                        init_storage_data,
+                        Arc::new(tezos_identity),
+                        persistent_storage,
+                        blocks_replay,
+                        log,
+                    )
+                }
+            }
+            Err(e) => panic!("Failed to resolve init storage chain data, reason: {}", e),
+        }
+    }
+}
+
+// TODO: needs to take a path and other stuff, not just env?
+fn initialize_persistent_storage(env: &Environment, log: &Logger) -> PersistentStorage {
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let mut caches = GlobalRocksDbCacheHolder::with_capacity(1);
@@ -640,7 +696,7 @@ fn main() {
 
     let maindb = match env.storage.main_db {
         TezedgeDatabaseBackendConfiguration::Sled => initialize_maindb(
-            &log,
+            log,
             None,
             &env.storage.db,
             env.storage.db.expected_db_version,
@@ -653,7 +709,7 @@ fn main() {
                 .expect("Failed to create/initialize RocksDB database (db)");
             caches.push(kv_cache);
             initialize_maindb(
-                &log,
+                log,
                 Some(kv),
                 &env.storage.db,
                 env.storage.db.expected_db_version,
@@ -683,39 +739,5 @@ fn main() {
     );
     let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
-    {
-        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
-
-        match resolve_storage_init_chain_data(
-            &env.tezos_network_config,
-            &env.storage.db_path,
-            &env.storage.context_storage_configuration,
-            &env.storage.patch_context,
-            &env.storage.context_stats_db_path,
-            &env.replay,
-            &log,
-        ) {
-            Ok(init_data) => {
-                let blocks_replay = env
-                    .replay
-                    .as_ref()
-                    .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
-
-                info!(
-                    log,
-                    "Databases loaded successfully {} ms",
-                    instant.elapsed().as_millis()
-                );
-                block_on_actors(
-                    env,
-                    init_data,
-                    Arc::new(tezos_identity),
-                    persistent_storage,
-                    blocks_replay,
-                    log,
-                )
-            }
-            Err(e) => panic!("Failed to resolve init storage chain data, reason: {}", e),
-        }
-    }
+    PersistentStorage::new(maindb, commit_logs, sequences)
 }

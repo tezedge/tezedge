@@ -6,14 +6,15 @@ use crate::{
     OCamlBeginConstructionRequest, OCamlBlockHeader, OCamlBlockHeaderShellHeader,
     OCamlComputePathRequest, OCamlContextGetKeyFromHistoryRequest,
     OCamlContextGetKeyValuesByPrefixRequest, OCamlContextGetTreeByPrefixRequest,
-    OCamlCycleRollsOwnerSnapshot, OCamlGenesisChain, OCamlGenesisResultDataParams,
-    OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
+    OCamlCycleRollsOwnerSnapshot, OCamlDumpContextRequest, OCamlGenesisChain,
+    OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
     OCamlJsonEncodeApplyBlockOperationsMetadataParams,
     OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
-    OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
-    OCamlTezosContextStorageConfiguration, OCamlTezosContextTezedgeOnDiskBackendOptions,
-    OCamlTezosRuntimeConfiguration, OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
+    OCamlRestoreContextRequest, OCamlRpcRequest, OCamlTezosContextConfiguration,
+    OCamlTezosContextIrminStorageConfiguration, OCamlTezosContextStorageConfiguration,
+    OCamlTezosContextTezedgeOnDiskBackendOptions, OCamlTezosRuntimeConfiguration,
+    OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
 };
 
 use super::{
@@ -48,9 +49,9 @@ use tezos_context_api::{
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use tezos_protocol_ipc_messages::{
     ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
-    ContextGetTreeByPrefixRequest, GenesisResultDataParams, InitProtocolContextParams,
-    JsonEncodeApplyBlockOperationsMetadataParams, JsonEncodeApplyBlockResultMetadataParams,
-    ProtocolMessage,
+    ContextGetTreeByPrefixRequest, DumpContextRequest, GenesisResultDataParams,
+    InitProtocolContextParams, JsonEncodeApplyBlockOperationsMetadataParams,
+    JsonEncodeApplyBlockResultMetadataParams, ProtocolMessage, RestoreContextRequest,
 };
 
 // Hashes
@@ -480,6 +481,21 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_record! {
+    DumpContextRequest => OCamlDumpContextRequest {
+        context_hash: OCamlContextHash,
+        dump_into_path: String,
+    }
+}
+
+impl_to_ocaml_record! {
+    RestoreContextRequest => OCamlRestoreContextRequest {
+        expected_context_hash: OCamlContextHash,
+        restore_from_path: String,
+        nb_context_elements: OCamlInt,
+    }
+}
+
 unsafe impl<'a> ToOCaml<OCamlBlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a> {
     fn to_ocaml<'gc>(&self, cr: &'gc mut OCamlRuntime) -> OCaml<'gc, OCamlBlockHeaderShellHeader> {
         ocaml_alloc_record! {
@@ -551,6 +567,8 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ContextGetKeyFromHistory(req: OCamlContextGetKeyFromHistoryRequest),
         ProtocolMessage::ContextGetKeyValuesByPrefix(req: OCamlContextGetKeyValuesByPrefixRequest),
         ProtocolMessage::ContextGetTreeByPrefix(req: OCamlContextGetTreeByPrefixRequest),
+        ProtocolMessage::DumpContext(req: OCamlDumpContextRequest),
+        ProtocolMessage::RestoreContext(req: OCamlRestoreContextRequest),
         ProtocolMessage::ShutdownCall,
     }
 }

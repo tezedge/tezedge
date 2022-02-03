@@ -123,6 +123,32 @@ impl TezosContextStorageConfiguration {
         }
     }
 
+    /// Returns a copy with the path adjusted to `data_dir`
+    pub fn with_path(&self, data_dir: String) -> Self {
+        // TODO: only adjust on-disk backends, return copy otherwise
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => {
+                TezosContextStorageConfiguration::IrminOnly(TezosContextIrminStorageConfiguration {
+                    data_dir,
+                })
+            }
+            TezosContextStorageConfiguration::TezEdgeOnly(_) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::OnDisk(
+                            TezosContextTezedgeOnDiskBackendOptions {
+                                base_path: data_dir,
+                                startup_check: false,
+                            },
+                        ),
+                        ipc_socket_path: None,
+                    },
+                )
+            }
+            TezosContextStorageConfiguration::Both(_irmin, _tezedge) => self.clone(),
+        }
+    }
+
     pub fn get_ipc_socket_path(&self) -> Option<String> {
         match self {
             TezosContextStorageConfiguration::IrminOnly(_) => None,
