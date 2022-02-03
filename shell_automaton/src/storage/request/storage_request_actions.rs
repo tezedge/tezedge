@@ -44,6 +44,7 @@ impl EnablingCondition<State> for StorageRequestPendingAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageResponseReceivedAction {
     pub response: StorageResponse,
@@ -55,6 +56,7 @@ impl EnablingCondition<State> for StorageResponseReceivedAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestErrorAction {
     pub req_id: RequestId,
@@ -67,6 +69,7 @@ impl EnablingCondition<State> for StorageRequestErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestSuccessAction {
     pub req_id: RequestId,

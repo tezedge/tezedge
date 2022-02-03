@@ -8,6 +8,7 @@ use crate::{EnablingCondition, State};
 
 use super::StorageBlocksGenesisCheckAppliedState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisCheckAppliedInitAction {}
 
@@ -22,6 +23,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisCheckAppliedGetMetaPendingAction {}
 
@@ -34,6 +36,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaPending
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisCheckAppliedGetMetaErrorAction {}
 
@@ -46,6 +49,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaErrorAc
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisCheckAppliedGetMetaSuccessAction {
     pub meta: Option<Meta>,
@@ -61,6 +65,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaSuccess
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisCheckAppliedSuccessAction {
     pub is_applied: bool,

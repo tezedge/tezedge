@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{EnablingCondition, State};
 
 /// Do dns lookups to find and connect to initial peers.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersInitAction {}
 

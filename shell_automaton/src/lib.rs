@@ -3,8 +3,7 @@
 
 #![feature(no_coverage)]
 #![feature(deadline_api)]
-
-use peer::connection::outgoing::PeerConnectionOutgoingRandomInitAction;
+#![feature(trivial_bounds)]
 
 pub mod io_error_kind;
 

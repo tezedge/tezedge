@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![feature(no_coverage)]
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -256,9 +257,13 @@ pub type ContextValue = Vec<u8>;
 pub type StringDirectoryMap = BTreeMap<String, StringTreeObject>;
 
 /// Tree in String form needed for JSON RPCs
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StringTreeObject {
+    #[cfg(fuzzing)]
+    Directory,
+    #[cfg(not(fuzzing))]
     Directory(StringDirectoryMap),
     Blob(String),
     Null,

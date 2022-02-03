@@ -39,7 +39,8 @@ pub enum SignatureWatermark {
 }
 
 /// This is a wrapper for Signature.PublicKey, which tezos uses with different curves: edpk(ed25519), sppk(secp256k1), p2pk(p256) and smart contracts
-#[derive(Clone, PartialEq, Eq, Hash, HasEncoding, NomReader, BinWriter)]
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),
@@ -240,6 +241,7 @@ impl<'de> serde::Deserialize<'de> for SignaturePublicKey {
 }
 
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, HasEncoding, NomReader)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),

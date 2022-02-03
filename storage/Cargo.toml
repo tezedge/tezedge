@@ -23,6 +23,7 @@ strum = "0.20"
 strum_macros = "0.20"
 zstd = "0.5.3+zstd.1.4.5"
 edgekv = { path = "../edgekv" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
 
 # local dependencies
 crypto = { path = "../crypto" }

@@ -41,6 +41,7 @@ pub enum ProtocolRunnerRequest {
     Message((ProtocolRunnerToken, ProtocolMessage)),
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolRunnerResult {
     SpawnServer(Result<(), ProtocolRunnerError>),

@@ -14,8 +14,13 @@ use crate::State;
 
 use super::{CurrentHeadPrecheckError, CurrentHeadState};
 
+#[cfg(fuzzing)]
+use crate::fuzzing::net::SocketAddrMutator;
+
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadReceivedAction {
+    #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub block_hash: BlockHash,
     pub block_header: BlockHeader,
@@ -40,6 +45,7 @@ impl EnablingCondition<State> for CurrentHeadReceivedAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecheckAction {
     pub block_hash: BlockHash,
@@ -62,6 +68,7 @@ impl EnablingCondition<State> for CurrentHeadPrecheckAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecheckSuccessAction {
     pub block_hash: BlockHash,
@@ -75,6 +82,7 @@ impl EnablingCondition<State> for CurrentHeadPrecheckSuccessAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecheckRejectedAction {
     pub block_hash: BlockHash,
@@ -86,6 +94,7 @@ impl EnablingCondition<State> for CurrentHeadPrecheckRejectedAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadErrorAction {
     pub block_hash: BlockHash,
@@ -98,6 +107,7 @@ impl EnablingCondition<State> for CurrentHeadErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadApplyAction {
     pub block_hash: BlockHash,
@@ -111,6 +121,7 @@ impl EnablingCondition<State> for CurrentHeadApplyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecacheBakingRightsAction {}
 

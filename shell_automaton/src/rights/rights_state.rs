@@ -63,13 +63,15 @@ pub type Delegate = SignaturePublicKey;
 pub type Slot = u16;
 pub type Slots = Vec<Slot>;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EndorsingRights {
     pub level: Level,
     pub slot_to_delegate: Vec<Delegate>,
-    pub delegate_to_slots: HashMap<Delegate, Vec<Slot>>,
+    pub delegate_to_slots: BTreeMap<Delegate, Vec<Slot>>,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BakingRights {
     pub level: Level,
@@ -170,6 +172,7 @@ pub enum RightsRequest {
     Error(RightsError),
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum RightsError {
     #[error("Storage error: {0}")]
@@ -194,6 +197,7 @@ pub enum RightsError {
     UnsupportedProto(#[from] UnsupportedProtocolError),
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum RightsRpcError {
     #[error("Error calculating delegate hash")]
@@ -255,10 +259,11 @@ impl From<serde_json::Error> for RightsError {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProtocolConstants {
-    pub(super) blocks_per_cycle: i32,
-    pub(super) preserved_cycles: u8,
-    pub(super) endorsers_per_block: u16,
-    pub(super) nonce_length: u8,
+    pub blocks_per_cycle: i32,
+    pub preserved_cycles: u8,
+    pub endorsers_per_block: u16,
+    pub nonce_length: u8,
 }

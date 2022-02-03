@@ -9,6 +9,9 @@ use crate::has_encoding;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(fuzzing)]
+use crate::fuzzing::bigint::BigIntMutator;
+
 /// This is a wrapper for [num_bigint::BigInt] type.
 #[derive(PartialEq, Debug, Clone)]
 pub struct BigInt(pub num_bigint::BigInt);
@@ -80,8 +83,9 @@ impl From<&Zarith> for BigInt {
 has_encoding!(Zarith, ZARITH_ENCODING, { Encoding::Z });
 
 /// Mutez number
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Mutez(pub num_bigint::BigInt);
+pub struct Mutez(#[cfg_attr(fuzzing, field_mutator(BigIntMutator))] pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for Mutez {
     fn from(from: num_bigint::BigInt) -> Self {

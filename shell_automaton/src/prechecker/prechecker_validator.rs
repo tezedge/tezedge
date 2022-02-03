@@ -17,6 +17,7 @@ use crate::rights::{Delegate, EndorsingRights};
 
 use super::OperationDecodedContents;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum EndorsementValidationError {
     #[error("Invalid endorsement wrapper")]

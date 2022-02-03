@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     num::TryFromIntError,
     time::Instant,
@@ -639,6 +639,7 @@ where
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum RightsCalculationError {
     #[error("Integer conversion error: {0}")]
@@ -659,9 +660,9 @@ fn calculate_endorsing_rights(
     cycle_meta_data: &CycleData,
     constants: &ProtocolConstants,
     cycle_position: Position,
-) -> Result<(HashMap<Delegate, Vec<Slot>>, Vec<Delegate>), RightsCalculationError> {
+) -> Result<(BTreeMap<Delegate, Vec<Slot>>, Vec<Delegate>), RightsCalculationError> {
     // build a reverse map of rols so we have access in O(1)
-    let mut rolls_map = HashMap::new();
+    let mut rolls_map = BTreeMap::new();
 
     for (delegate, rolls) in cycle_meta_data.rolls_data() {
         for roll in rolls {
@@ -678,7 +679,7 @@ fn calculate_endorsing_rights(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut endorser_to_slots = HashMap::new();
+    let mut endorser_to_slots = BTreeMap::new();
     for (slot, delegate) in endorsers_slots.iter().enumerate() {
         endorser_to_slots
             .entry(delegate.clone())
@@ -695,7 +696,7 @@ fn calculate_baking_rights(
     max_priority: u16,
 ) -> Result<Vec<Delegate>, RightsCalculationError> {
     // build a reverse map of rols so we have access in O(1)
-    let mut rolls_map = HashMap::new();
+    let mut rolls_map = BTreeMap::new();
 
     for (delegate, rolls) in cycle_meta_data.rolls_data() {
         for roll in rolls {

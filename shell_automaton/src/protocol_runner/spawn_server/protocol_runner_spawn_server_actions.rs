@@ -10,6 +10,7 @@ use crate::{EnablingCondition, State};
 
 use super::ProtocolRunnerSpawnServerState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerSpawnServerInitAction {}
 
@@ -22,6 +23,7 @@ impl EnablingCondition<State> for ProtocolRunnerSpawnServerInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerSpawnServerPendingAction {}
 
@@ -34,6 +36,7 @@ impl EnablingCondition<State> for ProtocolRunnerSpawnServerPendingAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerSpawnServerErrorAction {
     pub error: ProtocolRunnerError,
@@ -48,6 +51,7 @@ impl EnablingCondition<State> for ProtocolRunnerSpawnServerErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerSpawnServerSuccessAction {}
 

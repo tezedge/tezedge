@@ -15,3 +15,6 @@ pub mod enc;
 pub mod encoding;
 pub mod generator;
 pub mod nom;
+
+#[cfg(fuzzing)]
+pub mod fuzzing;

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crypto::blake2b;
 use storage::{
@@ -13,6 +13,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use super::{Cycle, Delegate, ProtocolConstants};
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum CycleError {
     #[error("Cycle era is not found for `{0}`")]
@@ -67,6 +68,7 @@ pub(super) fn get_cycle(
     Ok((cycle, position))
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TezosPRNGError {
     #[error("Digest error: `{0}`")]
@@ -141,7 +143,7 @@ impl TezosPRNG {
 pub(super) fn random_owner(
     constants: &ProtocolConstants,
     cycle_meta_data: &CycleData,
-    rolls_map: &HashMap<i32, Delegate>,
+    rolls_map: &BTreeMap<i32, Delegate>,
     use_: &[u8],
     cycle_position: i32,
     offset: impl Into<i32>,
@@ -168,7 +170,7 @@ pub(super) fn random_owner(
 pub(super) fn endorser_rights_owner(
     constants: &ProtocolConstants,
     cycle_meta_data: &CycleData,
-    rolls_map: &HashMap<i32, Delegate>,
+    rolls_map: &BTreeMap<i32, Delegate>,
     cycle_position: i32,
     slot: u16,
 ) -> Result<Delegate, TezosPRNGError> {
@@ -185,7 +187,7 @@ pub(super) fn endorser_rights_owner(
 pub(super) fn baking_rights_owner(
     constants: &ProtocolConstants,
     cycle_meta_data: &CycleData,
-    rolls_map: &HashMap<i32, Delegate>,
+    rolls_map: &BTreeMap<i32, Delegate>,
     cycle_position: i32,
     priority: u16,
 ) -> Result<Delegate, TezosPRNGError> {

@@ -177,12 +177,16 @@ kcov_html_template = """
 </html>
 """
 
+
+# get last stats
+path = sorted(pathlib.Path("fuzz/test_all/stats").iterdir(),
+              key=os.path.getmtime)[-1]
 date = str(datetime.now()).split('.')[0]
 coverage_map = json.load(
-    open('fuzz/test_all/stats/1643494161478/coverage_sensor.json', 'r'))
+    open(f'{path}/coverage_sensor.json', 'r'))
 
 coverage_counters = json.load(
-    open('fuzz/test_all/stats/1643494161478/simplest_cov.json', 'r'))
+    open(f'{path}//simplest_cov.json', 'r'))
 
 files = dict()
 index = []

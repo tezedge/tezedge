@@ -221,28 +221,28 @@ impl storage::persistent::Decoder for State {
 pub enum SafetyConditionError {
     ConnectedPeersMaxedOut,
     PotentialPeersMaxedOut,
-    ConnectedPeerIsBlacklisted
+    ConnectedPeerIsBlacklisted,
 }
 
 impl SafetyCondition for State {
     type Error = SafetyConditionError;
 
     fn check_safety_condition(&self) -> Result<(), Self::Error> {
-
-        if self.peers.connected_len() > self.config.peers_connected_max {
-            return Err(SafetyConditionError::ConnectedPeersMaxedOut)
-        }
+        /*
+                if self.peers.connected_len() > self.config.peers_connected_max {
+                    return Err(SafetyConditionError::ConnectedPeersMaxedOut)
+                }
 
         if self.peers.potential_len() > self.config.peers_potential_max {
-            return Err(SafetyConditionError::PotentialPeersMaxedOut)
+            return Err(SafetyConditionError::PotentialPeersMaxedOut);
         }
 
         for (peer_addr, _) in self.peers.connected_iter() {
             if self.peers.is_blacklisted(&peer_addr.ip()) {
-                return Err(SafetyConditionError::ConnectedPeerIsBlacklisted)
+                return Err(SafetyConditionError::ConnectedPeerIsBlacklisted);
             }
         }
-
+        */
         Ok(())
     }
 }

@@ -22,6 +22,7 @@ use super::{
     PrecheckerResponseError, SupportedProtocolState,
 };
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecheckOperationRequestAction {
     pub operation: Operation,
@@ -33,6 +34,7 @@ impl EnablingCondition<State> for PrecheckerPrecheckOperationRequestAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecheckOperationResponseAction {
     pub response: PrecheckerPrecheckOperationResponse,
@@ -44,6 +46,7 @@ impl EnablingCondition<State> for PrecheckerPrecheckOperationResponseAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PrecheckerPrecheckOperationResponse {
     /// The operation can be applied.
@@ -56,6 +59,7 @@ pub enum PrecheckerPrecheckOperationResponse {
     Error(PrecheckerResponseError),
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerApplied {
     pub hash: OperationHash,
@@ -71,6 +75,7 @@ impl PrecheckerApplied {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerErrored {
     pub hash: OperationHash,
@@ -95,6 +100,7 @@ impl PrecheckerErrored {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrevalidate {
     pub hash: OperationHash,
@@ -148,6 +154,7 @@ impl PrecheckerPrecheckOperationResponseAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecheckOperationInitAction {
     pub key: Key,
@@ -155,6 +162,7 @@ pub struct PrecheckerPrecheckOperationInitAction {
     pub operation_binary_encoding: Vec<u8>,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerGetProtocolVersionAction {
     pub key: Key,
@@ -172,6 +180,7 @@ impl EnablingCondition<State> for PrecheckerGetProtocolVersionAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerProtocolVersionReadyAction {
     pub key: Key,
@@ -189,17 +198,20 @@ impl EnablingCondition<State> for PrecheckerProtocolVersionReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerDecodeOperationAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerOperationDecodedAction {
     pub key: Key,
     pub contents: OperationDecodedContents,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerWaitForBlockPrecheckedAction {
     pub key: Key,
@@ -217,43 +229,51 @@ pub struct PrecheckerWaitForBlockAppliedAction {
     pub branch: BlockHash,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerBlockAppliedAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerGetEndorsingRightsAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerEndorsingRightsReadyAction {
     pub key: Key,
     pub endorsing_rights: EndorsingRights,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerValidateEndorsementAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerEndorsementValidationAppliedAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerEndorsementValidationRefusedAction {
     pub key: Key,
     pub error: EndorsementValidationError,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerProtocolNeededAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerErrorAction {
     pub key: Key,
@@ -272,6 +292,7 @@ impl PrecheckerErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerCacheAppliedBlockAction {
     pub block_hash: BlockHash,
@@ -286,6 +307,7 @@ impl EnablingCondition<State> for PrecheckerCacheAppliedBlockAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerSetNextBlockProtocolAction {
     pub proto: u8,
@@ -301,6 +323,7 @@ impl EnablingCondition<State> for PrecheckerSetNextBlockProtocolAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerQueryNextBlockProtocolAction {
     pub proto: u8,
@@ -321,6 +344,7 @@ impl EnablingCondition<State> for PrecheckerQueryNextBlockProtocolAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerNextBlockProtocolReadyAction {
     pub block_hash: BlockHash,
@@ -333,6 +357,7 @@ impl EnablingCondition<State> for PrecheckerNextBlockProtocolReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerNextBlockProtocolErrorAction {
     pub block_hash: BlockHash,
@@ -345,6 +370,7 @@ impl EnablingCondition<State> for PrecheckerNextBlockProtocolErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrecacheEndorsingRightsAction {
     pub current_head: BlockHash,
@@ -357,6 +383,7 @@ impl EnablingCondition<State> for PrecheckerPrecacheEndorsingRightsAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPruneOperationAction {
     pub key: Key,

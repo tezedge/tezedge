@@ -32,6 +32,7 @@ use crate::{
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
 pub struct Operation {
     pub branch: BlockHash,
@@ -142,6 +143,7 @@ impl TryFrom<P2POperation> for OperationContents {
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
 ///
 /// Comparing to [super::super::proto_001::operation::Content], new variant [Operation::FailingNoop] is added.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 #[encoding(tags = "u8")]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -223,6 +225,7 @@ pub struct RegisterGlobalConstantOperation {
 
 /// Double_baking_evidence (tag 3).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct DoubleBakingEvidenceOperation {
     #[encoding(dynamic)]
@@ -233,6 +236,7 @@ pub struct DoubleBakingEvidenceOperation {
 
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]

@@ -69,6 +69,7 @@ pub enum CurrentHeadState {
 // ====================
 
 /// Possible current head errors.
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum CurrentHeadPrecheckError {
     #[error(transparent)]
@@ -81,6 +82,7 @@ pub enum CurrentHeadPrecheckError {
 
 // ====================
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum BakingPriorityError {
     #[error("timestamp `{timestamp}` is too far in the future, now is `{now}`")]
@@ -105,6 +107,7 @@ impl From<TryFromIntError> for BakingPriorityError {
 
 // ====================
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum BakingRightsError {
     #[error("Cannot encode block header: {0}")]

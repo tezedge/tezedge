@@ -16,6 +16,7 @@ use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 use crate::Config;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BlockApplierApplyError {
     PrepareData(StorageError),

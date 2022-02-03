@@ -27,6 +27,7 @@ pub struct CycleErasStorage {
 
 pub type CycleErasData = Vec<CycleEra>;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Getters)]
 pub struct CycleEra {
     #[get = "pub"]

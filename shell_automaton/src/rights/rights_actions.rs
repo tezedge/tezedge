@@ -20,6 +20,7 @@ use super::{BakingRights, RightsRpcError, Slots};
 
 // Entry actions
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsGetAction {
     pub key: RightsKey,
@@ -32,6 +33,7 @@ impl EnablingCondition<State> for RightsGetAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsInitAction {
     pub key: RightsKey,
@@ -43,6 +45,7 @@ impl EnablingCondition<State> for RightsInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsEndorsingReadyAction {
     pub key: RightsKey,
@@ -56,6 +59,7 @@ impl EnablingCondition<State> for RightsEndorsingReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsBakingReadyAction {
     pub key: RightsKey,
@@ -69,6 +73,7 @@ impl EnablingCondition<State> for RightsBakingReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsErrorAction {
     pub key: RightsKey,
@@ -83,7 +88,7 @@ impl EnablingCondition<State> for RightsErrorAction {
 }
 
 // RPC actions
-
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsRpcGetAction {
     pub key: RightsKey,
@@ -96,6 +101,7 @@ impl EnablingCondition<State> for RightsRpcGetAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsRpcEndorsingReadyAction {
     pub rpc_id: RpcId,
@@ -108,12 +114,14 @@ impl EnablingCondition<State> for RightsRpcEndorsingReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BakingRightsPriority {
     pub delegate: SignaturePublicKeyHash,
     pub priority: u16,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsRpcBakingReadyAction {
     pub rpc_id: RpcId,
@@ -126,6 +134,7 @@ impl EnablingCondition<State> for RightsRpcBakingReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsRpcErrorAction {
     pub rpc_id: RpcId,
@@ -138,6 +147,7 @@ impl EnablingCondition<State> for RightsRpcErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightsRpcPruneAction {
     pub key: RightsKey,
@@ -150,7 +160,7 @@ impl EnablingCondition<State> for RightsRpcPruneAction {
 }
 
 // Auxiliary actions
-
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetBlockHeaderAction {
     pub key: RightsKey,
@@ -163,6 +173,7 @@ impl EnablingCondition<State> for RightsGetBlockHeaderAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsBlockHeaderReadyAction {
     pub key: RightsKey,
@@ -176,6 +187,7 @@ impl EnablingCondition<State> for RightsBlockHeaderReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetProtocolHashAction {
     pub key: RightsKey,
@@ -188,6 +200,7 @@ impl EnablingCondition<State> for RightsGetProtocolHashAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsProtocolHashStorageReadyAction {
     pub key: BlockHash,
@@ -201,6 +214,7 @@ impl EnablingCondition<State> for RightsProtocolHashStorageReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsProtocolHashStorageErrorAction {
     pub key: BlockHash,
@@ -214,6 +228,7 @@ impl EnablingCondition<State> for RightsProtocolHashStorageErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsProtocolHashReadyAction {
     pub key: RightsKey,
@@ -228,6 +243,7 @@ impl EnablingCondition<State> for RightsProtocolHashReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetProtocolConstantsAction {
     pub key: RightsKey,
@@ -240,6 +256,7 @@ impl EnablingCondition<State> for RightsGetProtocolConstantsAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsProtocolConstantsReadyAction {
     pub key: RightsKey,
@@ -253,6 +270,7 @@ impl EnablingCondition<State> for RightsProtocolConstantsReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetCycleErasAction {
     pub key: RightsKey,
@@ -265,6 +283,7 @@ impl EnablingCondition<State> for RightsGetCycleErasAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCycleErasReadyAction {
     pub key: RightsKey,
@@ -278,6 +297,7 @@ impl EnablingCondition<State> for RightsCycleErasReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetCycleAction {
     pub key: RightsKey,
@@ -290,6 +310,7 @@ impl EnablingCondition<State> for RightsGetCycleAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCycleReadyAction {
     pub key: RightsKey,
@@ -304,6 +325,7 @@ impl EnablingCondition<State> for RightsCycleReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsGetCycleDataAction {
     pub key: RightsKey,
@@ -316,6 +338,7 @@ impl EnablingCondition<State> for RightsGetCycleDataAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCycleDataReadyAction {
     pub key: RightsKey,
@@ -329,6 +352,7 @@ impl EnablingCondition<State> for RightsCycleDataReadyAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCalculateAction {
     pub key: RightsKey,

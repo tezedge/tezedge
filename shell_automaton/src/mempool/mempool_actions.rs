@@ -283,7 +283,7 @@ impl EnablingCondition<State> for MempoolGetPendingOperationsAction {
     }
 }
 
-//#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MempoolOperationDecodedAction {
     pub operation: OperationHash,

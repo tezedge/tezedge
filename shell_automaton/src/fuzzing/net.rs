@@ -433,7 +433,7 @@ impl Mutator<PeerToken> for PeerTokenMutator {
                     .current_target_state
                     .peers
                     .iter()
-                    .filter_map(|(addr, peer)| peer.token())
+                    .filter_map(|(_addr, peer)| peer.token())
                     .collect();
 
                 let i = self.rng.usize(..tokens.len() + 1);
@@ -457,7 +457,7 @@ impl Mutator<PeerToken> for PeerTokenMutator {
             .current_target_state
             .peers
             .iter()
-            .filter_map(|(addr, peer)| peer.token())
+            .filter_map(|(_addr, peer)| peer.token())
             .collect();
 
         let i = self.rng.usize(..tokens.len() + 1);
@@ -494,7 +494,7 @@ impl Mutator<PeerToken> for PeerTokenMutator {
             .current_target_state
             .peers
             .iter()
-            .filter_map(|(addr, peer)| peer.token())
+            .filter_map(|(_addr, peer)| peer.token())
             .collect();
 
         let i = self.rng.usize(..tokens.len() + 1);

@@ -35,6 +35,7 @@ macro_rules! kv_state {
 
 macro_rules! kv_actions {
     ($key:path, $value:path, $get_action:ident, $ok_action:ident, $err_action:ident) => {
+        //#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $get_action {
             pub key: $key,
@@ -56,6 +57,7 @@ macro_rules! kv_actions {
             }
         }
 
+        //#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $ok_action {
             pub key: $key,
@@ -69,6 +71,7 @@ macro_rules! kv_actions {
             }
         }
 
+        //#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $err_action {
             pub key: $key,
@@ -82,6 +85,7 @@ macro_rules! kv_actions {
             }
         }
 
+        #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
         #[derive(
             Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From, thiserror::Error,
         )]
@@ -282,6 +286,7 @@ pub mod kv_cycle_meta {
 
     pub type Cycle = i32;
 
+    #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
     #[serde(into = "String", try_from = "String")]
     pub struct CycleKey(pub Cycle);

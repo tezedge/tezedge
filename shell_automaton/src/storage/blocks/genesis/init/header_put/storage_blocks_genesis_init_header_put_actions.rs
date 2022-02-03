@@ -9,6 +9,7 @@ use crate::{EnablingCondition, State};
 
 use super::StorageBlocksGenesisInitHeaderPutState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitHeaderPutInitAction {
     pub genesis_commit_hash: ContextHash,
@@ -24,6 +25,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitHeaderPutPendingAction {}
 
@@ -38,6 +40,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutPendingAction
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitHeaderPutErrorAction {}
 
@@ -52,6 +55,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutErrorAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitHeaderPutSuccessAction {
     pub is_new_block: bool,

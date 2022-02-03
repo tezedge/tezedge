@@ -11,6 +11,7 @@ use super::context_ipc_server::ProtocolRunnerInitContextIpcServerState;
 use super::runtime::ProtocolRunnerInitRuntimeState;
 use super::ProtocolRunnerInitState;
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitAction {}
 
@@ -25,6 +26,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitCheckGenesisAppliedAction {}
 
@@ -39,6 +41,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitCheckGenesisAppliedAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitCheckGenesisAppliedSuccessAction {
     pub is_applied: bool,
@@ -53,6 +56,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitCheckGenesisAppliedSuccessAc
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitSuccessAction {}
 

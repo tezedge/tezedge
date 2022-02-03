@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #![forbid(unsafe_code)]
+#![feature(no_coverage)]
 
 use std::path::Path;
 use std::sync::Arc;
@@ -68,6 +69,7 @@ mod shell_automaton;
 pub mod system_storage;
 
 /// Extension of block header with block hash
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct BlockHeaderWithHash {
     pub hash: BlockHash,

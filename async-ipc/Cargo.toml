@@ -11,6 +11,7 @@ thiserror = "1.0"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.12", features = ["full"] }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git" }
 
 [dev-dependencies]
 serial_test = "0.5"
