@@ -69,7 +69,7 @@ mod ffi {
 
     ocaml! {
         pub fn tezos_context_init_irmin(data_dir: String, genesis: (String, String, String), sandbox_json_patch_context: Option<(String, String)>) -> Result<(TezosFfiContextIndex, ContextHash), String>;
-        pub fn tezos_context_init_tezedge(genesis: (String, String, String), sandbox_json_patch_context: Option<(String, String)>) -> Result<(TezosFfiContextIndex, ContextHash), String>;
+        pub fn tezos_context_init_tezedge(data_dir: String, genesis: (String, String, String), sandbox_json_patch_context: Option<(String, String)>) -> Result<(TezosFfiContextIndex, ContextHash), String>;
         pub fn tezos_context_close(index: TezosFfiContextIndex);
         // Context query
         pub fn tezos_context_mem(ctxt: TezosFfiContext, key: ContextKey) -> bool;
@@ -135,7 +135,9 @@ pub mod context {
     ) -> Result<(BoxRoot<TezosFfiContextIndex>, ContextHash), String> {
         let genesis = genesis.to_boxroot(cr);
         let sandbox_json_patch_context = sandbox_json_patch_context.to_boxroot(cr);
-        let result = ffi::tezos_context_init_tezedge(cr, &genesis, &sandbox_json_patch_context);
+        let data_dir = ":inmem:".to_boxroot(cr);
+        let result =
+            ffi::tezos_context_init_tezedge(cr, &data_dir, &genesis, &sandbox_json_patch_context);
         match cr.get(&result).to_result() {
             Ok(result) => Ok((BoxRoot::new(result.fst()), result.snd().to_rust())),
             Err(err) => Err(err.to_rust()),
