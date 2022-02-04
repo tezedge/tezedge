@@ -14,6 +14,7 @@ use crypto::hash::FromBytesError;
 use crate::persistent::DBError;
 use crate::{hash::HashingError, kv_store::HashId};
 
+pub(crate) mod sorted_map;
 pub(crate) mod worker;
 
 pub trait GarbageCollector {
