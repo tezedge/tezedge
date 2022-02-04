@@ -432,17 +432,18 @@ pub(crate) async fn check_and_get_endorsing_rights(
         }),
     }
 }
-
-#[derive(Debug, Error)]
 pub enum VotesError {
-    #[error("Rpc service error, reason: {reason}")]
-    RpcServiceError { reason: RpcServiceError },
-    #[error("Votes error, reason: {reason}")]
-    ServiceError { reason: Error },
+    ServiceError {
+        reason: Error,
+    },
     #[error("Unsupported protocol {protocol}")]
-    UnsupportedProtocolError { protocol: String },
+    UnsupportedProtocolError {
+        protocol: String,
+    },
     #[error("This rpc is not suported in this protocol {protocol}")]
-    UnsupportedProtocolRpc { protocol: String },
+    UnsupportedProtocolRpc {
+        protocol: String,
+    },
 }
 
 impl From<anyhow::Error> for VotesError {

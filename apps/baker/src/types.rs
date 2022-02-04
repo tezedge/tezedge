@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use derive_more::From;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crypto::{
@@ -19,7 +19,7 @@ pub const BLOCK_HEADER_FITNESS_MAX_SIZE: usize = 0x1000;
 type Fitness = Vec<Vec<u8>>;
 
 #[derive(BinWriter)]
-pub struct FullHeader {
+pub struct FullBlockHeader {
     #[encoding(builtin = "Int32")]
     pub level: i32,
     pub proto: u8,
@@ -37,21 +37,57 @@ pub struct FullHeader {
     ))]
     pub fitness: Fitness,
     pub context: ContextHash,
-    pub priority: u16,
+    pub payload_hash: BlockPayloadHash,
+    pub payload_round: u32,
     #[encoding(sized = "8", bytes)]
     pub proof_of_work_nonce: Vec<u8>,
-    #[encoding(option, sized = "32", bytes)]
-    pub seed_nonce_hash: Option<Vec<u8>>,
+    pub seed_nonce_hash: Option<NonceHash>,
     pub liquidity_baking_escape_vote: bool,
 }
 
-#[derive(BinWriter, Serialize)]
+impl FullBlockHeader {
+    pub fn sign(
+        &self,
+        secret_key: &SecretKeyEd25519,
+        chain_id: &ChainId,
+    ) -> Result<Vec<u8>, EncodeError> {
+        #[derive(BinWriter)]
+        struct Watermark {
+            magic: u8,
+            chain_id: ChainId,
+        }
+
+        let watermark = Watermark {
+            magic: 0x11,
+            chain_id: chain_id.clone(),
+        };
+
+        let (mut bytes, signature) = sign_any(secret_key, &watermark, self)?;
+        bytes.extend_from_slice(&signature.0);
+        Ok(bytes)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ShellBlockHeader {
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: BlockHash,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: OperationListListHash,
+    pub fitness: Vec<String>,
+    pub context: ContextHash,
+}
+
+#[derive(BinWriter, Serialize, Clone)]
 pub struct ProtocolBlockHeader {
     pub protocol: ProtocolHash,
     pub payload_hash: BlockPayloadHash,
     pub payload_round: u32,
     pub proof_of_work_nonce: Vec<u8>,
-    pub seed_nonce_hash: NonceHash,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_nonce_hash: Option<NonceHash>,
     pub liquidity_baking_escape_vote: bool,
 }
 

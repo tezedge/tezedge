@@ -3,16 +3,22 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use chrono::{DateTime, Duration, Utc};
+
 use crypto::{
     blake2b,
-    hash::{BlockPayloadHash, ContractTz1Hash, NonceHash, OperationHash, OperationListHash},
+    hash::{
+        BlockPayloadHash, ContractTz1Hash, NonceHash, OperationHash, OperationListHash,
+        ProtocolHash,
+    },
 };
 use redux_rs::{ActionWithMeta, Store};
 
 use super::{action::*, service::ServiceDefault, state::State};
 use crate::{
+    client::{BakingRights, TezosClient},
     key,
-    types::{generate_endorsement, generate_preendorsement},
+    types::{generate_endorsement, generate_preendorsement, ProtocolBlockHeader},
 };
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
@@ -22,7 +28,11 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             node_dir,
             baker,
         }) => {
-            let ServiceDefault { log, main_logger, client } = &store.service();
+            let ServiceDefault {
+                log,
+                main_logger,
+                client,
+            } = &store.service();
 
             let _ = node_dir;
             let (public_key, secret_key) = key::read_key(&base_dir, baker).unwrap();
@@ -43,13 +53,16 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let mut endorsed_level = 0;
             let mut endorsed_payload_hash = None::<BlockPayloadHash>;
 
+            let mut current_level = 0;
+            let mut cached_baking_rights = None::<Vec<BakingRights>>;
+
             // iterating over current heads
             loop {
                 let heads = client.monitor_main_head().unwrap();
                 for head in heads {
                     let level = head.level;
 
-                    // TODO: cache it, we don't need to ask it for any round
+                    // TODO: cache it, we don't need to ask it for all rounds
                     let rights = client.validators(level).unwrap();
                     let slots = rights.iter().find_map(|v| {
                         if v.delegate == public_key_hash {
@@ -67,11 +80,16 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         }
                     };
 
-                    let baking_rights = client.baking_rights(level, &public_key_hash).unwrap();
-                    let baking_rounds = baking_rights
-                        .into_iter()
-                        .filter(|v| v.level == level && v.delegate == public_key_hash)
-                        .map(|v| v.round);
+                    // TODO: cache it, we don't need to ask it for all rounds
+                    let _current_baking_rights =
+                        cached_baking_rights.clone().unwrap_or_else(|| {
+                            let r = client.baking_rights(level, &public_key_hash).unwrap();
+                            current_level = level;
+                            cached_baking_rights = Some(r.clone());
+                            r
+                        });
+                    let next_baking_rights =
+                        client.baking_rights(level + 1, &public_key_hash).unwrap();
 
                     let branch = head.predecessor;
                     let payload_hash =
@@ -117,12 +135,36 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         slog::error!(log, "{}", err);
                     }
 
-                    // TODO: only for baking
+                    // have baking rights for next round of this level
+                    // let will_bake_this_level = current_baking_rights
+                    //     .iter()
+                    //     .find(|v| v.round == round + 1)
+                    //     .is_some();
+                    // have baking rights for next level
+                    let will_bake_next_level =
+                        next_baking_rights.iter().find(|v| v.round == 0).is_some();
+
                     let mut collected_operations = [vec![], vec![], vec![], vec![]];
                     let mut collected_hashes = Vec::new();
 
+                    // timestamp of this block
+                    let timestamp = head.timestamp.parse::<DateTime<Utc>>().unwrap();
+                    let (timeout, new_timestamp) = if will_bake_next_level {
+                        let pause =
+                            minimal_block_delay + (round as i64) * delay_increment_per_round;
+                        let new = timestamp
+                            .checked_add_signed(Duration::seconds(pause))
+                            .unwrap();
+                        (
+                            new.signed_duration_since(Utc::now()).to_std().ok(),
+                            Some(new),
+                        )
+                    } else {
+                        (None, None)
+                    };
+
                     let mut num_preendorsement = 0;
-                    let operations = client.monitor_operations().unwrap().flatten();
+                    let operations = client.monitor_operations(timeout).unwrap().flatten();
                     for operation in operations {
                         let operation_obj = operation.as_object().unwrap();
                         let this_branch = operation_obj.get("branch").unwrap().as_str().unwrap();
@@ -182,42 +224,47 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                                 .inject_operation(&chain_id, &hex::encode(&op))
                                 .unwrap();
 
-                            // TODO:
-                            break;
+                            if new_timestamp.is_none() {
+                                break;
+                            }
                         }
                     }
 
-                    // TODO: bake a block if have rights
-                    let _ = (
-                        minimal_block_delay,
-                        delay_increment_per_round,
-                        baking_rounds,
-                    );
-                    if false {
+                    if let Some(new_timestamp) = new_timestamp {
                         let operation_list_hash =
                             OperationListHash::calculate(&collected_hashes).unwrap();
                         let payload_hash =
                             BlockPayloadHash::calculate(&head.hash, 0, &operation_list_hash)
                                 .unwrap();
-                        let timestamp = head
-                            .timestamp
-                            .parse::<chrono::DateTime<chrono::Utc>>()
-                            .unwrap();
-                        let delta = if round == 0 { 3 } else { 2 };
-                        let preapply_result = client
+                        let _ = NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap());
+                        let protocol_block_header = ProtocolBlockHeader {
+                            protocol: ProtocolHash::from_base58_check(TezosClient::PROTOCOL)
+                                .expect("valid protocol name"),
+                            payload_hash,
+                            payload_round: 0,
+                            seed_nonce_hash: None,
+                            proof_of_work_nonce: hex::decode("7985fafe1fb70300").unwrap(),
+                            liquidity_baking_escape_vote: false,
+                        };
+                        let (shell_block_header, operations) = client
                             .preapply_block(
                                 &secret_key,
                                 &chain_id,
-                                payload_hash,
-                                0,
-                                hex::decode("7985fafe1fb70300").unwrap(),
-                                NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap()),
-                                false,
-                                collected_operations,
-                                (timestamp.timestamp() + delta).to_string(),
+                                protocol_block_header.clone(),
+                                collected_operations.clone(),
+                                new_timestamp.timestamp().to_string(),
                             )
                             .unwrap();
-                        let _ = preapply_result;
+                        let block_hash = client
+                            .inject_block(
+                                &secret_key,
+                                &chain_id,
+                                shell_block_header,
+                                protocol_block_header,
+                                operations,
+                            )
+                            .unwrap();
+                        slog::info!(main_logger, "inject block: {}", block_hash);
                     }
                 }
             }
