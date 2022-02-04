@@ -15,6 +15,8 @@ use crate::{chunks::ChunkedVec, kv_store::HashId, serialize::in_memory::iter_has
 
 use tezos_spsc::Producer;
 
+use super::sorted_map::SortedMap;
+
 pub(crate) const PRESERVE_CYCLE_COUNT: usize = 8;
 
 /// Used for statistics
@@ -41,7 +43,7 @@ pub(crate) enum Command {
 }
 
 pub(crate) struct Cycles {
-    list: VecDeque<BTreeMap<HashId, Arc<[u8]>>>,
+    list: VecDeque<SortedMap<HashId, Arc<[u8]>>>,
 }
 
 impl Default for Cycles {
@@ -98,15 +100,16 @@ impl Cycles {
         value
     }
 
-    fn roll(&mut self, new_cycle: BTreeMap<HashId, Arc<[u8]>>) -> Vec<HashId> {
+    fn roll(&mut self, new_cycle: SortedMap<HashId, Arc<[u8]>>) -> Vec<HashId> {
         let unused = self.list.pop_front().unwrap_or_default();
         self.list.push_back(new_cycle);
 
-        let mut vec = Vec::with_capacity(unused.len());
-        for id in unused.keys() {
-            vec.push(*id);
-        }
-        vec
+        unused.to_vec()
+        // let mut vec = Vec::with_capacity(unused.len());
+        // for id in unused.keys() {
+        //     vec.push(*id);
+        // }
+        // vec
     }
 }
 
@@ -185,7 +188,7 @@ impl GCThread {
 
     fn start_new_cycle(
         &mut self,
-        new_cycle: BTreeMap<HashId, Arc<[u8]>>,
+        mut new_cycle: SortedMap<HashId, Arc<[u8]>>,
         new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);

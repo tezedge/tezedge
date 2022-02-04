@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, slice::SliceIndex};
 
 #[cfg(not(test))]
 const MAX_CHUNK_SIZE: usize = 1_000_000;
@@ -17,12 +17,22 @@ where
     max: K,
 }
 
-#[derive(Default)]
-struct SortedMap<K, V>
+pub struct SortedMap<K, V>
 where
     K: Ord,
 {
     list: Vec<Chunk<K, V>>,
+}
+
+impl<K, V> Default for SortedMap<K, V>
+where
+    K: Ord,
+{
+    fn default() -> Self {
+        Self {
+            list: Default::default(),
+        }
+    }
 }
 
 impl<K, V> std::fmt::Debug for Chunk<K, V>
@@ -114,13 +124,11 @@ where
         self.max = self.inner.last().unwrap().0;
     }
 
-    fn remove(&mut self, key: &K) {
-        let index = match self.inner.binary_search_by_key(key, |&(k, _)| k) {
-            Ok(index) => index,
-            Err(_) => return,
-        };
+    fn remove(&mut self, key: &K) -> Option<V> {
+        let index = self.inner.binary_search_by_key(key, |&(k, _)| k).ok()?;
+        let item = self.inner.remove(index);
 
-        self.inner.remove(index);
+        Some(item.1)
     }
 
     fn insert(&mut self, key: K, value: V) -> Option<Self> {
@@ -176,36 +184,52 @@ where
     // K: Ord + Copy,
     K: Ord + Copy + Debug,
 {
-    fn shrink_to_fit(&mut self) {
+    pub fn shrink_to_fit(&mut self) {
         for chunk in self.list.iter_mut() {
             chunk.shrink_to_fit();
         }
     }
 
-    fn get(&self, key: &K) -> Option<&V> {
+    pub fn to_vec(mut self) -> Vec<K> {
+        let vec = Vec::with_capacity(self.len());
+
+        while let Some(chunk) = self.list.get(0) {
+            for (key, _) in chunk.inner {
+                vec.push(key);
+            }
+            self.list.remove(0);
+        }
+
+        vec
+    }
+
+    pub fn len(&self) -> usize {
+        self.list.iter().fold(0, |acc, c| acc + c.len())
+    }
+
+    pub fn get(&self, key: &K) -> Option<&V> {
         let index = self.binary_search(key).ok()?;
         let chunk = self.list.get(index)?;
 
         chunk.get(key)
     }
 
-    fn remove(&mut self, key: &K) {
-        let index = match self.binary_search(key) {
-            Ok(index) => index,
-            Err(_) => return,
-        };
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let index = self.binary_search(key).ok()?;
 
         let chunk = &mut self.list[index];
-        chunk.remove(key);
+        let item = chunk.remove(key);
 
         if chunk.is_empty() {
             self.list.remove(index);
         } else {
             chunk.set_min_max();
         }
+
+        item
     }
 
-    fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V) {
         match self.binary_search(&key) {
             Ok(index) => {
                 let chunk = &mut self.list[index];
