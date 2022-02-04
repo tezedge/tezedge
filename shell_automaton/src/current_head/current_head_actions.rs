@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::net::SocketAddr;
-
 use crypto::hash::BlockHash;
 use redux_rs::EnablingCondition;
 use tezos_messages::{
@@ -14,27 +12,22 @@ use crate::State;
 
 use super::{CurrentHeadPrecheckError, CurrentHeadState};
 
-#[cfg(feature = "fuzzing")]
-use crate::fuzzing::net::SocketAddrMutator;
-
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadReceivedAction {
-    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
-    pub address: SocketAddr,
     pub block_hash: BlockHash,
     pub block_header: BlockHeader,
+    pub injected: bool,
 }
 
 /// Enables [CurrentHeadReceivedAction] when its level is the next to the one of last applied block
 /// and its block hash hasn't seen yet.
 impl EnablingCondition<State> for CurrentHeadReceivedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck
-            && state
-                .current_heads
-                .candidate_level()
-                .map_or(true, |l| l == self.block_header.level())
+        state
+            .current_heads
+            .candidate_level()
+            .map_or(true, |l| l == self.block_header.level())
             && !state
                 .current_heads
                 .applied_hashes
@@ -50,23 +43,23 @@ impl EnablingCondition<State> for CurrentHeadReceivedAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecheckAction {
     pub block_hash: BlockHash,
+    pub injected: bool,
 }
 
 impl EnablingCondition<State> for CurrentHeadPrecheckAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck
-            && state
-                .current_heads
-                .applied_head()
-                .map_or(false, |applied_head| {
-                    if let Some(CurrentHeadState::Received { block_header }) =
-                        state.current_heads.candidates.get(&self.block_hash)
-                    {
-                        block_header.level() == applied_head.level + 1
-                    } else {
-                        false
-                    }
-                })
+        state
+            .current_heads
+            .applied_head()
+            .map_or(false, |applied_head| {
+                if let Some(CurrentHeadState::Received { block_header }) =
+                    state.current_heads.candidates.get(&self.block_hash)
+                {
+                    block_header.level() == applied_head.level + 1
+                } else {
+                    false
+                }
+            })
     }
 }
 
@@ -76,6 +69,7 @@ pub struct CurrentHeadPrecheckSuccessAction {
     pub block_hash: BlockHash,
     pub baker: SignaturePublicKey,
     pub priority: u16,
+    pub injected: bool,
 }
 
 impl EnablingCondition<State> for CurrentHeadPrecheckSuccessAction {
@@ -118,8 +112,8 @@ pub struct CurrentHeadApplyAction {
 }
 
 impl EnablingCondition<State> for CurrentHeadApplyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
     }
 }
 
@@ -129,6 +123,6 @@ pub struct CurrentHeadPrecacheBakingRightsAction {}
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck && state.current_heads.applied_head().is_some()
+        state.current_heads.applied_head().is_some()
     }
 }

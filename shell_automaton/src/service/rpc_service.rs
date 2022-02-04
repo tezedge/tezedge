@@ -3,13 +3,18 @@
 
 use std::{collections::HashMap, sync::Arc, thread};
 
-use crypto::hash::{BlockHash, OperationHash};
-use tezos_messages::p2p::encoding::{block_header::Level, operation::Operation};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_messages::p2p::encoding::{
+    block_header::{BlockHeader, Level},
+    operation::Operation,
+};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::State;
+
+use super::BlockApplyStats;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -42,12 +47,17 @@ pub enum RpcRequest {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },
     GetBlockStats {
-        channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksStats>>,
+        channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksApplyStats>>,
     },
 
     InjectOperation {
         operation_hash: OperationHash,
         operation: Operation,
+    },
+    InjectBlock {
+        chain_id: ChainId,
+        block_header: Arc<BlockHeader>,
+        block_hash: BlockHash,
     },
     RequestCurrentHeadFromConnectedPeers,
     RemoveOperations {
@@ -66,11 +76,8 @@ pub enum RpcRequest {
     GetEndorsementsStatus {
         block_hash: Option<BlockHash>,
     },
-
-    GetStatsCurrentHeadPeers {
-        level: Level,
-    },
-    GetStatsCurrentHeadApplication {
+    GetStatsCurrentHeadStats {
+        channel: oneshot::Sender<Vec<(BlockHash, BlockApplyStats)>>,
         level: Level,
     },
 }

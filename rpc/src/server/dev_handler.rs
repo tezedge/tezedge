@@ -7,9 +7,12 @@ use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use crypto::PublicKeyWithHash;
 use hyper::{Body, Request, Response};
+use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use storage::persistent::Encoder;
 
@@ -416,19 +419,76 @@ pub async fn dev_shell_automaton_endorsements_status(
     )
 }
 
-pub async fn dev_shell_automaton_stats_current_head_peers(
-    _: Request<Body>,
-    _: Params,
-    query: Query,
-    env: Arc<RpcServiceEnvironment>,
-) -> ServiceResult {
-    let level = query
-        .get_str("level")
-        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
-        .and_then(|str| Ok(str.parse()?))?;
-    make_json_response(
-        &dev_services::get_shell_automaton_stats_current_head_peers(level, &env).await?,
-    )
+fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) -> serde_json::Value {
+    let as_delta = |time: u64| time.saturating_sub(base_time);
+    let as_delta_or = |time: Option<u64>| time.map_or(0, as_delta);
+
+    let first_send_end_time = stats
+        .peers
+        .iter()
+        .filter_map(|(_, s)| s.head_send_end.first())
+        .max();
+
+    let protocol_times = stats
+        .apply_block_stats
+        .map(|abs| {
+            serde_json::json!({
+                "apply_start": as_delta(abs.apply_start),
+
+                "operations_decoding_start": as_delta(abs.operations_decoding_start),
+                "operations_decoding_end": as_delta(abs.operations_decoding_end),
+
+                "operations_metadata_encoding_start": as_delta(abs.operations_metadata_encoding_start),
+                    "operations_metadata_encoding_end": as_delta(abs.operations_metadata_encoding_end),
+
+                "begin_application_start": as_delta(abs.begin_application_start),
+                "begin_application_end": as_delta(abs.begin_application_end),
+
+                "finalize_block_start": as_delta(abs.finalize_block_start),
+                "finalize_block_end": as_delta(abs.finalize_block_end),
+
+                "collect_new_rolls_owner_snapshots_start": as_delta(abs.collect_new_rolls_owner_snapshots_start),
+                "collect_new_rolls_owner_snapshots_end": as_delta(abs.collect_new_rolls_owner_snapshots_end),
+
+                "commit_start": as_delta(abs.commit_start),
+                "commit_end": as_delta(abs.commit_end),
+
+                "apply_end": as_delta(abs.apply_end),
+            })
+        })
+        .unwrap_or_default();
+    serde_json::json!({
+        "block_hash": hash,
+        "block_timestamp": stats.block_timestamp * 1_000_000_000,
+        "receive_timestamp": stats.receive_timestamp,
+        "injected": stats.injected,
+
+        "baker": stats.baker.and_then(|baker| baker.pk_hash().ok()).map(|pkh| pkh.to_string_representation()),
+        "baker_priority": stats.priority,
+
+        "precheck_start": as_delta_or(stats.precheck_start),
+        "precheck_end": as_delta_or(stats.precheck_end),
+
+        "download_block_header_start": as_delta_or(stats.download_block_header_start),
+        "download_block_header_end": as_delta_or(stats.download_block_header_end),
+        "download_block_operations_start": as_delta_or(stats.download_block_operations_start),
+        "download_block_operations_end": as_delta_or(stats.download_block_operations_end),
+
+        "load_data_start": as_delta_or(stats.load_data_start),
+        "load_data_end": as_delta_or(stats.load_data_end),
+
+        "apply_block_start": as_delta_or(stats.apply_block_start),
+        "apply_block_end": as_delta_or(stats.apply_block_end),
+
+        "store_result_start": as_delta_or(stats.store_result_start),
+        "store_result_end": as_delta_or(stats.store_result_end),
+
+        "send_start": as_delta_or(stats.head_send_start),
+        "send_end": as_delta_or(first_send_end_time.cloned()),
+        "last_send_end": as_delta_or(stats.head_send_end),
+
+        "protocol_times": protocol_times,
+    })
 }
 
 pub async fn dev_shell_automaton_stats_current_head_application(
@@ -441,7 +501,141 @@ pub async fn dev_shell_automaton_stats_current_head_application(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
-    make_json_response(
-        &dev_services::get_shell_automaton_stats_current_head_application(level, &env).await?,
-    )
+
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let base_time = stats
+        .iter()
+        .min_by_key(|(_, v)| v.receive_timestamp)
+        .map(|(_, v)| v.receive_timestamp)
+        .unwrap_or_default();
+    let result = stats
+        .into_iter()
+        .map(|(hash, stats)| application_stats(hash, stats, base_time))
+        .collect::<Vec<_>>();
+
+    make_json_response(&result)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct PeerStats {
+    address: SocketAddr,
+    node_id: Option<CryptoboxPublicKeyHash>,
+    block_hash: BlockHash,
+    received_time: u64,
+    sent_start_time: u64,
+    sent_end_time: u64,
+    sent_time: u64,
+    get_operations_recv_start_time: u64,
+    get_operations_recv_end_time: u64,
+    operations_send_start_time: u64,
+    operations_send_end_time: u64,
+}
+
+fn fold_validation_pass(
+    (prev, existing, num): (Option<u64>, i8, u8),
+    (time, validation_pass): &(u64, i8),
+) -> (Option<u64>, i8, u8) {
+    if existing & (1 << validation_pass) == 0 {
+        (Some(*time), existing | (1 << validation_pass), num + 1)
+    } else {
+        (prev, existing, num)
+    }
+}
+
+#[cfg(test)]
+mod fold_test {
+    #[test]
+    fn fold_validation_pass() {
+        let folded = vec![]
+            .iter()
+            .fold((None, 0, 0), super::fold_validation_pass);
+        assert_eq!(folded, (None, 0, 0));
+
+        let folded = vec![(100, 1)]
+            .iter()
+            .fold((None, 0, 0), super::fold_validation_pass);
+        assert_eq!(folded, (Some(100), 2, 1));
+
+        let folded = vec![(100, 1), (200, 2)]
+            .iter()
+            .fold((None, 0, 0), super::fold_validation_pass);
+        assert_eq!(folded, (Some(200), 6, 2));
+
+        let folded = vec![(100, 1), (200, 1)]
+            .iter()
+            .fold((None, 0, 0), super::fold_validation_pass);
+        assert_eq!(folded, (Some(100), 2, 1));
+    }
+}
+
+fn peers_stats(
+    hash: &BlockHash,
+    address: SocketAddr,
+    stats: &BlockPeerStats,
+    base_time: u64,
+) -> serde_json::Value {
+    let as_delta = |time: u64| time.saturating_sub(base_time);
+    let as_delta_or = |time: Option<u64>| time.map(as_delta);
+
+    let head_send_start = as_delta_or(stats.head_send_start.first().cloned());
+    let head_send_end = as_delta_or(stats.head_send_end.first().cloned());
+    let get_ops_recv_start = as_delta_or(stats.get_ops_recv.first().map(|(t, _)| *t));
+    let (get_ops_recv_end, _, get_ops_recv_num) = stats
+        .get_ops_recv
+        .iter()
+        .fold((None, 0, 0), fold_validation_pass);
+    let ops_send_start = as_delta_or(stats.ops_send_start.first().map(|(t, _)| *t));
+    let (ops_send_end, _, ops_send_num) = stats
+        .ops_send_end
+        .iter()
+        .fold((None, 0, 0), fold_validation_pass);
+
+    serde_json::json!({
+        "address": address,
+        "node_id": stats.node_id,
+        "block_hash": hash,
+        "received_time": as_delta_or(stats.head_recv.first().cloned()),
+        "sent_start_time": head_send_start,
+        "sent_time": head_send_end,
+        "sent_end_time": head_send_end,
+        "get_operations_recv_start_time": get_ops_recv_start,
+        "get_operations_recv_end_time": as_delta_or(get_ops_recv_end),
+        "get_operations_recv_num": get_ops_recv_num,
+        "operations_send_start_time": ops_send_start,
+        "operations_send_end_time": as_delta_or(ops_send_end),
+        "operations_send_num": ops_send_num,
+        "raw": stats,
+    })
+}
+
+pub async fn dev_shell_automaton_stats_current_head_peers(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let level = query
+        .get_str("level")
+        .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
+        .and_then(|str| Ok(str.parse()?))?;
+
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let base_time = stats
+        .iter()
+        .min_by_key(|(_, v)| v.receive_timestamp)
+        .map(|(_, v)| v.receive_timestamp)
+        .unwrap_or_default();
+    let result = stats
+        .into_iter()
+        .flat_map(|(hash, stats)| {
+            stats
+                .peers
+                .iter()
+                .map(|(address, stats)| peers_stats(&hash, *address, stats, base_time))
+                .collect::<Vec<_>>()
+                .into_iter()
+        })
+        .collect::<Vec<_>>();
+
+    make_json_response(&result)
 }

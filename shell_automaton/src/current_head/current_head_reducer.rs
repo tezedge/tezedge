@@ -24,9 +24,9 @@ pub(super) const MINIMAL_BLOCK_TIME: i64 = 15;
 pub fn current_head_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
     match &action.action {
         Action::CurrentHeadReceived(CurrentHeadReceivedAction {
-            address: _,
             block_hash,
             block_header,
+            ..
         }) => {
             let candidates = &mut state.current_heads.candidates;
             candidates
@@ -35,7 +35,7 @@ pub fn current_head_reducer(state: &mut crate::State, action: &crate::ActionWith
                     block_header: block_header.clone(),
                 });
         }
-        Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction { block_hash }) => {
+        Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction { block_hash, .. }) => {
             let chain_id = &state.config.chain_id;
             let baking_cache = &state.rights.cache.baking;
             let applied_head = match state.current_heads.applied_head() {

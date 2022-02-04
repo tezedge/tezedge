@@ -429,10 +429,28 @@ where
             });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
+            if store.state().mempool.is_old_endorsement(operation) =>
+        {
+            // TODO store rejected endorsement for diagnosis?
+        }
+        Action::MempoolOperationInject(MempoolOperationInjectAction {
+            operation, rpc_id, ..
+        }) if store.state().mempool.is_old_endorsement(operation) => {
+            let current_head = match &store.state.get().block_applier.current {
+                BlockApplierApplyState::Success { block, .. } => Some(&block.hash),
+                _ => None,
+            };
+            store.service.rpc().respond(
+                *rpc_id,
+                serde_json::json!({
+                    "error": "Endorsement branch is too old",
+                    "endorsement_branch": operation.branch(),
+                    "current_head": current_head,
+                }),
+            );
+        }
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            if store.state().mempool.is_old_endorsement(operation) {
-                return;
-            }
             store.dispatch(PrecheckerPrecheckOperationRequestAction {
                 operation: operation.clone(),
             });
@@ -558,7 +576,12 @@ where
             send_operations,
             prechecked_head,
         }) => {
-            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+            let addresses = store
+                .state()
+                .peers
+                .iter_handshaked()
+                .map(|(a, _)| a.clone())
+                .collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
@@ -747,8 +770,10 @@ where
             });
         }
         Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
-            block_hash, ..
-        }) => {
+            block_hash,
+            injected,
+            ..
+        }) if !injected && !store.state().config.disable_block_precheck => {
             store.dispatch(MempoolBroadcastAction {
                 send_operations: false,
                 prechecked_head: Some(block_hash.clone()),

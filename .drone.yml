@@ -3441,6 +3441,26 @@ steps:
     - export TO_BLOCK_HEADER=$tezedge_current_head_level
     - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
 
+- name: current-head-stats-rpc-tezedge
+  image: cfmanteiga/alpine-bash-curl-jq
+  command:
+    - sh
+    - -ex
+    - -c
+    - |
+      tezedge_current_head=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/chains/main/blocks/head/header" | jq -S .)
+      echo "Tezedge current head - $tezedge_current_head"
+      tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
+      echo "Tezedge current head level - $tezedge_current_head_level"
+      for level in $(seq 0 $tezedge_current_head_level); do
+        peers_stats=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/dev/shell/automaton/stats/current_head/peers?level=$level" | jq -S .)
+        block_stats=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/dev/shell/automaton/stats/current_head/application?level=$level" | jq -S .)
+        echo "========= block at level $level"
+        echo $block_stats
+        echo "========= peers at level $level"
+        echo $peers_stats
+      done
+
 volumes:
   - name: sandbox-data
     temp: {}

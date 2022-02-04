@@ -1,29 +1,22 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, net::SocketAddr};
-
-use crypto::{
-    hash::{BlockHash, CryptoboxPublicKeyHash},
-    PublicKeyWithHash,
-};
-use tezos_messages::{
-    base::signature_public_key::SignaturePublicKeyHash,
-    p2p::{binary_message::MessageHash, encoding::peer::PeerMessage},
-};
+use crypto::hash::BlockHash;
+use tezos_messages::p2p::{binary_message::MessageHash, encoding::peer::PeerMessage};
 
 use crate::{
-    block_applier::BlockApplierApplyState,
     current_head::current_head_actions::CurrentHeadPrecheckSuccessAction,
-    peer::message::write::{
-        PeerMessageWriteErrorAction, PeerMessageWriteInitAction, PeerMessageWriteSuccessAction,
+    mempool::mempool_actions::BlockInjectAction,
+    peer::{
+        message::write::{
+            PeerMessageWriteErrorAction, PeerMessageWriteInitAction, PeerMessageWriteSuccessAction,
+        },
+        Peer,
     },
-    rights::{rights_actions::RightsGetAction, RightsKey},
-    service::RpcService,
     Action,
 };
 
-use super::stats_current_head_actions::*;
+use super::{stats_current_head_actions::*, PendingMessage};
 
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
@@ -33,232 +26,141 @@ where
     S: crate::Service,
 {
     match &action.action {
-        // Action::CurrentHeadReceived is triggered by current_head effect
+        Action::BlockInject(BlockInjectAction {
+            chain_id: _,
+            block_hash,
+            block_header,
+        }) => {
+            let node_id = store.state.get().config.identity.peer_id.clone();
+            store.service.statistics().map(|s| {
+                s.block_new(
+                    block_hash.clone(),
+                    block_header.level(),
+                    block_header.timestamp(),
+                    block_header.validation_pass(),
+                    action.time_as_nanos(),
+                    None,
+                    Some(node_id),
+                );
+            });
+        }
+        Action::StatsCurrentHeadPrecheckInit(StatsCurrentHeadPrecheckInitAction { hash }) => {
+            store.service.statistics().map(|s| {
+                s.block_precheck_start(hash, action.time_as_nanos());
+            });
+        }
         Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
             block_hash,
             baker,
             priority,
+            ..
         }) => {
-            store.dispatch(StatsCurrentHeadPrecheckSuccessAction {
-                hash: block_hash.clone(),
-                baker: baker.clone(),
-                priority: *priority,
+            store.service.statistics().map(|s| {
+                s.block_precheck_end(block_hash, baker.clone(), *priority, action.time_as_nanos());
             });
         }
-        Action::PeerMessageWriteInit(PeerMessageWriteInitAction { address, message }) => {
-            let current_head = if let PeerMessage::CurrentHead(current_head) = message.message() {
-                current_head
-            } else {
-                return;
-            };
+        Action::PeerMessageWriteInit(PeerMessageWriteInitAction { message, address }) => {
+            match message.message() {
+                PeerMessage::CurrentHead(current_head)
+                    if current_head.current_mempool().is_empty() =>
+                {
+                    let current_block_header = current_head.current_block_header();
+                    let block_hash = match current_block_header.message_typed_hash::<BlockHash>() {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
 
-            let current_block_header = current_head.current_block_header();
-            let hash = match current_block_header.message_typed_hash() {
-                Ok(v) => v,
-                Err(_) => return,
-            };
+                    let node_id = store
+                        .state
+                        .get()
+                        .peers
+                        .get(&address)
+                        .and_then(Peer::public_key_hash);
+                    store.service.statistics().map(|s| {
+                        s.block_send_start(&block_hash, *address, node_id, action.time_as_nanos());
+                    });
 
-            store.dispatch(StatsCurrentHeadPrepareSendAction {
-                address: *address,
-                level: current_block_header.level(),
-                hash,
-                empty_mempool: current_head.current_mempool().is_empty(),
-            });
+                    store.dispatch(StatsCurrentHeadPrepareSendAction {
+                        address: *address,
+                        message: PendingMessage::CurrentHead { block_hash },
+                    });
+                }
+                PeerMessage::OperationsForBlocks(ops_for_blocks) => {
+                    let node_id = store
+                        .state
+                        .get()
+                        .peers
+                        .get(&address)
+                        .and_then(Peer::public_key_hash);
+                    store.service.statistics().map(|s| {
+                        s.block_operations_send_start(
+                            ops_for_blocks.operations_for_block().block_hash(),
+                            action.time_as_nanos(),
+                            *address,
+                            node_id,
+                            ops_for_blocks.operations_for_block().validation_pass(),
+                        );
+                    });
+                    store.dispatch(StatsCurrentHeadPrepareSendAction {
+                        address: *address,
+                        message: PendingMessage::OperationsForBlocks {
+                            block_hash: ops_for_blocks.operations_for_block().block_hash().clone(),
+                            validation_pass: ops_for_blocks
+                                .operations_for_block()
+                                .validation_pass(),
+                        },
+                    });
+                }
+                _ => (),
+            }
         }
         Action::PeerMessageWriteSuccess(PeerMessageWriteSuccessAction { address }) => {
-            store.dispatch(StatsCurrentHeadSentAction {
-                address: *address,
-                timestamp: action.id,
-            });
+            match store
+                .state
+                .get()
+                .stats
+                .current_head
+                .pending_messages
+                .get(address)
+            {
+                Some(PendingMessage::CurrentHead { block_hash }) => {
+                    let node_id = store
+                        .state
+                        .get()
+                        .peers
+                        .get(&address)
+                        .and_then(Peer::public_key_hash);
+                    store.service.statistics().map(|s| {
+                        s.block_send_end(block_hash, *address, node_id, action.time_as_nanos());
+                    });
+                }
+                Some(PendingMessage::OperationsForBlocks {
+                    block_hash,
+                    validation_pass,
+                }) => {
+                    let node_id = store
+                        .state
+                        .get()
+                        .peers
+                        .get(&address)
+                        .and_then(Peer::public_key_hash);
+                    store.service.statistics().map(|s| {
+                        s.block_operations_send_end(
+                            block_hash,
+                            action.time_as_nanos(),
+                            *address,
+                            node_id,
+                            *validation_pass,
+                        );
+                    });
+                }
+                _ => (),
+            }
+            store.dispatch(StatsCurrentHeadSentAction { address: *address });
         }
         Action::PeerMessageWriteError(PeerMessageWriteErrorAction { address, .. }) => {
             store.dispatch(StatsCurrentHeadSentErrorAction { address: *address });
         }
-        Action::StatsCurrentHeadRpcGetApplication(StatsCurrentHeadRpcGetApplicationAction {
-            rpc_id,
-            level,
-        }) => {
-            #[derive(Debug, serde::Serialize)]
-            struct CurrentHeadAppStat {
-                block_hash: BlockHash,
-                block_timestamp: u64,
-                receive_timestamp: u64,
-                baker: Option<SignaturePublicKeyHash>,
-                baker_priority: Option<u16>,
-                #[serde(flatten)]
-                times: HashMap<String, u64>,
-                protocol_times: HashMap<String, u64>,
-            }
-
-            let block_application_stats = store
-                .service
-                .statistics()
-                .map(|stats| stats.block_stats_get_all());
-
-            store
-                .state
-                .get()
-                .stats
-                .current_head
-                .level_stats
-                .get(level)
-                .map(|level_stats| {
-                    let min_time = u64::from(level_stats.first_action);
-                    let delta_time = |time: Option<u64>| time.map(|t| t.saturating_sub(min_time));
-                    level_stats
-                        .head_stats
-                        .iter()
-                        .map(|(hash, stats)| {
-                            let times = block_application_stats
-                                .and_then(|bas| bas.get(hash))
-                                .map(|bas| {
-                                    IntoIterator::into_iter([
-                                        ("download_data_start", Some(0)),
-                                        ("download_data_end", bas.load_data_start),
-                                        ("load_data_start", bas.load_data_start),
-                                        ("load_data_end", bas.load_data_end),
-                                        ("apply_block_start", bas.apply_block_start),
-                                        ("apply_block_end", bas.apply_block_end),
-                                        ("store_result_start", bas.store_result_start),
-                                        ("store_result_end", bas.store_result_end),
-                                    ])
-                                    .map(|(k, v)| {
-                                        (k.to_string(), delta_time(v).unwrap_or_default())
-                                    })
-                                    .chain(stats.times.clone())
-                                    .collect::<HashMap<_, _>>()
-                                })
-                                .unwrap_or_default();
-
-                            let protocol_times = block_application_stats
-                                .and_then(|bas| bas.get(hash))
-                                .and_then(|bas| bas.apply_block_stats.as_ref())
-                                .map(|abs| {
-                                    [
-                                        ("apply_start", abs.apply_start),
-                                        (
-                                            "operations_decoding_start",
-                                            abs.operations_decoding_start,
-                                        ),
-                                        ("operations_decoding_end", abs.operations_decoding_end),
-                                        //("operations_application", ...),
-                                        (
-                                            "operations_metadata_encoding_start",
-                                            abs.operations_metadata_encoding_start,
-                                        ),
-                                        (
-                                            "operations_metadata_encoding_end",
-                                            abs.operations_metadata_encoding_end,
-                                        ),
-                                        ("begin_application_start", abs.begin_application_start),
-                                        ("begin_application_end", abs.begin_application_end),
-                                        ("finalize_block_start", abs.finalize_block_start),
-                                        ("finalize_block_end", abs.finalize_block_end),
-                                        (
-                                            "collect_new_rolls_owner_snapshots_start",
-                                            abs.collect_new_rolls_owner_snapshots_start,
-                                        ),
-                                        (
-                                            "collect_new_rolls_owner_snapshots_end",
-                                            abs.collect_new_rolls_owner_snapshots_end,
-                                        ),
-                                        ("commit_start", abs.commit_start),
-                                        ("commit_end", abs.commit_end),
-                                        ("apply_end", abs.apply_end),
-                                    ]
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.saturating_sub(min_time)))
-                                    .collect::<HashMap<_, _>>()
-                                })
-                                .unwrap_or(HashMap::new());
-
-                            CurrentHeadAppStat {
-                                block_hash: hash.clone(),
-                                block_timestamp: stats.block_timestamp,
-                                receive_timestamp: stats.received_timestamp,
-                                baker: stats
-                                    .baker
-                                    .as_ref()
-                                    .and_then(|b| b.pk_hash().map_or(None, Some)),
-                                baker_priority: stats.priority,
-                                times,
-                                protocol_times,
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .map(|d| {
-                    store.service.rpc().respond(*rpc_id, d);
-                })
-                .unwrap_or_else(|| {
-                    store.service.rpc().respond(
-                        *rpc_id,
-                        serde_json::json!({ "error": format!("No stats for level `{level}`") }),
-                    );
-                });
-        }
-        Action::StatsCurrentHeadRpcGetPeers(StatsCurrentHeadRpcGetPeersAction {
-            rpc_id,
-            level,
-        }) => {
-            #[derive(Debug, serde::Serialize)]
-            struct CurrentHeadStat {
-                address: SocketAddr,
-                node_id: Option<CryptoboxPublicKeyHash>,
-                block_hash: BlockHash,
-                #[serde(flatten)]
-                times: HashMap<String, u64>,
-            }
-
-            store
-                .state
-                .get()
-                .stats
-                .current_head
-                .level_stats
-                .get(level)
-                .map(|level_stats| {
-                    level_stats
-                        .peer_stats
-                        .iter()
-                        .map(|(peer, stats)| CurrentHeadStat {
-                            address: *peer,
-                            node_id: stats.node_id.clone(),
-                            block_hash: stats.hash.clone(),
-                            times: stats.times.clone(),
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .map(|d| {
-                    store.service.rpc().respond(*rpc_id, d);
-                })
-                .unwrap_or_else(|| {
-                    store.service.rpc().respond(
-                        *rpc_id,
-                        serde_json::json!({ "error": format!("No stats for level `{level}`") }),
-                    );
-                });
-        }
-
-        Action::BlockApplierApplySuccess(_) => {
-            if !store.state.get().is_bootstrapped() {
-                return;
-            }
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
-                _ => return,
-            };
-
-            let current_block_hash = block.hash.clone();
-            let level = block.header.level();
-            store.dispatch(RightsGetAction {
-                key: RightsKey::baking(current_block_hash, Some(level + 1), None),
-            });
-            store.dispatch(StatsCurrentHeadPruneAction {
-                timestamp: action.id,
-            });
-        }
-
         _ => (),
     }
 }

@@ -886,7 +886,7 @@ pub struct BlockStats {
     /// First time(ns) we saw a block in current head.
     block_first_seen: u64,
 
-    block_level: Option<Level>,
+    block_level: Level,
 
     /// Time(ns) since block_first_seen in current head.
     data_ready: Option<u64>,
@@ -899,6 +899,9 @@ pub struct BlockStats {
 
     /// Time(ns) it took to store the result.
     store_result: Option<u64>,
+
+    /// Is block injected
+    injected: bool,
 }
 
 pub(crate) async fn get_shell_automaton_block_stats_graph(
@@ -924,17 +927,17 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
     let mut result = stats
         .into_iter()
         .map(|(_, stats)| {
-            // TODO(zura): should be time when we actually saw the block
-            // in the current head.
-            let block_first_seen = stats.load_data_start.unwrap_or(0);
+            let block_first_seen = stats.receive_timestamp;
+            let data_ready_start = stats.receive_timestamp;
 
             BlockStats {
                 block_first_seen,
                 block_level: stats.level,
-                data_ready: Some(0), // TODO(zura)
+                data_ready: times_sub(stats.load_data_start, Some(data_ready_start)),
                 load_data: times_sub(stats.load_data_end, stats.load_data_start),
                 apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
                 store_result: times_sub(stats.store_result_end, stats.store_result_start),
+                injected: stats.injected,
             }
         })
         .collect::<Vec<_>>();
@@ -987,28 +990,15 @@ pub(crate) async fn get_shell_automaton_endorsements_status(
     Ok(response)
 }
 
-pub(crate) async fn get_shell_automaton_stats_current_head_peers(
+pub(crate) async fn get_shell_automaton_stats_current_head(
     level: i32,
     env: &RpcServiceEnvironment,
-) -> anyhow::Result<serde_json::Value> {
-    let rx = env
+) -> anyhow::Result<Vec<(BlockHash, shell_automaton::service::BlockApplyStats)>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadPeers { level })
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats { channel: tx, level })
         .await?;
-
-    let response = rx.await?;
-    Ok(response)
-}
-
-pub(crate) async fn get_shell_automaton_stats_current_head_application(
-    level: i32,
-    env: &RpcServiceEnvironment,
-) -> anyhow::Result<serde_json::Value> {
-    let rx = env
-        .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadApplication { level })
-        .await?;
-
     let response = rx.await?;
     Ok(response)
 }

@@ -4,16 +4,13 @@
 use crate::action::BootstrapNewCurrentHeadAction;
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::mempool_actions::{
-    MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction, MempoolOperationInjectAction,
-    MempoolRegisterOperationsStreamAction, MempoolRemoveAppliedOperationsAction,
-    MempoolRpcEndorsementsStatusGetAction,
+    BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
+    MempoolOperationInjectAction, MempoolRegisterOperationsStreamAction,
+    MempoolRemoveAppliedOperationsAction, MempoolRpcEndorsementsStatusGetAction,
 };
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
-use crate::stats::current_head::stats_current_head_actions::{
-    StatsCurrentHeadRpcGetApplicationAction, StatsCurrentHeadRpcGetPeersAction,
-};
 use crate::{Action, ActionWithMeta, Store};
 
 use super::rpc_actions::{
@@ -68,6 +65,17 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             rpc_id,
                         });
                     }
+                    RpcRequest::InjectBlock {
+                        chain_id,
+                        block_hash,
+                        block_header,
+                    } => {
+                        store.dispatch(BlockInjectAction {
+                            chain_id,
+                            block_hash,
+                            block_header,
+                        });
+                    }
                     RpcRequest::RequestCurrentHeadFromConnectedPeers => {
                         store.dispatch(MempoolAskCurrentHeadAction {});
                     }
@@ -104,11 +112,13 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
                     }
 
-                    RpcRequest::GetStatsCurrentHeadPeers { level } => {
-                        store.dispatch(StatsCurrentHeadRpcGetPeersAction { rpc_id, level });
-                    }
-                    RpcRequest::GetStatsCurrentHeadApplication { level } => {
-                        store.dispatch(StatsCurrentHeadRpcGetApplicationAction { rpc_id, level });
+                    RpcRequest::GetStatsCurrentHeadStats { channel, level } => {
+                        let _ = channel.send(
+                            store
+                                .service
+                                .statistics()
+                                .map_or(Vec::new(), |s| s.block_stats_get_by_level(level)),
+                        );
                     }
                 }
             }
