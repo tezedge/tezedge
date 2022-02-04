@@ -208,7 +208,6 @@ enum CurrentHeadActionTest {
     TestCurrentHeadPrecheckSuccessAction(current_head_actions::CurrentHeadPrecheckSuccessAction),
     TestCurrentHeadPrecheckRejectedAction(current_head_actions::CurrentHeadPrecheckRejectedAction),
     TestCurrentHeadErrorAction(current_head_actions::CurrentHeadErrorAction),
-    TestCurrentHeadApplyAction(current_head_actions::CurrentHeadApplyAction),
     TestCurrentHeadPrecacheBakingRightsAction(
         current_head_actions::CurrentHeadPrecacheBakingRightsAction,
     ),
@@ -222,7 +221,6 @@ impl CurrentHeadActionTest {
             Self::TestCurrentHeadPrecheckSuccessAction(a) => a.into(),
             Self::TestCurrentHeadPrecheckRejectedAction(a) => a.into(),
             Self::TestCurrentHeadErrorAction(a) => a.into(),
-            Self::TestCurrentHeadApplyAction(a) => a.into(),
             Self::TestCurrentHeadPrecacheBakingRightsAction(a) => a.into(),
         }
     }
@@ -1398,7 +1396,6 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::CurrentHeadPrecheckSuccess(a) => a.is_enabled(state),
         Action::CurrentHeadPrecheckRejected(a) => a.is_enabled(state),
         Action::CurrentHeadError(a) => a.is_enabled(state),
-        Action::CurrentHeadApply(a) => a.is_enabled(state),
         Action::CurrentHeadPrecacheBakingRights(a) => a.is_enabled(state),
         Action::StatsCurrentHeadPrecheckInit(a) => a.is_enabled(state),
         //Action::StatsCurrentHeadReceived(a) => a.is_enabled(state),

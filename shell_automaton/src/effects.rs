@@ -3,7 +3,7 @@
 
 use crate::actors::actors_effects;
 use crate::block_applier::block_applier_effects;
-use crate::current_head::current_head_effects;
+use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
@@ -169,7 +169,7 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     rights_effects(store, action);
 
-    current_head_effects(store, action);
+    current_head_precheck_effects(store, action);
 
     prechecker_effects(store, action);
 

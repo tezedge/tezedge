@@ -7,7 +7,6 @@ use crypto::hash::BlockHash;
 use tezos_messages::p2p::{binary_message::MessageHash, encoding::peer::PeerMessage};
 
 use crate::{
-    block_applier::BlockApplierApplyState,
     mempool::mempool_actions::BlockInjectAction,
     peer::message::read::PeerMessageReadSuccessAction,
     rights::{rights_actions::RightsGetAction, RightsKey},
@@ -15,9 +14,9 @@ use crate::{
     Action,
 };
 
-use super::{current_head_actions::*, BakingPriorityError, CurrentHeadState};
+use super::*;
 
-pub fn current_head_effects<S>(store: &mut crate::Store<S>, action: &crate::ActionWithMeta)
+pub fn current_head_precheck_effects<S>(store: &mut crate::Store<S>, action: &crate::ActionWithMeta)
 where
     S: crate::Service,
 {
@@ -50,21 +49,6 @@ where
                 block_hash: block_hash.clone(),
                 block_header: block_header.as_ref().clone(),
                 injected: true,
-            });
-        }
-        Action::BlockApplierApplySuccess(_) => {
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
-                _ => return,
-            };
-
-            let block_hash = block.hash.clone();
-            let level = block.header.level();
-            let timestamp = block.header.timestamp();
-            store.dispatch(CurrentHeadApplyAction {
-                block_hash,
-                level,
-                timestamp,
             });
         }
 
@@ -123,34 +107,32 @@ where
             slog::error!(&store.state().log, "current head error"; "block_hash" => block_hash.to_base58_check(), "error" => error.to_string());
         }
 
-        Action::CurrentHeadApply(CurrentHeadApplyAction { .. }) => {
+        Action::BlockApplierApplySuccess(_) => {
             store.dispatch(CurrentHeadPrecacheBakingRightsAction {});
         }
         Action::CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction {
             ..
         }) => {
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
-                _ => return,
-            };
-
-            let current_block_hash = block.hash.clone();
-            let level = block.header.level();
-
-            let max_priority = match max_priority_to_precache(
-                block.header.timestamp(),
-                (20, 30),
-                action.duration_since_epoch().as_secs(),
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    slog::error!(&store.state.get().log, "error calculating max priority"; "error" => err.to_string());
-                    return;
-                }
-            };
-            store.dispatch(RightsGetAction {
-                key: RightsKey::baking(current_block_hash, Some(level + 1), Some(max_priority)),
-            });
+            let state = store.state.get();
+            if let Some((current_block_hash, level, prev_timestamp)) = state
+                .get_current_head()
+                .map(|(hash, header)| (hash.clone(), header.level(), header.timestamp()))
+            {
+                let max_priority = match max_priority_to_precache(
+                    prev_timestamp,
+                    (20, 30),
+                    action.duration_since_epoch().as_secs(),
+                ) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        slog::error!(&store.state.get().log, "error calculating max priority"; "error" => err.to_string());
+                        return;
+                    }
+                };
+                store.dispatch(RightsGetAction {
+                    key: RightsKey::baking(current_block_hash, Some(level), Some(max_priority)),
+                });
+            }
         }
         _ => (),
     }
@@ -173,7 +155,7 @@ fn max_priority_to_precache(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::current_head::current_head_reducer::TIME_BETWEEN_BLOCKS;
+    use crate::current_head_precheck::current_head_precheck_reducer::TIME_BETWEEN_BLOCKS;
 
     #[test]
     fn test_max_priority_to_precache_0() {

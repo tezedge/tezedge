@@ -22,9 +22,9 @@ use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::protocol::ProtocolAction;
 use crate::storage::kv_operations;
-use crate::{block_applier::BlockApplierApplyState, current_head::CurrentHeadState};
+use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
-    current_head::current_head_actions::CurrentHeadPrecheckSuccessAction,
+    current_head_precheck::CurrentHeadPrecheckSuccessAction,
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::prechecker_actions::{PrecheckerApplied, PrecheckerErrored},
 };
