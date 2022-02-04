@@ -8,7 +8,6 @@ use slog::error;
 use tezos_messages::{p2p::binary_message::BinaryWrite, protocol::SupportedProtocol};
 
 use crate::{
-    block_applier::BlockApplierApplyState,
     current_head_precheck::{
         CurrentHeadPrecheckRejectedAction, CurrentHeadPrecheckSuccessAction, CurrentHeadState,
     },
@@ -149,13 +148,13 @@ where
                 if disable_endorsements_precheck || !is_endorsement {
                     store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
                 } else if disable_block_precheck {
-                    let (hash, header) = match store.state().get_current_head() {
+                    let current_head = match store.state().current_head.get() {
                         Some(v) => v,
                         None => return,
                     };
-                    if hash == &block {
+                    if &current_head.hash == &block {
                         store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
-                    } else if Some(header.level() + 1) == endorsement_level {
+                    } else if Some(current_head.header.level() + 1) == endorsement_level {
                         store.dispatch(PrecheckerWaitForBlockAppliedAction {
                             key: key.clone(),
                             branch: block,
@@ -483,11 +482,8 @@ where
             });
         }
         // prechache next block protocol, applied block is needed for that
-        Action::BlockApplierApplySuccess(_) => {
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
-                _ => return,
-            };
+        Action::CurrentHeadUpdate(content) => {
+            let block = &content.new_head;
 
             let need_proto_update =
                 prechecker_state

@@ -7,6 +7,7 @@ use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::block_applier::block_applier_reducer;
+use crate::current_head::current_head_reducer;
 use crate::current_head_precheck::current_head_precheck_reducer;
 use crate::paused_loops::paused_loops_reducer;
 
@@ -91,6 +92,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         protocol_runner_init_context_reducer,
         protocol_runner_init_context_ipc_server_reducer,
         protocol_runner_reducer,
+        current_head_reducer,
         block_applier_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,

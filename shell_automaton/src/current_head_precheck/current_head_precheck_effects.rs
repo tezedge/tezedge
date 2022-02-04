@@ -107,16 +107,21 @@ where
             slog::error!(&store.state().log, "current head error"; "block_hash" => block_hash.to_base58_check(), "error" => error.to_string());
         }
 
-        Action::BlockApplierApplySuccess(_) => {
+        Action::CurrentHeadUpdate(_) => {
             store.dispatch(CurrentHeadPrecacheBakingRightsAction {});
         }
         Action::CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction {
             ..
         }) => {
             let state = store.state.get();
-            if let Some((current_block_hash, level, prev_timestamp)) = state
-                .get_current_head()
-                .map(|(hash, header)| (hash.clone(), header.level(), header.timestamp()))
+            if let Some((current_block_hash, level, prev_timestamp)) =
+                state.current_head.get().map(|head| {
+                    (
+                        head.hash.clone(),
+                        head.header.level(),
+                        head.header.timestamp(),
+                    )
+                })
             {
                 let max_priority = match max_priority_to_precache(
                     prev_timestamp,

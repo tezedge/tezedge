@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tezos_api::ffi::ProtocolError;
 use tezos_protocol_ipc_client::ProtocolServiceError;
 
+use crate::current_head::CurrentHeadUpdateAction;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
@@ -182,6 +183,8 @@ where
                         &block.hash,
                         Ok((chain_id.clone(), block.clone())),
                     );
+                    let new_head = (**block).clone();
+                    store.dispatch(CurrentHeadUpdateAction { new_head });
                 }
                 _ => return,
             }
