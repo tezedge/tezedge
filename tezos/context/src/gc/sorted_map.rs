@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 #[cfg(not(test))]
-const MAX_CHUNK_SIZE: usize = 10_000;
+const MAX_CHUNK_SIZE: usize = 1_000;
 
 #[cfg(test)]
 const MAX_CHUNK_SIZE: usize = 4;

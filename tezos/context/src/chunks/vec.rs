@@ -331,6 +331,12 @@ where
 
         println!("INTO_SORTED_MAP {:?} {:?}", now.elapsed(), map);
 
+        let now = std::time::Instant::now();
+
+        map.shrink_to_fit();
+
+        println!("INTO_SORTED_MAP SHRINK_TO_FIT {:?} {:?}", now.elapsed(), map);
+
         map
     }
 }
