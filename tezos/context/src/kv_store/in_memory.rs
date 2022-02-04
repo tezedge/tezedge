@@ -23,6 +23,7 @@ use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use crate::{
     chunks::ChunkedVec,
     gc::{
+        sorted_map::SortedMap,
         worker::{Command, Cycles, GCThread, GC_PENDING_HASHIDS, PRESERVE_CYCLE_COUNT},
         GarbageCollectionError, GarbageCollector,
     },
@@ -174,7 +175,7 @@ impl HashValueStore {
 }
 
 pub struct InMemory {
-    current_cycle: BTreeMap<HashId, Arc<[u8]>>,
+    current_cycle: SortedMap<HashId, Arc<[u8]>>,
     pub hashes: HashValueStore,
     sender: Option<Sender<Command>>,
     pub context_hashes: Map<u64, HashId>,

@@ -190,12 +190,16 @@ where
         }
     }
 
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.get(key).is_some()
+    }
+
     pub fn to_vec(mut self) -> Vec<K> {
-        let vec = Vec::with_capacity(self.len());
+        let mut vec = Vec::with_capacity(self.len());
 
         while let Some(chunk) = self.list.get(0) {
-            for (key, _) in chunk.inner {
-                vec.push(key);
+            for (key, _) in &chunk.inner {
+                vec.push(*key);
             }
             self.list.remove(0);
         }

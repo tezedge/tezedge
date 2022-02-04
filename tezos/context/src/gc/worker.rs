@@ -33,7 +33,7 @@ pub(crate) struct GCThread {
 
 pub(crate) enum Command {
     StartNewCycle {
-        values_in_cycle: BTreeMap<HashId, Arc<[u8]>>,
+        values_in_cycle: SortedMap<HashId, Arc<[u8]>>,
         new_ids: ChunkedVec<HashId>,
     },
     MarkReused {
@@ -97,12 +97,16 @@ impl Cycles {
             eprintln!("GC: Failed to insert value in Cycles")
         }
 
-        value
+        Some(value)
     }
 
     fn roll(&mut self, new_cycle: SortedMap<HashId, Arc<[u8]>>) -> Vec<HashId> {
         let unused = self.list.pop_front().unwrap_or_default();
         self.list.push_back(new_cycle);
+
+        for store in self.list.iter_mut().take(PRESERVE_CYCLE_COUNT - 1) {
+            store.shrink_to_fit();
+        }
 
         unused.to_vec()
         // let mut vec = Vec::with_capacity(unused.len());
