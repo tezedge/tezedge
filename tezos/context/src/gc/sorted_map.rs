@@ -81,9 +81,7 @@ where
     K: Ord + Copy,
 {
     fn shrink_to_fit(&mut self) {
-        if self.len() + 100 < self.inner.capacity() {
-            self.inner.shrink_to_fit();
-        }
+        self.inner.shrink_to_fit();
     }
 
     fn len(&self) -> usize {
