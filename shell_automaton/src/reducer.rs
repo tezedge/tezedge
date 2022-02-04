@@ -7,7 +7,7 @@ use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::block_applier::block_applier_reducer;
-use crate::current_head::current_head_reducer;
+use crate::current_head_precheck::current_head_precheck_reducer;
 use crate::paused_loops::paused_loops_reducer;
 
 use crate::peer::binary_message::read::peer_binary_message_read_reducer;
@@ -112,7 +112,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_graylist_reducer,
         mempool_reducer,
         rights_reducer,
-        current_head_reducer,
+        current_head_precheck_reducer,
         stats_current_head_reducer,
         prechecker_reducer,
         rpc_reducer,

@@ -9,19 +9,17 @@ use tezos_messages::{
     p2p::{binary_message::BinaryWrite, encoding::block_header::BlockHeader},
 };
 
-use crate::{current_head::CurrentHeadPrecheckError, Action};
+use crate::{current_head_precheck::CurrentHeadPrecheckError, Action};
 
 use super::{
-    current_head_actions::{
-        CurrentHeadApplyAction, CurrentHeadPrecheckAction, CurrentHeadReceivedAction,
-    },
-    AppliedHead, BakingPriorityError, BakingRightsError, CurrentHeadState,
+    BakingPriorityError, BakingRightsError, CurrentHeadPrecheckAction, CurrentHeadReceivedAction,
+    CurrentHeadState,
 };
 
 pub(super) const TIME_BETWEEN_BLOCKS: (i64, i64) = (20, 15);
 pub(super) const MINIMAL_BLOCK_TIME: i64 = 15;
 
-pub fn current_head_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
+pub fn current_head_precheck_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
     match &action.action {
         Action::CurrentHeadReceived(CurrentHeadReceivedAction {
             block_hash,
@@ -38,12 +36,12 @@ pub fn current_head_reducer(state: &mut crate::State, action: &crate::ActionWith
         Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction { block_hash, .. }) => {
             let chain_id = &state.config.chain_id;
             let baking_cache = &state.rights.cache.baking;
-            let applied_head = match state.current_heads.applied_head() {
-                Some(v) => v,
+            let applied_head = match state.get_current_head() {
+                Some((_, v)) => v,
                 None => return,
             };
-            let applied_level = applied_head.level;
-            let applied_timestamp = applied_head.timestamp;
+            let applied_level = applied_head.level();
+            let applied_timestamp = applied_head.timestamp();
             let candidates = &mut state.current_heads.candidates;
             candidates.get_mut(block_hash).map(|current_head_state| {
                 if let CurrentHeadState::Received { block_header } = current_head_state {
@@ -78,20 +76,7 @@ pub fn current_head_reducer(state: &mut crate::State, action: &crate::ActionWith
                 }
             });
         }
-        Action::CurrentHeadApply(CurrentHeadApplyAction {
-            block_hash,
-            level,
-            timestamp,
-        }) => {
-            state.current_heads.applied_heads.push(AppliedHead {
-                block_hash: block_hash.clone(),
-                level: *level,
-                timestamp: *timestamp,
-            });
-            state
-                .current_heads
-                .applied_hashes
-                .insert(block_hash.clone(), *level);
+        Action::BlockApplierApplySuccess(_) => {
             state.current_heads.candidates.clear();
         }
         _ => (),

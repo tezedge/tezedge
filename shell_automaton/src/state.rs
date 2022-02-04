@@ -1,15 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::BlockHash;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::SchemaError;
-use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 
 use crate::block_applier::BlockApplierState;
 use crate::config::Config;
-use crate::current_head::CurrentHeads;
+use crate::current_head_precheck::CurrentHeads;
 use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
@@ -168,11 +169,23 @@ impl State {
         }
     }
 
-    pub fn current_head_level(&self) -> Option<Level> {
+    pub fn get_current_head(&self) -> Option<(&BlockHash, &BlockHeader)> {
         self.mempool
             .local_head_state
             .as_ref()
-            .map(|v| v.header.level())
+            .map(|v| (&v.hash, &v.header))
+    }
+
+    pub fn current_head_level(&self) -> Option<Level> {
+        self.get_current_head().map(|(_, header)| header.level())
+    }
+
+    pub fn current_head_candidate_level(&self) -> Option<Level> {
+        self.current_head_level().map(|l| l + 1)
+    }
+
+    pub fn current_head_hash(&self) -> Option<&BlockHash> {
+        self.get_current_head().map(|(hash, _)| hash)
     }
 
     /// Global bootstrap status is considered as bootstrapped, only if
