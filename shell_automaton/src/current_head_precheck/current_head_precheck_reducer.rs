@@ -36,8 +36,8 @@ pub fn current_head_precheck_reducer(state: &mut crate::State, action: &crate::A
         Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction { block_hash, .. }) => {
             let chain_id = &state.config.chain_id;
             let baking_cache = &state.rights.cache.baking;
-            let applied_head = match state.get_current_head() {
-                Some((_, v)) => v,
+            let applied_head = match state.current_head.get() {
+                Some(v) => &v.header,
                 None => return,
             };
             let applied_level = applied_head.level();
@@ -76,7 +76,7 @@ pub fn current_head_precheck_reducer(state: &mut crate::State, action: &crate::A
                 }
             });
         }
-        Action::BlockApplierApplySuccess(_) => {
+        Action::CurrentHeadUpdate(_) => {
             state.current_heads.candidates.clear();
         }
         _ => (),

@@ -1,10 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    convert::TryFrom,
-    time::{Duration, SystemTime},
-};
+use std::convert::TryFrom;
+use std::time::{Duration, SystemTime};
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};

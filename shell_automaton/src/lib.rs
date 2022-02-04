@@ -64,6 +64,7 @@ pub mod prechecker;
 
 pub mod shutdown;
 
+pub mod current_head;
 pub mod current_head_precheck;
 
 pub mod stats;

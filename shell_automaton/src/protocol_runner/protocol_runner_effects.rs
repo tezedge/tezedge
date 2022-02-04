@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::current_head::CurrentHeadRehydrateInitAction;
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextErrorAction, ProtocolRunnerInitContextState,
     ProtocolRunnerInitContextSuccessAction,
@@ -57,6 +58,7 @@ where
                             genesis_commit_hash,
                         });
                     }
+                    store.dispatch(CurrentHeadRehydrateInitAction {});
                     store.dispatch(ProtocolRunnerNotifyStatusAction {});
                 }
                 _ => {}

@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::SchemaError;
-use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
 use crate::config::Config;
+use crate::current_head::CurrentHeadState;
 use crate::current_head_precheck::CurrentHeads;
 use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
@@ -65,6 +66,7 @@ pub struct State {
 
     pub rights: RightsState,
 
+    pub current_head: CurrentHeadState,
     pub current_heads: CurrentHeads,
 
     pub stats: super::stats::Stats,
@@ -101,6 +103,7 @@ impl State {
 
             prechecker: PrecheckerState::default(),
 
+            current_head: CurrentHeadState::new(),
             current_heads: CurrentHeads::default(),
 
             stats: super::stats::Stats::default(),
@@ -169,15 +172,8 @@ impl State {
         }
     }
 
-    pub fn get_current_head(&self) -> Option<(&BlockHash, &BlockHeader)> {
-        self.mempool
-            .local_head_state
-            .as_ref()
-            .map(|v| (&v.hash, &v.header))
-    }
-
     pub fn current_head_level(&self) -> Option<Level> {
-        self.get_current_head().map(|(_, header)| header.level())
+        self.current_head.get().map(|head| head.header.level())
     }
 
     pub fn current_head_candidate_level(&self) -> Option<Level> {
@@ -185,7 +181,7 @@ impl State {
     }
 
     pub fn current_head_hash(&self) -> Option<&BlockHash> {
-        self.get_current_head().map(|(hash, _)| hash)
+        self.current_head.get().map(|head| &head.hash)
     }
 
     /// Global bootstrap status is considered as bootstrapped, only if

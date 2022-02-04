@@ -191,7 +191,8 @@ impl NodeInfrastructure {
 
         let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
             hydrate_current_head(&init_storage_data, &persistent_storage)
-                .expect("Failed to load current_head from database");
+                .expect("Failed to load current_head from database")
+                .into();
         let hydrated_current_head = Head::new(
             hydrated_current_head_block.hash.clone(),
             hydrated_current_head_block.header.level(),

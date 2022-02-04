@@ -593,13 +593,11 @@ pub fn initialize_storage_with_genesis_block(
 }
 
 pub fn hydrate_current_head(
-    init_storage_data: &StorageInitInfo,
+    chain_id: &ChainId,
     persistent_storage: &PersistentStorage,
-) -> Result<Arc<BlockHeaderWithHash>, StorageError> {
+) -> Result<BlockHeaderWithHash, StorageError> {
     // check last stored current_head
-    let current_head = match ChainMetaStorage::new(persistent_storage)
-        .get_current_head(&init_storage_data.chain_id)?
-    {
+    let current_head = match ChainMetaStorage::new(persistent_storage).get_current_head(chain_id)? {
         Some(head) => head,
         None => {
             return Err(StorageError::MissingKey {
@@ -610,7 +608,7 @@ pub fn hydrate_current_head(
 
     // get block_header data
     match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
-        Some(block) => Ok(Arc::new(block)),
+        Some(block) => Ok(block),
         None => Err(StorageError::MissingKey {
             when: "current_head_header".into(),
         }),

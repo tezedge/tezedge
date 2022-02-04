@@ -175,8 +175,8 @@ fn block_on_actors(
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
     info!(log, "Hydrating current head... (6/7)");
-    let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
-        hydrate_current_head(&init_storage_data, &persistent_storage)
+    let hydrated_current_head_block: BlockHeaderWithHash =
+        hydrate_current_head(&init_storage_data.chain_id, &persistent_storage)
             .expect("Failed to load current_head from database");
     let hydrated_current_head = Head::new(
         hydrated_current_head_block.hash.clone(),
@@ -236,7 +236,7 @@ fn block_on_actors(
         env.tezos_network_config,
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
-        hydrated_current_head_block,
+        Arc::new(hydrated_current_head_block),
         env.storage
             .context_storage_configuration
             .tezedge_is_enabled(),

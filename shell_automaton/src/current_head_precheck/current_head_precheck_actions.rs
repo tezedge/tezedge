@@ -104,6 +104,6 @@ pub struct CurrentHeadPrecacheBakingRightsAction {}
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck && state.get_current_head().is_some()
+        !state.config.disable_block_precheck && state.current_head.get().is_some()
     }
 }

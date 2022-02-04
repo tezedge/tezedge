@@ -87,6 +87,8 @@ pub enum StorageRequestPayload {
     CycleErasGet(ProtocolHash),
     CycleMetaGet(CycleKey),
 
+    CurrentHeadGet(ChainId),
+
     BlockHeaderPut(BlockHeaderWithHash),
     BlockAdditionalDataPut((BlockHash, BlockAdditionalData)),
 
@@ -116,6 +118,8 @@ pub enum StorageResponseSuccess {
     CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
+    CurrentHeadGetSuccess(BlockHeaderWithHash),
+
     BlockHeaderPutSuccess(bool),
     BlockAdditionalDataPutSuccess(()),
 
@@ -141,6 +145,8 @@ pub enum StorageResponseError {
     ConstantsGetError(ProtocolHash, StorageError),
     CycleErasGetError(ProtocolHash, StorageError),
     CycleMetaGetError(CycleKey, StorageError),
+
+    CurrentHeadGetError(StorageError),
 
     BlockHeaderPutError(StorageError),
     BlockAdditionalDataPutError(StorageError),
@@ -348,6 +354,13 @@ impl StorageServiceDefault {
                     .get(&proto_hash)
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
+
+                CurrentHeadGet(chain_id) => {
+                    match storage::hydrate_current_head(&chain_id, &storage) {
+                        Ok(head) => Ok(CurrentHeadGetSuccess(head)),
+                        Err(err) => Err(CurrentHeadGetError(err.into())),
+                    }
+                }
 
                 BlockHeaderPut(data) => match block_storage.put_block_header(&data) {
                     Ok(is_new_block) => Ok(BlockHeaderPutSuccess(is_new_block)),
