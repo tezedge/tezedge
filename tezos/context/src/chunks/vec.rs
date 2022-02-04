@@ -3,8 +3,11 @@
 
 use std::{
     borrow::Cow,
+    fmt::Debug,
     ops::{Index, IndexMut, Range},
 };
+
+use crate::gc::sorted_map::SortedMap;
 
 use super::{Chunk, DEFAULT_LIST_LENGTH};
 
@@ -305,6 +308,30 @@ impl<T> ChunkedVec<T> {
             first_chunk.clear();
         };
         self.nelems = 0;
+    }
+}
+
+impl<K, V> ChunkedVec<(K, V)>
+where
+    K: Ord + Copy + Debug,
+{
+    pub fn into_sorted_map(&mut self) -> SortedMap<K, V> {
+        let mut map = SortedMap::default();
+
+        let now = std::time::Instant::now();
+
+        println!("INTO_SORTED_MAP START {:?} ITEMS", self.len());
+
+        while !self.list_of_chunks.is_empty() {
+            let chunk = self.list_of_chunks.remove(0);
+            for (k, v) in chunk.into_iter() {
+                map.insert(k, v);
+            }
+        }
+
+        println!("INTO_SORTED_MAP {:?} {:?}", now.elapsed(), map);
+
+        map
     }
 }
 

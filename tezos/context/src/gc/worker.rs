@@ -33,7 +33,7 @@ pub(crate) struct GCThread {
 
 pub(crate) enum Command {
     StartNewCycle {
-        values_in_cycle: SortedMap<HashId, Arc<[u8]>>,
+        values_in_cycle: ChunkedVec<(HashId, Arc<[u8]>)>,
         new_ids: ChunkedVec<HashId>,
     },
     MarkReused {
@@ -192,12 +192,14 @@ impl GCThread {
 
     fn start_new_cycle(
         &mut self,
-        new_cycle: SortedMap<HashId, Arc<[u8]>>,
+        mut new_cycle: ChunkedVec<(HashId, Arc<[u8]>)>,
         new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
 
         let mut hashid_without_value = Vec::with_capacity(1024);
+
+        let new_cycle = new_cycle.into_sorted_map();
 
         // let mut without_value = 0;
 

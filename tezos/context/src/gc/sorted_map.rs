@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 #[cfg(not(test))]
-const MAX_CHUNK_SIZE: usize = 1_000_000;
+const MAX_CHUNK_SIZE: usize = 10_000;
 
 #[cfg(test)]
 const MAX_CHUNK_SIZE: usize = 4;
@@ -52,8 +52,9 @@ where
 
 impl<K, V> std::fmt::Debug for SortedMap<K, V>
 where
-    K: Ord + std::fmt::Debug,
-    V: std::fmt::Debug,
+    K: Ord,
+    // K: Ord + std::fmt::Debug,
+    // V: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut len = 0;

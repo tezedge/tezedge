@@ -174,7 +174,7 @@ impl HashValueStore {
 }
 
 pub struct InMemory {
-    current_cycle: SortedMap<HashId, Arc<[u8]>>,
+    current_cycle: ChunkedVec<(HashId, Arc<[u8]>)>,
     pub hashes: HashValueStore,
     sender: Option<Sender<Command>>,
     pub context_hashes: Map<u64, HashId>,
@@ -386,7 +386,7 @@ impl InMemory {
             (Some(sender), Some(cons), Some(thread_handle))
         };
 
-        let current_cycle = Default::default();
+        let current_cycle = ChunkedVec::with_chunk_capacity(512 * 1024);
         let hashes = HashValueStore::new(cons);
         let context_hashes = Default::default();
 
@@ -551,14 +551,18 @@ impl InMemory {
     pub fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
         for (hash_id, value) in batch {
             self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
-            self.current_cycle.insert(hash_id, value);
+            self.current_cycle.push((hash_id, value));
         }
         Ok(())
     }
 
     pub fn new_cycle_started(&mut self) {
         if let Some(sender) = &self.sender {
-            let values_in_cycle = std::mem::take(&mut self.current_cycle);
+            let values_in_cycle = std::mem::replace(
+                &mut self.current_cycle,
+                ChunkedVec::with_chunk_capacity(512 * 1024),
+            );
+            // let values_in_cycle = std::mem::take(&mut self.current_cycle);
             let new_ids = self.hashes.take_new_ids();
 
             if let Err(e) = sender.try_send(Command::StartNewCycle {
