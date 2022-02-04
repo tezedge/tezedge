@@ -60,6 +60,7 @@ use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
 
 use crate::{
+    chunks::ChunkedVec,
     gc::GarbageCollectionError,
     serialize::{
         persistent::AbsoluteOffset, DeserializationError, SerializationError,
@@ -87,7 +88,7 @@ use super::{
 
 pub struct PostCommitData {
     pub commit_ref: ObjectReference,
-    pub batch: Vec<(HashId, Arc<[u8]>)>,
+    pub batch: ChunkedVec<(HashId, Arc<[u8]>)>,
     pub reused: Vec<HashId>,
     pub serialize_stats: Box<SerializeStats>,
     pub output: Vec<u8>,
@@ -154,7 +155,7 @@ impl PostCommitData {
     fn empty_with_commit(commit_hash: HashId) -> Self {
         Self {
             commit_ref: ObjectReference::new(Some(commit_hash), None),
-            batch: Default::default(),
+            batch: ChunkedVec::empty(),
             reused: Default::default(),
             serialize_stats: Default::default(),
             output: Default::default(),
@@ -470,7 +471,7 @@ pub enum CheckObjectHashError {
 }
 
 struct SerializingData<'a> {
-    batch: Vec<(HashId, Arc<[u8]>)>,
+    batch: ChunkedVec<(HashId, Arc<[u8]>)>,
     referenced_older_objects: Vec<HashId>,
     repository: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
@@ -490,7 +491,7 @@ impl<'a> SerializingData<'a> {
         enable_dedup_object: bool,
     ) -> Self {
         Self {
-            batch: Vec::with_capacity(2048),
+            batch: ChunkedVec::with_chunk_capacity(8 * 1024),
             referenced_older_objects: Vec::with_capacity(2048),
             repository,
             serialized: Vec::with_capacity(2048),

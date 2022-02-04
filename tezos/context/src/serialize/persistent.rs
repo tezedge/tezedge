@@ -12,6 +12,7 @@ use static_assertions::assert_eq_size;
 use tezos_timing::SerializeStats;
 
 use crate::{
+    chunks::ChunkedVec,
     kv_store::HashId,
     serialize::{deserialize_hash_id, serialize_hash_id, ObjectTag},
     working_tree::{
@@ -431,7 +432,7 @@ pub fn serialize_object(
     storage: &Storage,
     strings: &StringInterner,
     stats: &mut SerializeStats,
-    _batch: &mut Vec<(HashId, Arc<[u8]>)>,
+    _batch: &mut ChunkedVec<(HashId, Arc<[u8]>)>,
     _referenced_older_objects: &mut Vec<HashId>,
     repository: &mut ContextKeyValueStore,
     file_offset: Option<AbsoluteOffset>,

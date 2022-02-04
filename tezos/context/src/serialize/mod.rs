@@ -11,6 +11,7 @@ use tezos_timing::SerializeStats;
 use thiserror::Error;
 
 use crate::{
+    chunks::ChunkedVec,
     hash::HashingError,
     kv_store::HashId,
     persistent::DBError,
@@ -34,16 +35,16 @@ const FULL_47_BITS: u64 = 0x7FFFFFFFFFFF;
 const FULL_31_BITS: u64 = 0x7FFFFFFF;
 
 pub type SerializeObjectSignature = fn(
-    &Object,                       // object
-    HashId,                        // object_hash_id
-    &mut Vec<u8>,                  // output
-    &Storage,                      // storage
-    &StringInterner,               // strings
-    &mut SerializeStats,           // statistics
-    &mut Vec<(HashId, Arc<[u8]>)>, // batch
-    &mut Vec<HashId>,              // referenced_older_objects
-    &mut ContextKeyValueStore,     // repository
-    Option<AbsoluteOffset>,        // offset
+    &Object,                              // object
+    HashId,                               // object_hash_id
+    &mut Vec<u8>,                         // output
+    &Storage,                             // storage
+    &StringInterner,                      // strings
+    &mut SerializeStats,                  // statistics
+    &mut ChunkedVec<(HashId, Arc<[u8]>)>, // batch
+    &mut Vec<HashId>,                     // referenced_older_objects
+    &mut ContextKeyValueStore,            // repository
+    Option<AbsoluteOffset>,               // offset
 ) -> Result<Option<AbsoluteOffset>, SerializationError>;
 
 #[derive(BitfieldSpecifier)]

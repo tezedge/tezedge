@@ -548,10 +548,15 @@ impl InMemory {
         self.hashes.contains(hash_id).map_err(Into::into)
     }
 
-    pub fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
-        for (hash_id, value) in batch {
-            self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
-            self.current_cycle.push((hash_id, value));
+    pub fn write_batch(
+        &mut self,
+        mut batch: ChunkedVec<(HashId, Arc<[u8]>)>,
+    ) -> Result<(), DBError> {
+        while let Some(chunk) = batch.take_first() {
+            for (hash_id, value) in chunk.into_iter() {
+                self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
+                self.current_cycle.push((hash_id, value));
+            }
         }
         Ok(())
     }

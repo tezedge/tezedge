@@ -309,6 +309,14 @@ impl<T> ChunkedVec<T> {
         };
         self.nelems = 0;
     }
+
+    pub fn take_first(&mut self) -> Option<Vec<T>> {
+        if self.list_of_chunks.is_empty() {
+            None
+        } else {
+            Some(self.list_of_chunks.remove(0))
+        }
+    }
 }
 
 impl<K, V> ChunkedVec<(K, V)>
@@ -335,7 +343,11 @@ where
 
         map.shrink_to_fit();
 
-        println!("INTO_SORTED_MAP SHRINK_TO_FIT {:?} {:?}", now.elapsed(), map);
+        println!(
+            "INTO_SORTED_MAP SHRINK_TO_FIT {:?} {:?}",
+            now.elapsed(),
+            map
+        );
 
         map
     }
