@@ -5,7 +5,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{hash_map::DefaultHasher, BTreeMap, VecDeque},
+    collections::{hash_map::DefaultHasher, VecDeque},
     hash::Hasher,
     mem::size_of,
     rc::Rc,
@@ -163,14 +163,13 @@ impl HashValueStore {
     }
 
     fn take_new_ids(&mut self) -> ChunkedVec<HashId> {
-        let new_ids = std::mem::replace(
+        std::mem::replace(
             &mut self.new_ids,
             ChunkedVec::with_chunk_capacity(512 * 1024),
-        );
+        )
         // let new_ids = self.new_ids;
         // let new_ids = std::mem::take(&mut self.new_ids);
         // self.new_ids = ChunkedVec::with_chunk_capacity(512 * 1024);
-        new_ids
     }
 }
 

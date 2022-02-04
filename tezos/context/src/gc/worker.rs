@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -17,7 +17,7 @@ use tezos_spsc::Producer;
 
 use super::sorted_map::SortedMap;
 
-pub(crate) const PRESERVE_CYCLE_COUNT: usize = 8;
+pub(crate) const PRESERVE_CYCLE_COUNT: usize = 7;
 
 /// Used for statistics
 ///
@@ -108,7 +108,7 @@ impl Cycles {
             store.shrink_to_fit();
         }
 
-        unused.to_vec()
+        unused.keys_to_vec()
         // let mut vec = Vec::with_capacity(unused.len());
         // for id in unused.keys() {
         //     vec.push(*id);
@@ -179,7 +179,7 @@ impl GCThread {
             //     n_none
             // );
 
-            println!("CYCLE[{:?}]_LENGTH={:?}", index, c.len(),);
+            println!("CYCLE[{:?}]_LENGTH={:?}", index, c);
 
             total += c.len();
         }
@@ -192,7 +192,7 @@ impl GCThread {
 
     fn start_new_cycle(
         &mut self,
-        mut new_cycle: SortedMap<HashId, Arc<[u8]>>,
+        new_cycle: SortedMap<HashId, Arc<[u8]>>,
         new_ids: ChunkedVec<HashId>,
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);

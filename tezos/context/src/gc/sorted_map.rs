@@ -1,4 +1,4 @@
-use std::{fmt::Debug, slice::SliceIndex};
+use std::fmt::Debug;
 
 #[cfg(not(test))]
 const MAX_CHUNK_SIZE: usize = 1_000_000;
@@ -194,7 +194,7 @@ where
         self.get(key).is_some()
     }
 
-    pub fn to_vec(mut self) -> Vec<K> {
+    pub fn keys_to_vec(mut self) -> Vec<K> {
         let mut vec = Vec::with_capacity(self.len());
 
         while let Some(chunk) = self.list.get(0) {
