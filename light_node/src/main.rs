@@ -209,7 +209,7 @@ fn block_on_actors(
         env.p2p
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
-        identity.clone(),
+        identity,
         initialize_chain_manager_result_callback,
     )
     .expect("Failed to create chain manager");
@@ -259,7 +259,7 @@ fn block_on_actors(
 
         let _ = Monitor::actor(
             actor_system.as_ref(),
-            network_channel.clone(),
+            network_channel,
             websocket_handler,
             shell_channel.clone(),
             persistent_storage.clone(),
@@ -614,11 +614,7 @@ fn main() {
             error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
             panic!(
                 "Failed to load identity: {}",
-                env.identity
-                    .identity_json_file_path
-                    .as_path()
-                    .display()
-                    .to_string()
+                env.identity.identity_json_file_path.as_path().display()
             );
         }
     };
@@ -705,7 +701,7 @@ fn initialize_persistent_storage(env: &Environment, log: &Logger) -> PersistentS
         )
         .expect("Failed to create/initialize MainDB database (db)"),
         TezedgeDatabaseBackendConfiguration::RocksDB => {
-            let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
+            let kv = initialize_rocksdb(log, &kv_cache, &env.storage.db, &main_chain)
                 .expect("Failed to create/initialize RocksDB database (db)");
             caches.push(kv_cache);
             initialize_maindb(
@@ -719,7 +715,7 @@ fn initialize_persistent_storage(env: &Environment, log: &Logger) -> PersistentS
             .expect("Failed to create/initialize MainDB database (db)")
         }
         TezedgeDatabaseBackendConfiguration::EdgeKV => initialize_maindb(
-            &log,
+            log,
             None,
             &env.storage.db,
             env.storage.db.expected_db_version,

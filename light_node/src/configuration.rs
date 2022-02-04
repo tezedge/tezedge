@@ -1232,7 +1232,7 @@ impl Environment {
                                         ) {
                                             panic!(
                                                 "Invalid json file: {}, reason: {}",
-                                                path.as_path().display().to_string(),
+                                                path.as_path().display(),
                                                 e
                                             );
                                         }

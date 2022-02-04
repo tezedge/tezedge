@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 use tempfile::tempdir_in;
 
 use slog::{info, Logger};
@@ -74,25 +77,31 @@ pub fn snapshot_storage(
         block_meta_storage
             .find_block_at_distance(head.block_hash().clone(), 10)
             .expect("Failed to obtain predecessor")
-            .unwrap_or(head.block_hash().clone())
+            .unwrap_or_else(|| head.block_hash().clone())
     };
 
     let (block_header_with_hash, block_json_data) = block_storage
         .get_with_json_data(&target_block)
-        .expect(&format!(
-            "Failed to obtain block data for {}",
-            target_block.to_base58_check()
-        ))
-        .expect(&format!(
-            "Failed to obtain block data for {}",
-            target_block.to_base58_check()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Failed to obtain block data for {}",
+                target_block.to_base58_check()
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "Failed to obtain block data for {}",
+                target_block.to_base58_check()
+            )
+        });
     let block_additional_data = block_meta_storage
         .get_additional_data(&target_block)
-        .expect(&format!(
-            "Failed to obtain additional block data for {}",
-            target_block.to_base58_check()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Failed to obtain additional block data for {}",
+                target_block.to_base58_check()
+            )
+        });
 
     let context_hash = block_header_with_hash.header.context().clone();
 
@@ -232,7 +241,7 @@ pub fn snapshot_storage(
     // Set current head on new storage
     let head = Head::new(
         block_header_with_hash.hash.clone(),
-        block_header_with_hash.header.level().clone(),
+        block_header_with_hash.header.level(),
         block_header_with_hash.header.fitness().clone(),
     );
     new_chain_meta_storage
@@ -264,17 +273,17 @@ pub fn snapshot_storage(
     info!(log, "Stored current head = {:?}", head);
 
     // Move temporary data to final target path
-    // FIXME: this rename will not work across filesystems
-    for entry in target_path.read_dir().expect("read_dir call failed") {
-        if let Ok(entry) = entry {
-            let source_name = entry.file_name();
-            let to_path = final_path.join(&source_name);
+    for entry in target_path
+        .read_dir()
+        .expect("read_dir call failed")
+        .flatten()
+    {
+        let source_name = entry.file_name();
+        let to_path = final_path.join(&source_name);
 
-            info!(log, "Moving storage data into final location"; "source_name" => format!("{}", source_name.to_string_lossy()), "to_path" => format!("{}", to_path.to_string_lossy()));
+        info!(log, "Moving storage data into final location"; "source_name" => format!("{}", source_name.to_string_lossy()), "to_path" => format!("{}", to_path.to_string_lossy()));
 
-            std::fs::rename(entry.path(), to_path)
-                .expect("Failed to move storage into final location");
-        }
+        std::fs::rename(entry.path(), to_path).expect("Failed to move storage into final location");
     }
 }
 
@@ -305,16 +314,16 @@ async fn terminate_or_kill(process: &mut Child, reason: String) -> Result<(), Pr
 fn initialize_protocol_runner_and_snapshot_context(
     env: &crate::configuration::Environment,
     context_hash: &ContextHash,
-    target_path: &PathBuf,
+    target_path: &Path,
     log: &Logger,
 ) -> (ContextHash, CommitGenesisResult) {
-    let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
+    let tokio_runtime = create_tokio_runtime(env).expect("Failed to create tokio runtime");
 
     let (_context_init_status_sender, context_init_status_receiver) =
         tokio::sync::watch::channel(false);
-    let protocol_runner_configuration = create_protocol_runner_configuration(&env);
+    let protocol_runner_configuration = create_protocol_runner_configuration(env);
     let mut tezos_protocol_api = ProtocolRunnerApi::new(
-        protocol_runner_configuration.clone(),
+        protocol_runner_configuration,
         context_init_status_receiver,
         tokio_runtime.handle(),
         log.clone(),
