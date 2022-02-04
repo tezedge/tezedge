@@ -20,7 +20,7 @@ use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
-use storage::Replay;
+use storage::{Replay, StorageSnapshot};
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
@@ -134,6 +134,7 @@ pub struct Environment {
     pub identity: Identity,
     pub ffi: Ffi,
     pub replay: Option<Replay>,
+    pub snapshot: Option<StorageSnapshot>,
 
     pub tezos_network: TezosEnvironment,
     pub tezos_network_config: TezosEnvironmentConfiguration,
@@ -630,6 +631,43 @@ pub fn tezos_app() -> App<'static, 'static> {
                      .help("Panic if the block application took longer than this number of milliseconds")
                      .validator(parse_validator_fn!(u64, "Value must be a valid number"))
                 )
+        ).subcommand(
+            clap::SubCommand::with_name("snapshot")
+                .arg(Arg::with_name("block")
+                     .long("block")
+                     .takes_value(true)
+                     .value_name("HASH")
+                     .display_order(0)
+                     .required(false)
+                     .help("Block to snapshot")
+                     .validator(|value| {
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
+                     })
+                )
+                .arg(Arg::with_name("target-path")
+                     .long("target-path")
+                     .takes_value(true)
+                     .value_name("PATH")
+                     .display_order(1)
+                     .required(true)
+                     .help("Directory where the snapshot will be created")
+                     .validator(|v| {
+                         let dir = Path::new(&v);
+                         if dir.exists() {
+                             if dir.is_dir() {
+                                 Ok(())
+                             } else {
+                                 Err(format!("Required snapshot data dir '{}' exists, but is not a directory!", v))
+                             }
+                         } else {
+                             // Tezos data dir does not exists, try to create it
+                             if let Err(e) = fs::create_dir_all(dir) {
+                                 Err(format!("Unable to create required snapshot data dir '{}': {} ", v, e))
+                             } else {
+                                 Ok(())
+                             }
+                         }
+                     }))
         );
     app
 }
@@ -850,6 +888,21 @@ impl Environment {
                 to_block,
                 fail_above,
             }
+        });
+
+        let snapshot = args.subcommand_matches("snapshot").map(|args| {
+            let target_path = args
+                .value_of("target-path")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path");
+
+            let block = args.value_of("block").map(|b| {
+                b.parse::<BlockHash>()
+                    .expect("Provided value cannot be converted to BlockHash")
+            });
+
+            StorageSnapshot { block, target_path }
         });
 
         let log_targets: HashSet<String> = match args.values_of("log") {
@@ -1241,6 +1294,7 @@ impl Environment {
                 },
             },
             replay,
+            snapshot,
             tokio_threads: args
                 .value_of("tokio-threads")
                 .unwrap_or("0")

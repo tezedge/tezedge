@@ -232,6 +232,12 @@ pub struct Replay {
     pub fail_above: std::time::Duration,
 }
 
+#[derive(Debug, Clone)]
+pub struct StorageSnapshot {
+    pub block: Option<BlockHash>,
+    pub target_path: PathBuf,
+}
+
 /// Struct represent init information about storage on startup
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageInitInfo {

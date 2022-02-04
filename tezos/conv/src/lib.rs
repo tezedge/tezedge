@@ -91,6 +91,10 @@ pub struct OCamlContextGetKeyFromHistoryRequest {}
 pub struct OCamlContextGetKeyValuesByPrefixRequest {}
 pub struct OCamlContextGetTreeByPrefixRequest {}
 
+// Dumps
+pub struct OCamlDumpContextRequest {}
+pub struct OCamlRestoreContextRequest {}
+
 // Requests
 
 pub struct OCamlApplyBlockRequest {}

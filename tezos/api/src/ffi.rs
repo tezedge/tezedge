@@ -430,6 +430,34 @@ impl From<TezosErrorTrace> for GetDataError {
     }
 }
 
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum DumpContextError {
+    #[error("OCaml failed to dump the context, message: {message}!")]
+    DumpError { message: String },
+}
+
+impl From<TezosErrorTrace> for DumpContextError {
+    fn from(error: TezosErrorTrace) -> Self {
+        DumpContextError::DumpError {
+            message: error.trace_json,
+        }
+    }
+}
+
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum RestoreContextError {
+    #[error("OCaml failed to restore the context from a dump, message: {message}!")]
+    RestoreError { message: String },
+}
+
+impl From<TezosErrorTrace> for RestoreContextError {
+    fn from(error: TezosErrorTrace) -> Self {
+        RestoreContextError::RestoreError {
+            message: error.trace_json,
+        }
+    }
+}
+
 #[derive(Error, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ApplyBlockError {
     #[error("Incomplete operations, expected: {expected}, has actual: {actual}!")]
@@ -976,6 +1004,11 @@ pub enum ProtocolError {
     ContextGetKeyFromHistoryError { reason: String },
     #[error("Failed to get values by prefix: {reason}")]
     ContextGetKeyValuesByPrefixError { reason: String },
+
+    #[error("Failed when dumping the context: {reason}")]
+    DumpContextError { reason: DumpContextError },
+    #[error("Failed when restoring the context from a dump: {reason}")]
+    RestoreContextError { reason: RestoreContextError },
 }
 
 impl ProtocolError {

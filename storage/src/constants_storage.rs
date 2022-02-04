@@ -11,7 +11,7 @@ use crypto::hash::ProtocolHash;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::KeyValueSchema;
-use crate::{PersistentStorage, StorageError};
+use crate::{IteratorMode, PersistentStorage, StorageError};
 
 pub type ConstantsStorageKV = dyn TezedgeDatabaseWithIterator<ConstantsStorage> + Sync + Send;
 
@@ -50,6 +50,19 @@ impl ConstantsStorage {
 
     pub fn get(&self, key: &ConstantsKey) -> Result<Option<ConstantsData>, StorageError> {
         self.kv.get(key).map_err(StorageError::from)
+    }
+
+    pub fn iterator(&self) -> Result<Vec<(ConstantsKey, ConstantsData)>, StorageError> {
+        use crate::persistent::codec::Decoder;
+        self.kv
+            .find(IteratorMode::Start)?
+            .map(|result| {
+                let result = result?;
+                let k = <Self as KeyValueSchema>::Key::decode(&result.0)?;
+                let v = <Self as KeyValueSchema>::Value::decode(&result.1)?;
+                Ok((k, v))
+            })
+            .collect()
     }
 }
 

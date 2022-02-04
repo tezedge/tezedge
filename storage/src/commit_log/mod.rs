@@ -402,12 +402,15 @@ mod tests {
     fn compare_with_old_log() {
         let data_size = 10_000;
         let new_commit_log_dir = "./testdir/bench/new_log";
+        let new_commit_log_compressed_dir = "./testdir/bench/new_compressed_log";
         let old_commit_log_dir = "./testdir/bench/old_log";
         let messages = generate_random_data(data_size, 10_000, 10_900);
         let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
         let mut new_commit_log = CommitLog::new(new_commit_log_dir, false).unwrap();
+        let mut new_commit_log_compressed =
+            CommitLog::new(new_commit_log_compressed_dir, true).unwrap();
         println!("-------------------------------------------------------");
         println!("Write Benchmark");
         println!("-------------------------------------------------------");
@@ -431,17 +434,34 @@ mod tests {
             timer.elapsed().as_millis()
         );
 
+        timer = Instant::now();
+        for msg in &messages {
+            new_commit_log_compressed.append_msg(msg).unwrap();
+        }
+        println!(
+            "New CommitLog Store (compressed) [{}] Took {}ms",
+            messages.len(),
+            timer.elapsed().as_millis()
+        );
+
         let old_commit_folder_size =
             fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
         let new_commit_folder_size =
             fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
+        let new_commit_compressed_folder_size =
+            fs_extra::dir::get_size(new_commit_log_compressed_dir).unwrap_or_default();
         println!("-------------------------------------------------------");
         println!("Size Benchmark");
         println!("-------------------------------------------------------");
-        println!("OldCommitLog {}", old_commit_folder_size);
-        println!("NewCommitLog {}", new_commit_folder_size);
+        println!("OldCommitLog              {}", old_commit_folder_size);
+        println!("NewCommitLog              {}", new_commit_folder_size);
+        println!(
+            "NewCommitLog (compressed) {}",
+            new_commit_compressed_folder_size
+        );
 
         std::fs::remove_dir_all(new_commit_log_dir).unwrap();
+        std::fs::remove_dir_all(new_commit_log_compressed_dir).unwrap();
         std::fs::remove_dir_all(old_commit_log_dir).unwrap();
     }
 }
