@@ -389,6 +389,7 @@ mod tests {
     use crypto::hash::{ContextHash, HashTrait};
     use tezos_timing::SerializeStats;
 
+    use crate::chunks::ChunkedVec;
     use crate::kv_store::in_memory::InMemory;
     use crate::kv_store::persistent::{Persistent, PersistentConfiguration};
     use crate::serialize::{in_memory, persistent, SerializeObjectSignature};
@@ -669,7 +670,7 @@ mod tests {
 
         let mut strings = StringInterner::default();
         let mut output = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut older_objects = ChunkedVec::with_chunk_capacity(1024);
         let mut stats = SerializeStats::default();
 
         // Create HashId ready to be commited
@@ -687,7 +688,7 @@ mod tests {
 
             let bindings_count = test_case.bindings.len();
             let mut dir_id = DirectoryId::empty();
-            let mut batch = Vec::new();
+            let mut batch = ChunkedVec::with_chunk_capacity(1024);
 
             let mut names = HashSet::new();
 
@@ -825,9 +826,9 @@ mod tests {
                     })
                     .unwrap();
 
-                let offset = repo.synchronize_data(&batch, &output).unwrap();
+                let offset = repo.synchronize_data(&batch.to_vec(), &output).unwrap();
 
-                let mut batch = Default::default();
+                let mut batch = ChunkedVec::with_chunk_capacity(1024);
                 output.clear();
 
                 let offset = serialize_fun(
@@ -843,7 +844,7 @@ mod tests {
                     offset,
                 )
                 .unwrap();
-                repo.synchronize_data(&batch, &output).unwrap();
+                repo.synchronize_data(&batch.to_vec(), &output).unwrap();
 
                 let object_ref = ObjectReference::new(Some(computed_hash_id), offset);
                 let object = repo

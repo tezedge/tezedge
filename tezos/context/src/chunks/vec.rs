@@ -319,9 +319,23 @@ impl<T> ChunkedVec<T> {
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        let last = self.list_of_chunks.last_mut()?.pop()?;
-        self.nelems -= 1;
-        Some(last)
+        let last_chunk = self.list_of_chunks.last_mut()?;
+        let last_item = last_chunk.pop()?;
+
+        if last_chunk.is_empty() {
+            self.list_of_chunks.pop();
+        }
+
+        Some(last_item)
+    }
+
+    #[cfg(test)]
+    pub fn to_vec(self) -> Vec<T> {
+        let mut vec = Vec::with_capacity(self.nelems);
+        for mut chunk in self.list_of_chunks.into_iter() {
+            vec.append(&mut chunk);
+        }
+        vec
     }
 }
 
@@ -364,6 +378,23 @@ mod tests {
     use std::iter::successors;
 
     use super::*;
+
+    #[test]
+    fn test_chunked_pop() {
+        let mut chunks = ChunkedVec::with_chunk_capacity(2);
+        assert!(chunks.pop().is_none());
+
+        chunks.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7]);
+
+        assert_eq!(chunks.pop().unwrap(), 7);
+        assert_eq!(chunks.pop().unwrap(), 6);
+        assert_eq!(chunks.pop().unwrap(), 5);
+        assert_eq!(chunks.pop().unwrap(), 4);
+        assert_eq!(chunks.pop().unwrap(), 3);
+        assert_eq!(chunks.pop().unwrap(), 2);
+        assert_eq!(chunks.pop().unwrap(), 1);
+        assert!(chunks.pop().is_none());
+    }
 
     #[test]
     fn test_chunked_without_alloc() {

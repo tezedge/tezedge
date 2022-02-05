@@ -784,8 +784,8 @@ mod tests {
         let mut strings = StringInterner::default();
         let mut repo = InMemory::try_new().unwrap();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::with_chunk_capacity(1024);
+        let mut older_objects = ChunkedVec::with_chunk_capacity(1024);
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         // Test Object::Directory
@@ -988,8 +988,10 @@ mod tests {
 
             let hash_id = HashId::new((index + 1) as u64).unwrap();
 
-            repo.write_batch(vec![(hash_id, Arc::new(ObjectHeader::new().into_bytes()))])
-                .unwrap();
+            let mut vec = ChunkedVec::<(HashId, Arc<[u8]>)>::with_chunk_capacity(2);
+            vec.push((hash_id, Arc::new(ObjectHeader::new().into_bytes())));
+
+            repo.write_batch(vec).unwrap();
 
             let fat_pointer = FatPointer::new_commited(Some(hash_id), None);
 
@@ -1017,7 +1019,8 @@ mod tests {
         )
         .unwrap();
 
-        let older: HashSet<HashId> = HashSet::from_iter(older_objects.clone().into_iter());
+        let older: HashSet<HashId> =
+            HashSet::from_iter(older_objects.clone().iter().map(|v| v.clone()));
         assert_eq!(older.len(), 32);
 
         let new_inode_id =
@@ -1124,8 +1127,8 @@ mod tests {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::with_chunk_capacity(1024);
+        let mut older_objects = ChunkedVec::with_chunk_capacity(1024);
 
         let fake_hash_id = HashId::try_from(1).unwrap();
 

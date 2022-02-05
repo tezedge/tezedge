@@ -351,7 +351,11 @@ impl KeyValueStoreBackend for InMemory {
         batch: &[(HashId, Arc<[u8]>)],
         _output: &[u8],
     ) -> Result<Option<AbsoluteOffset>, DBError> {
-        self.write_batch(batch.to_vec())?;
+        let mut vec = ChunkedVec::with_chunk_capacity(batch.len());
+        for item in batch {
+            vec.push(item.clone());
+        }
+        self.write_batch(vec)?;
         Ok(None)
     }
 }

@@ -1215,8 +1215,8 @@ mod tests {
         })
         .unwrap();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::with_chunk_capacity(1024);
+        let mut older_objects = ChunkedVec::with_chunk_capacity(1024);
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         let offset = repo.synchronize_data(&[], &[0, 0, 0, 0, 0, 0]).unwrap();
@@ -1677,8 +1677,8 @@ mod tests {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::with_chunk_capacity(1024);
+        let mut older_objects = ChunkedVec::with_chunk_capacity(1024);
 
         let fake_hash_id = HashId::try_from(1).unwrap();
 
