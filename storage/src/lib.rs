@@ -234,8 +234,15 @@ pub struct Replay {
 
 #[derive(Debug, Clone)]
 pub struct StorageSnapshot {
-    pub block: Option<BlockHash>,
+    pub block: Option<BlockReference>,
     pub target_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub enum BlockReference {
+    BlockHash(BlockHash),
+    Level(u32),
+    OffsetFromHead(u32),
 }
 
 /// Struct represent init information about storage on startup

@@ -20,7 +20,7 @@ use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
-use storage::{Replay, StorageSnapshot};
+use storage::{BlockReference, Replay, StorageSnapshot};
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
@@ -636,12 +636,16 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .arg(Arg::with_name("block")
                      .long("block")
                      .takes_value(true)
-                     .value_name("HASH")
+                     .value_name("HASH_OR_LEVEL_OR_OFFSET")
                      .display_order(0)
                      .required(false)
-                     .help("Block to snapshot")
+                     .help("Block to snapshot (by hash, level or offset (~<NUM>) from head)")
                      .validator(|value| {
-                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
+                         if value.parse::<BlockHash>().is_err() && value.parse::<u32>().is_err() && !(value.starts_with("~") && (&value[1..]).parse::<u32>().is_ok()) {
+                             Err("Block hash, level of offset  not valid".to_string())
+                         } else {
+                             Ok(())
+                         }
                      })
                 )
                 .arg(Arg::with_name("target-path")
@@ -898,8 +902,25 @@ impl Environment {
                 .expect("Provided value cannot be converted to path");
 
             let block = args.value_of("block").map(|b| {
-                b.parse::<BlockHash>()
-                    .expect("Provided value cannot be converted to BlockHash")
+                if let Ok(block_hash) = b.parse::<BlockHash>() {
+                    return BlockReference::BlockHash(block_hash);
+                }
+
+                // ~num is an offset from HEAD
+                if b.starts_with("~") {
+                    let maybe_num = &b[1..];
+                    if let Ok(offset) = maybe_num.parse::<u32>() {
+                        return BlockReference::OffsetFromHead(offset);
+                    }
+                }
+
+                if let Ok(level) = b.parse::<u32>() {
+                    return BlockReference::Level(level);
+                }
+
+                panic!(
+                    "Provided value cannot be converted to BlockHash, level of offset from head"
+                );
             });
 
             StorageSnapshot { block, target_path }
@@ -1232,7 +1253,7 @@ impl Environment {
                                         ) {
                                             panic!(
                                                 "Invalid json file: {}, reason: {}",
-                                                path.as_path().display().to_string(),
+                                                path.as_path().display(),
                                                 e
                                             );
                                         }

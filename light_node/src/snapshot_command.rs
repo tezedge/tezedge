@@ -1,7 +1,26 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{path::PathBuf, time::Instant};
+//! Storage snapshots command. Produces a new trimmed copy of the source storage,
+//! with all the context history and block application results for blocks before
+//! the specified target block removed. If no target block is specified, defaults
+//! to HEAD~10.
+//!
+//! Example:
+//!
+//! ```
+//! ./target/release/light-node \
+//!     --config-file ./light_node/etc/tezedge/tezedge.config \
+//!     --tezos-data-dir /path/to/source \
+//!     snapshot \
+//!     --target-path /path/to/target \
+//!     --block 434223 # optional block hash, level of negative offset from head
+//! ```
+
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 use tempfile::tempdir_in;
 
 use slog::{info, Logger};
@@ -9,7 +28,7 @@ use slog::{info, Logger};
 use crypto::hash::{BlockHash, ContextHash};
 use storage::{
     initialize_storage_with_genesis_block, store_commit_genesis_result, BlockMetaStorage,
-    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
+    BlockMetaStorageReader, BlockReference, BlockStorage, BlockStorageReader, ChainMetaStorage,
     ChainMetaStorageReader, ConstantsStorage, CycleErasStorage, CycleMetaStorage,
     OperationsMetaStorage, OperationsStorage, OperationsStorageReader, PersistentStorage,
     StorageInitInfo, SystemStorage,
@@ -32,7 +51,7 @@ pub fn snapshot_storage(
     env: crate::configuration::Environment,
     persistent_storage: PersistentStorage,
     init_storage_data: StorageInitInfo,
-    target_block: Option<BlockHash>,
+    target_block: Option<BlockReference>,
     target_path: PathBuf,
     log: Logger,
 ) {
@@ -40,6 +59,11 @@ pub fn snapshot_storage(
     let tmpdir = tempdir_in(&final_path)
         .expect("Failed to create temporary path for building the new storage");
     let target_path = tmpdir.path().to_path_buf();
+
+    // We don't try to figure a savepoint way back on history, so if no block is specified,
+    // we default to going back just a few blocks based on the information here:
+    // https://tezos.stackexchange.com/questions/3539/how-often-do-blockchain-reorgs-happen
+    let target_block = target_block.unwrap_or(BlockReference::OffsetFromHead(10));
 
     info!(log, "Fetching data from source main storage...");
 
@@ -52,47 +76,41 @@ pub fn snapshot_storage(
     let cycles_storage = CycleMetaStorage::new(&persistent_storage);
     let cycle_eras_storage = CycleErasStorage::new(&persistent_storage);
 
-    // TODO: support for expressing the block as a value relative to the current head, or as a level
+    let chain_id = system_storage
+        .get_chain_id()
+        .expect("Failed to obtain chain id from new storage")
+        .expect("Failed to obtain chain id from new storage");
 
-    // We don't try to figure a savepoint way back on history, and instead just go back a few blocks
-    // based on the information here:
-    // https://tezos.stackexchange.com/questions/3539/how-often-do-blockchain-reorgs-happen
-    let target_block = if let Some(target_block) = target_block {
-        target_block
-    } else {
-        let chain_id = system_storage
-            .get_chain_id()
-            .expect("Failed to obtain chain id from new storage")
-            .expect("Failed to obtain chain id from new storage");
+    let head = chain_meta_storage
+        .get_current_head(&chain_id)
+        .expect("Failed to obtain the current head from the source storage")
+        .expect("Source storage does not have a current head");
 
-        let head = chain_meta_storage
-            .get_current_head(&chain_id)
-            .expect("Failed to obtain the current head from the source storage")
-            .expect("Source storage does not have a current head");
-
-        // We try to go back 10 blocks, if that fails we just return the current head block
-        block_meta_storage
-            .find_block_at_distance(head.block_hash().clone(), 10)
-            .expect("Failed to obtain predecessor")
-            .unwrap_or(head.block_hash().clone())
-    };
+    let target_block =
+        resolve_block_reference(target_block, &block_storage, &block_meta_storage, &head);
 
     let (block_header_with_hash, block_json_data) = block_storage
         .get_with_json_data(&target_block)
-        .expect(&format!(
-            "Failed to obtain block data for {}",
-            target_block.to_base58_check()
-        ))
-        .expect(&format!(
-            "Failed to obtain block data for {}",
-            target_block.to_base58_check()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Failed to obtain block data for {}",
+                target_block.to_base58_check()
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "Failed to obtain block data for {}",
+                target_block.to_base58_check()
+            )
+        });
     let block_additional_data = block_meta_storage
         .get_additional_data(&target_block)
-        .expect(&format!(
-            "Failed to obtain additional block data for {}",
-            target_block.to_base58_check()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Failed to obtain additional block data for {}",
+                target_block.to_base58_check()
+            )
+        });
 
     let context_hash = block_header_with_hash.header.context().clone();
 
@@ -232,7 +250,7 @@ pub fn snapshot_storage(
     // Set current head on new storage
     let head = Head::new(
         block_header_with_hash.hash.clone(),
-        block_header_with_hash.header.level().clone(),
+        block_header_with_hash.header.level(),
         block_header_with_hash.header.fitness().clone(),
     );
     new_chain_meta_storage
@@ -264,17 +282,17 @@ pub fn snapshot_storage(
     info!(log, "Stored current head = {:?}", head);
 
     // Move temporary data to final target path
-    // FIXME: this rename will not work across filesystems
-    for entry in target_path.read_dir().expect("read_dir call failed") {
-        if let Ok(entry) = entry {
-            let source_name = entry.file_name();
-            let to_path = final_path.join(&source_name);
+    for entry in target_path
+        .read_dir()
+        .expect("read_dir call failed")
+        .flatten()
+    {
+        let source_name = entry.file_name();
+        let to_path = final_path.join(&source_name);
 
-            info!(log, "Moving storage data into final location"; "source_name" => format!("{}", source_name.to_string_lossy()), "to_path" => format!("{}", to_path.to_string_lossy()));
+        info!(log, "Moving storage data into final location"; "source_name" => format!("{}", source_name.to_string_lossy()), "to_path" => format!("{}", to_path.to_string_lossy()));
 
-            std::fs::rename(entry.path(), to_path)
-                .expect("Failed to move storage into final location");
-        }
+        std::fs::rename(entry.path(), to_path).expect("Failed to move storage into final location");
     }
 }
 
@@ -305,16 +323,16 @@ async fn terminate_or_kill(process: &mut Child, reason: String) -> Result<(), Pr
 fn initialize_protocol_runner_and_snapshot_context(
     env: &crate::configuration::Environment,
     context_hash: &ContextHash,
-    target_path: &PathBuf,
+    target_path: &Path,
     log: &Logger,
 ) -> (ContextHash, CommitGenesisResult) {
-    let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
+    let tokio_runtime = create_tokio_runtime(env).expect("Failed to create tokio runtime");
 
     let (_context_init_status_sender, context_init_status_receiver) =
         tokio::sync::watch::channel(false);
-    let protocol_runner_configuration = create_protocol_runner_configuration(&env);
+    let protocol_runner_configuration = create_protocol_runner_configuration(env);
     let mut tezos_protocol_api = ProtocolRunnerApi::new(
-        protocol_runner_configuration.clone(),
+        protocol_runner_configuration,
         context_init_status_receiver,
         tokio_runtime.handle(),
         log.clone(),
@@ -384,4 +402,25 @@ fn initialize_protocol_runner_and_snapshot_context(
 
         (genesis_commit_hash, genesis_result)
     })
+}
+
+fn resolve_block_reference(
+    block_reference: BlockReference,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    head: &Head,
+) -> BlockHash {
+    match block_reference {
+        BlockReference::BlockHash(block_hash) => block_hash,
+        BlockReference::Level(level) => block_storage
+            .get_by_level(level as i32)
+            .unwrap_or_else(|_| panic!("Failed to obtain block at level {}", level))
+            .unwrap_or_else(|| panic!("Failed to obtain block at level {}", level))
+            .hash
+            .clone(),
+        BlockReference::OffsetFromHead(offset) => block_meta_storage
+            .find_block_at_distance(head.block_hash().clone(), offset)
+            .expect("Failed to obtain predecessor")
+            .unwrap_or_else(|| head.block_hash().clone()),
+    }
 }
