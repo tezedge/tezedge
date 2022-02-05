@@ -310,5 +310,11 @@ impl GCThread {
         );
 
         self.send_pending();
+
+        let now = std::time::Instant::now();
+        for store in self.cycles.list.iter_mut() {
+            store.shrink_to_fit();
+        }
+        println!("SORTED_MAPS SHRINK IN {:?}", now.elapsed());
     }
 }
