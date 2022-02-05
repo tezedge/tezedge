@@ -56,6 +56,8 @@ impl BlockJsonData {
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
+    fn get_by_level(&self, level: BlockLevel) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
     fn get_location(
         &self,
         block_hash: &BlockHash,
@@ -230,6 +232,16 @@ impl BlockStorageReader for BlockStorage {
             .get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
+    }
+
+    fn get_by_level(&self, level: BlockLevel) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        let locations = self.by_level_index.get_blocks(level, 1)?;
+
+        if let Some(location) = locations.first() {
+            self.get_block_header_by_location(location).map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline]
