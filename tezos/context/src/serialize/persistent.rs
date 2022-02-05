@@ -433,7 +433,7 @@ pub fn serialize_object(
     strings: &StringInterner,
     stats: &mut SerializeStats,
     _batch: &mut ChunkedVec<(HashId, Arc<[u8]>)>,
-    _referenced_older_objects: &mut Vec<HashId>,
+    _referenced_older_objects: &mut ChunkedVec<HashId>,
     repository: &mut ContextKeyValueStore,
     file_offset: Option<AbsoluteOffset>,
 ) -> Result<Option<AbsoluteOffset>, SerializationError> {

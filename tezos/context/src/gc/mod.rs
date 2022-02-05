@@ -11,6 +11,7 @@ use thiserror::Error;
 
 use crypto::hash::FromBytesError;
 
+use crate::chunks::ChunkedVec;
 use crate::persistent::DBError;
 use crate::{hash::HashingError, kv_store::HashId};
 
@@ -22,7 +23,7 @@ pub trait GarbageCollector {
 
     fn block_applied(
         &mut self,
-        referenced_older_objects: Vec<HashId>,
+        referenced_older_objects: ChunkedVec<HashId>,
     ) -> Result<(), GarbageCollectionError>;
 }
 
@@ -35,7 +36,7 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
     fn block_applied(
         &mut self,
-        _referenced_older_objects: Vec<HashId>,
+        _referenced_older_objects: ChunkedVec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
         Ok(())
     }

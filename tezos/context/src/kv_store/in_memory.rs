@@ -23,7 +23,6 @@ use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use crate::{
     chunks::ChunkedVec,
     gc::{
-        sorted_map::SortedMap,
         worker::{Command, Cycles, GCThread, GC_PENDING_HASHIDS, PRESERVE_CYCLE_COUNT},
         GarbageCollectionError, GarbageCollector,
     },
@@ -192,7 +191,7 @@ impl GarbageCollector for InMemory {
 
     fn block_applied(
         &mut self,
-        referenced_older_objects: Vec<HashId>,
+        referenced_older_objects: ChunkedVec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
         self.block_applied(referenced_older_objects);
         Ok(())
@@ -586,7 +585,7 @@ impl InMemory {
         }
     }
 
-    pub fn block_applied(&mut self, reused: Vec<HashId>) {
+    pub fn block_applied(&mut self, reused: ChunkedVec<HashId>) {
         if let Some(sender) = &self.sender {
             if let Err(e) = sender.send(Command::MarkReused { reused }) {
                 eprintln!("Fail to send Command::MarkReused to GC worker: {:?}", e);

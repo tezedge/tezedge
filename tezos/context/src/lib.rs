@@ -148,6 +148,7 @@ use std::array::TryFromSliceError;
 use std::num::TryFromIntError;
 use std::sync::PoisonError;
 
+use chunks::ChunkedVec;
 use gc::GarbageCollectionError;
 pub use kv_store::persistent::Persistent;
 use kv_store::HashId;
@@ -217,7 +218,10 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
     // called after a block is applied
-    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError>;
+    fn block_applied(
+        &self,
+        referenced_older_objects: ChunkedVec<HashId>,
+    ) -> Result<(), ContextError>;
     // called when a new cycle starts
     fn cycle_started(&mut self) -> Result<(), ContextError>;
     // get value for key from a point in history indicated by context hash

@@ -42,7 +42,7 @@ pub type SerializeObjectSignature = fn(
     &StringInterner,                      // strings
     &mut SerializeStats,                  // statistics
     &mut ChunkedVec<(HashId, Arc<[u8]>)>, // batch
-    &mut Vec<HashId>,                     // referenced_older_objects
+    &mut ChunkedVec<HashId>,              // referenced_older_objects
     &mut ContextKeyValueStore,            // repository
     Option<AbsoluteOffset>,               // offset
 ) -> Result<Option<AbsoluteOffset>, SerializationError>;

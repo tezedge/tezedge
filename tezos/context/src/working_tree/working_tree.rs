@@ -89,7 +89,7 @@ use super::{
 pub struct PostCommitData {
     pub commit_ref: ObjectReference,
     pub batch: ChunkedVec<(HashId, Arc<[u8]>)>,
-    pub reused: Vec<HashId>,
+    pub reused: ChunkedVec<HashId>,
     pub serialize_stats: Box<SerializeStats>,
     pub output: Vec<u8>,
 }
@@ -156,7 +156,7 @@ impl PostCommitData {
         Self {
             commit_ref: ObjectReference::new(Some(commit_hash), None),
             batch: ChunkedVec::empty(),
-            reused: Default::default(),
+            reused: ChunkedVec::empty(),
             serialize_stats: Default::default(),
             output: Default::default(),
         }
@@ -472,7 +472,7 @@ pub enum CheckObjectHashError {
 
 struct SerializingData<'a> {
     batch: ChunkedVec<(HashId, Arc<[u8]>)>,
-    referenced_older_objects: Vec<HashId>,
+    referenced_older_objects: ChunkedVec<HashId>,
     repository: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
     stats: Box<SerializeStats>,
@@ -492,7 +492,7 @@ impl<'a> SerializingData<'a> {
     ) -> Self {
         Self {
             batch: ChunkedVec::with_chunk_capacity(8 * 1024),
-            referenced_older_objects: Vec::with_capacity(2048),
+            referenced_older_objects: ChunkedVec::with_chunk_capacity(4096),
             repository,
             serialized: Vec::with_capacity(2048),
             stats: Default::default(),

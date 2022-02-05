@@ -1,4 +1,8 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
+
+use static_assertions::assert_eq_size;
+
+use crate::kv_store::HashId;
 
 #[cfg(not(test))]
 const MAX_CHUNK_SIZE: usize = 1_000;
@@ -16,6 +20,11 @@ where
     min: K,
     max: K,
 }
+
+assert_eq_size!([u8; 40], Chunk<HashId, Arc<[u8]>>);
+assert_eq_size!([u8; 24], (HashId, Arc<[u8]>));
+
+//10413651+ 11259171+ 10596201+ 10308720+ 14033165+ 35634221+ 54858073
 
 pub struct SortedMap<K, V>
 where

@@ -317,6 +317,12 @@ impl<T> ChunkedVec<T> {
             Some(self.list_of_chunks.remove(0))
         }
     }
+
+    pub fn pop(&mut self) -> Option<T> {
+        let last = self.list_of_chunks.last_mut()?.pop()?;
+        self.nelems -= 1;
+        Some(last)
+    }
 }
 
 impl<K, V> ChunkedVec<(K, V)>

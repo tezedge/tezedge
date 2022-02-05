@@ -37,7 +37,7 @@ pub(crate) enum Command {
         new_ids: ChunkedVec<HashId>,
     },
     MarkReused {
-        reused: Vec<HashId>,
+        reused: ChunkedVec<HashId>,
     },
     Close,
 }
@@ -280,7 +280,7 @@ impl GCThread {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
     }
 
-    fn mark_reused(&mut self, mut reused: Vec<HashId>) {
+    fn mark_reused(&mut self, mut reused: ChunkedVec<HashId>) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
 
         let mut none = 0;

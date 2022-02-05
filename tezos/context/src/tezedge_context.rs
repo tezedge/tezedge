@@ -15,6 +15,7 @@ use ocaml_interop::BoxRoot;
 use tezos_context_api::StringDirectoryMap;
 use tezos_timing::{BlockMemoryUsage, ContextMemoryUsage};
 
+use crate::chunks::ChunkedVec;
 use crate::{
     hash::ObjectHash,
     kv_store::HashId,
@@ -863,7 +864,10 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         )))
     }
 
-    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError> {
+    fn block_applied(
+        &self,
+        referenced_older_objects: ChunkedVec<HashId>,
+    ) -> Result<(), ContextError> {
         Ok(self
             .repository
             .write()?
