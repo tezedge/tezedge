@@ -20,6 +20,7 @@ use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
     MioPeerStreamMocked, MioServiceMocked, ProtocolRunnerServiceDummy, ProtocolServiceDummy,
     QuotaServiceDummy, RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
+    WebsocketServiceDummy,
 };
 use crate::service::{Service, TimeService};
 
@@ -42,6 +43,7 @@ pub struct ServiceMocked {
     pub actors: ActorsServiceDummy,
     pub quota: QuotaServiceDummy,
     pub protocol: ProtocolServiceDummy,
+    pub websocket: WebsocketServiceDummy,
 }
 
 impl ServiceMocked {
@@ -57,6 +59,7 @@ impl ServiceMocked {
             actors: ActorsServiceDummy::new(),
             quota: QuotaServiceDummy::new(),
             protocol: ProtocolServiceDummy::new(),
+            websocket: WebsocketServiceDummy::new(),
         }
     }
 
@@ -81,6 +84,7 @@ impl Service for ServiceMocked {
     type Actors = ActorsServiceDummy;
     type Quota = QuotaServiceDummy;
     type Protocol = ProtocolServiceDummy;
+    type Websocket = WebsocketServiceDummy;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -116,6 +120,10 @@ impl Service for ServiceMocked {
 
     fn protocol(&mut self) -> &mut Self::Protocol {
         &mut self.protocol
+    }
+
+    fn websocket(&mut self) -> &mut Self::Websocket {
+        &mut self.websocket
     }
 }
 

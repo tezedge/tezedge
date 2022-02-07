@@ -28,3 +28,6 @@ pub use protocol_service::*;
 
 mod protocol_runner_service;
 pub use protocol_runner_service::*;
+
+mod websocket_service;
+pub use websocket_service::*;

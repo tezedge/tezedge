@@ -36,6 +36,9 @@ pub use protocol_service::{ProtocolService, ProtocolServiceDefault};
 mod statistics_service;
 pub use statistics_service::StatisticsService;
 
+pub mod websocket_service;
+pub use websocket_service::{WebsocketService, WebsocketServiceDefault};
+
 pub trait Service: TimeService {
     type Randomness: RandomnessService;
     type Dns: DnsService;
@@ -46,6 +49,7 @@ pub trait Service: TimeService {
     type Actors: ActorsService;
     type Quota: QuotaService;
     type Protocol: ProtocolService;
+    type Websocket: WebsocketService;
 
     fn randomness(&mut self) -> &mut Self::Randomness;
 
@@ -68,6 +72,8 @@ pub trait Service: TimeService {
     fn statistics(&mut self) -> Option<&mut StatisticsService> {
         None
     }
+
+    fn websocket(&mut self) -> &mut Self::Websocket;
 }
 
 pub struct ServiceDefault {
@@ -81,6 +87,7 @@ pub struct ServiceDefault {
     pub quota: QuotaServiceDefault,
     pub protocol: ProtocolServiceDefault,
     pub statistics: Option<StatisticsService>,
+    pub websocket: WebsocketServiceDefault,
 }
 
 impl TimeService for ServiceDefault {}
@@ -95,6 +102,7 @@ impl Service for ServiceDefault {
     type Actors = ActorsServiceDefault;
     type Quota = QuotaServiceDefault;
     type Protocol = ProtocolServiceDefault;
+    type Websocket = WebsocketServiceDefault;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -134,5 +142,9 @@ impl Service for ServiceDefault {
 
     fn statistics(&mut self) -> Option<&mut StatisticsService> {
         self.statistics.as_mut()
+    }
+
+    fn websocket(&mut self) -> &mut Self::Websocket {
+        &mut self.websocket
     }
 }
