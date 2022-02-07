@@ -156,6 +156,7 @@ fn block_on_actors(
         init_storage_data.clone(),
         protocol_runner_configuration,
         context_init_status_sender,
+        &tokio_runtime,
     );
 
     let tezos_protocol_api = Arc::new(tezos_protocol_api);

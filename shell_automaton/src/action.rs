@@ -152,6 +152,7 @@ use crate::storage::{
 };
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
+use crate::websocket::WebsocketSendMessageAction;
 
 pub use redux_rs::{ActionId, EnablingCondition};
 
@@ -670,6 +671,8 @@ pub enum Action {
     ),
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    WebsocketSendMessage(WebsocketSendMessageAction),
 
     ShutdownInit(ShutdownInitAction),
     ShutdownPending(ShutdownPendingAction),

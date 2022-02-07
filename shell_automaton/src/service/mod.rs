@@ -33,6 +33,9 @@ pub use prevalidator_service::{PrevalidatorService, PrevalidatorServiceDefault};
 pub mod statistics_service;
 pub use statistics_service::{BlockApplyStats, BlockPeerStats, StatisticsService};
 
+pub mod websocket_service;
+pub use websocket_service::{WebsocketService, WebsocketServiceDefault};
+
 pub trait Service: TimeService {
     type Randomness: RandomnessService;
     type Dns: DnsService;
@@ -42,6 +45,7 @@ pub trait Service: TimeService {
     type Rpc: RpcService;
     type Actors: ActorsService;
     type Prevalidator: PrevalidatorService;
+    type Websocket: WebsocketService;
 
     fn randomness(&mut self) -> &mut Self::Randomness;
 
@@ -62,6 +66,8 @@ pub trait Service: TimeService {
     fn statistics(&mut self) -> Option<&mut StatisticsService> {
         None
     }
+
+    fn websocket(&mut self) -> &mut Self::Websocket;
 }
 
 pub struct ServiceDefault {
@@ -74,6 +80,7 @@ pub struct ServiceDefault {
     pub actors: ActorsServiceDefault,
     pub prevalidator: PrevalidatorServiceDefault,
     pub statistics: Option<StatisticsService>,
+    pub websocket: WebsocketServiceDefault,
 }
 
 impl TimeService for ServiceDefault {}
@@ -87,6 +94,7 @@ impl Service for ServiceDefault {
     type Rpc = RpcServiceDefault;
     type Actors = ActorsServiceDefault;
     type Prevalidator = PrevalidatorServiceDefault;
+    type Websocket = WebsocketServiceDefault;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -114,6 +122,10 @@ impl Service for ServiceDefault {
 
     fn actors(&mut self) -> &mut Self::Actors {
         &mut self.actors
+    }
+
+    fn websocket(&mut self) -> &mut Self::Websocket {
+        &mut self.websocket
     }
 
     fn prevalidator(&mut self) -> &mut Self::Prevalidator {
