@@ -315,6 +315,6 @@ impl GCThread {
         for store in self.cycles.list.iter_mut() {
             store.shrink_to_fit();
         }
-        println!("SORTED_MAPS SHRINK IN {:?}", now.elapsed());
+        println!("SHRINK IN {:?}", now.elapsed());
     }
 }
