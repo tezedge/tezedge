@@ -27,7 +27,10 @@ use crate::{
         GarbageCollectionError, GarbageCollector,
     },
     hash::ObjectHash,
-    persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics},
+    initializer::IndexInitializationError,
+    persistent::{
+        DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics, ReloadError,
+    },
     working_tree::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
@@ -410,26 +413,28 @@ impl InMemory {
         })
     }
 
-    fn reload_database(&mut self) {
+    fn reload_database(&mut self) -> Result<(), ReloadError> {
         let (tree, parent_hash, commit) = {
             let mut ondisk = Persistent::try_new(PersistentConfiguration {
                 db_path: Some("/tmp/tezedge/context".to_string()),
                 // db_path: Some("/home/sebastien/tmp/replay/context".to_string()),
                 startup_check: false,
                 read_mode: true,
-            })
-            .unwrap();
+            })?;
 
-            ondisk.reload_database().unwrap();
+            ondisk.reload_database()?;
 
-            // let checkout_context_hash = ContextHash::from_base58_check("CoW9AT5QuvSm3zYnxGdWgM56f1QyfF4miyNezsHveSsWap2WVqjL").unwrap();
-            let checkout_context_hash: ContextHash = ondisk.get_last_context_hash().unwrap();
-
-            println!("CHECKOUT {:?}", checkout_context_hash);
+            let checkout_context_hash: ContextHash = match ondisk.get_last_context_hash() {
+                Some(hash) => hash,
+                None => {
+                    elog!("No commit found in the persistent context");
+                    return Ok(());
+                }
+            };
 
             let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(ondisk));
             let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-            let context = index.checkout(&checkout_context_hash).unwrap().unwrap();
+            let context = index.checkout(&checkout_context_hash)?.unwrap();
 
             // Take the commit from repository
             let commit: Commit = index
@@ -456,15 +461,13 @@ impl InMemory {
             // the index
             (
                 Rc::try_unwrap(context.tree).ok().unwrap(),
-                // context.index.storage.take(),
-                // context.index.string_interner.take().unwrap(),
                 parent_hash,
                 commit,
             )
         };
 
         {
-            // Put the parent hash in the new repository
+            // Put the parent hash in the new repository (in-memory one)
             let parent_ref: Option<ObjectReference> =
                 parent_hash.map(|parent_hash| self.put_hash(parent_hash).unwrap().into());
 
@@ -479,10 +482,10 @@ impl InMemory {
                 )
                 .unwrap();
 
-            println!("COMMIT {:?}", commit);
-
             self.string_interner = tree.index.string_interner.take().unwrap();
         }
+
+        Ok(())
     }
 
     fn commit_impl(

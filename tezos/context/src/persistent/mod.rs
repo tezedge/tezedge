@@ -171,6 +171,33 @@ impl Default for ReadStatistics {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum ReloadError {
+    #[error("Initialization error {error}")]
+    Init {
+        #[from]
+        error: IndexInitializationError,
+    },
+    #[error("DBError {error}")]
+    DBError {
+        #[from]
+        error: DBError,
+    },
+    // #[error("ContextError {error}")]
+    // ContextError {
+    //     #[from]
+    //     error: ContextError,
+    // },
+}
+
+impl From<ContextError> for ReloadError {
+    fn from(e: ContextError) -> Self {
+        ReloadError::DBError {
+            error: DBError::ContextError { error: Box::new(e) },
+        }
+    }
+}
+
 /// Possible errors for schema
 #[derive(Debug, Error)]
 pub enum DBError {
