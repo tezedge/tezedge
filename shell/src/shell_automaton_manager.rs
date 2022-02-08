@@ -157,6 +157,7 @@ impl ShellAutomatonManager {
         let websocket_service = WebsocketServiceDefault::new(
             tokio_runtime,
             1024,
+            100,
             "0.0.0.0:4444".to_string(),
             log.clone(),
         );
