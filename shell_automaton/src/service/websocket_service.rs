@@ -42,6 +42,7 @@ pub struct WebsocketServiceDefault {
 
 impl WebsocketServiceDefault {
     pub fn new(tokio_runtime: &Runtime, bound: usize, websocket_url: String, log: Logger) -> Self {
+        // channel for the shell automaton to send messages to the websocket service
         let (tx, rx) = mpsc::channel(bound);
 
         let connections = Arc::new(RwLock::new(BTreeMap::new()));
@@ -62,6 +63,7 @@ impl WebsocketServiceDefault {
         }
     }
 
+    /// handler for accepting websocket connections
     async fn accept_connections(
         connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
         websocket_url: String,
@@ -80,6 +82,8 @@ impl WebsocketServiceDefault {
                 if let Ok(ws_stream) = accept_async(stream).await {
                     let t_log = log.clone();
                     let t_connections = connections.clone();
+
+                    // Creating a separate task for handling each connected client
                     tokio::task::spawn(Self::handle_connection(
                         t_connections,
                         peer_addr,
@@ -89,7 +93,6 @@ impl WebsocketServiceDefault {
 
                     info!(log, "Websocket Client connected"; "Address" => peer_addr);
                 } else {
-                    // TODO: more descriptive errors
                     warn!(log, "Failed to upgrade to ws protocol");
                 };
             } else {
@@ -99,12 +102,14 @@ impl WebsocketServiceDefault {
         }
     }
 
+    /// handler for individual connections
     async fn handle_connection(
         connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
         client_address: SocketAddr,
         ws_stream: WebSocketStream<TcpStream>,
         log: Logger,
     ) {
+        // channel for individual clients to comunicate with the websocket service
         let (tx, mut rx) = mpsc::channel(100);
         let mut connections_writer = connections.write().await;
         connections_writer.insert(client_address, tx);
@@ -112,22 +117,23 @@ impl WebsocketServiceDefault {
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
-        let mut interval = tokio::time::interval(Duration::from_millis(1000));
-
         loop {
             tokio::select! {
+                // outgoing message sent by the shell automaton
                 outgoing_msg = rx.recv() => {
                     match outgoing_msg {
                         Some(msg) => {
-                            ws_sender.send(msg).await;
+                            if let Err(e) = ws_sender.send(msg).await {
+                                warn!(log, "Error while sending websocket message: {:?}", e);
+                            }
                         },
                         None => break,
                     }
                 }
+                // we need to handle the incoming messages as well, so we handle the client side disconnections
                 incoming_msg = ws_receiver.next() => {
                     match incoming_msg {
-                        Some(msg) => {
-                            let msg = msg.unwrap();
+                        Some(Ok(msg)) => {
                             if msg.is_close() {
                                 info!(log, "Websocket Client disconnected"; "Address" => client_address);
                                 let mut connections_writer = connections.write().await;
@@ -135,26 +141,25 @@ impl WebsocketServiceDefault {
                                 break;
                             }
                         }
+                        Some(Err(e)) => {
+                            warn!(log, "Error while reading client message: {:?}", e);
+                        }
                         None => {
                             break;
                         }
                     }
                 }
-                _ = interval.tick() => {
-                    // TODO (monitoring-refactor): remove
-                    ws_sender.send(Message::Text("tick".to_owned())).await;
-                }
             }
         }
     }
 
+    /// handler for propagating messages to all the connected clients
     async fn run_worker(
         connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
         mut receiver: WebsocketReceiver,
         log: Logger,
     ) {
         while let Some(msg) = receiver.recv().await {
-            crit!(log, "New message propagated");
             let connections = connections.read().await;
 
             let serialized = match serde_json::to_string(&msg) {
@@ -174,12 +179,14 @@ impl WebsocketServiceDefault {
     }
 }
 
+/// Collection of messages that can be sent through the websocket
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum WebsocketMessage {
     PeerStatus(DummyPeerStatusMessage),
     DownloadedBlocksStats(DummyDownloadedBlocksStats),
 }
 
+// TODO: Some dummy messages for demonstration purposes
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DummyPeerStatusMessage {
     pub address: SocketAddr,
