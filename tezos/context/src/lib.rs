@@ -459,4 +459,5 @@ impl std::hash::Hasher for NoHash {
 /// This is useful when the keys of the map are integers (u8, u32, u64, etc.)
 /// Since the keys are already integers, they do not need to be hashed.
 /// This `Map` will not call any hashing algorithm.
-pub type Map<K, V> = std::collections::HashMap<K, V, NoHash>;
+pub type Map<K, V> = std::collections::BTreeMap<K, V>;
+// pub type Map<K, V> = std::collections::HashMap<K, V, NoHash>;

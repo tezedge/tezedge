@@ -957,7 +957,7 @@ impl KeyValueStoreBackend for Persistent {
         let strings_total_bytes = self.string_interner.memory_usage().total_bytes;
         let hashes_capacity = self.hashes.in_memory.total_capacity();
         let shapes_total_bytes = self.shapes.total_bytes();
-        let commit_index_total_bytes = self.context_hashes.capacity()
+        let commit_index_total_bytes = self.context_hashes.len()
             * (std::mem::size_of::<ObjectReference>() + std::mem::size_of::<u64>());
 
         let total_bytes = (hashes_capacity * std::mem::size_of::<ObjectHash>())

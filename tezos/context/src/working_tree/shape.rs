@@ -180,8 +180,8 @@ impl DirectoryShapes {
         let shape_hash = DirectoryShapeHash(hasher.finish());
 
         match self.hash_to_strings.entry(shape_hash) {
-            Occupied(entry) => Ok(Some(entry.get().0)),
-            Vacant(entry) => {
+            std::collections::btree_map::Entry::Occupied(entry) => Ok(Some(entry.get().0)),
+            std::collections::btree_map::Entry::Vacant(entry) => {
                 let start = self.shapes.len() as u64;
                 let length = self.temp.len() as u32;
 

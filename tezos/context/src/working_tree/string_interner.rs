@@ -347,7 +347,7 @@ impl StringInterner {
         let big_strings_cap = self.big_strings.strings.capacity();
 
         StringsMemoryUsage {
-            all_strings_map_cap: self.string_to_offset.capacity(),
+            all_strings_map_cap: self.string_to_offset.len(),
             all_strings_map_len: self.string_to_offset.len(),
             all_strings_cap,
             all_strings_len: self.all_strings.len(),

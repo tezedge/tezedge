@@ -84,7 +84,7 @@ struct CommitHeader {
 // Must fit in 1 byte
 assert_eq_size!(CommitHeader, u8);
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub struct AbsoluteOffset(u64);
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct RelativeOffset(u64);

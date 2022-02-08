@@ -242,7 +242,7 @@ impl KeyValueStoreBackend for InMemory {
     fn memory_usage(&self) -> RepositoryMemoryUsage {
         let strings_total_bytes = self.string_interner.memory_usage().total_bytes;
         let shapes_total_bytes = self.shapes.total_bytes();
-        let commit_index_total_bytes = self.context_hashes.capacity()
+        let commit_index_total_bytes = self.context_hashes.len()
             * (std::mem::size_of::<HashId>() + std::mem::size_of::<u64>());
 
         self.hashes.get_memory_usage(

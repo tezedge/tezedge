@@ -10,7 +10,7 @@ use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     cmp::Ordering,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     convert::{TryFrom, TryInto},
     mem::size_of,
     ops::{Range, RangeInclusive},
@@ -1108,11 +1108,11 @@ pub struct Storage {
     /// because they are immutables.
     /// But those "intermediates" pointers do not need/have a `HashId`/`AbsoluteOffset`
     /// associated to them, they are required at commit time only.
-    pointers_data: RefCell<HashMap<u64, ObjectReference>>,
+    pointers_data: RefCell<BTreeMap<u64, ObjectReference>>,
     /// Objects bytes are read from disk into this vector
     pub data: Vec<u8>,
     /// Map of deserialized (from disk) offset to their `HashId`.
-    pub offsets_to_hash_id: HashMap<AbsoluteOffset, HashId>,
+    pub offsets_to_hash_id: BTreeMap<AbsoluteOffset, HashId>,
 }
 
 #[derive(Debug)]
@@ -1171,7 +1171,7 @@ impl Storage {
             nodes: IndexMap::with_chunk_capacity(DEFAULT_NODES_CAPACITY), // ~3MB
             inodes: IndexMap::with_chunk_capacity(DEFAULT_INODES_CAPACITY), // ~20MB
             data: Vec::with_capacity(100_000), // ~97KB
-            offsets_to_hash_id: HashMap::default(),
+            offsets_to_hash_id: Default::default(),
             fat_pointers: IndexMap::with_chunk_capacity(DEFAULT_FAT_POINTERS_CAPACITY), // ~262KB
             pointers_data: Default::default(),
             thin_pointers: IndexMap::with_chunk_capacity(DEFAULT_THIN_POINTERS_CAPACITY), // ~525KB
@@ -2498,7 +2498,7 @@ impl Storage {
         self.blobs = ChunkedVec::empty();
         self.inodes = IndexMap::empty();
         self.data = Vec::new();
-        self.offsets_to_hash_id = HashMap::default();
+        self.offsets_to_hash_id = Default::default();
         self.thin_pointers = IndexMap::empty();
         self.fat_pointers = IndexMap::empty();
         self.pointers_data = Default::default();
