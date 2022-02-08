@@ -415,7 +415,7 @@ impl InMemory {
             let mut ondisk = Persistent::try_new(PersistentConfiguration {
                 db_path: Some("/tmp/tezedge/context".to_string()),
                 // db_path: Some("/home/sebastien/tmp/replay/context".to_string()),
-                startup_check: true,
+                startup_check: false,
                 read_mode: true,
             })
             .unwrap();
