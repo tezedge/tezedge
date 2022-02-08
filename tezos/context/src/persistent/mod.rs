@@ -136,7 +136,7 @@ pub trait KeyValueStoreBackend {
     /// This is used on the persistent context, to avoid commiting unused HashId
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError>;
     /// Reload the persistent database and verify its integrity
-    fn reload_database(&mut self) -> Result<(), DBError>;
+    fn reload_database(&mut self) -> Result<(), ReloadError>;
     /// Return the file's statistics
     ///
     /// `Self::try_new` needs to be called with `read_mode=true`
@@ -183,6 +183,21 @@ pub enum ReloadError {
         #[from]
         error: DBError,
     },
+    #[error("Commit failed {error}")]
+    CommitFailed { error: DBError },
+    #[error("Failed to traverse on-disk tree {error}")]
+    TraverseError {
+        #[from]
+        error: MerkleError,
+    },
+    #[error("Last commit not found")]
+    LastCommitNotFound,
+    #[error("String interner not found")]
+    StringInternerNotFound,
+    #[error("Checkout on the last commit failed")]
+    CheckoutFailed,
+    #[error("Unable to fetch the `Commit` object")]
+    FetchCommitFailed,
     // #[error("ContextError {error}")]
     // ContextError {
     //     #[from]
@@ -194,6 +209,16 @@ impl From<ContextError> for ReloadError {
     fn from(e: ContextError) -> Self {
         ReloadError::DBError {
             error: DBError::ContextError { error: Box::new(e) },
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for ReloadError {
+    fn from(pe: PoisonError<T>) -> Self {
+        ReloadError::DBError {
+            error: DBError::LockError {
+                reason: format!("{}", pe),
+            },
         }
     }
 }

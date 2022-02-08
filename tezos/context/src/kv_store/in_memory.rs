@@ -27,7 +27,6 @@ use crate::{
         GarbageCollectionError, GarbageCollector,
     },
     hash::ObjectHash,
-    initializer::IndexInitializationError,
     persistent::{
         DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics, ReloadError,
     },
@@ -214,9 +213,8 @@ impl Persistable for InMemory {
 }
 
 impl KeyValueStoreBackend for InMemory {
-    fn reload_database(&mut self) -> Result<(), DBError> {
-        self.reload_database();
-        Ok(())
+    fn reload_database(&mut self) -> Result<(), ReloadError> {
+        self.reload_database()
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
@@ -424,66 +422,68 @@ impl InMemory {
 
             ondisk.reload_database()?;
 
-            let checkout_context_hash: ContextHash = match ondisk.get_last_context_hash() {
-                Some(hash) => hash,
-                None => {
-                    elog!("No commit found in the persistent context");
-                    return Ok(());
-                }
-            };
+            let checkout_context_hash: ContextHash = ondisk
+                .get_last_context_hash()
+                .ok_or(ReloadError::LastCommitNotFound)?;
 
             let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(ondisk));
             let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-            let context = index.checkout(&checkout_context_hash)?.unwrap();
+            let context = index
+                .checkout(&checkout_context_hash)?
+                .ok_or(ReloadError::CheckoutFailed)?;
 
             // Take the commit from repository
             let commit: Commit = index
-                .fetch_commit_from_context_hash(&checkout_context_hash)
-                .unwrap()
-                .unwrap();
+                .fetch_commit_from_context_hash(&checkout_context_hash)?
+                .ok_or(ReloadError::FetchCommitFailed)?;
 
             // If the commit has a parent, fetch it
-            // It is necessary for the snapshot to have it in its db
+            // It is necessary for our new repository to have it.
             let parent_hash: Option<ObjectHash> = match commit.parent_commit_ref {
                 Some(parent) => {
-                    let repo = read_repo.read().unwrap();
-                    Some(repo.get_hash(parent).unwrap().into_owned())
+                    let repo = read_repo.read()?;
+                    Some(repo.get_hash(parent)?.into_owned())
                 }
                 None => None,
             };
 
             // Traverse the tree, to store it in the `Storage`
-            context.tree.traverse_working_tree(false).unwrap();
+            context.tree.traverse_working_tree(false)?;
 
+            // Forget HashId and offsets, they will be recomputed.
             context.index.storage.borrow_mut().forget_references();
 
             // Extract the `Storage`, `StringInterner` and `WorkingTree` from
             // the index
             (
-                Rc::try_unwrap(context.tree).ok().unwrap(),
+                Rc::try_unwrap(context.tree).ok().unwrap(), // Never fail, there is 1 reference alive
                 parent_hash,
                 commit,
             )
         };
 
-        {
-            // Put the parent hash in the new repository (in-memory one)
-            let parent_ref: Option<ObjectReference> =
-                parent_hash.map(|parent_hash| self.put_hash(parent_hash).unwrap().into());
+        // Put the parent hash in the new repository (in-memory one)
+        let parent_ref: Option<ObjectReference> = match parent_hash {
+            Some(parent_hash) => Some(self.put_hash(parent_hash)?.into()),
+            None => None,
+        };
 
-            let commit = self
-                .commit_impl(
-                    &tree,
-                    parent_ref,
-                    commit.author,
-                    commit.message,
-                    commit.time,
-                    false,
-                )
-                .unwrap();
+        // Commit the tree in the in-memory repository
+        self.commit_impl(
+            &tree,
+            parent_ref,
+            commit.author,
+            commit.message,
+            commit.time,
+            false,
+        )
+        .map_err(|error| ReloadError::CommitFailed { error })?;
 
-            self.string_interner = tree.index.string_interner.take().unwrap();
-        }
+        self.string_interner = tree
+            .index
+            .string_interner
+            .take()
+            .ok_or(ReloadError::StringInternerNotFound)?;
 
         Ok(())
     }

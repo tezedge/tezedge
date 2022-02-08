@@ -17,7 +17,9 @@ use slog::{error, info};
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use thiserror::Error;
 
-use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable, ReadStatistics};
+use crate::persistent::{
+    get_commit_hash, DBError, Flushable, Persistable, ReadStatistics, ReloadError,
+};
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
@@ -60,7 +62,7 @@ impl ReadonlyIpcBackend {
 impl NotGarbageCollected for ReadonlyIpcBackend {}
 
 impl KeyValueStoreBackend for ReadonlyIpcBackend {
-    fn reload_database(&mut self) -> Result<(), DBError> {
+    fn reload_database(&mut self) -> Result<(), ReloadError> {
         Ok(())
     }
 

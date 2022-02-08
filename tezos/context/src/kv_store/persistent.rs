@@ -32,7 +32,7 @@ use crate::{
         },
         get_commit_hash,
         lock::Lock,
-        DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics,
+        DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics, ReloadError,
     },
     serialize::{
         deserialize_hash_id,
@@ -900,7 +900,7 @@ fn serialize_context_hash(
 }
 
 impl KeyValueStoreBackend for Persistent {
-    fn reload_database(&mut self) -> Result<(), DBError> {
+    fn reload_database(&mut self) -> Result<(), ReloadError> {
         if let Err(e) = self.reload_database() {
             elog!("Failed to reload database: {:?}", e);
             return Err(e.into());
