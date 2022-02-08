@@ -3,10 +3,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{
-        hash_map::DefaultHasher,
-        hash_map::Entry::{Occupied, Vacant},
-    },
+    collections::hash_map::DefaultHasher,
     convert::{TryFrom, TryInto},
     hash::Hasher,
     io::Read,

@@ -18,8 +18,8 @@ pub mod readonly_ipc;
 
 pub const INMEM: &str = "inmem";
 
-#[bitfield]
 #[allow(dead_code)]
+#[bitfield]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 struct NonZero6BytesInner {
     bytes: B48,
@@ -44,10 +44,16 @@ impl NonZero6Bytes {
             })
         }
     }
+
+    // This avoid having compilation warnings
+    #[allow(dead_code)]
+    fn unused(self) {
+        NonZero6BytesInner::from_bytes(self.inner.into_bytes());
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct HashId(NonZero6Bytes); // NonZeroU64 so that `Option<HashId>` is 8 bytes
+pub struct HashId(NonZero6Bytes);
 
 #[derive(Debug)]
 pub struct HashIdError;
