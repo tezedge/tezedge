@@ -16,7 +16,7 @@ use redux_rs::{ActionWithMeta, Store};
 
 use super::{action::*, service::ServiceDefault, state::State};
 use crate::{
-    client::{BakingRights, TezosClient},
+    client::TezosClient,
     key,
     types::{generate_endorsement, generate_preendorsement, ProtocolBlockHeader},
 };
@@ -37,6 +37,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let _ = node_dir;
             let (public_key, secret_key) = key::read_key(&base_dir, baker).unwrap();
             let public_key_hash = ContractTz1Hash::try_from(public_key.clone()).unwrap();
+            slog::info!(main_logger, "run baker: {public_key_hash}");
 
             let chain_id = client.chain_id().unwrap();
 
@@ -53,14 +54,13 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let mut endorsed_level = 0;
             let mut endorsed_payload_hash = None::<BlockPayloadHash>;
 
-            let mut current_level = 0;
-            let mut cached_baking_rights = None::<Vec<BakingRights>>;
-
             // iterating over current heads
             loop {
                 let heads = client.monitor_main_head().unwrap();
                 for head in heads {
                     let level = head.level;
+
+                    let timestamp = head.timestamp.parse::<DateTime<Utc>>().unwrap();
 
                     // TODO: cache it, we don't need to ask it for all rounds
                     let rights = client.validators(level).unwrap();
@@ -80,14 +80,6 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         }
                     };
 
-                    // TODO: cache it, we don't need to ask it for all rounds
-                    let _current_baking_rights =
-                        cached_baking_rights.clone().unwrap_or_else(|| {
-                            let r = client.baking_rights(level, &public_key_hash).unwrap();
-                            current_level = level;
-                            cached_baking_rights = Some(r.clone());
-                            r
-                        });
                     let next_baking_rights =
                         client.baking_rights(level + 1, &public_key_hash).unwrap();
 
@@ -96,6 +88,11 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         BlockPayloadHash(hex::decode(&head.protocol_data[..64]).unwrap());
                     let round_bytes = hex::decode(&head.protocol_data[64..72]).unwrap();
                     let round = u32::from_be_bytes(round_bytes.try_into().unwrap());
+
+                    if Utc::now().signed_duration_since(timestamp).num_seconds() >= minimal_block_delay + (round as i64) * delay_increment_per_round {
+                        slog::error!(main_logger, "too late");
+                        continue;
+                    }
 
                     slog::info!(
                         main_logger,
@@ -149,7 +146,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
 
                     // timestamp of this block
                     let timestamp = head.timestamp.parse::<DateTime<Utc>>().unwrap();
-                    let (timeout, new_timestamp) = if will_bake_next_level {
+                    let (_timeout, new_timestamp) = if will_bake_next_level {
                         let pause =
                             minimal_block_delay + (round as i64) * delay_increment_per_round;
                         let new = timestamp
@@ -164,7 +161,8 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                     };
 
                     let mut num_preendorsement = 0;
-                    let operations = client.monitor_operations(timeout).unwrap().flatten();
+                    let mut num_endorsement = 0;
+                    let operations = client.monitor_operations(None).unwrap().flatten();
                     for operation in operations {
                         let operation_obj = operation.as_object().unwrap();
                         let this_branch = operation_obj.get("branch").unwrap().as_str().unwrap();
@@ -187,7 +185,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                                 }
                                 collected_operations[3].push(operation.clone());
                             }
-                            if kind != "preendorsement" {
+                            if kind != "preendorsement" && kind != "endorsement" {
                                 continue;
                             }
                             let payload_hash_str = content_obj
@@ -204,7 +202,11 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
 
                             for rights_entry in &rights {
                                 if rights_entry.slots.contains(&this_slot) {
-                                    num_preendorsement += rights_entry.slots.len() as u32;
+                                    if kind == "preendorsement" {
+                                        num_preendorsement += rights_entry.slots.len() as u32;
+                                    } else if kind == "endorsement" {
+                                        num_endorsement += rights_entry.slots.len() as u32;
+                                    }
                                 }
                             }
                         }
@@ -228,43 +230,46 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                                 break;
                             }
                         }
-                    }
-
-                    if let Some(new_timestamp) = new_timestamp {
-                        let operation_list_hash =
-                            OperationListHash::calculate(&collected_hashes).unwrap();
-                        let payload_hash =
-                            BlockPayloadHash::calculate(&head.hash, 0, &operation_list_hash)
-                                .unwrap();
-                        let _ = NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap());
-                        let protocol_block_header = ProtocolBlockHeader {
-                            protocol: ProtocolHash::from_base58_check(TezosClient::PROTOCOL)
-                                .expect("valid protocol name"),
-                            payload_hash,
-                            payload_round: 0,
-                            seed_nonce_hash: None,
-                            proof_of_work_nonce: hex::decode("7985fafe1fb70300").unwrap(),
-                            liquidity_baking_escape_vote: false,
-                        };
-                        let (shell_block_header, operations) = client
-                            .preapply_block(
-                                &secret_key,
-                                &chain_id,
-                                protocol_block_header.clone(),
-                                collected_operations.clone(),
-                                new_timestamp.timestamp().to_string(),
-                            )
-                            .unwrap();
-                        let block_hash = client
-                            .inject_block(
-                                &secret_key,
-                                &chain_id,
-                                shell_block_header,
-                                protocol_block_header,
-                                operations,
-                            )
-                            .unwrap();
-                        slog::info!(main_logger, "inject block: {}", block_hash);
+                        if num_endorsement >= quorum_size {
+                            if let Some(new_timestamp) = new_timestamp {
+                                let operation_list_hash =
+                                    OperationListHash::calculate(&collected_hashes).unwrap();
+                                let payload_hash =
+                                    BlockPayloadHash::calculate(&head.hash, 0, &operation_list_hash)
+                                        .unwrap();
+                                let seed_nonce_hash = NonceHash(blake2b::digest_256(&[1, 2, 3])
+                                    .unwrap());
+                                let protocol_block_header = ProtocolBlockHeader {
+                                    protocol: ProtocolHash::from_base58_check(TezosClient::PROTOCOL)
+                                        .expect("valid protocol name"),
+                                    payload_hash,
+                                    payload_round: 0,
+                                    seed_nonce_hash: Some(seed_nonce_hash),
+                                    proof_of_work_nonce: hex::decode("7985fafe1fb70300").unwrap(),
+                                    liquidity_baking_escape_vote: false,
+                                };
+                                let (shell_block_header, operations) = client
+                                    .preapply_block(
+                                        &secret_key,
+                                        &chain_id,
+                                        protocol_block_header.clone(),
+                                        collected_operations.clone(),
+                                        new_timestamp.timestamp().to_string(),
+                                    )
+                                    .unwrap();
+                                let block_hash = client
+                                    .inject_block(
+                                        &secret_key,
+                                        &chain_id,
+                                        shell_block_header,
+                                        protocol_block_header,
+                                        operations,
+                                    )
+                                    .unwrap();
+                                slog::info!(main_logger, "inject block: {}", block_hash);
+                            }
+                            break;
+                        }
                     }
                 }
             }
