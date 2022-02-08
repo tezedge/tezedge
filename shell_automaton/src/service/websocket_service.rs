@@ -37,15 +37,21 @@ impl WebsocketService for WebsocketServiceDefault {
 
 pub struct WebsocketServiceDefault {
     pub sender: WebsocketSender,
-    pub connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
+    pub connections: WebsocketConnections,
 }
 
 impl WebsocketServiceDefault {
-    pub fn new(tokio_runtime: &Runtime, bound: usize, websocket_url: String, log: Logger) -> Self {
+    pub fn new(
+        tokio_runtime: &Runtime,
+        bound: usize,
+        max_connections: usize,
+        websocket_url: String,
+        log: Logger,
+    ) -> Self {
         // channel for the shell automaton to send messages to the websocket service
         let (tx, rx) = mpsc::channel(bound);
 
-        let connections = Arc::new(RwLock::new(BTreeMap::new()));
+        let connections = WebsocketConnections::new(max_connections);
 
         let t_log = log.clone();
         let t_connections = connections.clone();
@@ -65,7 +71,7 @@ impl WebsocketServiceDefault {
 
     /// handler for accepting websocket connections
     async fn accept_connections(
-        connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
+        connections: WebsocketConnections,
         websocket_url: String,
         log: Logger,
     ) {
@@ -104,16 +110,23 @@ impl WebsocketServiceDefault {
 
     /// handler for individual connections
     async fn handle_connection(
-        connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
+        mut connections: WebsocketConnections,
         client_address: SocketAddr,
         ws_stream: WebSocketStream<TcpStream>,
         log: Logger,
     ) {
         // channel for individual clients to comunicate with the websocket service
-        let (tx, mut rx) = mpsc::channel(100);
-        let mut connections_writer = connections.write().await;
-        connections_writer.insert(client_address, tx);
-        drop(connections_writer);
+        let (tx, mut rx) = mpsc::channel(1024);
+
+        // handle connection threshold
+        if !connections.add_connection(client_address, tx).await {
+            warn!(
+                log,
+                "Websocket connection ignored. Connections over max threshold: {}",
+                connections.max_connections
+            );
+            return;
+        }
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
@@ -136,8 +149,7 @@ impl WebsocketServiceDefault {
                         Some(Ok(msg)) => {
                             if msg.is_close() {
                                 info!(log, "Websocket Client disconnected"; "Address" => client_address);
-                                let mut connections_writer = connections.write().await;
-                                connections_writer.remove(&client_address);
+                                connections.remove_connection(&client_address).await;
                                 break;
                             }
                         }
@@ -155,13 +167,11 @@ impl WebsocketServiceDefault {
 
     /// handler for propagating messages to all the connected clients
     async fn run_worker(
-        connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
+        connections: WebsocketConnections,
         mut receiver: WebsocketReceiver,
         log: Logger,
     ) {
         while let Some(msg) = receiver.recv().await {
-            let connections = connections.read().await;
-
             let serialized = match serde_json::to_string(&msg) {
                 Ok(json_string) => json_string,
                 Err(e) => {
@@ -170,12 +180,57 @@ impl WebsocketServiceDefault {
                 }
             };
 
-            for sender in connections.values() {
+            for sender in connections.get_connections().await {
                 if let Err(e) = sender.send(Message::Text(serialized.clone())).await {
                     warn!(log, "Failed to send message to mpsc channel: {:?}", e);
                 }
             }
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WebsocketConnections {
+    max_connections: usize,
+    connections: Arc<RwLock<BTreeMap<SocketAddr, WebsocketClientSender>>>,
+}
+
+impl WebsocketConnections {
+    pub fn new(max_connections: usize) -> Self {
+        let connections = Arc::new(RwLock::new(BTreeMap::new()));
+
+        Self {
+            max_connections,
+            connections,
+        }
+    }
+
+    /// Register connection, returns false if the connections would pass the defined max treshold
+    async fn add_connection(
+        &mut self,
+        client_address: SocketAddr,
+        client_sender: WebsocketClientSender,
+    ) -> bool {
+        let mut connections = self.connections.write().await;
+
+        if connections.len() <= self.max_connections {
+            connections.insert(client_address, client_sender);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove the connection from the collection
+    async fn remove_connection(&mut self, client_address: &SocketAddr) {
+        let mut connections = self.connections.write().await;
+        connections.remove(client_address);
+    }
+
+    /// Returns all the connection in an vector
+    async fn get_connections(&self) -> Vec<WebsocketClientSender> {
+        let connections = self.connections.read().await;
+        connections.values().cloned().collect()
     }
 }
 
