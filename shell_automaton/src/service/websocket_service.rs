@@ -1,20 +1,13 @@
-use futures_util::{
-    stream::{SplitSink, SplitStream, StreamExt},
-    SinkExt,
-};
+use futures_util::{stream::StreamExt, SinkExt};
 use serde::{Deserialize, Serialize};
-use slog::{crit, error, info, warn, Logger};
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Duration};
+use slog::{error, info, warn, Logger};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
     sync::{mpsc, RwLock},
 };
-use tokio_tungstenite::{
-    accept_async,
-    tungstenite::{Error, Message},
-    WebSocketStream,
-};
+use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
 
 pub type WebsocketSender = mpsc::Sender<WebsocketMessage>;
 pub type WebsocketReceiver = mpsc::Receiver<WebsocketMessage>;

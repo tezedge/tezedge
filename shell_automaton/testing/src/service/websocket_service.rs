@@ -11,8 +11,14 @@ impl WebsocketServiceDummy {
     }
 }
 
+impl Default for WebsocketServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WebsocketService for WebsocketServiceDummy {
-    fn message_send(&mut self, message: WebsocketMessage) -> Result<(), WebsocketSendError> {
-        todo!()
+    fn message_send(&mut self, _: WebsocketMessage) -> Result<(), WebsocketSendError> {
+        Ok(())
     }
 }
