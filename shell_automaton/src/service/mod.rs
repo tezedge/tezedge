@@ -73,7 +73,9 @@ pub trait Service: TimeService {
         None
     }
 
-    fn websocket(&mut self) -> &mut Self::Websocket;
+    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
+        None
+    }
 }
 
 pub struct ServiceDefault {
@@ -87,7 +89,7 @@ pub struct ServiceDefault {
     pub quota: QuotaServiceDefault,
     pub protocol: ProtocolServiceDefault,
     pub statistics: Option<StatisticsService>,
-    pub websocket: WebsocketServiceDefault,
+    pub websocket: Option<WebsocketServiceDefault>,
 }
 
 impl TimeService for ServiceDefault {}
@@ -144,7 +146,7 @@ impl Service for ServiceDefault {
         self.statistics.as_mut()
     }
 
-    fn websocket(&mut self) -> &mut Self::Websocket {
-        &mut self.websocket
+    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
+        self.websocket.as_mut()
     }
 }

@@ -43,7 +43,7 @@ pub struct ServiceMocked {
     pub actors: ActorsServiceDummy,
     pub quota: QuotaServiceDummy,
     pub protocol: ProtocolServiceDummy,
-    pub websocket: WebsocketServiceDummy,
+    pub websocket: Option<WebsocketServiceDummy>,
 }
 
 impl ServiceMocked {
@@ -59,7 +59,7 @@ impl ServiceMocked {
             actors: ActorsServiceDummy::new(),
             quota: QuotaServiceDummy::new(),
             protocol: ProtocolServiceDummy::new(),
-            websocket: WebsocketServiceDummy::new(),
+            websocket: Some(WebsocketServiceDummy::new()),
         }
     }
 
@@ -122,8 +122,8 @@ impl Service for ServiceMocked {
         &mut self.protocol
     }
 
-    fn websocket(&mut self) -> &mut Self::Websocket {
-        &mut self.websocket
+    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
+        self.websocket.as_mut()
     }
 }
 
