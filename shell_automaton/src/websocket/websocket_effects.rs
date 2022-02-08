@@ -1,4 +1,4 @@
-use slog::{info, warn};
+use slog::warn;
 
 use crate::{
     service::{
