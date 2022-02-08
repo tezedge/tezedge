@@ -94,6 +94,7 @@ impl ShellAutomatonManager {
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
+        websocket_config: Option<(SocketAddr, u16)>,
         pow_target: f64,
         init_storage_data: StorageInitInfo,
         protocol_runner_config: ProtocolRunnerConfiguration,
@@ -153,14 +154,10 @@ impl ShellAutomatonManager {
             log.new(slog::o!("service" => "protocol_runner")),
         );
 
-        // TODO (monitoring-refactor): bound, websocket_url
-        let websocket_service = WebsocketServiceDefault::new(
-            tokio_runtime,
-            1024,
-            100,
-            "0.0.0.0:4444".to_string(),
-            log.clone(),
-        );
+        // TODO (monitoring-refactor): bound
+        let websocket_service = websocket_config.map(|(address, max_connections)| {
+            WebsocketServiceDefault::new(tokio_runtime, 1024, max_connections, address, log.clone())
+        });
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),

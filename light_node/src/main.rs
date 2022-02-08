@@ -152,6 +152,7 @@ fn block_on_actors(
         identity,
         shell_compatibility_version.clone(),
         env.p2p.clone(),
+        env.rpc.websocket_cfg,
         env.identity.expected_pow,
         init_storage_data.clone(),
         protocol_runner_configuration,
@@ -207,26 +208,27 @@ fn block_on_actors(
     )
     .expect("Failed to create rpc notification callback handler actor");
 
-    // Only start Monitoring when websocket is set
-    if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
-        let websocket_handler = WebsocketHandler::actor(
-            actor_system.as_ref(),
-            tokio_runtime.handle().clone(),
-            websocket_address,
-            max_number_of_websocket_connections,
-            log.clone(),
-        )
-        .expect("Failed to start websocket actor");
+    // TODO (monitoring-refactor): cleanup old code for old monitoring/websocket
+    // // Only start Monitoring when websocket is set
+    // if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
+    //     let websocket_handler = WebsocketHandler::actor(
+    //         actor_system.as_ref(),
+    //         tokio_runtime.handle().clone(),
+    //         websocket_address,
+    //         max_number_of_websocket_connections,
+    //         log.clone(),
+    //     )
+    //     .expect("Failed to start websocket actor");
 
-        let _ = Monitor::actor(
-            actor_system.as_ref(),
-            network_channel,
-            websocket_handler,
-            persistent_storage.clone(),
-            init_storage_data.chain_id.clone(),
-        )
-        .expect("Failed to create monitor actor");
-    }
+    //     let _ = Monitor::actor(
+    //             actor_system.as_ref(),
+    //             network_channel,
+    //             websocket_handler,
+    //             persistent_storage.clone(),
+    //             init_storage_data.chain_id.clone(),
+    //         )
+    //         .expect("Failed to create monitor actor");
+    // }
 
     if let Some(blocks) = blocks_replay.take() {
         schedule_replay_blocks(

@@ -44,8 +44,8 @@ impl WebsocketServiceDefault {
     pub fn new(
         tokio_runtime: &Runtime,
         bound: usize,
-        max_connections: usize,
-        websocket_url: String,
+        max_connections: u16,
+        websocket_address: SocketAddr,
         log: Logger,
     ) -> Self {
         // channel for the shell automaton to send messages to the websocket service
@@ -56,7 +56,7 @@ impl WebsocketServiceDefault {
         let t_log = log.clone();
         let t_connections = connections.clone();
         tokio_runtime.spawn(async move {
-            Self::accept_connections(t_connections, websocket_url, t_log).await
+            Self::accept_connections(t_connections, websocket_address, t_log).await
         });
 
         let t_log = log.clone();
@@ -72,10 +72,10 @@ impl WebsocketServiceDefault {
     /// handler for accepting websocket connections
     async fn accept_connections(
         connections: WebsocketConnections,
-        websocket_url: String,
+        websocket_address: SocketAddr,
         log: Logger,
     ) {
-        let listener = if let Ok(listener) = TcpListener::bind(websocket_url).await {
+        let listener = if let Ok(listener) = TcpListener::bind(websocket_address).await {
             info!(log, "Websocket server started");
             listener
         } else {
@@ -196,11 +196,11 @@ pub struct WebsocketConnections {
 }
 
 impl WebsocketConnections {
-    pub fn new(max_connections: usize) -> Self {
+    pub fn new(max_connections: u16) -> Self {
         let connections = Arc::new(RwLock::new(BTreeMap::new()));
 
         Self {
-            max_connections,
+            max_connections: max_connections.into(),
             connections,
         }
     }
@@ -213,7 +213,7 @@ impl WebsocketConnections {
     ) -> bool {
         let mut connections = self.connections.write().await;
 
-        if connections.len() <= self.max_connections {
+        if connections.len() < self.max_connections {
             connections.insert(client_address, client_sender);
             true
         } else {

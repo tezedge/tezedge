@@ -44,7 +44,7 @@ pub struct ServiceMocked {
     pub rpc: RpcServiceDummy,
     pub actors: ActorsServiceDummy,
     pub prevalidator: PrevalidatorServiceDummy,
-    pub websocket: WebsocketServiceDummy,
+    pub websocket: Option<WebsocketServiceDummy>,
 }
 
 impl ServiceMocked {
@@ -59,7 +59,7 @@ impl ServiceMocked {
             rpc: RpcServiceDummy::new(),
             actors: ActorsServiceDummy::new(),
             prevalidator: PrevalidatorServiceDummy::new(),
-            websocket: WebsocketServiceDummy::new(),
+            websocket: Some(WebsocketServiceDummy::new()),
         }
     }
 
@@ -123,8 +123,8 @@ impl Service for ServiceMocked {
         &mut self.prevalidator
     }
 
-    fn websocket(&mut self) -> &mut Self::Websocket {
-        &mut self.websocket
+    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
+        self.websocket.as_mut()
     }
 }
 

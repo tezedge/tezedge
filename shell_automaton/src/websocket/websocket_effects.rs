@@ -14,17 +14,13 @@ use super::WebsocketSendMessageAction;
 pub fn websocket_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WebsocketSendMessage(action) => {
-            if let Err(e) = store
-                .service()
-                .websocket()
-                .message_send(action.message.clone())
-            {
-                warn!(
-                    store.state().log,
-                    "Failed to send the message to websocket service: {:?}", e
-                )
-            } else {
-                info!(store.state().log, "Send Ok");
+            if let Some(websocket) = store.service().websocket() {
+                if let Err(e) = websocket.message_send(action.message.clone()) {
+                    warn!(
+                        store.state().log,
+                        "Failed to send the message to websocket service: {:?}", e
+                    )
+                };
             }
         }
         // TODO: (monitoring-refactor) just for quick testing purposes
