@@ -624,7 +624,7 @@ impl Iterator for PointersBitfieldIterator {
 
 /// Points to a subslice of `Storage::thin_pointers`
 ///
-/// An inode pointer may have 0 to 32 pointers.
+/// An inode pointer may have 1 to 32 pointers.
 /// Some might be null or not.
 /// Each pointer, when not null, has an index associated to it (0 to 31).
 ///
@@ -639,7 +639,7 @@ impl Iterator for PointersBitfieldIterator {
 /// }
 ///
 /// This `PointersId` refers to a subslice of `Storage::thin_pointers` of length
-/// 5 (they are 5 bits set in `bitfield`).
+/// 5 (there are 5 bits set in `bitfield`).
 ///
 /// The first pointer is at `start + 0`: Storage::thin_pointers[15]
 /// The second pointer is at `start + 1`: Storage::thin_pointers[16]
