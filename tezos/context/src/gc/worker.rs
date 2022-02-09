@@ -29,6 +29,7 @@ pub(crate) struct GCThread {
     pub(crate) free_ids: Producer<HashId>,
     pub(crate) recv: Receiver<Command>,
     pub(crate) pending: Vec<HashId>,
+    pub(crate) debug: bool,
 }
 
 pub(crate) enum Command {
@@ -63,38 +64,17 @@ impl Cycles {
         let mut value = None;
 
         for store in self.list.iter_mut().take(PRESERVE_CYCLE_COUNT - 1) {
-            // if let Some(v) = store.get(&hash_id) {
-            //     println!("SOME {:?}", v.is_some());
-            // }
-
             if let Some(item) = store.remove(&hash_id) {
-                // println!("FOUND SOME");
                 value = Some(item);
             };
         }
 
         let value = value?;
 
-        // let value = match value {
-        //     Some(value) => value,
-        //     None => return None,
-        // };
-
-        // if value.is_none() {
-        //     return None;
-        // }
-
-        // value.as_ref()?;
-
         if let Some(last_cycle) = self.list.back_mut() {
             last_cycle.insert(hash_id, Arc::clone(&value));
-            // if let Some(v) = last_cycle.get(&hash_id) {
-            //     println!("SOME1 {:?}", v.is_some());
-            // } else {
-            //     println!("NONE");
-            // }
         } else {
-            eprintln!("GC: Failed to insert value in Cycles")
+            elog!("GC: Failed to insert value in Cycles")
         }
 
         Some(value)
@@ -109,16 +89,14 @@ impl Cycles {
         }
 
         unused.keys_to_vec()
-        // let mut vec = Vec::with_capacity(unused.len());
-        // for id in unused.keys() {
-        //     vec.push(*id);
-        // }
-        // vec
     }
 }
 
 impl GCThread {
     pub(crate) fn run(mut self) {
+        // Enable debug logs when `TEZEDGE_GC_DEBUG` is present
+        self.debug = std::env::var("TEZEDGE_GC_DEBUG").is_ok();
+
         loop {
             let msg = self.recv.recv();
 
@@ -131,19 +109,23 @@ impl GCThread {
                 }) => self.start_new_cycle(values_in_cycle, new_ids),
                 Ok(Command::MarkReused { reused }) => self.mark_reused(reused),
                 Ok(Command::Close) => {
-                    println!("GC received Command::Close");
+                    elog!("GC received Command::Close");
                     break;
                 }
                 Err(e) => {
-                    eprintln!("GC channel is closed {:?}", e);
+                    elog!("GC channel is closed {:?}", e);
                     break;
                 }
             }
         }
-        eprintln!("GC exited");
+        elog!("GC exited");
     }
 
     fn debug(&self, msg: &Result<Command, RecvError>) {
+        if !self.debug {
+            return;
+        }
+
         let msg = match msg {
             Ok(Command::StartNewCycle {
                 values_in_cycle,
@@ -158,7 +140,7 @@ impl GCThread {
             Err(_) => "ERR".to_owned(),
         };
 
-        println!(
+        log!(
             "CYCLES_LENGTH={:?} NMSG={:?} MSG={:?}",
             self.cycles.list.len(),
             self.recv.len(),
@@ -168,22 +150,10 @@ impl GCThread {
         let mut total = 0;
 
         for (index, c) in self.cycles.list.iter().enumerate() {
-            // let n_none = c
-            //     .values()
-            //     .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
-
-            // println!(
-            //     "CYCLE[{:?}]_LENGTH = {:?} NONE={:?}",
-            //     index,
-            //     c.len(),
-            //     n_none
-            // );
-
-            println!("CYCLE[{:?}]_LENGTH={:?}", index, c);
-
+            log!("CYCLE[{:?}]_LENGTH={:?}", index, c);
             total += c.len();
         }
-        println!(
+        log!(
             "PENDING={:?} TOTAL_IN_CYCLES={:?}",
             self.pending.len(),
             total
@@ -197,37 +167,23 @@ impl GCThread {
     ) {
         GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
 
+        // Gather `HashId` created before a commit.
+        // We send them back to the main thread, they can be reused
         let mut hashid_without_value = Vec::with_capacity(1024);
 
         let new_cycle = new_cycle.into_sorted_map();
-
-        // let mut without_value = 0;
 
         for hash_id in new_ids.iter() {
             if !new_cycle.contains_key(hash_id) {
                 hashid_without_value.push(*hash_id);
             }
-            // new_cycle.entry(*hash_id).or_insert_with(|| {
-            //     without_value += 1;
-            //     None
-            // });
         }
 
         self.send_unused(hashid_without_value);
 
-        // let n_none = new_cycle
-        //     .values()
-        //     .fold(0, |acc, n| if n.is_none() { acc + 1 } else { acc });
-
-        // println!(
-        //     "GC_WORKER: START_NEW_CYCLE Got HashId without value: {:?} NEW_CYCLE_NONE={:?} NEW_CYCLE={:?} DIFF={:?}",
-        //     without_value,
-        //     n_none,
-        //     new_cycle.len(),
-        //     new_cycle.len() - n_none,
-        // );
-
-        println!("GC_WORKER: START_NEW_CYCLE NEW_CYCLE={:?}", new_cycle.len(),);
+        if self.debug {
+            log!("GC_WORKER: START_NEW_CYCLE NEW_CYCLE={:?}", new_cycle.len(),);
+        }
 
         let unused = self.cycles.roll(new_cycle);
         self.send_unused(unused);
@@ -245,7 +201,7 @@ impl GCThread {
         };
 
         if let Err(e) = self.free_ids.push_slice(to_send) {
-            eprintln!("GC: Fail to send free ids {:?}", e);
+            elog!("GC: Fail to send free ids {:?}", e);
             self.pending.extend_from_slice(&unused);
             GC_PENDING_HASHIDS.store(self.pending.len(), Ordering::Release);
             return;
@@ -272,7 +228,7 @@ impl GCThread {
         let to_send = &self.pending[start..];
 
         if let Err(e) = self.free_ids.push_slice(to_send) {
-            eprintln!("GC: Fail to send free ids {:?}", e);
+            elog!("GC: Fail to send free ids {:?}", e);
             return;
         }
 
@@ -302,19 +258,19 @@ impl GCThread {
             }
         }
 
-        println!(
-            "MARK_REUSED NONE_VALUES={:?} TOTAL={:?} MOVED={:?}",
-            none,
-            total,
-            total - none
-        );
+        if self.debug {
+            log!(
+                "MARK_REUSED NONE_VALUES={:?} TOTAL={:?} MOVED={:?}",
+                none,
+                total,
+                total - none
+            );
+        }
 
         self.send_pending();
 
-        let now = std::time::Instant::now();
         for store in self.cycles.list.iter_mut() {
             store.shrink_to_fit();
         }
-        println!("SHRINK IN {:?}", now.elapsed());
     }
 }

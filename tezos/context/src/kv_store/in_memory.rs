@@ -383,6 +383,7 @@ impl InMemory {
                         recv,
                         free_ids: prod,
                         pending: Vec::new(),
+                        debug: false,
                     }
                     .run()
                 })?;
@@ -558,7 +559,7 @@ impl InMemory {
         &mut self,
         mut batch: ChunkedVec<(HashId, Arc<[u8]>)>,
     ) -> Result<(), DBError> {
-        while let Some(chunk) = batch.take_first() {
+        while let Some(chunk) = batch.pop_first_chunk() {
             for (hash_id, value) in chunk.into_iter() {
                 self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
                 self.current_cycle.push((hash_id, value));

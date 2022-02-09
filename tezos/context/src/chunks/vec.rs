@@ -310,7 +310,7 @@ impl<T> ChunkedVec<T> {
         self.nelems = 0;
     }
 
-    pub fn take_first(&mut self) -> Option<Vec<T>> {
+    pub fn pop_first_chunk(&mut self) -> Option<Vec<T>> {
         if self.list_of_chunks.is_empty() {
             None
         } else {
@@ -341,14 +341,10 @@ impl<T> ChunkedVec<T> {
 
 impl<K, V> ChunkedVec<(K, V)>
 where
-    K: Ord + Copy + Debug,
+    K: Ord + Copy,
 {
     pub fn into_sorted_map(&mut self) -> SortedMap<K, V> {
         let mut map = SortedMap::default();
-
-        let now = std::time::Instant::now();
-
-        println!("INTO_SORTED_MAP START {:?} ITEMS", self.len());
 
         while !self.list_of_chunks.is_empty() {
             let chunk = self.list_of_chunks.remove(0);
@@ -357,18 +353,7 @@ where
             }
         }
 
-        println!("INTO_SORTED_MAP {:?} {:?}", now.elapsed(), map);
-
-        let now = std::time::Instant::now();
-
         map.shrink_to_fit();
-
-        println!(
-            "INTO_SORTED_MAP SHRINK_TO_FIT {:?} {:?}",
-            now.elapsed(),
-            map
-        );
-
         map
     }
 }
