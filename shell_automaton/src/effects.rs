@@ -3,6 +3,7 @@
 
 use crate::actors::actors_effects;
 use crate::block_applier::block_applier_effects;
+use crate::bootstrap::bootstrap_effects;
 use crate::current_head::current_head_effects;
 use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
@@ -153,6 +154,7 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     peers_check_timeouts_effects(store, action);
     peers_graylist_effects(store, action);
 
+    bootstrap_effects(store, action);
     mempool_effects(store, action);
 
     storage_request_effects(store, action);

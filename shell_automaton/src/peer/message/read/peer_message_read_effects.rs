@@ -5,10 +5,15 @@ use std::net::SocketAddr;
 
 use crypto::hash::BlockHash;
 use networking::network_channel::PeerMessageReceived;
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
 
+use crate::bootstrap::{
+    BootstrapPeerBlockHeaderReceivedAction, BootstrapPeerBlockOperationsReceivedAction,
+    BootstrapPeerCurrentBranchReceivedAction,
+};
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
 use crate::peer::message::read::PeerMessageReadErrorAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
@@ -102,13 +107,13 @@ where
     S: Service,
 {
     match &action.action {
-        Action::PeerMessageReadInit(action) => {
+        Action::PeerMessageReadInit(content) => {
             store.dispatch(PeerBinaryMessageReadInitAction {
-                address: action.address,
+                address: content.address,
             });
         }
-        Action::PeerBinaryMessageReadReady(action) => {
-            match store.state().peers.get(&action.address) {
+        Action::PeerBinaryMessageReadReady(content) => {
+            match store.state().peers.get(&content.address) {
                 Some(peer) => match peer.status.as_handshaked() {
                     Some(_handshaked) => (),
                     None => return,
@@ -116,21 +121,21 @@ where
                 None => return,
             };
 
-            match PeerMessageResponse::from_bytes(&action.message) {
+            match PeerMessageResponse::from_bytes(&content.message) {
                 Ok(mut message) => {
                     // Set size hint to unencrypted encoded message size.
                     // Maybe we should set encrypted size instead? Since
                     // that's the actual size of data transmitted.
-                    message.set_size_hint(action.message.len());
+                    message.set_size_hint(content.message.len());
 
                     store.dispatch(PeerMessageReadSuccessAction {
-                        address: action.address,
+                        address: content.address,
                         message: message.into(),
                     });
                 }
                 Err(err) => {
                     store.dispatch(PeerMessageReadErrorAction {
-                        address: action.address,
+                        address: content.address,
                         error: err.into(),
                     });
                 }
@@ -164,6 +169,64 @@ where
                         addresses: msg.id().iter().filter_map(|x| x.parse().ok()).collect(),
                     });
                 }
+                PeerMessage::CurrentBranch(msg) => {
+                    if msg.chain_id() == &store.state().config.chain_id {
+                        store.dispatch(BootstrapPeerCurrentBranchReceivedAction {
+                            peer: content.address,
+                            current_branch: msg.current_branch().clone(),
+                        });
+                    }
+                }
+                PeerMessage::BlockHeader(msg) => {
+                    let state = store.state.get();
+                    let block = match BlockHeaderWithHash::new(msg.block_header().clone()) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            slog::warn!(&state.log, "Failed to hash BlockHeader";
+                                "peer" => format!("{}", content.address),
+                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
+                                "block_header" => format!("{:?}", msg.block_header()));
+                            store.dispatch(PeersGraylistAddressAction {
+                                address: content.address,
+                            });
+                            return;
+                        }
+                    };
+                    if let Some(p) = state
+                        .bootstrap
+                        .peer_interval_by_level(content.address, block.header.level())
+                    {
+                        if !p.is_current_hash_eq(&block.hash) {
+                            slog::warn!(&state.log, "BlockHeader hash didn't match requested hash";
+                                "peer" => format!("{}", content.address),
+                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
+                                "block" => format!("{:?}", block),
+                                "expected_hash" => format!("{:?}", p.current));
+                            store.dispatch(PeersGraylistAddressAction {
+                                address: content.address,
+                            });
+                            return;
+                        }
+                        store.dispatch(BootstrapPeerBlockHeaderReceivedAction {
+                            peer: content.address,
+                            block,
+                        });
+                    } else {
+                        slog::warn!(&state.log, "Received unexpected BlockHeader from peer";
+                            "peer" => format!("{}", content.address),
+                            "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
+                            "block_header" => format!("{:?}", msg.block_header()));
+                        store.dispatch(PeersGraylistAddressAction {
+                            address: content.address,
+                        });
+                    }
+                }
+                PeerMessage::OperationsForBlocks(msg) => {
+                    store.dispatch(BootstrapPeerBlockOperationsReceivedAction {
+                        peer: content.address,
+                        message: msg.clone(),
+                    });
+                }
                 _ => {}
             }
 
@@ -180,9 +243,9 @@ where
                 address: content.address,
             });
         }
-        Action::PeerMessageReadError(action) => {
+        Action::PeerMessageReadError(content) => {
             store.dispatch(PeersGraylistAddressAction {
-                address: action.address,
+                address: content.address,
             });
         }
         _ => {}

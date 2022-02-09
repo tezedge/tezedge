@@ -7,6 +7,7 @@ use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::block_applier::block_applier_reducer;
+use crate::bootstrap::bootstrap_reducer;
 use crate::current_head::current_head_reducer;
 use crate::current_head_precheck::current_head_precheck_reducer;
 use crate::paused_loops::paused_loops_reducer;
@@ -112,6 +113,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peers_remove_reducer,
         peers_check_timeouts_reducer,
         peers_graylist_reducer,
+        bootstrap_reducer,
         mempool_reducer,
         rights_reducer,
         current_head_precheck_reducer,

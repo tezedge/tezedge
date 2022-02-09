@@ -72,6 +72,7 @@ use crate::protocol::ProtocolAction;
 
 use crate::rights::rights_actions::*;
 
+use crate::bootstrap::*;
 use crate::mempool::mempool_actions::*;
 
 use crate::protocol_runner::init::context::{
@@ -387,6 +388,30 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
+
+    BootstrapInit(BootstrapInitAction),
+    BootstrapPeersConnectPending(BootstrapPeersConnectPendingAction),
+    BootstrapPeersConnectSuccess(BootstrapPeersConnectSuccessAction),
+    BootstrapPeersMainBranchFindInit(BootstrapPeersMainBranchFindInitAction),
+    BootstrapPeersMainBranchFindPending(BootstrapPeersMainBranchFindPendingAction),
+    BootstrapPeersMainBranchFindSuccess(BootstrapPeersMainBranchFindSuccessAction),
+    BootstrapPeersBlockHeadersGetInit(BootstrapPeersBlockHeadersGetInitAction),
+    BootstrapPeersBlockHeadersGetPending(BootstrapPeersBlockHeadersGetPendingAction),
+    BootstrapPeersBlockHeadersGetSuccess(BootstrapPeersBlockHeadersGetSuccessAction),
+    BootstrapPeersBlockOperationsGetInit(BootstrapPeersBlockOperationsGetInitAction),
+    BootstrapPeersBlockOperationsGetPending(BootstrapPeersBlockOperationsGetPendingAction),
+    BootstrapPeersBlockOperationsGetNextAll(BootstrapPeersBlockOperationsGetNextAllAction),
+    BootstrapPeersBlockOperationsGetNext(BootstrapPeersBlockOperationsGetNextAction),
+    BootstrapPeerBlockOperationsGetPending(BootstrapPeerBlockOperationsGetPendingAction),
+    BootstrapPeerBlockOperationsReceived(BootstrapPeerBlockOperationsReceivedAction),
+    BootstrapPeerBlockOperationsGetSuccess(BootstrapPeerBlockOperationsGetSuccessAction),
+    BootstrapScheduleBlocksForApply(BootstrapScheduleBlocksForApplyAction),
+    BootstrapScheduleBlockForApply(BootstrapScheduleBlockForApplyAction),
+
+    BootstrapPeersBlockOperationsGetSuccess(BootstrapPeersBlockOperationsGetSuccessAction),
+
+    BootstrapPeerCurrentBranchReceived(BootstrapPeerCurrentBranchReceivedAction),
+    BootstrapPeerBlockHeaderReceived(BootstrapPeerBlockHeaderReceivedAction),
 
     Protocol(ProtocolAction),
 

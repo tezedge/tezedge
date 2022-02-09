@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::bootstrap::BootstrapInitAction;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
@@ -53,6 +54,9 @@ where
         }
         Action::CurrentHeadRehydrateSuccess(_) => {
             store.dispatch(CurrentHeadRehydratedAction {});
+        }
+        Action::CurrentHeadRehydrated(_) => {
+            store.dispatch(BootstrapInitAction {});
         }
         _ => {}
     }

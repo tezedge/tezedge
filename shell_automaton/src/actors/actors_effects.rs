@@ -23,14 +23,14 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                         store.dispatch(PeersInitAction {});
                     }
                     ActorsMessageFrom::PeerStalled(peer_id) => {
-                        store.dispatch(PeersGraylistAddressAction {
-                            address: peer_id.address,
-                        });
+                        // store.dispatch(PeersGraylistAddressAction {
+                        //     address: peer_id.address,
+                        // });
                     }
                     ActorsMessageFrom::BlacklistPeer(peer_id, _) => {
-                        store.dispatch(PeersGraylistAddressAction {
-                            address: peer_id.address,
-                        });
+                        // store.dispatch(PeersGraylistAddressAction {
+                        //     address: peer_id.address,
+                        // });
                     }
                     ActorsMessageFrom::SendMessage(peer_id, message) => {
                         store.dispatch(PeerMessageWriteInitAction {
@@ -54,14 +54,14 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                         block_hash,
                         callback,
                     } => {
-                        store
-                            .service
-                            .actors()
-                            .register_apply_block_callback(block_hash.clone(), callback);
-                        store.dispatch(BlockApplierEnqueueBlockAction {
-                            chain_id,
-                            block_hash,
-                        });
+                        // store
+                        //     .service
+                        //     .actors()
+                        //     .register_apply_block_callback(block_hash.clone(), callback);
+                        // store.dispatch(BlockApplierEnqueueBlockAction {
+                        //     chain_id,
+                        //     block_hash,
+                        // });
                     }
                 }
             }
