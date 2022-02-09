@@ -42,6 +42,8 @@ pub struct P2p {
     pub listener_address: SocketAddr,
 
     pub disable_mempool: bool,
+    pub disable_block_precheck: bool,
+    pub disable_endorsements_precheck: bool,
     pub disable_peer_graylist: bool,
     pub private_node: bool,
 
@@ -215,6 +217,8 @@ impl ShellAutomatonManager {
                 read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
                 write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
             },
+            disable_block_precheck: p2p_config.disable_block_precheck,
+            disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
         });
 
         initial_state.set_logger(log.clone());

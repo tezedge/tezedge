@@ -25,10 +25,11 @@ pub struct CurrentHeadReceivedAction {
 /// and its block hash hasn't seen yet.
 impl EnablingCondition<State> for CurrentHeadReceivedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .current_heads
-            .candidate_level()
-            .map_or(true, |l| l == self.block_header.level())
+        !state.config.disable_block_precheck
+            && state
+                .current_heads
+                .candidate_level()
+                .map_or(true, |l| l == self.block_header.level())
             && !state
                 .current_heads
                 .applied_hashes
@@ -47,18 +48,19 @@ pub struct CurrentHeadPrecheckAction {
 
 impl EnablingCondition<State> for CurrentHeadPrecheckAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .current_heads
-            .applied_head()
-            .map_or(false, |applied_head| {
-                if let Some(CurrentHeadState::Received { block_header }) =
-                    state.current_heads.candidates.get(&self.block_hash)
-                {
-                    block_header.level() == applied_head.level + 1
-                } else {
-                    false
-                }
-            })
+        !state.config.disable_block_precheck
+            && state
+                .current_heads
+                .applied_head()
+                .map_or(false, |applied_head| {
+                    if let Some(CurrentHeadState::Received { block_header }) =
+                        state.current_heads.candidates.get(&self.block_hash)
+                    {
+                        block_header.level() == applied_head.level + 1
+                    } else {
+                        false
+                    }
+                })
     }
 }
 
@@ -106,8 +108,8 @@ pub struct CurrentHeadApplyAction {
 }
 
 impl EnablingCondition<State> for CurrentHeadApplyAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.config.disable_block_precheck
     }
 }
 
@@ -116,6 +118,6 @@ pub struct CurrentHeadPrecacheBakingRightsAction {}
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.current_heads.applied_head().is_some()
+        !state.config.disable_block_precheck && state.current_heads.applied_head().is_some()
     }
 }
