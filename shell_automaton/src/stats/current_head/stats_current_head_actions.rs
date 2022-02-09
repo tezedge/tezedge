@@ -27,6 +27,7 @@ impl EnablingCondition<State> for StatsCurrentHeadRpcGetPeersAction {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadRpcGetApplicationAction {
     pub rpc_id: RpcId,
@@ -96,7 +97,7 @@ impl EnablingCondition<State> for StatsCurrentHeadPrepareSendAction {
 pub struct StatsCurrentHeadSentAction {
     #[cfg_attr(fuzzing, field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
-    pub timestamp: ActionId, // TODO
+    pub timestamp: ActionId,
 }
 
 impl EnablingCondition<State> for StatsCurrentHeadSentAction {
@@ -129,7 +130,7 @@ impl EnablingCondition<State> for StatsCurrentHeadSentErrorAction {
 #[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCurrentHeadPruneAction {
-    pub timestamp: ActionId, // TODO
+    pub timestamp: ActionId,
 }
 
 impl EnablingCondition<State> for StatsCurrentHeadPruneAction {

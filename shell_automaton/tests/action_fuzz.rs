@@ -17,7 +17,7 @@ use shell_automaton::shutdown::ShutdownInitAction;
 use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
 use shell_automaton::stats::current_head::stats_current_head_actions;
-use shell_automaton::storage::request::StorageRequestSuccessAction;
+//use shell_automaton::storage::request::StorageRequestSuccessAction;
 use shell_automaton::MioWaitForEventsAction;
 
 use shell_automaton::MioTimeoutEvent;
@@ -166,8 +166,14 @@ enum StatsActionTest {
     TestStatsCurrentHeadSentErrorAction(
         stats_current_head_actions::StatsCurrentHeadSentErrorAction,
     ),
-    TestStatsCurrentHeadRpcGetAction(stats_current_head_actions::StatsCurrentHeadRpcGetAction),
+    //TestStatsCurrentHeadRpcGetAction(stats_current_head_actions::StatsCurrentHeadRpcGetAction),
     TestStatsCurrentHeadPruneAction(stats_current_head_actions::StatsCurrentHeadPruneAction),
+    TestStatsCurrentHeadRpcGetPeersAction(
+        stats_current_head_actions::StatsCurrentHeadRpcGetPeersAction,
+    ),
+    TestStatsCurrentHeadRpcGetApplicationAction(
+        stats_current_head_actions::StatsCurrentHeadRpcGetApplicationAction,
+    ),
 }
 
 impl StatsActionTest {
@@ -178,8 +184,10 @@ impl StatsActionTest {
             Self::TestStatsCurrentHeadPrepareSendAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentErrorAction(a) => a.into(),
-            Self::TestStatsCurrentHeadRpcGetAction(a) => a.into(),
+            //Self::TestStatsCurrentHeadRpcGetAction(a) => a.into(),
             Self::TestStatsCurrentHeadPruneAction(a) => a.into(),
+            Self::TestStatsCurrentHeadRpcGetPeersAction(a) => a.into(),
+            Self::TestStatsCurrentHeadRpcGetApplicationAction(a) => a.into(),
         }
     }
 }
@@ -681,9 +689,14 @@ enum PrecheckerActionTest {
     ),
     TestPrecheckerDecodeOperationAction(prechecker_actions::PrecheckerDecodeOperationAction),
     TestPrecheckerOperationDecodedAction(prechecker_actions::PrecheckerOperationDecodedAction),
-    TestPrecheckerWaitForBlockApplicationAction(
-        prechecker_actions::PrecheckerWaitForBlockApplicationAction,
+    //TestPrecheckerWaitForBlockApplicationAction(
+    //    prechecker_actions::PrecheckerWaitForBlockApplicationAction,
+    //),
+    TestPrecheckerWaitForBlockPrecheckedAction(
+        prechecker_actions::PrecheckerWaitForBlockPrecheckedAction,
     ),
+    TestPrecheckerBlockPrecheckedAction(prechecker_actions::PrecheckerBlockPrecheckedAction),
+    TestPrecheckerWaitForBlockApplied(prechecker_actions::PrecheckerWaitForBlockAppliedAction),
     TestPrecheckerBlockAppliedAction(prechecker_actions::PrecheckerBlockAppliedAction),
     TestPrecheckerGetEndorsingRightsAction(prechecker_actions::PrecheckerGetEndorsingRightsAction),
     TestPrecheckerEndorsingRightsReadyAction(
@@ -729,7 +742,10 @@ impl PrecheckerActionTest {
             Self::TestPrecheckerProtocolVersionReadyAction(a) => a.into(),
             Self::TestPrecheckerDecodeOperationAction(a) => a.into(),
             Self::TestPrecheckerOperationDecodedAction(a) => a.into(),
-            Self::TestPrecheckerWaitForBlockApplicationAction(a) => a.into(),
+            //Self::TestPrecheckerWaitForBlockApplicationAction(a) => a.into(),
+            Self::TestPrecheckerWaitForBlockPrecheckedAction(a) => a.into(),
+            Self::TestPrecheckerBlockPrecheckedAction(a) => a.into(),
+            Self::TestPrecheckerWaitForBlockApplied(a) => a.into(),
             Self::TestPrecheckerBlockAppliedAction(a) => a.into(),
             Self::TestPrecheckerGetEndorsingRightsAction(a) => a.into(),
             Self::TestPrecheckerEndorsingRightsReadyAction(a) => a.into(),
@@ -1322,7 +1338,10 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::PrecheckerProtocolVersionReady(a) => a.is_enabled(state),
         Action::PrecheckerDecodeOperation(a) => a.is_enabled(state),
         Action::PrecheckerOperationDecoded(a) => a.is_enabled(state),
-        Action::PrecheckerWaitForBlockApplication(a) => a.is_enabled(state),
+        //Action::PrecheckerWaitForBlockApplication(a) => a.is_enabled(state),
+        Action::PrecheckerWaitForBlockPrechecked(a) => a.is_enabled(state),
+        Action::PrecheckerBlockPrechecked(a) => a.is_enabled(state),
+        Action::PrecheckerWaitForBlockApplied(a) => a.is_enabled(state),
         Action::PrecheckerBlockApplied(a) => a.is_enabled(state),
         Action::PrecheckerGetEndorsingRights(a) => a.is_enabled(state),
         Action::PrecheckerEndorsingRightsReady(a) => a.is_enabled(state),
@@ -1372,8 +1391,10 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::StatsCurrentHeadPrepareSend(a) => a.is_enabled(state),
         Action::StatsCurrentHeadSent(a) => a.is_enabled(state),
         Action::StatsCurrentHeadSentError(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadRpcGet(a) => a.is_enabled(state),
+        //Action::StatsCurrentHeadRpcGet(a) => a.is_enabled(state),
         Action::StatsCurrentHeadPrune(a) => a.is_enabled(state),
+        Action::StatsCurrentHeadRpcGetPeers(a) => a.is_enabled(state),
+        Action::StatsCurrentHeadRpcGetApplication(a) => a.is_enabled(state),
         Action::StorageBlockHeaderGet(a) => a.is_enabled(state),
         Action::StorageBlockHeaderOk(a) => a.is_enabled(state),
         Action::StorageBlockHeaderError(a) => a.is_enabled(state),

@@ -446,6 +446,7 @@ impl From<TezosErrorTrace> for GetDataError {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum DumpContextError {
     #[error("OCaml failed to dump the context, message: {message}!")]
@@ -460,6 +461,7 @@ impl From<TezosErrorTrace> for DumpContextError {
     }
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum RestoreContextError {
     #[error("OCaml failed to restore the context from a dump, message: {message}!")]

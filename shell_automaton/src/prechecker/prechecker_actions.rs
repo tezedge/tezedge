@@ -218,11 +218,13 @@ pub struct PrecheckerWaitForBlockPrecheckedAction {
     pub branch: BlockHash,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerBlockPrecheckedAction {
     pub key: Key,
 }
 
+#[cfg_attr(fuzzing, derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerWaitForBlockAppliedAction {
     pub key: Key,
