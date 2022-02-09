@@ -23,8 +23,7 @@ where
 
 assert_eq_size!([u8; 40], Chunk<HashId, Arc<[u8]>>);
 assert_eq_size!([u8; 24], (HashId, Arc<[u8]>));
-
-//10413651+ 11259171+ 10596201+ 10308720+ 14033165+ 35634221+ 54858073
+assert_eq_size!([u8; 48], [(HashId, Arc<[u8]>); 2]);
 
 pub struct SortedMap<K, V>
 where
@@ -62,14 +61,12 @@ where
 impl<K, V> std::fmt::Debug for SortedMap<K, V>
 where
     K: Ord,
-    // K: Ord + std::fmt::Debug,
-    // V: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut len = 0;
         let mut cap = 0;
 
-        for chunk in &self.list {
+        for chunk in self.list.iter() {
             len += chunk.inner.len();
             cap += chunk.inner.capacity();
         }
@@ -79,10 +76,6 @@ where
             .field("list_len", &len)
             .field("list_cap", &cap)
             .finish()
-
-        // f.debug_struct("SortedMap")
-        //     .field("list", &self.list)
-        //     .finish()
     }
 }
 
@@ -129,7 +122,9 @@ where
 
     fn append(&mut self, other: &mut Self) {
         self.inner.append(&mut other.inner);
-        self.max = self.inner.last().unwrap().0;
+        if let Some(last) = self.inner.last() {
+            self.max = last.0;
+        };
     }
 
     fn remove(&mut self, key: &K) -> Option<V> {
@@ -151,6 +146,8 @@ where
         let mut next_chunk = None;
 
         if self.len() == MAX_CHUNK_SIZE {
+            // The chunk is full, split it in 2 chunks
+
             let new_chunk = if insert_at >= SPLIT_AT {
                 let mut new_chunk = self.inner.split_off(SPLIT_AT);
                 new_chunk.insert(insert_at - SPLIT_AT, (key, value));
@@ -162,9 +159,9 @@ where
             };
 
             let new_min = new_chunk[0].0;
-            let new_max = new_chunk.last().unwrap().0;
+            let new_max = new_chunk.last().unwrap().0; // Never fail, new_chunk is not empty
 
-            self.max = self.inner.last().unwrap().0;
+            self.max = self.inner.last().unwrap().0; // Never fail, self is not empty
 
             next_chunk = Some(Chunk {
                 inner: new_chunk,
@@ -189,8 +186,7 @@ where
 
 impl<K, V> SortedMap<K, V>
 where
-    // K: Ord + Copy,
-    K: Ord + Copy + Debug,
+    K: Ord + Copy,
 {
     pub fn shrink_to_fit(&mut self) {
         for chunk in self.list.iter_mut() {
@@ -258,7 +254,7 @@ where
                     .unwrap_or(false);
 
                 if can_merge_with_next {
-                    new_chunk.append(self.list.get_mut(index + 1).unwrap());
+                    new_chunk.append(self.list.get_mut(index + 1).unwrap()); // Never fail, can_merge_with_next is `true`
                     self.list[index + 1] = new_chunk
                 } else {
                     self.list.insert(index + 1, new_chunk);
@@ -313,7 +309,13 @@ where
             }
         })
     }
+}
 
+impl<K, V> SortedMap<K, V>
+where
+    K: Ord + Copy + Debug,
+{
+    /// [test-only] Make sure that the map is correctly ordered
     #[cfg(test)]
     fn assert_correct(&self) {
         let mut prev_chunk = Option::<(K, K)>::None;
