@@ -13,6 +13,7 @@ pub struct ApplicationMonitor {
     last_applied_block: Option<Head>,
     first_update: Instant,
     last_update: Instant,
+    remote_best_known_level: i32,
 }
 
 impl ApplicationMonitor {
@@ -24,7 +25,12 @@ impl ApplicationMonitor {
             last_applied_block: None,
             first_update: now,
             last_update: now,
+            remote_best_known_level: 0,
         }
+    }
+
+    pub fn update_remote_best_known_level(&mut self, level: i32) {
+        self.remote_best_known_level = level;
     }
 
     pub fn block_was_applied(&mut self, block_info: Head) {
@@ -55,6 +61,7 @@ impl ApplicationMonitor {
             current_application_speed: self.current_speed(),
             average_application_speed: self.avg_speed(),
             last_applied_block: last_block,
+            remote_best_known_level: self.remote_best_known_level,
         };
 
         self.current_applied = 0;

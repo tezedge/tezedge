@@ -611,14 +611,16 @@ impl ChainManager {
 
                                     // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
                                     if was_updated {
+                                        let message_current_head = BlockHeaderWithHash::new(
+                                            message.current_block_header().clone(),
+                                        )?;
+
+                                        remote_current_head_state
+                                            .update_remote_head(&message_current_head);
+
                                         match chain_state.peer_branch_bootstrapper() {
                                             Some(peer_branch_bootstrapper) => {
                                                 // check if we started branch bootstrapper, try to update current_head to peer's pipelines
-                                                let message_current_head =
-                                                    BlockHeaderWithHash::new(
-                                                        message.current_block_header().clone(),
-                                                    )?;
-
                                                 peer_branch_bootstrapper.tell(
                                                     UpdateBranchBootstraping::new(
                                                         peer.peer_id.clone(),
@@ -1030,6 +1032,11 @@ impl ChainManager {
                 );
             }
 
+            let remote_best_known_level = match self.remote_current_head_state.as_ref() {
+                Some(head) => *head.level(),
+                None => 0,
+            };
+
             // notify other actors that new current head was changed
             self.shell_channel.tell(
                 Publish {
@@ -1038,6 +1045,7 @@ impl ChainManager {
                             chain_id.clone(),
                             block.clone(),
                             is_bootstrapped,
+                            remote_best_known_level,
                         ),
                     )),
                     topic: ShellChannelTopic::ShellNewCurrentHead.into(),
@@ -1047,11 +1055,6 @@ impl ChainManager {
 
             if !is_bootstrapped {
                 let chain_manager_current_level = new_head.level();
-
-                let remote_best_known_level = match self.remote_current_head_state.as_ref() {
-                    Some(head) => *head.level(),
-                    None => 0,
-                };
 
                 is_bootstrapped = self.current_bootstrap_state.update_by_new_local_head(
                     remote_best_known_level,
