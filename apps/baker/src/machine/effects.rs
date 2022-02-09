@@ -9,16 +9,18 @@ use crypto::{
     blake2b,
     hash::{
         BlockPayloadHash, ContractTz1Hash, NonceHash, OperationHash, OperationListHash,
-        ProtocolHash,
+        ProtocolHash, BlockHash,
     },
 };
 use redux_rs::{ActionWithMeta, Store};
+use tezos_encoding_derive::BinWriter;
+use tezos_messages::protocol::proto_012::operation::{InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant};
 
 use super::{action::*, service::ServiceDefault, state::State};
 use crate::{
     client::TezosClient,
     key,
-    types::{generate_endorsement, generate_preendorsement, ProtocolBlockHeader},
+    types::{ProtocolBlockHeader, sign_any},
 };
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
@@ -118,16 +120,29 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                     endorsed_level = level;
                     endorsed_payload_hash = Some(payload_hash.clone());
 
-                    let op = generate_preendorsement(
-                        &branch,
+                    #[derive(BinWriter)]
+                    struct PreendorsementUnsignedOperation {
+                        branch: BlockHash,
+                        content: InlinedPreendorsementContents,
+                    }
+
+                    #[derive(BinWriter)]
+                    struct EndorsementUnsignedOperation {
+                        branch: BlockHash,
+                        content: InlinedEndorsementMempoolContents,
+                    }
+
+                    let inlined = InlinedPreendorsementVariant {
                         slot,
                         level,
-                        round,
-                        payload_hash.clone(),
-                        &chain_id,
-                        &secret_key,
-                    )
-                    .unwrap();
+                        round: round as i32,
+                        block_payload_hash: payload_hash.clone(),
+                    };
+                    let op = PreendorsementUnsignedOperation {
+                        branch: branch.clone(),
+                        content: InlinedPreendorsementContents::Preendorsement(inlined),
+                    };
+                    let (op, _) = sign_any(&secret_key, 0x12, &chain_id, &op).unwrap();
                     if let Err(err) = client.inject_operation(&chain_id, &hex::encode(&op)) {
                         slog::error!(log, "{}", err);
                     }
@@ -212,16 +227,17 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                         }
                         if num_preendorsement >= quorum_size {
                             slog::info!(main_logger, "inject endorsement");
-                            let op = generate_endorsement(
-                                &branch,
+                            let inlined = InlinedEndorsementMempoolContentsEndorsementVariant {
                                 slot,
                                 level,
-                                round,
-                                payload_hash.clone(),
-                                &chain_id,
-                                &secret_key,
-                            )
-                            .unwrap();
+                                round: round as i32,
+                                block_payload_hash: payload_hash.clone(),
+                            };
+                            let op = EndorsementUnsignedOperation {
+                                branch: branch.clone(),
+                                content: InlinedEndorsementMempoolContents::Endorsement(inlined),
+                            };
+                            let (op, _) = sign_any(&secret_key, 0x13, &chain_id, &op).unwrap();
                             client
                                 .inject_operation(&chain_id, &hex::encode(&op))
                                 .unwrap();

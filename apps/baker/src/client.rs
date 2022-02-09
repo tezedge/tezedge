@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, io, str, sync::mpsc, thread, time::Duration};
+use std::{cell::Cell, io, str, sync::mpsc, thread, time::Duration, convert::TryInto};
 
 use chrono::{DateTime, Utc};
 use derive_more::From;
@@ -11,12 +11,16 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use slog::Logger;
+use tezos_encoding::types::SizedBytes;
 use thiserror::Error;
 
-use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, SecretKeyEd25519};
-use tezos_messages::p2p::encoding::operation::DecodedOperation;
+use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, SecretKeyEd25519, Signature};
+use tezos_messages::{
+    p2p::encoding::operation::DecodedOperation,
+    protocol::proto_012::operation::FullHeader,
+};
 
-use super::types::{FullBlockHeader, ProtocolBlockHeader, ShellBlockHeader};
+use super::types::{ProtocolBlockHeader, ShellBlockHeader, sign_any};
 
 #[derive(Debug, Error, From)]
 pub enum TezosClientError {
@@ -61,7 +65,7 @@ pub struct BlockHeader {
     pub predecessor: BlockHash,
     pub protocol_data: String,
 
-    proto: u8,
+    pub proto: u8,
     pub timestamp: String,
     validation_pass: u8,
     operations_hash: String,
@@ -224,27 +228,28 @@ impl TezosClient {
             liquidity_baking_escape_vote,
             ..
         } = protocol_block_header;
-        let full_block_header = FullBlockHeader {
+        let full_block_header = FullHeader {
             level,
             proto,
             predecessor,
-            timestamp: timestamp.parse::<DateTime<Utc>>().unwrap().timestamp(),
+            timestamp: timestamp.parse::<DateTime<Utc>>().unwrap().timestamp().into(),
             validation_pass,
             operations_hash,
             fitness: fitness
                 .into_iter()
                 .map(|v| hex::decode(v).unwrap())
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
             context,
             payload_hash,
             payload_round,
-            proof_of_work_nonce,
+            proof_of_work_nonce: SizedBytes(proof_of_work_nonce.try_into().unwrap()),
             seed_nonce_hash,
             liquidity_baking_escape_vote,
+            signature: Signature(vec![])
         };
 
-        let signed = full_block_header
-            .sign(secret_key, chain_id)
+        let (signed, _) = sign_any(secret_key, 0x11, chain_id, &full_block_header)
             .expect("successful encode");
 
         #[derive(Serialize)]
