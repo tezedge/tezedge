@@ -1245,68 +1245,66 @@ impl WorkingTree {
             WorkingTreeRoot::Value(_) => DirectoryId::empty(),
         }
     }
-}
 
-/// Implementation used for `context-tool`
-mod tool {
-    use super::*;
+    /// See `Self::traverse_working_tree` below
+    ///
+    /// Method used for `context-tool` only.
+    fn traverse_working_tree_recursive(
+        &self,
+        object: Object,
+        object_hash_id: Option<HashId>,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+        depth: usize,
+        stats: &mut Option<WorkingTreeStatistics>,
+    ) -> Result<(), MerkleError> {
+        if let Some(stats) = stats.as_mut() {
+            stats.max_depth = depth.max(stats.max_depth);
+        };
 
-    impl WorkingTree {
-        /// See `Self::traverse_working_tree` below
-        ///
-        /// Method used for `context-tool` only.
-        fn traverse_working_tree_recursive(
-            &self,
-            object: Object,
-            object_hash_id: Option<HashId>,
-            storage: &mut Storage,
-            strings: &mut StringInterner,
-            depth: usize,
-            stats: &mut Option<WorkingTreeStatistics>,
-        ) -> Result<(), MerkleError> {
-            if let Some(stats) = stats.as_mut() {
-                stats.max_depth = depth.max(stats.max_depth);
-            };
-
-            match object {
-                Object::Blob(blob_id) => {
-                    if let Some(stats) = stats.as_mut() {
-                        if blob_id.is_inline() {
-                            stats.nobjects_inlined += 1;
-                        }
-
-                        let blob = storage.get_blob(blob_id)?;
-                        let blob_length = blob.len();
-
-                        let blob_stats =
-                            stats.blobs_by_length.entry(blob_length).or_insert_with(|| {
-                                BlobStatistics {
-                                    size: blob_length,
-                                    total: 0,
-                                    unique: HashSet::default(),
-                                }
-                            });
-                        blob_stats.total += 1;
-                        blob_stats.unique.insert(blob.to_vec());
+        match object {
+            Object::Blob(blob_id) => {
+                if let Some(stats) = stats.as_mut() {
+                    if blob_id.is_inline() {
+                        stats.nobjects_inlined += 1;
                     }
 
-                    Ok(())
+                    let blob = storage.get_blob(blob_id)?;
+                    let blob_length = blob.len();
+
+                    let blob_stats =
+                        stats.blobs_by_length.entry(blob_length).or_insert_with(|| {
+                            BlobStatistics {
+                                size: blob_length,
+                                total: 0,
+                                unique: HashSet::default(),
+                            }
+                        });
+                    blob_stats.total += 1;
+                    blob_stats.unique.insert(blob.to_vec());
                 }
-                Object::Directory(dir_id) => {
-                    let dir = {
-                        let repository = self.index.repository.read()?;
-                        storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
+
+                Ok(())
+            }
+            Object::Directory(dir_id) => {
+                let dir = {
+                    let repository = self.index.repository.read()?;
+                    storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
+                };
+
+                if let Some(stats) = stats.as_mut() {
+                    stats.ndirectories += 1;
+
+                    let dir_hash = match object_hash_id {
+                        Some(hash_id) => {
+                            let repository = self.index.repository.read()?;
+                            Some(repository.get_hash(hash_id.into())?.to_vec())
+                        }
+                        None => None,
                     };
 
-                    if let Some(stats) = stats.as_mut() {
-                        stats.ndirectories += 1;
-
-                        let dir_hash = object_hash_id.map(|hash_id| {
-                            let repository = self.index.repository.read().unwrap();
-                            repository.get_hash(hash_id.into()).unwrap().to_vec()
-                        });
-
-                        let dir_stats = stats
+                    let dir_stats =
+                        stats
                             .directories_by_length
                             .entry(dir.len())
                             .or_insert_with(|| DirectoryStatistics {
@@ -1314,107 +1312,105 @@ mod tool {
                                 total: 0,
                                 unique: HashSet::default(),
                             });
-                        dir_stats.total += 1;
-                        if let Some(dir_hash) = dir_hash {
-                            dir_stats.unique.insert(dir_hash);
-                        }
-
-                        stats.nobjects += dir.len();
+                    dir_stats.total += 1;
+                    if let Some(dir_hash) = dir_hash {
+                        dir_stats.unique.insert(dir_hash);
                     }
 
-                    for (string_id, dir_entry_id) in dir {
-                        if let Some(stats) = stats.as_mut() {
-                            let string = strings.get_str(string_id)?.into_owned();
+                    stats.nobjects += dir.len();
+                }
 
-                            let mut length_to_add = 0;
-                            stats
-                                .unique_strings
-                                .entry(string)
-                                .or_insert_with_key(|string| {
-                                    length_to_add = string.len();
-                                });
-                            stats.strings_total_bytes += length_to_add;
-                        }
+                for (string_id, dir_entry_id) in dir {
+                    if let Some(stats) = stats.as_mut() {
+                        let string = strings.get_str(string_id)?.into_owned();
 
-                        let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+                        let mut length_to_add = 0;
+                        stats
+                            .unique_strings
+                            .entry(string)
+                            .or_insert_with_key(|string| {
+                                length_to_add = string.len();
+                            });
+                        stats.strings_total_bytes += length_to_add;
+                    }
 
-                        let object_hash_id = {
-                            let mut repository = self.index.repository.write()?;
-                            match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
-                                Some(hash_id) => {
-                                    assert!(dir_entry.get_hash_id().is_ok());
+                    let dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
-                                    if let Some(stats) = stats.as_mut() {
-                                        stats.nhashes += 1;
-                                        let hash =
-                                            repository.get_hash(hash_id.into())?.into_owned();
-                                        stats.unique_hash.insert(hash);
-                                    }
+                    let object_hash_id = {
+                        let mut repository = self.index.repository.write()?;
+                        match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
+                            Some(hash_id) => {
+                                assert!(dir_entry.get_hash_id().is_ok());
 
-                                    Some(hash_id)
+                                if let Some(stats) = stats.as_mut() {
+                                    stats.nhashes += 1;
+                                    let hash = repository.get_hash(hash_id.into())?.into_owned();
+                                    stats.unique_hash.insert(hash);
                                 }
-                                None => {
-                                    // inlined blob
-                                    None
-                                }
+
+                                Some(hash_id)
                             }
-                        };
+                            None => {
+                                // inlined blob
+                                None
+                            }
+                        }
+                    };
 
-                        let object = self
-                            .index
-                            .dir_entry_object(dir_entry_id, storage, strings)?;
+                    let object = self
+                        .index
+                        .dir_entry_object(dir_entry_id, storage, strings)?;
 
-                        self.traverse_working_tree_recursive(
-                            object,
-                            object_hash_id,
-                            storage,
-                            strings,
-                            depth + 1,
-                            stats,
-                        )?;
-                    }
-
-                    Ok(())
+                    self.traverse_working_tree_recursive(
+                        object,
+                        object_hash_id,
+                        storage,
+                        strings,
+                        depth + 1,
+                        stats,
+                    )?;
                 }
-                Object::Commit(_commit) => {
-                    panic!()
-                }
+
+                Ok(())
+            }
+            Object::Commit(_commit) => {
+                unreachable!()
             }
         }
+    }
 
-        /// Traverse the whole tree by fetching all its objects and storing them in
-        /// the `Storage`.
-        ///
-        /// Method used for `context-tool` only.
-        pub fn traverse_working_tree(
-            &self,
-            enable_stats: bool,
-        ) -> Result<Option<WorkingTreeStatistics>, MerkleError> {
-            let object = match self.root {
-                WorkingTreeRoot::Directory(dir_id) => Object::Directory(dir_id),
-                WorkingTreeRoot::Value(blob_id) => Object::Blob(blob_id),
-            };
+    /// Traverse the whole tree by fetching all its objects and storing them in
+    /// the `Storage`.
+    ///
+    /// Method used for `context-tool` only.
+    pub fn traverse_working_tree(
+        &self,
+        enable_stats: bool,
+    ) -> Result<Option<WorkingTreeStatistics>, MerkleError> {
+        let object = match self.root {
+            WorkingTreeRoot::Directory(dir_id) => Object::Directory(dir_id),
+            WorkingTreeRoot::Value(blob_id) => Object::Blob(blob_id),
+        };
 
-            let mut storage = self.index.storage.borrow_mut();
-            let mut strings = self.index.get_string_interner()?;
+        let mut storage = self.index.storage.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
-            let mut stats = if enable_stats {
-                Some(WorkingTreeStatistics::default())
-            } else {
-                None
-            };
+        let mut stats = if enable_stats {
+            Some(WorkingTreeStatistics::default())
+        } else {
+            None
+        };
 
-            self.traverse_working_tree_recursive(
-                object,
-                None,
-                &mut *storage,
-                &mut *strings,
-                0,
-                &mut stats,
-            )?;
+        self.traverse_working_tree_recursive(
+            object,
+            None,
+            &mut *storage,
+            &mut *strings,
+            0,
+            &mut stats,
+        )?;
 
-            Ok(stats)
-        }
+        Ok(stats)
     }
 }
 
