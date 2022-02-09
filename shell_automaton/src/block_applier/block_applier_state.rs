@@ -149,6 +149,16 @@ impl BlockApplierApplyState {
             Self::Success { block, .. } => Some(&block.hash),
         }
     }
+
+    #[inline(always)]
+    pub fn is_pending(&self) -> bool {
+        match self {
+            Self::Idle { .. } => false,
+            Self::Error { .. } => false,
+            Self::Success { .. } => false,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

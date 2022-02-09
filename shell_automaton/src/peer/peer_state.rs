@@ -233,4 +233,8 @@ impl Peer {
             _ => None,
         }
     }
+
+    pub fn public_key_hash_b58check(&self) -> Option<String> {
+        self.public_key_hash().map(|pkh| pkh.to_base58_check())
+    }
 }

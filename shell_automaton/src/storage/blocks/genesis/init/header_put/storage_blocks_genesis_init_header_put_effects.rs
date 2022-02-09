@@ -29,6 +29,7 @@ pub fn storage_blocks_genesis_init_header_put_effects<S>(
     match &action.action {
         Action::StorageBlocksGenesisInitHeaderPutInit(content) => {
             let config = &state.config;
+            let chain_id = config.chain_id.clone();
             let genesis_hash = config.init_storage_data.genesis_block_header_hash.clone();
             let genesis_header = config
                 .protocol_runner
@@ -44,7 +45,7 @@ pub fn storage_blocks_genesis_init_header_put_effects<S>(
                 header: Arc::new(genesis_header),
             };
             store.dispatch(StorageRequestCreateAction {
-                payload: StorageRequestPayload::BlockHeaderPut(block_header_with_hash),
+                payload: StorageRequestPayload::BlockHeaderPut(chain_id, block_header_with_hash),
             });
             store.dispatch(StorageBlocksGenesisInitHeaderPutPendingAction {});
         }

@@ -49,6 +49,8 @@ use protocol_runner::ProtocolRunnerStartAction;
 
 pub mod block_applier;
 
+pub mod bootstrap;
+
 pub mod rpc;
 
 pub mod actors;

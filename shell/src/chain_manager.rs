@@ -327,66 +327,66 @@ impl ChainManager {
                             return Ok(());
                         }
                         match received.message.message() {
-                            PeerMessage::CurrentBranch(message) => {
-                                info!(
-                                    log,
-                                    "received current branch {} from {}",
-                                    message
-                                        .current_branch()
-                                        .message_typed_hash::<BlockHash>()
-                                        .unwrap()
-                                        .to_base58_check(),
-                                    peer.peer_id.address
-                                );
-                                peer.update_current_head_level(
-                                    message.current_branch().current_head().level(),
-                                );
+                            // PeerMessage::CurrentBranch(message) => {
+                            //     info!(
+                            //         log,
+                            //         "received current branch {} from {}",
+                            //         message
+                            //             .current_branch()
+                            //             .message_typed_hash::<BlockHash>()
+                            //             .unwrap()
+                            //             .to_base58_check(),
+                            //         peer.peer_id.address
+                            //     );
+                            //     peer.update_current_head_level(
+                            //         message.current_branch().current_head().level(),
+                            //     );
 
-                                // at first, check if we can accept branch or just ignore it
-                                if !chain_state.can_accept_branch(message, current_head_state)? {
-                                    let remote_head = message.current_branch().current_head();
-                                    let (local, local_level, local_fitness) =
-                                        self.current_head_state.as_ref().to_debug_info();
-                                    debug!(log, "Ignoring received (low) current branch";
-                                                    "current_head" => local,
-                                                    "current_head_level" => local_level,
-                                                    "current_head_fitness" => local_fitness,
-                                                    "remote_branch" => remote_head.message_typed_hash::<BlockHash>()?.to_base58_check(),
-                                                    "remote_level" => remote_head.level(),
-                                                    "remote_fitness" => display_fitness(remote_head.fitness()));
-                                    if remote_head.level() > 0
-                                        && !self.current_bootstrap_state.is_bootstrapped()
-                                    {
-                                        let peer_id = peer.peer_id.clone();
-                                        if let Err(e) = self.resolve_is_bootstrapped(
-                                            &PeerBranchSynchronizationDone::new(
-                                                peer_id,
-                                                remote_head.level(),
-                                            ),
-                                            &log,
-                                        ) {
-                                            warn!(log, "Failed to resolve is_bootstrapped for chain manager (current_branch)"; "reason" => format!("{:?}", e));
-                                        }
-                                    }
-                                } else {
-                                    let message_current_head = BlockHeaderWithHash::new(
-                                        message.current_branch().current_head().clone(),
-                                    )?;
+                            //     // at first, check if we can accept branch or just ignore it
+                            //     if !chain_state.can_accept_branch(message, current_head_state)? {
+                            //         let remote_head = message.current_branch().current_head();
+                            //         let (local, local_level, local_fitness) =
+                            //             self.current_head_state.as_ref().to_debug_info();
+                            //         debug!(log, "Ignoring received (low) current branch";
+                            //                         "current_head" => local,
+                            //                         "current_head_level" => local_level,
+                            //                         "current_head_fitness" => local_fitness,
+                            //                         "remote_branch" => remote_head.message_typed_hash::<BlockHash>()?.to_base58_check(),
+                            //                         "remote_level" => remote_head.level(),
+                            //                         "remote_fitness" => display_fitness(remote_head.fitness()));
+                            //         if remote_head.level() > 0
+                            //             && !self.current_bootstrap_state.is_bootstrapped()
+                            //         {
+                            //             let peer_id = peer.peer_id.clone();
+                            //             if let Err(e) = self.resolve_is_bootstrapped(
+                            //                 &PeerBranchSynchronizationDone::new(
+                            //                     peer_id,
+                            //                     remote_head.level(),
+                            //                 ),
+                            //                 &log,
+                            //             ) {
+                            //                 warn!(log, "Failed to resolve is_bootstrapped for chain manager (current_branch)"; "reason" => format!("{:?}", e));
+                            //             }
+                            //         }
+                            //     } else {
+                            //         let message_current_head = BlockHeaderWithHash::new(
+                            //             message.current_branch().current_head().clone(),
+                            //         )?;
 
-                                    // update remote heads
-                                    remote_current_head_state
-                                        .update_remote_head(&message_current_head);
+                            //         // update remote heads
+                            //         remote_current_head_state
+                            //             .update_remote_head(&message_current_head);
 
-                                    // schedule to download missing branch blocks
-                                    chain_state.schedule_history_bootstrap(
-                                        &ctx.system,
-                                        &ctx.myself,
-                                        peer,
-                                        &message_current_head,
-                                        message.current_branch().history().to_vec(),
-                                    )?;
-                                }
-                            }
+                            //         // schedule to download missing branch blocks
+                            //         chain_state.schedule_history_bootstrap(
+                            //             &ctx.system,
+                            //             &ctx.myself,
+                            //             peer,
+                            //             &message_current_head,
+                            //             message.current_branch().history().to_vec(),
+                            //         )?;
+                            //     }
+                            // }
                             PeerMessage::GetCurrentBranch(message) => {
                                 if chain_state.get_chain_id().as_ref() == &message.chain_id {
                                     let current_head_local = current_head_state.as_ref();
@@ -409,32 +409,32 @@ impl ChainManager {
                                     warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
                                 }
                             }
-                            PeerMessage::BlockHeader(message) => {
-                                let block_header_with_hash =
-                                    BlockHeaderWithHash::new(message.block_header().clone())?;
+                            // PeerMessage::BlockHeader(message) => {
+                            //     let block_header_with_hash =
+                            //         BlockHeaderWithHash::new(message.block_header().clone())?;
 
-                                // check, if we requested data from this peer
-                                if let Some(requested_data) =
-                                    chain_state.requester().block_header_received(
-                                        &block_header_with_hash.hash,
-                                        peer,
-                                        &log,
-                                    )?
-                                {
-                                    // now handle received header
-                                    let _ = Self::process_downloaded_header(
-                                        &block_header_with_hash,
-                                        stats,
-                                        chain_state,
-                                        shell_channel,
-                                        &log,
-                                        &peer.peer_id,
-                                    )?;
+                            //     // check, if we requested data from this peer
+                            //     if let Some(requested_data) =
+                            //         chain_state.requester().block_header_received(
+                            //             &block_header_with_hash.hash,
+                            //             peer,
+                            //             &log,
+                            //         )?
+                            //     {
+                            //         // now handle received header
+                            //         let _ = Self::process_downloaded_header(
+                            //             &block_header_with_hash,
+                            //             stats,
+                            //             chain_state,
+                            //             shell_channel,
+                            //             &log,
+                            //             &peer.peer_id,
+                            //         )?;
 
-                                    // not needed, just to be explicit
-                                    drop(requested_data);
-                                }
-                            }
+                            //         // not needed, just to be explicit
+                            //         drop(requested_data);
+                            //     }
+                            // }
                             PeerMessage::GetBlockHeaders(_) => {
                                 // redirect to p2p reader
                                 self.p2p_reader_sender.lock().map_err(|e| format_err!("Failed to send GetBlockHeaders request to p2p reader, reason: {}", e))?.send(
@@ -454,199 +454,206 @@ impl ChainManager {
                             PeerMessage::GetCurrentHead(_) => {
                                 return Ok(());
                             }
-                            PeerMessage::OperationsForBlocks(operations) => {
-                                if let Some(requested_data) =
-                                    chain_state.requester().block_operations_received(
-                                        operations.operations_for_block(),
-                                        peer,
-                                        &log,
-                                    )?
-                                {
-                                    // update stats
-                                    stats.unseen_block_operations_last = Instant::now();
+                            // PeerMessage::OperationsForBlocks(operations) => {
+                            //     if let Some(requested_data) =
+                            //         chain_state.requester().block_operations_received(
+                            //             operations.operations_for_block(),
+                            //             peer,
+                            //             &log,
+                            //         )?
+                            //     {
+                            //         // update stats
+                            //         stats.unseen_block_operations_last = Instant::now();
 
-                                    // update operations state
-                                    let block_hash = operations.operations_for_block().hash();
-                                    if chain_state.process_block_operations_from_peer(
-                                        block_hash.clone(),
-                                        operations,
-                                        &peer.peer_id,
-                                    )? {
-                                        stats.unseen_block_operations_count += 1;
+                            //         // update operations state
+                            //         let block_hash = operations.operations_for_block().hash();
+                            //         if chain_state.process_block_operations_from_peer(
+                            //             block_hash.clone(),
+                            //             operations,
+                            //             &peer.peer_id,
+                            //         )? {
+                            //             stats.unseen_block_operations_count += 1;
 
-                                        // TODO: TE-369 - is this necessery?
-                                        // notify others that new all operations for block were received
-                                        let block_meta = block_meta_storage
-                                            .get(block_hash)?
-                                            .ok_or_else(|| StorageError::MissingKey {
-                                                when: "Processing PeerMessage::OperationsForBlocks"
-                                                    .into(),
-                                            })?;
+                            //             // TODO: TE-369 - is this necessery?
+                            //             // notify others that new all operations for block were received
+                            //             let block_meta = block_meta_storage
+                            //                 .get(block_hash)?
+                            //                 .ok_or_else(|| StorageError::MissingKey {
+                            //                     when: "Processing PeerMessage::OperationsForBlocks"
+                            //                         .into(),
+                            //                 })?;
 
-                                        // notify others that new all operations for block were received
-                                        shell_channel.tell(
-                                            Publish {
-                                                msg: AllBlockOperationsReceived {
-                                                    level: block_meta.level(),
-                                                }
-                                                .into(),
-                                                topic: ShellChannelTopic::ShellEvents.into(),
-                                            },
-                                            None,
-                                        );
-                                    }
+                            //             // notify others that new all operations for block were received
+                            //             shell_channel.tell(
+                            //                 Publish {
+                            //                     msg: AllBlockOperationsReceived {
+                            //                         level: block_meta.level(),
+                            //                     }
+                            //                     .into(),
+                            //                     topic: ShellChannelTopic::ShellEvents.into(),
+                            //                 },
+                            //                 None,
+                            //             );
+                            //         }
 
-                                    // not needed, just to be explicit
-                                    drop(requested_data);
-                                }
-                            }
-                            PeerMessage::CurrentHead(message) => {
-                                peer.current_head_response_last = Instant::now();
+                            //         // not needed, just to be explicit
+                            //         drop(requested_data);
+                            //     }
+                            // }
+                            // PeerMessage::CurrentHead(message) => {
+                            //     peer.current_head_response_last = Instant::now();
 
-                                // process current head only if we are bootstrapped
-                                if self.current_bootstrap_state.is_bootstrapped() {
-                                    if reused_protocol_runner_connection.is_none() {
-                                        self.reused_protocol_runner_connection = Some(
-                                            self.tezos_protocol_api.readable_connection_sync()?,
-                                        );
-                                    }
+                            //     // process current head only if we are bootstrapped
+                            //     if self.current_bootstrap_state.is_bootstrapped() {
+                            //         if reused_protocol_runner_connection.is_none() {
+                            //             self.reused_protocol_runner_connection = Some(
+                            //                 self.tezos_protocol_api.readable_connection_sync()?,
+                            //             );
+                            //         }
 
-                                    // Was just assigned, unwrap() cannot fail
-                                    let connection =
-                                        self.reused_protocol_runner_connection.as_mut().unwrap();
+                            //         // Was just assigned, unwrap() cannot fail
+                            //         let connection =
+                            //             self.reused_protocol_runner_connection.as_mut().unwrap();
 
-                                    // check if we can accept head
-                                    match chain_state.can_accept_head(
-                                        message,
-                                        &current_head_state,
-                                        connection,
-                                    )? {
-                                        BlockAcceptanceResult::AcceptBlock(
-                                            same_as_current_head,
-                                        ) => {
-                                            // update peer remote head
-                                            peer.update_current_head_level(
-                                                message.current_block_header().level(),
-                                            );
+                            //         // check if we can accept head
+                            //         match chain_state.can_accept_head(
+                            //             message,
+                            //             &current_head_state,
+                            //             connection,
+                            //         )? {
+                            //             BlockAcceptanceResult::AcceptBlock(
+                            //                 same_as_current_head,
+                            //             ) => {
+                            //                 // update peer remote head
+                            //                 peer.update_current_head_level(
+                            //                     message.current_block_header().level(),
+                            //                 );
 
-                                            // if not the same as current head, we need to download and apply it
-                                            if !same_as_current_head {
-                                                let message_current_head =
-                                                    BlockHeaderWithHash::new(
-                                                        message.current_block_header().clone(),
-                                                    )?;
+                            //                 // if not the same as current head, we need to download and apply it
+                            //                 if !same_as_current_head {
+                            //                     let message_current_head =
+                            //                         BlockHeaderWithHash::new(
+                            //                             message.current_block_header().clone(),
+                            //                         )?;
 
-                                                // update best remote head
-                                                remote_current_head_state
-                                                    .update_remote_head(&message_current_head);
+                            //                     // update best remote head
+                            //                     remote_current_head_state
+                            //                         .update_remote_head(&message_current_head);
 
-                                                // process downloaded block directly
-                                                let is_applied = Self::process_downloaded_header(
-                                                    &message_current_head,
-                                                    stats,
-                                                    chain_state,
-                                                    shell_channel,
-                                                    &log,
-                                                    &peer.peer_id,
-                                                )?;
+                            //                     // process downloaded block directly
+                            //                     let is_applied = Self::process_downloaded_header(
+                            //                         &message_current_head,
+                            //                         stats,
+                            //                         chain_state,
+                            //                         shell_channel,
+                            //                         &log,
+                            //                         &peer.peer_id,
+                            //                     )?;
 
-                                                if !is_applied {
-                                                    // here we accept head, which also means that we know predecessor
-                                                    // so we can schedule to download diff (last_applied_block .. current_head)
-                                                    let mut history = Vec::with_capacity(2);
-                                                    history.push(
-                                                        current_head_state
-                                                            .as_ref()
-                                                            .block_hash()
-                                                            .clone(),
-                                                    );
+                            //                     if !is_applied {
+                            //                         // here we accept head, which also means that we know predecessor
+                            //                         // so we can schedule to download diff (last_applied_block .. current_head)
+                            //                         let mut history = Vec::with_capacity(2);
+                            //                         history.push(
+                            //                             current_head_state
+                            //                                 .as_ref()
+                            //                                 .block_hash()
+                            //                                 .clone(),
+                            //                         );
 
-                                                    // this schedule, ensure to download all operations from this peer (if not already)
-                                                    chain_state.schedule_history_bootstrap(
-                                                        &ctx.system,
-                                                        &ctx.myself,
-                                                        peer,
-                                                        &message_current_head,
-                                                        history,
-                                                    )?;
-                                                }
-                                            }
-                                        }
-                                        BlockAcceptanceResult::IgnoreBlock => {
-                                            // doing nothing
-                                        }
-                                        BlockAcceptanceResult::UnknownBranch => {
-                                            // ask current_branch from peer
-                                            tell_peer(
-                                                &shell_automaton,
-                                                &peer.peer_id,
-                                                GetCurrentBranchMessage::new(
-                                                    message.chain_id().clone(),
-                                                )
-                                                .into(),
-                                                &log,
-                                            );
-                                        }
-                                        BlockAcceptanceResult::MutlipassValidationError(error) => {
-                                            warn!(log, "Mutlipass validation error detected - blacklisting peer";
-                                                       "message_head_level" => message.current_block_header().level(),
-                                                       "message_head_proto" => message.current_block_header().proto(),
-                                                       "reason" => &error);
+                            //                         // this schedule, ensure to download all operations from this peer (if not already)
+                            //                         chain_state.schedule_history_bootstrap(
+                            //                             &ctx.system,
+                            //                             &ctx.myself,
+                            //                             peer,
+                            //                             &message_current_head,
+                            //                             history,
+                            //                         )?;
+                            //                     }
+                            //                 }
+                            //             }
+                            //             BlockAcceptanceResult::IgnoreBlock => {
+                            //                 // doing nothing
+                            //             }
+                            //             BlockAcceptanceResult::UnknownBranch => {
+                            //                 // ask current_branch from peer
+                            //                 tell_peer(
+                            //                     &shell_automaton,
+                            //                     &peer.peer_id,
+                            //                     GetCurrentBranchMessage::new(
+                            //                         message.chain_id().clone(),
+                            //                     )
+                            //                     .into(),
+                            //                     &log,
+                            //                 );
+                            //             }
+                            //             BlockAcceptanceResult::MutlipassValidationError(error) => {
+                            //                 warn!(log, "Mutlipass validation error detected - blacklisting peer";
+                            //                            "message_head_level" => message.current_block_header().level(),
+                            //                            "message_head_proto" => message.current_block_header().proto(),
+                            //                            "reason" => &error);
 
-                                            // clear peer stuff immediatelly
-                                            peer.clear();
+                            //                 // clear peer stuff immediatelly
+                            //                 peer.clear();
 
-                                            // blacklist peer
-                                            shell_automaton.send(ShellAutomatonMsg::BlacklistPeer(
-                                                peer.peer_id.clone(),
-                                                format!("{:?}", error),
-                                            )).map_err(|e| format_err!("Failed to send message to shell_automaton for blacklist peer, reason: {}", e))?;
-                                        }
-                                    };
-                                } else {
-                                    // if not bootstraped, check if increasing
-                                    let was_updated = peer.update_current_head_level(
-                                        message.current_block_header().level(),
-                                    );
+                            //                 // blacklist peer
+                            //                 shell_automaton.send(ShellAutomatonMsg::BlacklistPeer(
+                            //                     peer.peer_id.clone(),
+                            //                     format!("{:?}", error),
+                            //                 )).map_err(|e| format_err!("Failed to send message to shell_automaton for blacklist peer, reason: {}", e))?;
+                            //             }
+                            //         };
+                            //     } else {
+                            //         // if not bootstraped, check if increasing
+                            //         let was_updated = peer.update_current_head_level(
+                            //             message.current_block_header().level(),
+                            //         );
 
-                                    // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
-                                    if was_updated {
-                                        let message_current_head = BlockHeaderWithHash::new(
-                                            message.current_block_header().clone(),
-                                        )?;
+                            //         // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
+                            //         if was_updated {
+                            //             let message_current_head = BlockHeaderWithHash::new(
+                            //                 message.current_block_header().clone(),
+                            //             )?;
 
-                                        remote_current_head_state
-                                            .update_remote_head(&message_current_head);
+                            //             remote_current_head_state
+                            //                 .update_remote_head(&message_current_head);
 
-                                        match chain_state.peer_branch_bootstrapper() {
-                                            Some(peer_branch_bootstrapper) => {
-                                                // check if we started branch bootstrapper, try to update current_head to peer's pipelines
-                                                peer_branch_bootstrapper.tell(
-                                                    UpdateBranchBootstraping::new(
-                                                        peer.peer_id.clone(),
-                                                        message_current_head,
-                                                    ),
-                                                    None,
-                                                );
-                                            }
-                                            None => {
-                                                // if not started, we need to ask for CurrentBranch of peer
-                                                tell_peer(
-                                                    &shell_automaton,
-                                                    &peer.peer_id,
-                                                    GetCurrentBranchMessage::new(
-                                                        message.chain_id().clone(),
-                                                    )
-                                                    .into(),
-                                                    &log,
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            //             match chain_state.peer_branch_bootstrapper() {
+                            //                 Some(peer_branch_bootstrapper) => {
+                            //                     // check if we started branch bootstrapper, try to update current_head to peer's pipelines
+                            //                     peer_branch_bootstrapper.tell(
+                            //                         UpdateBranchBootstraping::new(
+                            //                             peer.peer_id.clone(),
+                            //                             message_current_head,
+                            //                         ),
+                            //                         None,
+                            //                     );
+                            //                 }
+                            //                 None => {
+                            //                     // if not started, we need to ask for CurrentBranch of peer
+                            //                     tell_peer(
+                            //                         &shell_automaton,
+                            //                         &peer.peer_id,
+                            //                         GetCurrentBranchMessage::new(
+                            //                             message.chain_id().clone(),
+                            //                         )
+                            //                         .into(),
+                            //                         &log,
+                            //                     );
+                            //                 }
+                            //             }
+                            //         }
+                            //     }
+                            // }
                             // Processed inside shell_automaton.
-                            PeerMessage::GetOperations(_) | PeerMessage::Operation(_) => {
+                            PeerMessage::Bootstrap
+                            | PeerMessage::Advertise(_)
+                            | PeerMessage::CurrentBranch(_)
+                            | PeerMessage::CurrentHead(_)
+                            | PeerMessage::BlockHeader(_)
+                            | PeerMessage::OperationsForBlocks(_)
+                            | PeerMessage::GetOperations(_)
+                            | PeerMessage::Operation(_) => {
                                 return Ok(());
                             }
                             ignored_message => {

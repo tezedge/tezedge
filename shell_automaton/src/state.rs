@@ -1,14 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::BlockHash;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::SchemaError;
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
+use crate::bootstrap::BootstrapState;
 use crate::config::Config;
 use crate::current_head::CurrentHeadState;
 use crate::current_head_precheck::CurrentHeads;
@@ -60,6 +62,7 @@ pub struct State {
     pub protocol_runner: ProtocolRunnerState,
     pub block_applier: BlockApplierState,
 
+    pub bootstrap: BootstrapState,
     pub mempool: MempoolState,
 
     pub prechecker: PrecheckerState,
@@ -96,6 +99,7 @@ impl State {
             peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
+            bootstrap: BootstrapState::new(),
             mempool: MempoolState::default(),
             rights: RightsState::default(),
             protocol_runner: ProtocolRunnerState::Idle,
@@ -210,6 +214,16 @@ impl State {
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
+    pub fn peer_public_key_hash(&self, peer: SocketAddr) -> Option<&CryptoboxPublicKeyHash> {
+        self.peers.get(&peer).and_then(|p| p.public_key_hash())
+    }
+
+    pub fn peer_public_key_hash_b58check(&self, peer: SocketAddr) -> Option<String> {
+        self.peers
+            .get(&peer)
+            .and_then(|p| p.public_key_hash_b58check())
     }
 
     /// Global bootstrap status is considered as bootstrapped, only if
