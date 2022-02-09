@@ -168,9 +168,6 @@ impl HashValueStore {
             &mut self.new_ids,
             ChunkedVec::with_chunk_capacity(512 * 1024),
         )
-        // let new_ids = self.new_ids;
-        // let new_ids = std::mem::take(&mut self.new_ids);
-        // self.new_ids = ChunkedVec::with_chunk_capacity(512 * 1024);
     }
 }
 
@@ -412,6 +409,7 @@ impl InMemory {
         })
     }
 
+    /// Reload context from disk
     fn reload_database(&mut self) -> Result<(), ReloadError> {
         let (tree, parent_hash, commit) = {
             let mut ondisk = Persistent::try_new(PersistentConfiguration {
@@ -574,7 +572,6 @@ impl InMemory {
                 &mut self.current_cycle,
                 ChunkedVec::with_chunk_capacity(512 * 1024),
             );
-            // let values_in_cycle = std::mem::take(&mut self.current_cycle);
             let new_ids = self.hashes.take_new_ids();
 
             if let Err(e) = sender.try_send(Command::StartNewCycle {

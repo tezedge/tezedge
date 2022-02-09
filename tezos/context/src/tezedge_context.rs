@@ -1126,7 +1126,7 @@ impl TezedgeContext {
 
         let mem = self.get_memory_usage()?;
 
-        println!("MEMORY_USAGE={:#?}", mem);
+        // println!("MEMORY_USAGE={:#?}", mem);
 
         send_statistics(BlockMemoryUsage {
             context: Box::new(mem),
