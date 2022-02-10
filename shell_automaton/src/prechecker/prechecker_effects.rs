@@ -140,14 +140,36 @@ where
                 let endorsement_level = operation_decoded_contents.endorsement_level();
                 let block = operation_decoded_contents.branch().clone();
                 let operation_decoded_contents = operation_decoded_contents.clone();
+                let disable_block_precheck = store.state().config.disable_block_precheck;
+                let disable_endorsements_precheck =
+                    store.state().config.disable_endorsements_precheck;
 
                 store.dispatch(MempoolOperationDecodedAction {
                     operation: key.operation.clone(),
                     operation_decoded_contents,
                 });
 
-                if !is_endorsement {
+                if disable_endorsements_precheck || !is_endorsement {
                     store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
+                } else if disable_block_precheck {
+                    match &store.state().block_applier.current {
+                        BlockApplierApplyState::Success {
+                            block: current_block,
+                            ..
+                        } => {
+                            if &current_block.hash == &block {
+                                store.dispatch(PrecheckerGetEndorsingRightsAction {
+                                    key: key.clone(),
+                                });
+                            } else if Some(current_block.header.level() + 1) == endorsement_level {
+                                store.dispatch(PrecheckerWaitForBlockAppliedAction {
+                                    key: key.clone(),
+                                    branch: block,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
                 } else if store.state.get().current_heads.current_level() == endorsement_level {
                     store.dispatch(PrecheckerWaitForBlockPrecheckedAction {
                         key: key.clone(),

@@ -379,6 +379,18 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("disable-mempool")
             .global(true)
             .help("Enable or disable mempool"))
+        .arg(Arg::with_name("disable-block-precheck")
+            .long("disable-block-precheck")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable blocks prechecking"))
+        .arg(Arg::with_name("disable-endorsements-precheck")
+            .long("disable-endorsements-precheck")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable prechecking of endorsements"))
         .arg(Arg::with_name("disable-peer-graylist")
             .long("disable-peer-graylist")
             .global(true)
@@ -1062,6 +1074,16 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
+                disable_block_precheck: args.value_of("disable-block-precheck").map_or(true, |s| {
+                    s.parse()
+                        .expect("Boolean value expected for disable-block-precheck")
+                }),
+                disable_endorsements_precheck: args
+                    .value_of("disable-endorsements-precheck")
+                    .map_or(false, |s| {
+                        s.parse()
+                            .expect("Boolean value expected for disable-endorsements-precheck")
+                    }),
                 randomness_seed: args.value_of("randomness-seed").map(|s| {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")

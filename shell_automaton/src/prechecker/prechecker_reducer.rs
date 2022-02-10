@@ -120,15 +120,18 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             prechecker_state
                 .operations
                 .entry(key.clone())
-                .and_modify(|state| {
-                    if let PrecheckerOperationState::PendingBlockPrechecked {
+                .and_modify(|state| match &state.state {
+                    PrecheckerOperationState::DecodedContentReady {
                         operation_decoded_contents,
-                    } = &state.state
-                    {
+                    }
+                    | PrecheckerOperationState::PendingBlockPrechecked {
+                        operation_decoded_contents,
+                    } => {
                         state.state = PrecheckerOperationState::PendingBlockApplied {
                             operation_decoded_contents: operation_decoded_contents.clone(),
                         };
                     }
+                    _ => (),
                 });
         }
         Action::PrecheckerBlockApplied(PrecheckerBlockAppliedAction { key }) => {
@@ -151,7 +154,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .operations
                 .entry(key.clone())
                 .and_modify(|state| match &state.state {
-                    PrecheckerOperationState::BlockPrecheckedReady {
+                    PrecheckerOperationState::DecodedContentReady {
+                        operation_decoded_contents,
+                    }
+                    | PrecheckerOperationState::BlockPrecheckedReady {
                         operation_decoded_contents,
                     }
                     | PrecheckerOperationState::BlockAppliedReady {

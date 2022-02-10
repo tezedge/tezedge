@@ -107,6 +107,9 @@ pub struct Config {
     pub record_actions: bool,
 
     pub quota: Quota,
+
+    pub disable_block_precheck: bool,
+    pub disable_endorsements_precheck: bool,
 }
 
 impl Config {
@@ -203,5 +206,8 @@ pub fn default_test_config() -> Config {
             read_quota: 1024,
             write_quota: 1024,
         },
+
+        disable_endorsements_precheck: false,
+        disable_block_precheck: false,
     }
 }
