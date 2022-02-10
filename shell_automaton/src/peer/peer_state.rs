@@ -15,6 +15,7 @@ use super::disconnection::PeerDisconnecting;
 use super::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use super::message::read::PeerMessageReadState;
 use super::message::write::PeerMessageWriteState;
+use super::remote_requests::PeerRemoteRequestsState;
 use super::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,6 +31,8 @@ pub struct PeerHandshaked {
 
     pub message_read: PeerMessageReadState,
     pub message_write: PeerMessageWriteState,
+
+    pub remote_requests: PeerRemoteRequestsState,
 
     /// Level of the current head received from peer.
     pub current_head_level: Option<i32>,

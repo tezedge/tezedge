@@ -141,6 +141,7 @@ macro_rules! kv_effects {
             match &action.action {
                 Action::$get($get_action { key }) => store.dispatch(StorageRequestCreateAction {
                     payload: StorageRequestPayload::$request(key.clone()),
+                    requestor: StorageRequestor::None,
                 }),
                 Action::StorageRequestSuccess(StorageRequestSuccessAction {
                     result: StorageResponseSuccess::$success(key, Some(value)),

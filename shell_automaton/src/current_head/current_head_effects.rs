@@ -5,7 +5,7 @@ use crate::bootstrap::BootstrapInitAction;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
-use crate::storage::request::StorageRequestCreateAction;
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -22,6 +22,7 @@ where
             let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::CurrentHeadGet(chain_id),
+                requestor: StorageRequestor::None,
             });
             let storage_req_id = store.state().storage.requests.last_added_req_id();
             store.dispatch(CurrentHeadRehydratePendingAction { storage_req_id });

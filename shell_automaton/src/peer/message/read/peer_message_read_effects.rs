@@ -17,6 +17,7 @@ use crate::bootstrap::{
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
 use crate::peer::message::read::PeerMessageReadErrorAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
+use crate::peer::remote_requests::block_header_get::PeerRemoteRequestsBlockHeaderGetEnqueueAction;
 use crate::peer::Peer;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
@@ -177,15 +178,30 @@ where
                         });
                     }
                 }
+                PeerMessage::GetBlockHeaders(msg) => {
+                    for block_hash in msg.get_block_headers() {
+                        if !store.dispatch(PeerRemoteRequestsBlockHeaderGetEnqueueAction {
+                            address: action.address,
+                            block_hash: block_hash.clone(),
+                        }) {
+                            let state = store.state.get();
+                            slog::warn!(&state.log, "Peer - Too many block header requests!";
+                                "peer" => format!("{}", action.address),
+                                "current_requested_block_headers_len" => msg.get_block_headers().len());
+                            break;
+                        }
+                    }
+                }
                 PeerMessage::BlockHeader(msg) => {
                     let state = store.state.get();
                     let block = match BlockHeaderWithHash::new(msg.block_header().clone()) {
                         Ok(v) => v,
                         Err(err) => {
                             slog::warn!(&state.log, "Failed to hash BlockHeader";
-                                "peer" => format!("{}", content.address),
-                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
-                                "block_header" => format!("{:?}", msg.block_header()));
+                                "peer" => format!("{}", action.address),
+                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(action.address)),
+                                "block_header" => format!("{:?}", msg.block_header()),
+                                "error" => format!("{:?}", err));
                             store.dispatch(PeersGraylistAddressAction {
                                 address: content.address,
                             });

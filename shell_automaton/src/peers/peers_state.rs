@@ -68,8 +68,22 @@ impl PeersState {
     }
 
     #[inline(always)]
+    pub fn get_handshaked(&self, address: &SocketAddr) -> Option<&PeerHandshaked> {
+        self.list
+            .get(address)
+            .and_then(|p| p.status.as_handshaked())
+    }
+
+    #[inline(always)]
     pub fn get_mut(&mut self, address: &SocketAddr) -> Option<&mut Peer> {
         self.list.get_mut(address)
+    }
+
+    #[inline(always)]
+    pub fn get_handshaked_mut(&mut self, address: &SocketAddr) -> Option<&mut PeerHandshaked> {
+        self.list
+            .get_mut(address)
+            .and_then(|p| p.status.as_handshaked_mut())
     }
 
     #[inline(always)]

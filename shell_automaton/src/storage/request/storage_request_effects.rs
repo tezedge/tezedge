@@ -13,7 +13,7 @@ use crate::{ActionWithMeta, Store};
 use super::{
     StorageRequestErrorAction, StorageRequestFinishAction, StorageRequestInitAction,
     StorageRequestPendingAction, StorageRequestStatus, StorageRequestSuccessAction,
-    StorageResponseReceivedAction,
+    StorageRequestor, StorageResponseReceivedAction,
 };
 
 pub fn storage_request_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -51,7 +51,15 @@ where
         Action::WakeupEvent(_) => {
             // TODO: handle disconnected error.
             while let Ok(response) = store.service.storage().response_try_recv() {
-                store.dispatch(StorageResponseReceivedAction { response });
+                let requestor = response
+                    .req_id
+                    .and_then(|req_id| store.state().storage.requests.get(req_id))
+                    .map(|req| req.requestor.clone())
+                    .unwrap_or(StorageRequestor::None);
+                store.dispatch(StorageResponseReceivedAction {
+                    response,
+                    requestor,
+                });
             }
         }
         Action::StorageResponseReceived(action) => {

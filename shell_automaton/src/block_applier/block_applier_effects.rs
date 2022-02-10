@@ -9,7 +9,7 @@ use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
 use crate::service::{ActorsService, ProtocolRunnerService};
-use crate::storage::request::StorageRequestCreateAction;
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -36,6 +36,7 @@ where
                     chain_id: content.chain_id.clone(),
                     block_hash: content.block_hash.clone(),
                 },
+                requestor: StorageRequestor::BlockApplier,
             });
 
             let req_id = store.state().storage.requests.last_added_req_id();
@@ -148,6 +149,7 @@ where
                     block_metadata,
                     block_result,
                 },
+                requestor: StorageRequestor::BlockApplier,
             });
 
             let req_id = store.state().storage.requests.last_added_req_id();

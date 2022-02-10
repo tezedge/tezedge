@@ -39,6 +39,7 @@ use crate::peer::handshaking::peer_handshaking_effects;
 use crate::peer::message::read::peer_message_read_effects;
 use crate::peer::message::write::peer_message_write_effects;
 use crate::peer::peer_effects;
+use crate::peer::remote_requests::block_header_get::peer_remote_requests_block_header_get_effects;
 
 use crate::peers::add::multi::peers_add_multi_effects;
 use crate::peers::check::timeouts::peers_check_timeouts_effects;
@@ -147,6 +148,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     peer_chunk_read_effects(store, action);
 
     peer_handshaking_effects(store, action);
+
+    peer_remote_requests_block_header_get_effects(store, action);
 
     peers_init_effects(store, action);
     peers_dns_lookup_effects(store, action);
