@@ -4,7 +4,10 @@ use std::io;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::paused_loops::{PausedLoop, PausedLoopsAddAction};
+use crate::request::RequestId;
+use crate::service::storage_service::{StorageResponseError, StorageResponseSuccess};
 use crate::service::{MioService, Service};
+use crate::storage::request::StorageRequestor;
 use crate::{Action, ActionWithMeta, Store};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
@@ -25,6 +28,9 @@ use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnectAction;
 use super::handshaking::PeerHandshakingStatus;
 use super::message::read::PeerMessageReadState;
+use super::remote_requests::block_header_get::{
+    PeerRemoteRequestsBlockHeaderGetErrorAction, PeerRemoteRequestsBlockHeaderGetSuccessAction,
+};
 use super::{
     PeerHandshaked, PeerIOLoopResult, PeerStatus, PeerTryReadLoopFinishAction,
     PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -334,6 +340,67 @@ where
             }
             _ => {}
         },
+        Action::StorageResponseReceived(content) => {
+            let address = match &content.requestor {
+                StorageRequestor::Peer(address) => *address,
+                _ => return,
+            };
+            let state = store.state.get();
+            let peer = match state.peers.get_handshaked(&address) {
+                Some(v) => v,
+                None => {
+                    slog::debug!(&state.log, "Peer not found for storage response";
+                        "address" => address.to_string(),
+                        "response" => format!("{:?}", content.response));
+                    return;
+                }
+            };
+
+            let req_id = content.response.req_id;
+            let req_id_matches = |expected_req_id: Option<RequestId>| {
+                let result = expected_req_id
+                    .and_then(|expected_id| req_id.map(|id| id == expected_id))
+                    .unwrap_or(false);
+                if result {
+                    slog::debug!(&state.log, "Unexpected storage response for peer";
+                        "address" => address.to_string(),
+                        "response" => format!("{:?}", content.response));
+                }
+                result
+            };
+
+            match &content.response.result {
+                Ok(StorageResponseSuccess::BlockHeaderGetSuccess(_, header)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_header_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockHeaderGetSuccessAction {
+                        address,
+                        block_header: header.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockHeaderGetError(_, error)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_header_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockHeaderGetErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
         _ => {}
     }
 }

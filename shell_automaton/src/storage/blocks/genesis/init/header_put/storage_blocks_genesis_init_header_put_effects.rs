@@ -10,7 +10,7 @@ use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
-use crate::storage::request::StorageRequestCreateAction;
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -46,6 +46,7 @@ pub fn storage_blocks_genesis_init_header_put_effects<S>(
             };
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHeaderPut(chain_id, block_header_with_hash),
+                requestor: StorageRequestor::None,
             });
             store.dispatch(StorageBlocksGenesisInitHeaderPutPendingAction {});
         }

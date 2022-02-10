@@ -15,7 +15,7 @@ use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::service::storage_service::StorageRequestPayload;
-use crate::storage::request::StorageRequestCreateAction;
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -120,6 +120,7 @@ where
             let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHeaderPut(chain_id, content.block.clone()),
+                requestor: StorageRequestor::Bootstrap,
             });
 
             let next_block = store
@@ -189,6 +190,7 @@ where
             for operations in operations_list.clone() {
                 store.dispatch(StorageRequestCreateAction {
                     payload: StorageRequestPayload::BlockOperationsPut(operations),
+                    requestor: StorageRequestor::Bootstrap,
                 });
             }
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});

@@ -435,14 +435,6 @@ impl ChainManager {
                             //         drop(requested_data);
                             //     }
                             // }
-                            PeerMessage::GetBlockHeaders(_) => {
-                                // redirect to p2p reader
-                                self.p2p_reader_sender.lock().map_err(|e| format_err!("Failed to send GetBlockHeaders request to p2p reader, reason: {}", e))?.send(
-                                    P2pReaderEvent::SendDataResponse(
-                                        peer.peer_id.clone(),
-                                        received.message.clone(),
-                                    ))?;
-                            }
                             PeerMessage::GetOperationsForBlocks(_) => {
                                 // redirect to p2p reader
                                 self.p2p_reader_sender.lock().map_err(|e| format_err!("Failed to send GetOperationsForBlocks request to p2p reader, reason: {}", e))?.send(
@@ -1666,19 +1658,6 @@ fn spawn_p2p_reader_thread(
                             }
                             P2pReaderEvent::SendDataResponse(peer, request) => {
                                 match request.message() {
-                                    PeerMessage::GetBlockHeaders(message) => {
-                                        for block_hash in message.get_block_headers() {
-                                            match block_storage.get(block_hash) {
-                                                Ok(Some(block)) => {
-                                                    let msg: BlockHeaderMessage =
-                                                        (*block.header).clone().into();
-                                                    tell_peer(&shell_automaton, &peer, msg.into(), &log);
-                                                }
-                                                Ok(None) => (),
-                                                Err(e) => warn!(log, "Failed to read block header"; "reason" => e, "block_hash" => block_hash.to_base58_check()),
-                                            }
-                                        }
-                                    }
                                     PeerMessage::GetOperationsForBlocks(message) =>{
                                         for get_op in message.get_operations_for_blocks() {
                                             if get_op.validation_pass() < 0 {

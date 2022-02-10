@@ -11,6 +11,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
             state.storage.requests.add(StorageRequestState {
                 status: StorageRequestStatus::Idle,
                 payload: action.payload.clone(),
+                requestor: action.requestor.clone(),
             });
         }
         Action::StorageRequestPending(action) => {

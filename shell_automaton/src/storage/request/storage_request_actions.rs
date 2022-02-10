@@ -9,9 +9,12 @@ use crate::service::storage_service::{
 };
 use crate::{EnablingCondition, State};
 
+use super::StorageRequestor;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequestCreateAction {
     pub payload: StorageRequestPayload,
+    pub requestor: StorageRequestor,
 }
 
 impl EnablingCondition<State> for StorageRequestCreateAction {
@@ -48,6 +51,7 @@ impl EnablingCondition<State> for StorageRequestPendingAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageResponseReceivedAction {
     pub response: StorageResponse,
+    pub requestor: StorageRequestor,
 }
 
 impl EnablingCondition<State> for StorageResponseReceivedAction {
