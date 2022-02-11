@@ -178,15 +178,15 @@ where
                         return;
                     }
                     if !store.dispatch(PeerRemoteRequestsCurrentBranchGetInitAction {
-                        address: action.address,
+                        address: content.address,
                     }) {
                         let state = store.state();
                         let current = state
                             .peers
-                            .get_handshaked(&action.address)
+                            .get_handshaked(&content.address)
                             .map(|p| &p.remote_requests.current_branch_get);
                         slog::debug!(&state.log, "Peer - Too many GetCurrentBranch requests!";
-                                    "peer" => format!("{}", action.address),
+                                    "peer" => format!("{}", content.address),
                                     "current" => format!("{:?}", current));
                     }
                 }
@@ -201,12 +201,12 @@ where
                 PeerMessage::GetBlockHeaders(msg) => {
                     for block_hash in msg.get_block_headers() {
                         if !store.dispatch(PeerRemoteRequestsBlockHeaderGetEnqueueAction {
-                            address: action.address,
+                            address: content.address,
                             block_hash: block_hash.clone(),
                         }) {
                             let state = store.state.get();
                             slog::debug!(&state.log, "Peer - Too many block header requests!";
-                                "peer" => format!("{}", action.address),
+                                "peer" => format!("{}", content.address),
                                 "current_requested_block_headers_len" => msg.get_block_headers().len());
                             break;
                         }
@@ -215,12 +215,12 @@ where
                 PeerMessage::GetOperationsForBlocks(msg) => {
                     for key in msg.get_operations_for_blocks() {
                         if !store.dispatch(PeerRemoteRequestsBlockOperationsGetEnqueueAction {
-                            address: action.address,
+                            address: content.address,
                             key: key.into(),
                         }) {
                             let state = store.state.get();
                             slog::debug!(&state.log, "Peer - Too many block operations requests!";
-                                "peer" => format!("{}", action.address),
+                                "peer" => format!("{}", content.address),
                                 "current_requested_block_operations_len" => msg.get_operations_for_blocks().len());
                             break;
                         }
@@ -232,8 +232,8 @@ where
                         Ok(v) => v,
                         Err(err) => {
                             slog::warn!(&state.log, "Failed to hash BlockHeader";
-                                "peer" => format!("{}", action.address),
-                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(action.address)),
+                                "peer" => format!("{}", content.address),
+                                "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
                                 "block_header" => format!("{:?}", msg.block_header()),
                                 "error" => format!("{:?}", err));
                             store.dispatch(PeersGraylistAddressAction {

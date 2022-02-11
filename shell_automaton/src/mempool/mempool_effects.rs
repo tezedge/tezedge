@@ -243,20 +243,20 @@ where
             }
         }
         Action::BlockApplierApplySuccess(_) => {
-            let (chain_id, block, apply_result) = match &store.state().block_applier.current {
+            let chain_id = store.state().config.chain_id.clone();
+            let (block, apply_result) = match &store.state().block_applier.current {
                 BlockApplierApplyState::Success {
-                    chain_id,
                     block,
                     apply_result,
                     ..
-                } => (chain_id, block, apply_result),
+                } => (block, apply_result),
                 _ => return,
             };
 
             if let Some(local_head_state) = store.state().mempool.local_head_state.as_ref() {
                 if local_head_state.hash != block.hash {
                     let req = BeginConstructionRequest {
-                        chain_id: (**chain_id).clone(),
+                        chain_id: chain_id.clone(),
                         predecessor: local_head_state.header.clone(),
                         protocol_data: None,
                         predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
@@ -272,7 +272,7 @@ where
 
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
-                    chain_id: (**chain_id).clone(),
+                    chain_id,
                     predecessor: (*block.header).clone(),
                     protocol_data: None,
                     predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),

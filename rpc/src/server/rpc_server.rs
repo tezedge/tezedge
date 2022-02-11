@@ -41,7 +41,6 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn new(
         log: Logger,
-        shell_connector: ShellConnectorRef,
         shell_automaton_channel: RpcShellAutomatonSender,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
@@ -61,7 +60,6 @@ impl RpcServer {
 
         let env = Arc::new(RpcServiceEnvironment::new(
             Arc::new(tokio_executor),
-            shell_connector,
             shell_automaton_channel,
             tezos_env,
             network_version,

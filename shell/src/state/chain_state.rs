@@ -512,34 +512,6 @@ impl BlockchainState {
         Ok((is_new_block, block_metadata.is_applied()))
     }
 
-    /// Process block_header, stores/updates storages, schedules missing stuff
-    ///
-    /// Returns:
-    /// [metadata] - block header metadata
-    /// [is_new_block] - if it is a new block or previosly stored
-    /// [are_operations_complete] - if operations are completed
-    ///
-    pub fn process_injected_block_header(
-        &mut self,
-        chain_id: &ChainId,
-        block_header: &BlockHeaderWithHash,
-        log: &Logger,
-    ) -> Result<(Meta, bool, bool), StorageError> {
-        // store block
-        let is_new_block = self.block_storage.put_block_header(block_header)?;
-
-        // update block metadata
-        let metadata = self
-            .block_meta_storage
-            .put_block_header(block_header, chain_id, log)?;
-
-        // update operations metadata
-        let are_operations_complete =
-            self.process_injected_block_header_operations(block_header)?;
-
-        Ok((metadata, is_new_block, are_operations_complete))
-    }
-
     /// Process block header. This will create record in meta storage with
     /// unseen operations for the block header.
     ///
@@ -558,79 +530,6 @@ impl BlockchainState {
             Some(meta) => Ok((meta.is_complete(), meta.get_missing_validation_passes())),
             None => self.operations_meta_storage.put_block_header(block_header),
         }
-    }
-
-    /// Process injected block header. This will create record in meta storage.
-    /// As the the header is injected via RPC, the operations are as well, so we
-    /// won't mark its operations as missing
-    ///
-    /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
-    fn process_injected_block_header_operations(
-        &mut self,
-        block_header: &BlockHeaderWithHash,
-    ) -> Result<bool, StorageError> {
-        match self.operations_meta_storage.get(&block_header.hash)? {
-            Some(meta) => Ok(meta.is_complete()),
-            None => self
-                .operations_meta_storage
-                .put_block_header(block_header)
-                .map(|(is_complete, _)| is_complete),
-        }
-    }
-
-    /// Processes comming operations from peers
-    ///
-    /// Returns true, if new block is successfully downloaded by this call
-    pub fn process_block_operations_from_peer(
-        &mut self,
-        block_hash: BlockHash,
-        message: &OperationsForBlocksMessage,
-        peer_id: &Arc<PeerId>,
-    ) -> Result<bool, StateError> {
-        // TODO: TE-369 - optimize double check
-        // we need to differ this flag
-        let (are_operations_complete, was_block_finished_now) =
-            if self.operations_meta_storage.is_complete(&block_hash)? {
-                (true, false)
-            } else {
-                // update operations metadata for block
-                let (are_operations_complete, _) = self.process_block_operations(message)?;
-                (are_operations_complete, are_operations_complete)
-            };
-
-        if are_operations_complete {
-            // ping branch bootstrapper with received operations
-            if let Some(peer_branch_bootstrapper) = self.peer_branch_bootstrapper.as_ref() {
-                peer_branch_bootstrapper.tell(
-                    UpdateOperationsState::new(block_hash, peer_id.clone()),
-                    None,
-                );
-            }
-        }
-
-        Ok(was_block_finished_now)
-    }
-
-    /// Process block operations. This will mark operations in store for the block as seen.
-    ///
-    /// Returns tuple:
-    ///     (
-    ///         are_operations_complete,
-    ///         missing_validation_passes
-    ///     )
-    pub fn process_block_operations(
-        &mut self,
-        message: &OperationsForBlocksMessage,
-    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
-        if self
-            .operations_meta_storage
-            .is_complete(message.operations_for_block().hash())?
-        {
-            return Ok((true, None));
-        }
-
-        self.operations_storage.put_operations(message)?;
-        self.operations_meta_storage.put_operations(message)
     }
 
     #[inline]

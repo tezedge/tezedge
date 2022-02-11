@@ -206,11 +206,9 @@ where
             }
         },
         Action::BootstrapScheduleBlockForApply(content) => {
-            // TODO(zura): remove chain_id parameter for block application.
-            let chain_id = store.state().config.chain_id.clone();
             store.dispatch(BlockApplierEnqueueBlockAction {
-                chain_id: chain_id.into(),
                 block_hash: content.block_hash.clone().into(),
+                injector_rpc_id: None,
             });
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
         }

@@ -14,7 +14,6 @@ use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
 use shell::chain_manager::{ChainManager, ChainManagerRef, ProcessValidatedBlock};
-use shell::connector::ShellConnectorSupport;
 use shell::shell_automaton_manager::{
     ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
 };
@@ -193,11 +192,6 @@ fn block_on_actors(
 
     // start chain_manager with controlled startup and wait for initialization
     info!(log, "Initializing chain manager... (7/7)");
-    let (
-        initialize_chain_manager_result_callback,
-        initialize_chain_manager_result_callback_receiver,
-    ) = create_oneshot_callback();
-
     let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
         actor_system.as_ref(),
         network_channel.clone(),
@@ -212,22 +206,13 @@ fn block_on_actors(
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
         identity,
-        initialize_chain_manager_result_callback,
     )
     .expect("Failed to create chain manager");
 
-    if let Err(e) = initialize_chain_manager_result_callback_receiver
-        .recv_timeout(env.initialize_chain_manager_timeout)
-    {
-        panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout-in-secs] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
-    };
     info!(log, "Chain manager initialized (7/7)");
-
-    let shell_connector = ShellConnectorSupport::new(chain_manager.clone());
 
     let mut rpc_server = RpcServer::new(
         log.clone(),
-        Box::new(shell_connector),
         rpc_shell_automaton_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),

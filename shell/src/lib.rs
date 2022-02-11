@@ -185,46 +185,6 @@ pub mod subscription {
     }
 }
 
-/// Module implements shell integration based on actual shell constalation.
-/// In case of new architecture (state machine, ..., whatever),
-/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ShellAutomatonSender or whatever
-pub mod connector {
-    use shell_integration::*;
-
-    use crate::chain_manager::{ChainManagerRef, InjectBlockRequest};
-
-    pub struct ShellConnectorSupport {
-        chain_manager: ChainManagerRef,
-    }
-
-    impl ShellConnectorSupport {
-        pub fn new(chain_manager: ChainManagerRef) -> Self {
-            ShellConnectorSupport { chain_manager }
-        }
-    }
-
-    impl ShellConnector for ShellConnectorSupport {}
-
-    impl InjectBlockConnector for ShellConnectorSupport {
-        fn inject_block(
-            &self,
-            request: InjectBlock,
-            result_callback: Option<InjectBlockOneshotResultCallback>,
-        ) {
-            // actual implementation use tezedge_actor_system and sends command to shell_channel
-            use tezedge_actor_system::actors::*;
-
-            self.chain_manager.tell(
-                InjectBlockRequest {
-                    request,
-                    result_callback,
-                },
-                None,
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
