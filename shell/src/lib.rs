@@ -6,11 +6,8 @@
 
 use thiserror::Error;
 
-pub mod chain_manager;
-pub mod peer_branch_bootstrapper;
 pub mod shell_automaton_manager;
 pub mod shell_channel;
-pub mod state;
 pub mod stats;
 pub mod validation;
 
