@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use networking::network_channel::NewCurrentHeadNotification;
+
 use crate::bootstrap::BootstrapInitAction;
+use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
@@ -58,7 +61,27 @@ where
         }
         Action::CurrentHeadRehydrated(_) => {
             store.dispatch(BootstrapInitAction {});
+            notify_new_current_head(store);
+        }
+        Action::CurrentHeadUpdate(_) => {
+            notify_new_current_head(store);
         }
         _ => {}
     }
+}
+
+fn notify_new_current_head<S: Service>(store: &mut Store<S>) {
+    let block = match store.state().current_head.get() {
+        Some(v) => v.clone().into(),
+        None => return,
+    };
+    let chain_id = store.state().config.chain_id.clone().into();
+    let is_bootstrapped = store.state().is_bootstrapped();
+    let best_remote_level = store.state().best_remote_level();
+    let new_head =
+        NewCurrentHeadNotification::new(chain_id, block, is_bootstrapped, best_remote_level);
+    store
+        .service
+        .actors()
+        .send(ActorsMessageTo::NewCurrentHead(new_head.into()));
 }

@@ -16,8 +16,6 @@ use rpc::RpcServer;
 use shell::shell_automaton_manager::{
     ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
 };
-use shell::shell_channel::ShellChannelRef;
-use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::ShellCompatibilityVersion;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
@@ -142,8 +140,6 @@ fn block_on_actors(
 
     let network_channel =
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
-    let shell_channel =
-        ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize shell automaton manager
     let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
@@ -203,7 +199,7 @@ fn block_on_actors(
     );
     let _ = RpcNotificationCallbackActor::actor(
         actor_system.as_ref(),
-        shell_channel.clone(),
+        network_channel.clone(),
         rpc_server.rpc_env(),
     )
     .expect("Failed to create rpc notification callback handler actor");
@@ -223,7 +219,6 @@ fn block_on_actors(
             actor_system.as_ref(),
             network_channel,
             websocket_handler,
-            shell_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.chain_id.clone(),
         )
@@ -235,7 +230,6 @@ fn block_on_actors(
             blocks,
             &init_storage_data,
             shell_automaton_manager,
-            shell_channel,
             log.clone(),
         );
         return;
@@ -275,17 +269,6 @@ fn block_on_actors(
 
         info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
-
-        info!(log, "Shutting down of thread workers starting (3/9)");
-
-        info!(log, "Sending shutdown notification to actors (4/9)");
-        shell_channel.tell(
-            Publish {
-                msg: ShuttingDown.into(),
-                topic: ShellChannelTopic::ShellShutdown.into(),
-            },
-            None,
-        );
 
         info!(log, "Shutting down actors (5/9)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
@@ -336,7 +319,6 @@ fn schedule_replay_blocks(
     blocks: Vec<Arc<BlockHash>>,
     init_storage_data: &StorageInitInfo,
     shell_automaton_manager: ShellAutomatonManager,
-    shell_channel: ShellChannelRef,
     log: Logger,
 ) {
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
@@ -375,13 +357,13 @@ fn schedule_replay_blocks(
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
         if result.as_ref().is_err() {
-            replay_shutdown(&log, shell_channel, shell_automaton_manager);
+            replay_shutdown(&log, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
                 index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
-            replay_shutdown(&log, shell_channel, shell_automaton_manager);
+            replay_shutdown(&log, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
                 index, percent, hash, time, fail_above, result
@@ -406,23 +388,11 @@ fn schedule_replay_blocks(
         now.elapsed()
     );
 
-    replay_shutdown(&log, shell_channel, shell_automaton_manager);
+    replay_shutdown(&log, shell_automaton_manager);
 }
 
 // TODO(zura):
-fn replay_shutdown(
-    _: &Logger,
-    shell_channel: ShellChannelRef,
-    shell_automaton_manager: ShellAutomatonManager,
-) {
-    shell_channel.tell(
-        Publish {
-            msg: ShuttingDown.into(),
-            topic: ShellChannelTopic::ShellShutdown.into(),
-        },
-        None,
-    );
-
+fn replay_shutdown(_: &Logger, shell_automaton_manager: ShellAutomatonManager) {
     shell_automaton_manager.shutdown_and_wait();
 
     // give actors some time to shut down

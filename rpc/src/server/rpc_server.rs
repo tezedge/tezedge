@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use networking::network_channel::NewCurrentHeadNotificationRef;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
-use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
 use std::collections::HashMap;

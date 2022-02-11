@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use networking::network_channel::{AllBlockOperationsReceived, BlockReceived};
 use tezos_messages::p2p::encoding::block_header::GetBlockHeadersMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
     GetOperationsForBlocksMessage, OperationsForBlock,
@@ -14,7 +15,9 @@ use tezos_messages::p2p::encoding::prelude::GetCurrentBranchMessage;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
+use crate::service::actors_service::ActorsMessageTo;
 use crate::service::storage_service::StorageRequestPayload;
+use crate::service::ActorsService;
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -117,6 +120,14 @@ where
             store.dispatch(BootstrapPeersBlockHeadersGetSuccessAction {});
         }
         Action::BootstrapPeerBlockHeaderReceived(content) => {
+            store
+                .service
+                .actors()
+                .send(ActorsMessageTo::BlockReceived(BlockReceived {
+                    hash: content.block.hash.clone(),
+                    level: content.block.header.level(),
+                }));
+
             let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHeaderPut(chain_id, content.block.clone()),
@@ -179,14 +190,29 @@ where
             });
         }
         Action::BootstrapPeerBlockOperationsGetSuccess(content) => {
-            let operations_list = match store
-                .state()
+            let state = store.state.get();
+            let operations_list = match state
                 .bootstrap
                 .operations_get_completed(&content.block_hash)
             {
                 Some(v) => v,
                 None => return,
             };
+            let level = match &state.bootstrap {
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    match pending.get(&content.block_hash) {
+                        Some(v) => v.block_level,
+                        None => return,
+                    }
+                }
+                _ => return,
+            };
+            store
+                .service
+                .actors()
+                .send(ActorsMessageTo::AllBlockOperationsReceived(
+                    AllBlockOperationsReceived { level },
+                ));
             for operations in operations_list.clone() {
                 store.dispatch(StorageRequestCreateAction {
                     payload: StorageRequestPayload::BlockOperationsPut(operations),
