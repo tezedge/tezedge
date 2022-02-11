@@ -12,3 +12,5 @@ pub use peer_remote_requests_block_operations_get_reducer::*;
 
 mod peer_remote_requests_block_operations_get_effects;
 pub use peer_remote_requests_block_operations_get_effects::*;
+
+pub const MAX_PEER_REMOTE_BLOCK_OPERATIONS_REQUESTS: usize = 256;

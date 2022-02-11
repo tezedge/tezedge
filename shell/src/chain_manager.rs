@@ -387,28 +387,6 @@ impl ChainManager {
                             //         )?;
                             //     }
                             // }
-                            PeerMessage::GetCurrentBranch(message) => {
-                                if chain_state.get_chain_id().as_ref() == &message.chain_id {
-                                    let current_head_local = current_head_state.as_ref();
-                                    if let Some(current_head) =
-                                        block_storage.get(current_head_local.block_hash())?
-                                    {
-                                        let chain_id = chain_state.get_chain_id();
-                                        let caboose = chain_state.get_caboose(chain_id)?;
-
-                                        ChainManager::advertise_current_branch_to_p2p(
-                                            chain_id,
-                                            caboose,
-                                            &Arc::new(current_head),
-                                            std::iter::once(&*peer),
-                                            p2p_reader_sender,
-                                            &log,
-                                        );
-                                    }
-                                } else {
-                                    warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
-                                }
-                            }
                             // PeerMessage::BlockHeader(message) => {
                             //     let block_header_with_hash =
                             //         BlockHeaderWithHash::new(message.block_header().clone())?;
@@ -629,6 +607,7 @@ impl ChainManager {
                             // Processed inside shell_automaton.
                             PeerMessage::Bootstrap
                             | PeerMessage::Advertise(_)
+                            | PeerMessage::GetCurrentBranch(_)
                             | PeerMessage::CurrentBranch(_)
                             | PeerMessage::GetCurrentHead(_)
                             | PeerMessage::CurrentHead(_)

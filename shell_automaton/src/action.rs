@@ -35,6 +35,7 @@ use crate::peer::message::read::*;
 use crate::peer::message::write::*;
 use crate::peer::remote_requests::block_header_get::*;
 use crate::peer::remote_requests::block_operations_get::*;
+use crate::peer::remote_requests::current_branch_get::*;
 use crate::peer::{
     PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
     PeerTryWriteLoopStartAction,
@@ -406,6 +407,23 @@ pub enum Action {
     PeerRemoteRequestsBlockOperationsGetError(PeerRemoteRequestsBlockOperationsGetErrorAction),
     PeerRemoteRequestsBlockOperationsGetSuccess(PeerRemoteRequestsBlockOperationsGetSuccessAction),
     PeerRemoteRequestsBlockOperationsGetFinish(PeerRemoteRequestsBlockOperationsGetFinishAction),
+
+    PeerRemoteRequestsCurrentBranchGetInit(PeerRemoteRequestsCurrentBranchGetInitAction),
+    PeerRemoteRequestsCurrentBranchGetPending(PeerRemoteRequestsCurrentBranchGetPendingAction),
+    PeerRemoteRequestsCurrentBranchGetNextBlockInit(
+        PeerRemoteRequestsCurrentBranchGetNextBlockInitAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockPending(
+        PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockError(
+        PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockSuccess(
+        PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetSuccess(PeerRemoteRequestsCurrentBranchGetSuccessAction),
+    PeerRemoteRequestsCurrentBranchGetFinish(PeerRemoteRequestsCurrentBranchGetFinishAction),
 
     BootstrapInit(BootstrapInitAction),
     BootstrapPeersConnectPending(BootstrapPeersConnectPendingAction),

@@ -26,7 +26,7 @@ use storage::{
     ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageInitInfo,
 };
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
@@ -81,6 +81,7 @@ pub enum StorageRequestPayload {
     },
 
     BlockMetaGet(BlockHash),
+    BlockHashByLevelGet(Level),
     BlockHeaderGet(BlockHash),
     BlockOperationsGet(OperationKey),
     BlockAdditionalDataGet(BlockHash),
@@ -114,6 +115,7 @@ pub enum StorageResponseSuccess {
     ActionMetaUpdateSuccess(ActionId),
 
     BlockMetaGetSuccess(BlockHash, Option<Meta>),
+    BlockHashByLevelGetSuccess(Option<BlockHash>),
     BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
     BlockOperationsGetSuccess(Option<OperationsForBlocksMessage>),
     BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
@@ -144,6 +146,7 @@ pub enum StorageResponseError {
     ActionMetaUpdateError(StorageError),
 
     BlockMetaGetError(BlockHash, StorageError),
+    BlockHashByLevelGetError(StorageError),
     BlockHeaderGetError(BlockHash, StorageError),
     BlockOperationsGetError(StorageError),
     BlockAdditionalDataGetError(BlockHash, StorageError),
@@ -332,6 +335,10 @@ impl StorageServiceDefault {
                     .get(&block_hash)
                     .map(|block_meta| BlockMetaGetSuccess(block_hash.clone(), block_meta))
                     .map_err(|err| BlockMetaGetError(block_hash, err.into())),
+                BlockHashByLevelGet(level) => block_storage
+                    .get_block_hash_by_level(level)
+                    .map(|result| BlockHashByLevelGetSuccess(result))
+                    .map_err(|err| BlockHashByLevelGetError(err.into())),
                 BlockHeaderGet(block_hash) => block_storage
                     .get(&block_hash)
                     .map(|block_header_with_hash| {

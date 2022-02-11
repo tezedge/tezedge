@@ -35,6 +35,10 @@ use super::remote_requests::block_operations_get::{
     PeerRemoteRequestsBlockOperationsGetErrorAction,
     PeerRemoteRequestsBlockOperationsGetSuccessAction,
 };
+use super::remote_requests::current_branch_get::{
+    PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+    PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+};
 use super::{
     PeerHandshaked, PeerIOLoopResult, PeerStatus, PeerTryReadLoopFinishAction,
     PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -426,6 +430,29 @@ where
                         return;
                     }
                     store.dispatch(PeerRemoteRequestsBlockOperationsGetErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                Ok(StorageResponseSuccess::BlockHashByLevelGetSuccess(result)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_operations_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction {
+                        address,
+                        result: result.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockHashByLevelGetError(error)) => {
+                    if !req_id_matches(peer.remote_requests.current_branch_get.storage_req_id()) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction {
                         address,
                         error: error.clone(),
                     });
