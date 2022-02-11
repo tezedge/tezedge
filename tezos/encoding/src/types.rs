@@ -121,8 +121,7 @@ impl Serialize for Mutez {
         S: serde::Serializer,
     {
         if serializer.is_human_readable() {
-            let string = self.0.to_string();
-            string.serialize(serializer)
+            self.0.to_string().serialize(serializer)
         } else {
             self.0.serialize(serializer)
         }
