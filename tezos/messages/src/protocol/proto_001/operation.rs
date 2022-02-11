@@ -6,7 +6,7 @@
 
 use std::convert::TryFrom;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
     BlockHash, ContextHash, ContractKt1Hash, ContractTz1Hash, HashTrait, OperationListListHash,
