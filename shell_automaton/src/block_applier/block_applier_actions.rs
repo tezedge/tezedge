@@ -7,9 +7,10 @@ use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
 use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse};
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::BlockHash;
 
 use crate::request::RequestId;
+use crate::service::rpc_service::RpcId;
 use crate::{EnablingCondition, State};
 
 use super::{BlockApplierApplyError, BlockApplierApplyState};
@@ -17,8 +18,8 @@ use super::{BlockApplierApplyError, BlockApplierApplyState};
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierEnqueueBlockAction {
-    pub chain_id: Arc<ChainId>,
     pub block_hash: Arc<BlockHash>,
+    pub injector_rpc_id: Option<RpcId>,
 }
 
 impl EnablingCondition<State> for BlockApplierEnqueueBlockAction {
@@ -30,8 +31,8 @@ impl EnablingCondition<State> for BlockApplierEnqueueBlockAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockApplierApplyInitAction {
-    pub chain_id: Arc<ChainId>,
     pub block_hash: Arc<BlockHash>,
+    pub injector_rpc_id: Option<RpcId>,
 }
 
 impl EnablingCondition<State> for BlockApplierApplyInitAction {

@@ -11,7 +11,7 @@ use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
-use crate::service::{ActorsService, ProtocolRunnerService};
+use crate::service::{ProtocolRunnerService, RpcService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -33,10 +33,14 @@ where
     let state = store.state.get();
 
     match &action.action {
+        Action::BlockApplierEnqueueBlock(_) => {
+            start_applying_next_block(store);
+        }
         Action::BlockApplierApplyInit(content) => {
+            let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::PrepareApplyBlockData {
-                    chain_id: content.chain_id.clone(),
+                    chain_id: chain_id.into(),
                     block_hash: content.block_hash.clone(),
                 },
                 requestor: StorageRequestor::BlockApplier,
@@ -173,18 +177,36 @@ where
                 .map(|s| s.block_store_result_end(block_hash, action.time_as_nanos()));
             store.dispatch(BlockApplierApplySuccessAction {});
         }
-        Action::BlockApplierEnqueueBlock(_) => {
+        Action::BlockApplierApplyError(_) => {
+            match &store.state.get().block_applier.current {
+                BlockApplierApplyState::Error {
+                    injector_rpc_id,
+                    error,
+                    ..
+                } => {
+                    if let Some(rpc_id) = injector_rpc_id.clone() {
+                        let err_str = format!("{:?}", error);
+                        store
+                            .service
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::String(err_str));
+                    }
+                }
+                _ => return,
+            }
             start_applying_next_block(store);
         }
         Action::BlockApplierApplySuccess(_) => {
+            let chain_id = store.state().config.chain_id.clone();
             match &store.state.get().block_applier.current {
                 BlockApplierApplyState::Success {
-                    chain_id, block, ..
+                    block,
+                    injector_rpc_id,
+                    ..
                 } => {
-                    store.service.actors().call_apply_block_callback(
-                        &block.hash,
-                        Ok((chain_id.clone(), block.clone())),
-                    );
+                    if let Some(rpc_id) = injector_rpc_id.clone() {
+                        store.service.rpc().respond(rpc_id, serde_json::Value::Null);
+                    }
                     let new_head = (**block).clone();
                     store.dispatch(CurrentHeadUpdateAction { new_head });
                 }
@@ -243,10 +265,11 @@ where
 }
 
 pub fn start_applying_next_block<S: Service>(store: &mut Store<S>) {
-    if let Some((chain_id, block_hash)) = store.state().block_applier.queue.front().cloned() {
+    if let Some((block_hash, injector_rpc_id)) = store.state().block_applier.queue.front().cloned()
+    {
         store.dispatch(BlockApplierApplyInitAction {
-            chain_id,
             block_hash,
+            injector_rpc_id,
         });
     }
 }

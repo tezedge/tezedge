@@ -16,7 +16,6 @@ use tezedge_actor_system::actors::*;
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::{ApplyBlockDone, ApplyBlockFailed, PeerId};
-use shell_integration::{InjectBlockError, InjectBlockOneshotResultCallback};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{
@@ -350,89 +349,6 @@ impl DataRequester {
             block_hash: Arc::new(block_hash.clone()),
             queued_block_operations: peer.queues.queued_block_operations.clone(),
         }))
-    }
-
-    pub fn try_apply_block(
-        &self,
-        chain_id: Arc<ChainId>,
-        block_hash: BlockHash,
-        chain_manager: Arc<ChainManagerRef>,
-        result_callback: Option<InjectBlockOneshotResultCallback>,
-    ) -> Result<(), StateError> {
-        // get block metadata
-        let block_metadata = match self.block_meta_storage.get(&block_hash)? {
-            Some(block_metadata) => block_metadata,
-            None => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "No metadata found for block_hash: {}",
-                        block_hash.to_base58_check()
-                    ),
-                });
-            }
-        };
-
-        // check if can be applied
-        match validation::can_apply_block(
-            (&block_hash, &block_metadata),
-            |bh| self.operations_meta_storage.is_complete(bh),
-            |predecessor| self.block_meta_storage.is_applied(predecessor),
-        )? {
-            CanApplyStatus::Ready => {}
-            CanApplyStatus::AlreadyApplied => {
-                return Err(StateError::ProcessingError {
-                    reason: "Block cannot be applied, because it's is already applied".to_string(),
-                });
-            }
-            CanApplyStatus::MissingPredecessor => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "Block {} cannot be applied because missing predecessor block",
-                        block_hash.to_base58_check()
-                    ),
-                })
-            }
-            CanApplyStatus::PredecessorNotApplied => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "Block {} cannot be applied because predecessor block is not applied yet",
-                        block_hash.to_base58_check()
-                    ),
-                })
-            }
-            CanApplyStatus::MissingOperations => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "Block {} cannot be applied because missing operations",
-                        block_hash.to_base58_check()
-                    ),
-                })
-            }
-        }
-
-        let _ = self.shell_automaton.send(ShellAutomatonMsg::ApplyBlock {
-            chain_id,
-            block_hash: Arc::new(block_hash),
-            callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
-                let result_callback_send = move |res| result_callback.map(|cb| cb.send(res));
-                match result {
-                    Ok((chain_id, block)) => {
-                        chain_manager.tell(
-                            ProcessValidatedBlock::new(block, chain_id, Instant::now()),
-                            None,
-                        );
-                        result_callback_send(Ok(()));
-                    }
-                    Err(_) => {
-                        result_callback_send(Err(InjectBlockError {
-                            reason: "Block application failed!".to_owned(),
-                        }));
-                    }
-                }
-            }),
-        });
-
-        Ok(())
     }
 
     pub fn call_apply_block(

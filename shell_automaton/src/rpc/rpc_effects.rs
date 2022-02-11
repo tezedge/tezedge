@@ -1,9 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::action::BootstrapNewCurrentHeadAction;
-use crate::block_applier::BlockApplierApplyState;
-
+use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
     MempoolOperationInjectAction, MempoolRegisterOperationsStreamAction,
@@ -57,6 +55,12 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let stats = store.service().statistics();
                         let _ = channel.send(stats.map(|s| s.block_stats_get_all().clone()));
                     }
+                    RpcRequest::InjectBlock { block_hash } => {
+                        store.dispatch(BlockApplierEnqueueBlockAction {
+                            block_hash: block_hash.into(),
+                            injector_rpc_id: Some(rpc_id),
+                        });
+                    }
                     RpcRequest::InjectOperation {
                         operation,
                         operation_hash,
@@ -70,7 +74,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             injected_timestamp,
                         });
                     }
-                    RpcRequest::InjectBlock {
+                    RpcRequest::InjectBlockStart {
                         chain_id,
                         block_hash,
                         block_header,
@@ -86,9 +90,17 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     }
                     RpcRequest::RequestCurrentHeadFromConnectedPeers => {
                         store.dispatch(MempoolAskCurrentHeadAction {});
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
                     RpcRequest::RemoveOperations { operation_hashes } => {
                         store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
                     RpcRequest::MempoolStatus => match &store.state().mempool.running_since {
                         None => store
@@ -156,30 +168,13 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
             }
         }
 
-        Action::BootstrapNewCurrentHead(BootstrapNewCurrentHeadAction {
-            chain_id: _,
-            block,
-            is_bootstrapped,
-        }) => {
+        Action::CurrentHeadUpdate(content) => {
+            let is_bootstrapped = store.state().is_bootstrapped();
             store.dispatch(RpcBootstrappedNewBlockAction {
-                block: block.hash.clone(),
-                timestamp: block.header.timestamp(),
-                is_bootstrapped: *is_bootstrapped,
+                block: content.new_head.hash.clone(),
+                timestamp: content.new_head.header.timestamp(),
+                is_bootstrapped,
             });
-        }
-        Action::BlockApplierApplySuccess(_) => {
-            if let BlockApplierApplyState::Success { block, .. } =
-                &store.state().block_applier.current
-            {
-                let timestamp = block.header.timestamp();
-                let block = block.hash.clone();
-
-                store.dispatch(RpcBootstrappedNewBlockAction {
-                    block,
-                    timestamp,
-                    is_bootstrapped: true,
-                });
-            }
         }
 
         Action::RpcBootstrapped(RpcBootstrappedAction { rpc_id }) => {

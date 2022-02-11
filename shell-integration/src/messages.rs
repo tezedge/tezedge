@@ -11,23 +11,6 @@ use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, Path};
 
 use super::oneshot::OneshotResultCallback;
 
-#[derive(Clone, Debug)]
-pub struct InjectBlock {
-    pub chain_id: Arc<ChainId>,
-    pub block_header: Arc<BlockHeaderWithHash>,
-    pub operations: Option<Vec<Vec<Operation>>>,
-    pub operation_paths: Option<Vec<Path>>,
-}
-
-pub type InjectBlockOneshotResultCallbackResult = Result<(), InjectBlockError>;
-pub type InjectBlockOneshotResultCallback =
-    OneshotResultCallback<InjectBlockOneshotResultCallbackResult>;
-
-#[derive(Debug)]
-pub struct InjectBlockError {
-    pub reason: String,
-}
-
 #[derive(Serialize, Debug)]
 pub struct WorkerStatus {
     pub phase: WorkerStatusPhase,

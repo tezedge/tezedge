@@ -205,35 +205,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO: get from protocol
             const TTL: i32 = 120;
 
-            let (chain_id, block, apply_result) = match &state.block_applier.current {
+            let (block, apply_result) = match &state.block_applier.current {
                 BlockApplierApplyState::Success {
-                    chain_id,
                     block,
                     apply_result,
                     ..
-                } => (chain_id, block, apply_result),
+                } => (block, apply_result),
                 _ => return,
             };
-
-            if config.chain_id.ne(chain_id) {
-                return;
-            }
-
-            if let Some(local_head_state) = &mempool_state.local_head_state {
-                let local_header = &local_head_state.header;
-                let new_header = &block.header;
-                if local_header.level() == new_header.level()
-                    && local_header.predecessor() == new_header.predecessor()
-                {
-                    slog::debug!(
-                        &state.log,
-                        "Block `{new_block}` applied on the same level, ignoring it",
-                        new_block = block.hash.to_base58_check();
-                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
-                    );
-                    return;
-                }
-            }
 
             let old_head_state = mempool_state.local_head_state.clone();
             mempool_state.branch_changed = old_head_state

@@ -7,18 +7,6 @@
 use super::UnsupportedMessageError;
 use crate::messages::*;
 
-pub trait ShellConnector: InjectBlockConnector {}
-
-pub trait InjectBlockConnector {
-    fn inject_block(
-        &self,
-        request: InjectBlock,
-        result_callback: Option<InjectBlockOneshotResultCallback>,
-    );
-}
-
 pub trait MempoolPrevalidatorCaller: Send {
     fn try_tell(&self, msg: MempoolRequestMessage) -> Result<(), UnsupportedMessageError>;
 }
-
-pub type ShellConnectorRef = Box<dyn ShellConnector + Sync + Send>;
