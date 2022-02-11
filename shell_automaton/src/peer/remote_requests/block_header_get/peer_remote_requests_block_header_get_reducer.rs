@@ -62,7 +62,7 @@ pub fn peer_remote_requests_block_header_get_reducer(state: &mut State, action: 
             };
             *current = PeerRemoteRequestsBlockHeaderGetCurrentState::Success {
                 block_hash,
-                header: content.block_header.clone(),
+                result: content.result.clone(),
             };
         }
         Action::PeerRemoteRequestsBlockHeaderGetFinish(content) => {

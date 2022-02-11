@@ -435,17 +435,6 @@ impl ChainManager {
                             //         drop(requested_data);
                             //     }
                             // }
-                            PeerMessage::GetOperationsForBlocks(_) => {
-                                // redirect to p2p reader
-                                self.p2p_reader_sender.lock().map_err(|e| format_err!("Failed to send GetOperationsForBlocks request to p2p reader, reason: {}", e))?.send(
-                                    P2pReaderEvent::SendDataResponse(
-                                        peer.peer_id.clone(),
-                                        received.message.clone(),
-                                    ))?;
-                            }
-                            PeerMessage::GetCurrentHead(_) => {
-                                return Ok(());
-                            }
                             // PeerMessage::OperationsForBlocks(operations) => {
                             //     if let Some(requested_data) =
                             //         chain_state.requester().block_operations_received(
@@ -641,6 +630,7 @@ impl ChainManager {
                             PeerMessage::Bootstrap
                             | PeerMessage::Advertise(_)
                             | PeerMessage::CurrentBranch(_)
+                            | PeerMessage::GetCurrentHead(_)
                             | PeerMessage::CurrentHead(_)
                             | PeerMessage::BlockHeader(_)
                             | PeerMessage::OperationsForBlocks(_)
@@ -1569,7 +1559,6 @@ impl Receive<SubscribedResponse> for ChainManager {
 }
 
 pub enum P2pReaderEvent {
-    SendDataResponse(Arc<PeerId>, Arc<PeerMessageResponse>),
     SendCurrentBranchToPeer(SendCurrentBranchToPeerRequest),
     ShuttingDown,
 }
@@ -1654,33 +1643,6 @@ fn spawn_p2p_reader_thread(
                                     Err(e) => {
                                         warn!(log, "Failed to calculate history for sending CurrentBranch"; "reason" => e);
                                     }
-                                }
-                            }
-                            P2pReaderEvent::SendDataResponse(peer, request) => {
-                                match request.message() {
-                                    PeerMessage::GetOperationsForBlocks(message) =>{
-                                        for get_op in message.get_operations_for_blocks() {
-                                            if get_op.validation_pass() < 0 {
-                                                continue;
-                                            }
-
-                                            let key = get_op.into();
-                                            match operations_storage.get(&key) {
-                                                Ok(Some(op)) => tell_peer(&shell_automaton, &peer, op.into(), &log),
-                                                Ok(None) => (),
-                                                Err(e) => warn!(log, "Failed to read block header operations"; "reason" => e, "key" => {
-                                                    let OperationKey {
-                                                        block_hash,
-                                                        validation_pass,
-                                                    } = key;
-                                                    format!("({}, {})", block_hash.to_base58_check(), validation_pass)
-                                                }),
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        // do not handle anything more
-                                    },
                                 }
                             }
                             P2pReaderEvent::ShuttingDown => {
