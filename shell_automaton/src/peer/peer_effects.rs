@@ -31,6 +31,10 @@ use super::message::read::PeerMessageReadState;
 use super::remote_requests::block_header_get::{
     PeerRemoteRequestsBlockHeaderGetErrorAction, PeerRemoteRequestsBlockHeaderGetSuccessAction,
 };
+use super::remote_requests::block_operations_get::{
+    PeerRemoteRequestsBlockOperationsGetErrorAction,
+    PeerRemoteRequestsBlockOperationsGetSuccessAction,
+};
 use super::{
     PeerHandshaked, PeerIOLoopResult, PeerStatus, PeerTryReadLoopFinishAction,
     PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -370,7 +374,7 @@ where
             };
 
             match &content.response.result {
-                Ok(StorageResponseSuccess::BlockHeaderGetSuccess(_, header)) => {
+                Ok(StorageResponseSuccess::BlockHeaderGetSuccess(_, result)) => {
                     if !req_id_matches(
                         peer.remote_requests
                             .block_header_get
@@ -381,7 +385,7 @@ where
                     }
                     store.dispatch(PeerRemoteRequestsBlockHeaderGetSuccessAction {
                         address,
-                        block_header: header.clone(),
+                        result: result.clone(),
                     });
                 }
                 Err(StorageResponseError::BlockHeaderGetError(_, error)) => {
@@ -394,6 +398,34 @@ where
                         return;
                     }
                     store.dispatch(PeerRemoteRequestsBlockHeaderGetErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                Ok(StorageResponseSuccess::BlockOperationsGetSuccess(result)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_operations_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockOperationsGetSuccessAction {
+                        address,
+                        result: result.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockOperationsGetError(error)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_operations_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockOperationsGetErrorAction {
                         address,
                         error: error.clone(),
                     });

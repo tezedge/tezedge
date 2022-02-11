@@ -21,9 +21,9 @@ use storage::shell_automaton_action_meta_storage::{
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader,
     BlockStorage, BlockStorageReader, ChainMetaStorage, ConstantsStorage, CycleErasStorage,
-    CycleMetaStorage, OperationsMetaStorage, OperationsStorage, OperationsStorageReader,
-    PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
-    ShellAutomatonStateStorage, StorageInitInfo,
+    CycleMetaStorage, OperationKey, OperationsMetaStorage, OperationsStorage,
+    OperationsStorageReader, PersistentStorage, ShellAutomatonActionMetaStorage,
+    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageInitInfo,
 };
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -82,6 +82,7 @@ pub enum StorageRequestPayload {
 
     BlockMetaGet(BlockHash),
     BlockHeaderGet(BlockHash),
+    BlockOperationsGet(OperationKey),
     BlockAdditionalDataGet(BlockHash),
     OperationsGet(BlockHash),
     ConstantsGet(ProtocolHash),
@@ -114,6 +115,7 @@ pub enum StorageResponseSuccess {
 
     BlockMetaGetSuccess(BlockHash, Option<Meta>),
     BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
+    BlockOperationsGetSuccess(Option<OperationsForBlocksMessage>),
     BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
     OperationsGetSuccess(BlockHash, Option<Vec<Operation>>),
     ConstantsGetSuccess(ProtocolHash, Option<String>),
@@ -143,6 +145,7 @@ pub enum StorageResponseError {
 
     BlockMetaGetError(BlockHash, StorageError),
     BlockHeaderGetError(BlockHash, StorageError),
+    BlockOperationsGetError(StorageError),
     BlockAdditionalDataGetError(BlockHash, StorageError),
     OperationsGetError(BlockHash, StorageError),
     ConstantsGetError(ProtocolHash, StorageError),
@@ -338,6 +341,10 @@ impl StorageServiceDefault {
                         )
                     })
                     .map_err(|err| BlockHeaderGetError(block_hash, err.into())),
+                BlockOperationsGet(key) => operations_storage
+                    .get(&key)
+                    .map(|ops| BlockOperationsGetSuccess(ops))
+                    .map_err(|err| BlockOperationsGetError(err.into())),
                 BlockAdditionalDataGet(block_hash) => block_meta_storage
                     .get_additional_data(&block_hash)
                     .map(|data| BlockAdditionalDataGetSuccess(block_hash.clone(), data))

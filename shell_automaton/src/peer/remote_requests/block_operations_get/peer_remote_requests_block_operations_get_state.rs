@@ -5,32 +5,32 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::BlockHash;
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use storage::OperationKey;
+use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PeerRemoteRequestsBlockHeaderGetCurrentState {
+pub enum PeerRemoteRequestsBlockOperationsGetCurrentState {
     Idle {
         time: u64,
     },
     Pending {
-        block_hash: BlockHash,
+        key: OperationKey,
         storage_req_id: RequestId,
     },
     Error {
-        block_hash: BlockHash,
+        key: OperationKey,
         error: StorageError,
     },
     Success {
-        block_hash: BlockHash,
-        result: Option<BlockHeader>,
+        key: OperationKey,
+        result: Option<OperationsForBlocksMessage>,
     },
 }
 
-impl PeerRemoteRequestsBlockHeaderGetCurrentState {
+impl PeerRemoteRequestsBlockOperationsGetCurrentState {
     pub fn is_pending(&self) -> bool {
         matches!(self, Self::Pending { .. })
     }
@@ -46,24 +46,24 @@ impl PeerRemoteRequestsBlockHeaderGetCurrentState {
         }
     }
 
-    pub fn block_hash(&self) -> Option<&BlockHash> {
+    pub fn key(&self) -> Option<&OperationKey> {
         match self {
             Self::Idle { .. } => None,
-            Self::Pending { block_hash, .. }
-            | Self::Error { block_hash, .. }
-            | Self::Success { block_hash, .. } => Some(block_hash),
+            Self::Pending { key, .. } | Self::Error { key, .. } | Self::Success { key, .. } => {
+                Some(key)
+            }
         }
     }
 }
 
-impl Default for PeerRemoteRequestsBlockHeaderGetCurrentState {
+impl Default for PeerRemoteRequestsBlockOperationsGetCurrentState {
     fn default() -> Self {
         Self::Idle { time: 0 }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct PeerRemoteRequestsBlockHeaderGetState {
-    pub queue: BTreeSet<BlockHash>,
-    pub current: PeerRemoteRequestsBlockHeaderGetCurrentState,
+pub struct PeerRemoteRequestsBlockOperationsGetState {
+    pub queue: BTreeSet<OperationKey>,
+    pub current: PeerRemoteRequestsBlockOperationsGetCurrentState,
 }

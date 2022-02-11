@@ -11,61 +11,68 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    PeerRemoteRequestsBlockHeaderGetFinishAction, PeerRemoteRequestsBlockHeaderGetInitNextAction,
-    PeerRemoteRequestsBlockHeaderGetPendingAction,
+    PeerRemoteRequestsBlockOperationsGetFinishAction,
+    PeerRemoteRequestsBlockOperationsGetInitNextAction,
+    PeerRemoteRequestsBlockOperationsGetPendingAction,
 };
 
-pub fn peer_remote_requests_block_header_get_effects<S>(
+pub fn peer_remote_requests_block_operations_get_effects<S>(
     store: &mut Store<S>,
     action: &ActionWithMeta,
 ) where
     S: Service,
 {
     match &action.action {
-        Action::PeerRemoteRequestsBlockHeaderGetEnqueue(content) => {
-            store.dispatch(PeerRemoteRequestsBlockHeaderGetInitNextAction {
+        Action::PeerRemoteRequestsBlockOperationsGetEnqueue(content) => {
+            store.dispatch(PeerRemoteRequestsBlockOperationsGetInitNextAction {
                 address: content.address,
             });
         }
-        Action::PeerRemoteRequestsBlockHeaderGetInitNext(content) => {
+        Action::PeerRemoteRequestsBlockOperationsGetInitNext(content) => {
             let peer = match store.state().peers.get_handshaked(&content.address) {
                 Some(v) => v,
                 None => return,
             };
-            let block_hash = match peer.remote_requests.block_header_get.queue.iter().nth(0) {
+            let key = match peer
+                .remote_requests
+                .block_operations_get
+                .queue
+                .iter()
+                .nth(0)
+            {
                 Some(v) => v.clone(),
                 None => return,
             };
             store.dispatch(StorageRequestCreateAction {
-                payload: StorageRequestPayload::BlockHeaderGet(block_hash.clone()),
+                payload: StorageRequestPayload::BlockOperationsGet(key.clone()),
                 requestor: StorageRequestor::Peer(content.address),
             });
             let storage_req_id = store.state().storage.requests.last_added_req_id();
-            store.dispatch(PeerRemoteRequestsBlockHeaderGetPendingAction {
+            store.dispatch(PeerRemoteRequestsBlockOperationsGetPendingAction {
                 address: content.address,
-                block_hash,
+                key,
                 storage_req_id,
             });
         }
-        Action::PeerRemoteRequestsBlockHeaderGetError(content) => {
-            store.dispatch(PeerRemoteRequestsBlockHeaderGetInitNextAction {
+        Action::PeerRemoteRequestsBlockOperationsGetError(content) => {
+            store.dispatch(PeerRemoteRequestsBlockOperationsGetInitNextAction {
                 address: content.address,
             });
         }
-        Action::PeerRemoteRequestsBlockHeaderGetSuccess(content) => {
-            if let Some(header) = content.result.clone() {
-                let message = PeerMessage::BlockHeader(header.into());
+        Action::PeerRemoteRequestsBlockOperationsGetSuccess(content) => {
+            if let Some(operations) = content.result.clone() {
+                let message = PeerMessage::OperationsForBlocks(operations);
                 store.dispatch(PeerMessageWriteInitAction {
                     address: content.address,
                     message: Arc::new(message.into()),
                 });
             } else {
-                // TODO: log that block header wasn't found.
+                // TODO: log that block operations weren't found.
             }
-            if !store.dispatch(PeerRemoteRequestsBlockHeaderGetInitNextAction {
+            if !store.dispatch(PeerRemoteRequestsBlockOperationsGetInitNextAction {
                 address: content.address,
             }) {
-                store.dispatch(PeerRemoteRequestsBlockHeaderGetFinishAction {
+                store.dispatch(PeerRemoteRequestsBlockOperationsGetFinishAction {
                     address: content.address,
                 });
             }

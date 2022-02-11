@@ -22,8 +22,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockHeaderGetEnqueueAction 
     fn is_enabled(&self, state: &State) -> bool {
         state
             .peers
-            .get(&self.address)
-            .and_then(|p| p.status.as_handshaked())
+            .get_handshaked(&self.address)
             .filter(|p| {
                 p.remote_requests
                     .block_header_get
@@ -45,8 +44,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockHeaderGetInitNextAction
     fn is_enabled(&self, state: &State) -> bool {
         state
             .peers
-            .get(&self.address)
-            .and_then(|p| p.status.as_handshaked())
+            .get_handshaked(&self.address)
             .map(|p| &p.remote_requests.block_header_get)
             .filter(|v| !v.current.is_pending() && !v.queue.is_empty())
             .is_some()
@@ -90,7 +88,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockHeaderGetErrorAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockHeaderGetSuccessAction {
     pub address: SocketAddr,
-    pub block_header: Option<BlockHeader>,
+    pub result: Option<BlockHeader>,
 }
 
 impl EnablingCondition<State> for PeerRemoteRequestsBlockHeaderGetSuccessAction {
