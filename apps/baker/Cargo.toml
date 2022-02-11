@@ -15,6 +15,8 @@ derive_more = { version = "0.99.17" }
 thiserror = { version = "1.0" }
 hex = { version = "0.4.3" }
 chrono = { version = "0.4.19" }
+nom = "6.1"
+lazy_static = "1.4"
 
 redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.11.0", features = ["serde"] }
 crypto = { path = "../../crypto" }

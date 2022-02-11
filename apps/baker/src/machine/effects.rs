@@ -1,39 +1,122 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::{TryFrom, TryInto};
-
-use chrono::{DateTime, Duration, Utc};
-
-use crypto::{
-    blake2b,
-    hash::{
-        BlockPayloadHash, ContractTz1Hash, NonceHash, OperationHash, OperationListHash,
-        ProtocolHash, BlockHash,
-    },
-};
 use redux_rs::{ActionWithMeta, Store};
-use tezos_encoding_derive::BinWriter;
-use tezos_messages::protocol::proto_012::operation::{InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant};
 
-use super::{action::*, service::ServiceDefault, state::State};
-use crate::{
-    client::TezosClient,
-    key,
-    types::{ProtocolBlockHeader, sign_any},
-};
+use super::{action::*, service::ServiceDefault, state::{State, Config, BlockData}};
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
+    slog::info!(store.service().logger, "{:?}", action.action);
+
     match &action.action {
-        Action::RunWithLocalNode(RunWithLocalNodeAction {
+        Action::GetChainIdInit(GetChainIdInitAction {}) => {
+            if let Err(error) = store.service().client.wait_bootstrapped() {
+                store.dispatch(GetChainIdErrorAction { error });
+            }
+            match store.service().client.get_chain_id() {
+                Ok(chain_id) => {
+                    store.dispatch(GetChainIdSuccessAction { chain_id });
+                }
+                Err(error) => {
+                    store.dispatch(GetChainIdErrorAction { error });
+                }
+            }
+        }
+        Action::GetChainIdSuccess(_) => {
+            store.dispatch(GetConstantsInitAction {});
+        }
+        Action::GetConstantsInit(GetConstantsInitAction {}) => {
+            match store.service().client.get_constants() {
+                Ok(constants) => {
+                    store.dispatch(GetConstantsSuccessAction { constants });
+                }
+                Err(error) => {
+                    store.dispatch(GetConstantsErrorAction { error });
+                }
+            }
+        }
+        Action::GetConstantsSuccess(_) => {
+            // the result is stream of heads,
+            // they will be dispatched from event loop
+            store.service().client.monitor_main_head(Action::NewHeadSeen).unwrap();
+        }
+        Action::NewHeadSeen(NewHeadSeenAction { .. }) => {
+            store.dispatch(GetSlotsInitAction {});
+        }
+        Action::GetSlotsInit(GetSlotsInitAction {}) => {
+            let level = match store.state() {
+                State::Ready { current_head_data: Some(block_data), .. } => block_data.level,
+                _ => return,
+            };
+            let delegate = store.service().crypto.public_key_hash().clone();
+
+            // the result will be dispatched from event loop
+            store.service()
+                .client
+                .get_validators(level, delegate, Action::GetSlotsSuccess)
+                .unwrap();
+        }
+        Action::GetSlotsSuccess(GetSlotsSuccessAction { .. }) => {
+            store.dispatch(SignPreendorsementAction {});
+        }
+        Action::SignPreendorsement(SignPreendorsementAction {}) => {
+            store.dispatch(InjectPreendorsementInitAction {});
+        }
+        // split in two, sing and inject
+        Action::InjectPreendorsementInit(InjectPreendorsementInitAction {}) => {
+            let Store { state, service, .. } = store;
+            let (chain_id, preendorsement) = match state.get() {
+                State::Ready {
+                    config: Config { chain_id, .. },
+                    current_head_data: Some(BlockData { preendorsement: Some(preendorsement), .. }),
+                } => (chain_id, preendorsement),
+                _ => return,
+            };
+            let (data, _) = service.crypto.sign(0x12, chain_id, preendorsement).unwrap();
+            let op = &hex::encode(data);
+            service.client.inject_operation(
+                chain_id,
+                &op,
+                |hash| InjectPreendorsementSuccessAction { hash }.into(),
+            ).unwrap();
+        }
+        Action::InjectPreendorsementSuccess(InjectPreendorsementSuccessAction { .. }) => {
+            store.service().client.monitor_operations(Action::NewOperationSeen).unwrap();
+        }
+        Action::NewOperationSeen(NewOperationSeenAction { .. }) => {
+            store.dispatch(SignEndorsementAction {});
+        }
+        Action::SignEndorsement(SignEndorsementAction {}) => {
+            store.dispatch(InjectEndorsementInitAction {});
+        }
+        // split in two, sing and inject
+        Action::InjectEndorsementInit(InjectEndorsementInitAction {}) => {
+            let Store { state, service, .. } = store;
+            let (chain_id, endorsement) = match state.get() {
+                State::Ready {
+                    config: Config { chain_id, .. },
+                    current_head_data: Some(BlockData { endorsement: Some(endorsement), .. }),
+                } => (chain_id, endorsement),
+                _ => return,
+            };
+            let (data, _) = service.crypto.sign(0x13, chain_id, endorsement).unwrap();
+            let op = &hex::encode(data);
+            service.client.inject_operation(
+                chain_id,
+                &op,
+                |hash| InjectEndorsementSuccessAction { hash }.into(),
+            ).unwrap();
+        }
+
+        /*Action::WaitBootstrappedPending(WaitBootstrappedPendingAction {
             base_dir,
             node_dir,
             baker,
         }) => {
             let ServiceDefault {
-                log,
                 main_logger,
                 client,
+                ..
             } = &store.service();
 
             let _ = node_dir;
@@ -289,7 +372,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                     }
                 }
             }
-        }
+        }*/
         _ => {}
     }
 }

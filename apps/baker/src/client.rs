@@ -16,7 +16,7 @@ use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, SecretKeyEd25519, Signature};
 use tezos_messages::{
-    p2p::encoding::operation::DecodedOperation,
+    p2p::encoding::{operation::DecodedOperation, block_header::BlockHeader},
     protocol::proto_012::operation::FullHeader,
 };
 
@@ -38,7 +38,7 @@ pub enum TezosClientError {
 
 #[derive(Debug)]
 pub enum TezosClientEvent {
-    NewHead(serde_json::Value),
+    NewHead(BlockHeader),
     Operation(serde_json::Value),
 }
 
@@ -51,26 +51,11 @@ pub struct TezosClient {
     main_logger: Logger,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Constants {
     pub consensus_committee_size: u32,
     pub minimal_block_delay: String,
     pub delay_increment_per_round: String,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct BlockHeader {
-    pub level: i32,
-    pub hash: BlockHash,
-    pub predecessor: BlockHash,
-    pub protocol_data: String,
-
-    pub proto: u8,
-    pub timestamp: String,
-    validation_pass: u8,
-    operations_hash: String,
-    fitness: Vec<String>,
-    context: String,
 }
 
 #[derive(Deserialize)]
@@ -131,7 +116,6 @@ impl TezosClient {
     }
 
     /// spawning a thread
-    #[allow(dead_code)]
     pub fn spawn_monitor_main_head(&self) -> Result<thread::JoinHandle<()>, TezosClientError> {
         let mut url = self
             .endpoint
@@ -139,7 +123,9 @@ impl TezosClient {
             .expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("next_protocol", Self::PROTOCOL);
-        self.spawn_monitor(url, TezosClientEvent::NewHead)
+        self.spawn_monitor(url, |json| {
+            TezosClientEvent::NewHead(serde_json::from_value(json).unwrap())
+        })
     }
 
     /// spawning a thread

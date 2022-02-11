@@ -5,12 +5,12 @@ use slog::Logger;
 
 use redux_rs::TimeService;
 
-use crate::TezosClient;
+use crate::{rpc_client::RpcClient, key::CryptoService};
 
 pub struct ServiceDefault {
-    pub log: Logger,
-    pub main_logger: Logger,
-    pub client: TezosClient,
+    pub logger: Logger,
+    pub client: RpcClient,
+    pub crypto: CryptoService,
 }
 
 impl TimeService for ServiceDefault {}

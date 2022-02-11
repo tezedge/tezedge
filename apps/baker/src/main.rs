@@ -2,57 +2,51 @@
 // SPDX-License-Identifier: MIT
 
 mod command_line;
-use self::command_line::{Arguments, Command};
-
 mod logger;
-
-mod client;
-use self::client::TezosClient;
-
-mod types;
-
-mod key;
-
 mod machine;
-use self::machine::{action::*, effects, reducer, service::ServiceDefault, state::State};
+mod rpc_client;
+mod types;
+mod key;
 
 fn main() {
     use std::time::SystemTime;
+    use self::{
+        command_line::{Arguments, Command},
+        rpc_client::RpcClient,
+        key::CryptoService,
+        machine::{action::*, effects, reducer, service::ServiceDefault, state::State},
+    };
 
     let Arguments {
         base_dir,
         endpoint,
-        log_requests,
+        log_requests: _,
         command,
     } = Arguments::from_args();
 
-    // std::process::Command::new("cp").arg("-R").arg(&base_dir).arg("/home/vscode/workspace/tezedge/target/d").output().unwrap();
+    let logger = logger::main_logger();
+    let (client, events) = RpcClient::new(endpoint);
 
-    let log = logger::logger(false, slog::Level::Info);
-    let requests_logger = if log_requests {
-        log.clone()
-    } else {
-        logger::logger(true, slog::Level::Info)
-    };
-    let main_logger = logger::main_logger();
-    let (client, _) = TezosClient::new(requests_logger, main_logger.clone(), endpoint);
-
-    let service = ServiceDefault {
-        log,
-        main_logger,
-        client,
-    };
-    let initial_time = SystemTime::now();
-    let initial_state = State::default();
-
-    let mut store = redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
     match command {
         Command::RunWithLocalNode { node_dir, baker } => {
-            store.dispatch(RunWithLocalNodeAction {
-                base_dir,
-                node_dir,
-                baker,
-            });
+            // We don't use context storage and protocol_runner
+            let _ = node_dir;
+
+            let crypto = CryptoService::read_key(&base_dir, &baker).unwrap();
+
+            let service = ServiceDefault {
+                logger,
+                client,
+                crypto,
+            };
+            let initial_time = SystemTime::now();
+            let initial_state = State::Initial;
+
+            let mut store = redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
+            store.dispatch(GetChainIdInitAction {});
+            for event in events {
+                store.dispatch(event);
+            }
         }
     }
 }

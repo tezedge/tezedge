@@ -16,6 +16,7 @@ pub fn main_logger() -> Logger {
     Logger::root(drain, o!())
 }
 
+#[allow(dead_code)]
 pub fn logger(empty: bool, level: Level) -> Logger {
     use std::io::{self, Write};
 
