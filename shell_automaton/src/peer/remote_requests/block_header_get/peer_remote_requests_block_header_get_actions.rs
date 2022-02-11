@@ -10,7 +10,7 @@ use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use crate::{request::RequestId, service::storage_service::StorageError, EnablingCondition, State};
 
-pub const MAX_PEER_REMOTE_BLOCK_HEADER_REQUESTS: usize = 64;
+use super::MAX_PEER_REMOTE_BLOCK_HEADER_REQUESTS;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockHeaderGetEnqueueAction {

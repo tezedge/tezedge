@@ -12,3 +12,5 @@ pub use peer_remote_requests_block_header_get_reducer::*;
 
 mod peer_remote_requests_block_header_get_effects;
 pub use peer_remote_requests_block_header_get_effects::*;
+
+pub const MAX_PEER_REMOTE_BLOCK_HEADER_REQUESTS: usize = 64;

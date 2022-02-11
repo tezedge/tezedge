@@ -12,7 +12,7 @@ use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 use crate::{EnablingCondition, State};
 
-pub const MAX_PEER_REMOTE_BLOCK_OPERATIONS_REQUESTS: usize = 256;
+use super::MAX_PEER_REMOTE_BLOCK_OPERATIONS_REQUESTS;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetEnqueueAction {
