@@ -5,7 +5,7 @@ use slog::Logger;
 
 use redux_rs::TimeService;
 
-use crate::{rpc_client::RpcClient, key::CryptoService};
+use crate::{key::CryptoService, rpc_client::RpcClient};
 
 pub struct ServiceDefault {
     pub logger: Logger,

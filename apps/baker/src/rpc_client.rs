@@ -1,14 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{sync::mpsc, time::Duration, thread, io, str};
+use std::{io, str, sync::mpsc, thread, time::Duration};
 
+use derive_more::From;
+use reqwest::{
+    blocking::{Client, Response},
+    Url,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
-use derive_more::From;
-use reqwest::{blocking::{Client, Response}, Url};
 
-use crypto::hash::{ChainId, ContractTz1Hash, BlockHash, OperationHash};
+use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, OperationHash};
 
 use crate::machine::action::*;
 
@@ -45,7 +48,7 @@ pub struct Constants {
     pub minimal_block_delay: String,
     pub delay_increment_per_round: String,
 }
-        
+
 #[derive(Deserialize, Debug)]
 pub struct Validator {
     pub level: i32,
@@ -110,14 +113,12 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("level", &level.to_string());
 
-        self.single_response::<Vec<Validator>, _>(
-            url,
-            None,
-            None,
-            move |validators| {
-                wrapper(GetSlotsSuccessAction { validators, this_delegate })
-            },
-        )
+        self.single_response::<Vec<Validator>, _>(url, None, None, move |validators| {
+            wrapper(GetSlotsSuccessAction {
+                validators,
+                this_delegate,
+            })
+        })
     }
 
     pub fn monitor_main_head<F>(&self, wrapper: F) -> reqwest::Result<thread::JoinHandle<()>>
@@ -147,11 +148,9 @@ impl RpcClient {
             .append_pair("outdated", "no")
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
-        self.multiple_responses(
-            url,
-            None,
-            move |operations| wrapper(NewOperationSeenAction { operations }),
-        )
+        self.multiple_responses(url, None, move |operations| {
+            wrapper(NewOperationSeenAction { operations })
+        })
     }
 
     pub fn inject_operation<F>(
@@ -169,7 +168,7 @@ impl RpcClient {
             .expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("chain", &chain_id.to_base58_check());
-            let body = format!("{:?}", op_hex);
+        let body = format!("{:?}", op_hex);
         self.single_response::<OperationHash, _>(url, Some(body), None, move |operation_hash| {
             wrapper(operation_hash)
         })
@@ -236,7 +235,9 @@ impl RpcClient {
                         let _ = tx.send(wrapper(value));
                     }
                     Err(err) => {
-                        let action = UnrecoverableErrorAction { rpc_error: err.into() };
+                        let action = UnrecoverableErrorAction {
+                            rpc_error: err.into(),
+                        };
                         let _ = tx.send(Action::UnrecoverableError(action));
                     }
                 }
@@ -245,7 +246,7 @@ impl RpcClient {
                     Ok(error) => Action::RecoverableError(error),
                     Err(rpc_error) => {
                         Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
-                    },
+                    }
                 };
                 let _ = tx.send(action);
             }
@@ -278,7 +279,9 @@ impl RpcClient {
                             let _ = tx.send(wrapper(value));
                         }
                         Err(err) => {
-                            let action = UnrecoverableErrorAction { rpc_error: err.into() };
+                            let action = UnrecoverableErrorAction {
+                                rpc_error: err.into(),
+                            };
                             let _ = tx.send(Action::UnrecoverableError(action));
                             panic!();
                         }
@@ -289,7 +292,7 @@ impl RpcClient {
                     Ok(error) => Action::RecoverableError(error),
                     Err(rpc_error) => {
                         Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
-                    },
+                    }
                 };
                 let _ = tx.send(action);
             }
@@ -302,6 +305,8 @@ impl RpcClient {
         let mut buf = [0; 0x1000];
         io::Read::read(response, &mut buf)?;
         let err = str::from_utf8(&buf)?.trim_end_matches('\0');
-        Ok(RecoverableErrorAction { description: err.to_string() })
+        Ok(RecoverableErrorAction {
+            description: err.to_string(),
+        })
     }
 }

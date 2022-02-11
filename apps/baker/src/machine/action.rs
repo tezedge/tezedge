@@ -12,8 +12,8 @@ use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
 use tezos_messages::protocol::proto_012::operation::Operation;
 
 use crate::{
-    rpc_client::{RpcError, BlockHeaderJson, Constants, Validator},
-    machine::state::{State, BlockData},
+    machine::state::{BlockData, State},
+    rpc_client::{BlockHeaderJson, Constants, RpcError, Validator},
 };
 
 #[derive(Debug)]
@@ -116,7 +116,10 @@ pub struct SignPreendorsementAction {}
 impl EnablingCondition<State> for SignPreendorsementAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready { current_head_data: Some(v), .. } => v.slot.is_some(),
+            State::Ready {
+                current_head_data: Some(v),
+                ..
+            } => v.slot.is_some(),
             _ => false,
         }
     }
@@ -128,9 +131,10 @@ pub struct InjectPreendorsementInitAction {}
 impl EnablingCondition<State> for InjectPreendorsementInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready { current_head_data: Some(BlockData { preendorsement, .. }), .. } => {
-                preendorsement.is_some()
-            },
+            State::Ready {
+                current_head_data: Some(BlockData { preendorsement, .. }),
+                ..
+            } => preendorsement.is_some(),
             _ => false,
         }
     }
@@ -143,8 +147,7 @@ pub struct InjectPreendorsementSuccessAction {
 
 impl EnablingCondition<State> for InjectPreendorsementSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        InjectPreendorsementInitAction {}
-            .is_enabled(state)
+        InjectPreendorsementInitAction {}.is_enabled(state)
     }
 }
 
@@ -159,9 +162,10 @@ impl EnablingCondition<State> for NewOperationSeenAction {
             return false;
         }
         match state {
-            State::Ready { current_head_data: Some(BlockData { block_hash, .. }), .. } => {
-                self.operations.first().unwrap().branch.eq(block_hash)
-            },
+            State::Ready {
+                current_head_data: Some(BlockData { block_hash, .. }),
+                ..
+            } => self.operations.first().unwrap().branch.eq(block_hash),
             _ => false,
         }
     }
@@ -173,9 +177,11 @@ pub struct SignEndorsementAction {}
 impl EnablingCondition<State> for SignEndorsementAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready { current_head_data: Some(block_data), config } => {
-                block_data.seen_preendorsement >= config.quorum_size
-            },
+            State::Ready {
+                current_head_data: Some(block_data),
+                config,
+                ..
+            } => block_data.seen_preendorsement >= config.quorum_size,
             _ => false,
         }
     }
@@ -187,9 +193,10 @@ pub struct InjectEndorsementInitAction {}
 impl EnablingCondition<State> for InjectEndorsementInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready { current_head_data: Some(BlockData { endorsement, .. }), .. } => {
-                endorsement.is_some()
-            },
+            State::Ready {
+                current_head_data: Some(BlockData { endorsement, .. }),
+                ..
+            } => endorsement.is_some(),
             _ => false,
         }
     }
@@ -202,8 +209,7 @@ pub struct InjectEndorsementSuccessAction {
 
 impl EnablingCondition<State> for InjectEndorsementSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        InjectEndorsementInitAction {}
-            .is_enabled(state)
+        InjectEndorsementInitAction {}.is_enabled(state)
     }
 }
 

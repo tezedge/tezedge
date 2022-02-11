@@ -3,7 +3,11 @@
 
 use redux_rs::{ActionWithMeta, Store};
 
-use super::{action::*, service::ServiceDefault, state::{State, Config, BlockData}};
+use super::{
+    action::*,
+    service::ServiceDefault,
+    state::{BlockData, Config, State},
+};
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
     slog::info!(store.service().logger, "{:?}", action.action);
@@ -38,20 +42,28 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
         Action::GetConstantsSuccess(_) => {
             // the result is stream of heads,
             // they will be dispatched from event loop
-            store.service().client.monitor_main_head(Action::NewHeadSeen).unwrap();
+            store
+                .service()
+                .client
+                .monitor_main_head(Action::NewHeadSeen)
+                .unwrap();
         }
         Action::NewHeadSeen(NewHeadSeenAction { .. }) => {
             store.dispatch(GetSlotsInitAction {});
         }
         Action::GetSlotsInit(GetSlotsInitAction {}) => {
             let level = match store.state() {
-                State::Ready { current_head_data: Some(block_data), .. } => block_data.level,
+                State::Ready {
+                    current_head_data: Some(block_data),
+                    ..
+                } => block_data.level,
                 _ => return,
             };
             let delegate = store.service().crypto.public_key_hash().clone();
 
             // the result will be dispatched from event loop
-            store.service()
+            store
+                .service()
                 .client
                 .get_validators(level, delegate, Action::GetSlotsSuccess)
                 .unwrap();
@@ -68,20 +80,30 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let (chain_id, preendorsement) = match state.get() {
                 State::Ready {
                     config: Config { chain_id, .. },
-                    current_head_data: Some(BlockData { preendorsement: Some(preendorsement), .. }),
+                    current_head_data:
+                        Some(BlockData {
+                            preendorsement: Some(preendorsement),
+                            ..
+                        }),
+                    ..
                 } => (chain_id, preendorsement),
                 _ => return,
             };
             let (data, _) = service.crypto.sign(0x12, chain_id, preendorsement).unwrap();
             let op = &hex::encode(data);
-            service.client.inject_operation(
-                chain_id,
-                &op,
-                |hash| InjectPreendorsementSuccessAction { hash }.into(),
-            ).unwrap();
+            service
+                .client
+                .inject_operation(chain_id, &op, |hash| {
+                    InjectPreendorsementSuccessAction { hash }.into()
+                })
+                .unwrap();
         }
         Action::InjectPreendorsementSuccess(InjectPreendorsementSuccessAction { .. }) => {
-            store.service().client.monitor_operations(Action::NewOperationSeen).unwrap();
+            store
+                .service()
+                .client
+                .monitor_operations(Action::NewOperationSeen)
+                .unwrap();
         }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {
             store.dispatch(SignEndorsementAction {});
@@ -95,17 +117,23 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let (chain_id, endorsement) = match state.get() {
                 State::Ready {
                     config: Config { chain_id, .. },
-                    current_head_data: Some(BlockData { endorsement: Some(endorsement), .. }),
+                    current_head_data:
+                        Some(BlockData {
+                            endorsement: Some(endorsement),
+                            ..
+                        }),
+                    ..
                 } => (chain_id, endorsement),
                 _ => return,
             };
             let (data, _) = service.crypto.sign(0x13, chain_id, endorsement).unwrap();
             let op = &hex::encode(data);
-            service.client.inject_operation(
-                chain_id,
-                &op,
-                |hash| InjectEndorsementSuccessAction { hash }.into(),
-            ).unwrap();
+            service
+                .client
+                .inject_operation(chain_id, &op, |hash| {
+                    InjectEndorsementSuccessAction { hash }.into()
+                })
+                .unwrap();
         }
 
         /*Action::WaitBootstrappedPending(WaitBootstrappedPendingAction {

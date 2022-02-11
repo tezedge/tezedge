@@ -1,14 +1,17 @@
-use std::{io, path::PathBuf, convert::TryFrom};
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use std::{convert::TryFrom, io, path::PathBuf};
 
 use derive_more::From;
 use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
-    hash::{SecretKeyEd25519, ContractTz1Hash, Signature, ChainId},
+    hash::{ChainId, ContractTz1Hash, SecretKeyEd25519, Signature},
     CryptoError,
 };
-use tezos_encoding::enc::{BinWriter, BinError};
+use tezos_encoding::enc::{BinError, BinWriter};
 
 #[derive(Debug, Error, From)]
 pub enum ReadKeyError {
@@ -44,10 +47,7 @@ pub struct CryptoService {
 }
 
 impl CryptoService {
-    pub fn read_key(
-        base_dir: &PathBuf,
-        baker: &str,
-    ) -> Result<Self, ReadKeyError> {
+    pub fn read_key(base_dir: &PathBuf, baker: &str) -> Result<Self, ReadKeyError> {
         use crypto::hash::SeedEd25519;
         use serde::Deserialize;
         use std::fs::File;
@@ -111,9 +111,10 @@ impl CryptoService {
             chain_id.bin_write(&mut v)?;
             v
         };
-        let signature = self.secret_key.sign(&[watermark_bytes.as_slice(), value_bytes.as_slice()])?;
+        let signature = self
+            .secret_key
+            .sign(&[watermark_bytes.as_slice(), value_bytes.as_slice()])?;
         value_bytes.extend_from_slice(&signature.0);
         Ok((value_bytes, signature))
     }
-
 }

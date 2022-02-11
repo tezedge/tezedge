@@ -1,15 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{time::Duration, collections::BTreeMap};
+use std::{collections::BTreeMap, time::Duration};
 
 use chrono::{DateTime, Utc};
 
-use crypto::hash::{ChainId, BlockHash, ContractTz1Hash};
+use crypto::hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash};
 use tezos_encoding::enc::BinWriter;
 use tezos_messages::protocol::proto_012::operation::{InlinedEndorsementMempoolContents, InlinedPreendorsementContents};
-
-use crate::types::ProtocolBlockHeader;
 
 #[derive(Debug)]
 pub enum State {
@@ -20,6 +18,7 @@ pub enum State {
     Ready {
         config: Config,
         // TODO: rename
+        predecessor_head_data: Option<BlockData>,
         current_head_data: Option<BlockData>,
     },
 }
@@ -39,14 +38,15 @@ pub struct EndorsementUnsignedOperation {
 // TODO: rename
 #[derive(Debug)]
 pub struct BlockData {
+    pub predecessor: BlockHash,
+    pub block_hash: BlockHash,
+
     pub slot: Option<u16>,
     pub validators: BTreeMap<ContractTz1Hash, Vec<u16>>,
     pub level: i32,
-    pub predecessor: BlockHash,
-
-    pub block_hash: BlockHash,
+    pub round: i32,
     pub timestamp: DateTime<Utc>,
-    pub protocol_data: ProtocolBlockHeader,
+    pub payload_hash: BlockPayloadHash,
 
     pub seen_preendorsement: usize,
     pub preendorsement: Option<PreendorsementUnsignedOperation>,

@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 mod command_line;
+mod key;
 mod logger;
 mod machine;
 mod rpc_client;
 mod types;
-mod key;
 
 fn main() {
-    use std::time::SystemTime;
     use self::{
         command_line::{Arguments, Command},
-        rpc_client::RpcClient,
         key::CryptoService,
         machine::{action::*, effects, reducer, service::ServiceDefault, state::State},
+        rpc_client::RpcClient,
     };
+    use std::time::SystemTime;
 
     let Arguments {
         base_dir,
@@ -42,7 +42,8 @@ fn main() {
             let initial_time = SystemTime::now();
             let initial_state = State::Initial;
 
-            let mut store = redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
+            let mut store =
+                redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
             store.dispatch(GetChainIdInitAction {});
             for event in events {
                 store.dispatch(event);
