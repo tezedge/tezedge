@@ -13,7 +13,6 @@ use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
-use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::shell_automaton_manager::{
     ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
 };
@@ -187,27 +186,6 @@ fn block_on_actors(
                    "fitness" => fitness);
     }
 
-    // start chain_manager with controlled startup and wait for initialization
-    info!(log, "Initializing chain manager... (7/7)");
-    let chain_manager = ChainManager::actor(
-        actor_system.as_ref(),
-        network_channel.clone(),
-        shell_automaton_manager.shell_automaton_sender(),
-        shell_channel.clone(),
-        persistent_storage.clone(),
-        Arc::clone(&tezos_protocol_api),
-        init_storage_data.clone(),
-        is_sandbox,
-        hydrated_current_head,
-        env.p2p
-            .peer_threshold
-            .num_of_peers_for_bootstrap_threshold(),
-        identity,
-    )
-    .expect("Failed to create chain manager");
-
-    info!(log, "Chain manager initialized (7/7)");
-
     let mut rpc_server = RpcServer::new(
         log.clone(),
         rpc_shell_automaton_channel,
@@ -256,7 +234,6 @@ fn block_on_actors(
         schedule_replay_blocks(
             blocks,
             &init_storage_data,
-            chain_manager,
             shell_automaton_manager,
             shell_channel,
             log.clone(),
@@ -358,12 +335,10 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
 fn schedule_replay_blocks(
     blocks: Vec<Arc<BlockHash>>,
     init_storage_data: &StorageInitInfo,
-    chain_manager: ChainManagerRef,
     shell_automaton_manager: ShellAutomatonManager,
     shell_channel: ShellChannelRef,
     log: Logger,
 ) {
-    let chain_manager = Arc::new(chain_manager);
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
     let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
     let result_callback_sender = Arc::new(result_callback_sender);
@@ -375,7 +350,6 @@ fn schedule_replay_blocks(
         let result_callback = result_callback_sender.clone();
 
         let now = std::time::Instant::now();
-        let chain_manager = chain_manager.clone();
 
         let _ =
             shell_automaton_manager
