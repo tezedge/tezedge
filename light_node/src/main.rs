@@ -13,7 +13,7 @@ use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
-use shell::chain_manager::{ChainManager, ChainManagerRef, ProcessValidatedBlock};
+use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::shell_automaton_manager::{
     ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
 };
@@ -190,7 +190,7 @@ fn block_on_actors(
 
     // start chain_manager with controlled startup and wait for initialization
     info!(log, "Initializing chain manager... (7/7)");
-    let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
+    let chain_manager = ChainManager::actor(
         actor_system.as_ref(),
         network_channel.clone(),
         shell_automaton_manager.shell_automaton_sender(),
@@ -301,11 +301,6 @@ fn block_on_actors(
         drop(rpc_server);
 
         info!(log, "Shutting down of thread workers starting (3/9)");
-        if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
-            warn!(log, "Failed to stop thread watcher";
-                       "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
-                       "reason" => format!("{}", e));
-        }
 
         info!(log, "Sending shutdown notification to actors (4/9)");
         shell_channel.tell(
@@ -321,15 +316,6 @@ fn block_on_actors(
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
-
-        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (6/9)");
-        if let Some(thread) = chain_manager_p2p_reader_thread_watcher.thread() {
-            thread.thread().unpark();
-            if let Err(e) = thread.join() {
-                warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
-            }
-        }
-        info!(log, "Thread workers stopped");
 
         info!(log, "Flushing databases (8/9)");
         drop(persistent_storage);
@@ -399,13 +385,6 @@ fn schedule_replay_blocks(
                     block_hash: block.clone(),
                     callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
                         let res = result.as_ref().map(|_| ()).map_err(|_| ());
-
-                        if let Ok((chain_id, block)) = result {
-                            chain_manager.tell(
-                                ProcessValidatedBlock::new(block, chain_id, Instant::now()),
-                                None,
-                            );
-                        }
 
                         result_callback
                             .send(res)

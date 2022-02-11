@@ -22,7 +22,7 @@ use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, OperationsForBlock, PeerMessageResponse,
 };
 
-use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
+use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::shell_automaton_manager::{ShellAutomatonMsg, ShellAutomatonSender};
 use crate::state::peer_state::{
@@ -364,10 +364,6 @@ impl DataRequester {
             callback: ApplyBlockCallback::from(move |block_hash, result: ApplyBlockResult| {
                 match result {
                     Ok((chain_id, block)) => {
-                        chain_manager.tell(
-                            ProcessValidatedBlock::new(block, chain_id, Instant::now()),
-                            None,
-                        );
                         bootstrapper.tell(
                             ApplyBlockDone {
                                 last_applied: Arc::new(block_hash),
