@@ -8,7 +8,8 @@ use std::sync::{mpsc, Arc};
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
+    AllBlockOperationsReceived, BlockReceived, NetworkChannelMsg, NetworkChannelRef,
+    NetworkChannelTopic, NewCurrentHeadNotificationRef, PeerMessageReceived,
 };
 use storage::BlockHeaderWithHash;
 use tezedge_actor_system::actors::*;
@@ -42,6 +43,11 @@ pub enum ActorsMessageTo {
     PeerHandshaked(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
     PeerDisconnected(SocketAddr),
     PeerMessageReceived(PeerMessageReceived),
+
+    NewCurrentHead(NewCurrentHeadNotificationRef),
+    BlockReceived(BlockReceived),
+    BlockApplied(Arc<BlockHash>),
+    AllBlockOperationsReceived(AllBlockOperationsReceived),
 }
 
 impl From<ActorsMessageTo> for NetworkChannelMsg {
@@ -52,6 +58,10 @@ impl From<ActorsMessageTo> for NetworkChannelMsg {
             }
             ActorsMessageTo::PeerDisconnected(address) => Self::PeerDisconnected(address),
             ActorsMessageTo::PeerMessageReceived(address) => Self::PeerMessageReceived(address),
+            ActorsMessageTo::NewCurrentHead(v) => Self::NewCurrentHead(v),
+            ActorsMessageTo::BlockReceived(v) => Self::BlockReceived(v),
+            ActorsMessageTo::BlockApplied(v) => Self::BlockApplied(v),
+            ActorsMessageTo::AllBlockOperationsReceived(v) => Self::AllBlockOperationsReceived(v),
         }
     }
 }

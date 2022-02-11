@@ -188,6 +188,13 @@ impl State {
         self.current_head.get().map(|head| &head.hash)
     }
 
+    pub fn best_remote_level(&self) -> Option<i32> {
+        self.peers
+            .handshaked_iter()
+            .filter_map(|(_, peer)| peer.current_head_level)
+            .max()
+    }
+
     /// Global bootstrap status is considered as bootstrapped, only if
     /// number of bootstrapped peers is above threshold.
     pub fn is_bootstrapped(&self) -> bool {
@@ -198,9 +205,8 @@ impl State {
 
         let bootstrapped_peers_len = self
             .peers
-            .iter()
-            .filter_map(|(_, p)| p.status.as_handshaked())
-            .filter_map(|peer| peer.current_head_level)
+            .handshaked_iter()
+            .filter_map(|(_, peer)| peer.current_head_level)
             .filter_map(|level| {
                 // calculate what percentage is our current head of
                 // peer's current head. If percentage is greater than

@@ -7,7 +7,6 @@
 use thiserror::Error;
 
 pub mod shell_automaton_manager;
-pub mod shell_channel;
 pub mod stats;
 pub mod validation;
 
@@ -131,53 +130,6 @@ pub mod subscription {
                 response: AnyMessage::new(response, true),
             },
             Some(myself.into()),
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellEvents.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_new_current_head<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellNewCurrentHead.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_shutdown<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellShutdown.into(),
-            },
-            None,
         );
     }
 }
