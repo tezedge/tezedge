@@ -382,11 +382,19 @@ impl StorageServiceDefault {
                 }
 
                 BlockHeaderPut(chain_id, header) => {
-                    match block_storage.put_block_header(&header).and_then(|is_new| {
-                        block_meta_storage
-                            .put_block_header(&header, &chain_id, &log)
-                            .map(move |_| is_new)
-                    }) {
+                    match block_storage
+                        .put_block_header(&header)
+                        .and_then(|is_new| {
+                            block_meta_storage
+                                .put_block_header(&header, &chain_id, &log)
+                                .map(move |_| is_new)
+                        })
+                        .and_then(|is_new| {
+                            if !operations_meta_storage.contains(&header.hash)? {
+                                operations_meta_storage.put_block_header(&header)?;
+                            }
+                            Ok(is_new)
+                        }) {
                         Ok(is_new_block) => Ok(BlockHeaderPutSuccess(is_new_block)),
                         Err(err) => Err(BlockHeaderPutError(err.into())),
                     }
