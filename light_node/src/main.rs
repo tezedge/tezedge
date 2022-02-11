@@ -20,7 +20,6 @@ use shell::shell_automaton_manager::{
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::ShellCompatibilityVersion;
-use shell_integration::create_oneshot_callback;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -368,7 +367,8 @@ fn schedule_replay_blocks(
 ) {
     let chain_manager = Arc::new(chain_manager);
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
-    let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
+    let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
+    let result_callback_sender = Arc::new(result_callback_sender);
     let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
     let nblocks = blocks.len();
     let now = std::time::Instant::now();
