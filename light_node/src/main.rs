@@ -302,15 +302,11 @@ fn block_on_actors(
         .expect("Failed to initiate p2p");
 
     tokio_runtime.block_on(async move {
-        use tokio::signal;
         use tokio::time::timeout;
 
         // if everything is ok, we can run and hold this "forever"
         if is_setup_ok {
-            signal::ctrl_c()
-                .await
-                .expect("Failed to listen for ctrl-c event");
-            info!(log, "Ctrl-c or SIGINT received!");
+            handle_signals(&log).await;
         }
 
         info!(log, "Shutting down shell automaton (1/9)");
@@ -356,6 +352,30 @@ fn block_on_actors(
 
         info!(log, "Shutdown complete (9/9)");
     });
+}
+
+async fn handle_signals(log: &Logger) {
+    use tokio::signal;
+    use tokio::signal::unix::SignalKind;
+
+    let mut stream =
+        signal::unix::signal(SignalKind::terminate()).expect("Failed to set signal handlers");
+
+    loop {
+        tokio::select! {
+            sigterm = stream.recv() => {
+                if let Some(_) = sigterm {
+                    info!(log, "SIGTERM received!");
+                    return;
+                }
+            }
+            ctrlc = signal::ctrl_c() => {
+                ctrlc.expect("Failed to listen for ctrl-c event");
+                info!(log, "Ctrl-c or SIGINT received!");
+                return;
+            }
+        }
+    }
 }
 
 fn check_deprecated_network(env: &Environment, log: &Logger) {
