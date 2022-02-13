@@ -188,10 +188,10 @@ pub fn snapshot_storage(
             .get_multiple_without_json(&current_block_hash, 100)
             .expect("Failed when obtaining block headers data from source sorage");
 
-        for block in &blocks {
-            if block.hash != new_genesis_block.hash {
+        for block_header_with_hash in &blocks {
+            if block_header_with_hash.hash != new_genesis_block.hash {
                 new_block_storage
-                    .put_block_header(block)
+                    .put_block_header(block_header_with_hash)
                     .expect("Failed to store block header to new main storage");
                 block_count += 1;
 
@@ -205,10 +205,17 @@ pub fn snapshot_storage(
                         .expect("Failed to store operations data into new main storage");
                     operations_count += 1;
                 }
+
+                let block_meta = new_block_meta_storage
+                    .put_block_header_with_applied(&block_header_with_hash, &chain_id, &log)
+                    .expect("Failed to store block header meta to new main storage");
+                new_block_meta_storage
+                    .store_predecessors(&block_header_with_hash.hash, &block_meta)
+                    .expect("Failed to store predecessors metadata to new main storage");
             }
 
             // Last block was the target block, skip the rest
-            if block.hash == target_block {
+            if block_header_with_hash.hash == target_block {
                 break 'outer;
             }
         }
@@ -227,23 +234,11 @@ pub fn snapshot_storage(
     new_block_storage
         .put_block_json_data(&block_header_with_hash.hash, block_json_data)
         .expect("Failed to store block json data to new main storage");
-    let mut block_meta = new_block_meta_storage
-        .put_block_header(&block_header_with_hash, &chain_id, &log)
-        .expect("Failed to store block header meta to new main storage");
-    // TODO: verify that this does the right thing for snapshots with trimmed history
-    new_block_meta_storage
-        .store_predecessors(&block_header_with_hash.hash, &block_meta)
-        .expect("Failed to store predecessors metadata to new main storage");
     if let Some(additional_data) = &block_additional_data {
         new_block_meta_storage
             .put_block_additional_data(&block_header_with_hash.hash, additional_data)
             .expect("Failed to store block additional data to new main storage");
     }
-
-    block_meta.set_is_applied(true);
-    new_block_meta_storage
-        .put(&block_header_with_hash.hash, &block_meta)
-        .expect("Failed to set block applied flag to new main storage");
 
     info!(log, "Set head result"; "block_hash" => block_header_with_hash.hash.to_base58_check(), "is_applied" => new_block_meta_storage.is_applied(&target_block).unwrap());
 

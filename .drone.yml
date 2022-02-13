@@ -954,7 +954,8 @@ steps:
       --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
       --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
       --tezos-data-dir=./snapshot --bootstrap-db-path=bootstrap_db
-      --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
+      --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+      --log-level debug &
       echo $! > /var/run/tezedge.pid
     # this command waits the node to be on level 20000
     - |
@@ -966,8 +967,8 @@ steps:
         b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
         block=$${b:-$block}
         echo "===> Block level $block"
-        if [ $attempts -gt 60 ]; then
-          echo "Failed to bootstrap after 5 minutes."
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
           exit 1
         fi
         attempts=$(($attempts + 1))
