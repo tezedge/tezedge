@@ -136,9 +136,9 @@ pub fn default_test_config() -> Config {
             },
             environment: TezosEnvironmentConfiguration {
                 genesis: GenesisChain {
-                    time: "".to_owned(),
-                    block: "".to_owned(),
-                    protocol: "".to_owned(),
+                    time: "2018-06-30T16:07:32Z".to_string(),
+                    block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
+                    protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
                 },
                 bootstrap_lookup_addresses: vec![],
                 version: "".to_owned(),

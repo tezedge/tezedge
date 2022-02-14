@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::VecDeque;
+
 use storage::StorageInitInfo;
 use tezos_api::ffi::CommitGenesisResult;
 
@@ -11,23 +13,36 @@ pub use shell_automaton::service::storage_service::{
 };
 
 #[derive(Debug, Clone)]
-pub struct StorageServiceDummy {}
+pub struct StorageServiceDummy {
+    pub requests: VecDeque<StorageRequest>,
+    pub responses: VecDeque<StorageResponse>,
+}
 
 impl StorageServiceDummy {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            requests: Default::default(),
+            responses: Default::default(),
+        }
     }
 }
 
 impl StorageService for StorageServiceDummy {
     #[inline(always)]
-    fn request_send(&mut self, _: StorageRequest) -> Result<(), RequestSendError<StorageRequest>> {
+    fn request_send(
+        &mut self,
+        req: StorageRequest,
+    ) -> Result<(), RequestSendError<StorageRequest>> {
+        self.requests.push_back(req);
         Ok(())
     }
 
     #[inline(always)]
     fn response_try_recv(&mut self) -> Result<StorageResponse, ResponseTryRecvError> {
-        Err(ResponseTryRecvError::Empty)
+        self.responses
+            .pop_front()
+            .map(|resp| Ok(resp))
+            .unwrap_or(Err(ResponseTryRecvError::Empty))
     }
 
     fn blocks_genesis_commit_result_put(
