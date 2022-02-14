@@ -62,6 +62,12 @@ type StorageWorkerResponder = ServiceWorkerResponder<StorageRequest, StorageResp
 #[error("Error accessing storage: {0}")]
 pub struct StorageError(String);
 
+impl StorageError {
+    pub fn mocked() -> Self {
+        Self("MockedStorageError".to_owned())
+    }
+}
+
 impl From<storage::StorageError> for StorageError {
     fn from(err: storage::StorageError) -> Self {
         Self(err.to_string())

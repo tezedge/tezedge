@@ -8,7 +8,7 @@ use crypto::nonce::Nonce;
 use shell_automaton::config::default_test_config;
 use shell_automaton::peers::check::timeouts::PeersCheckTimeoutsInitAction;
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
-use shell_automaton::{Config, Quota, State};
+use shell_automaton::{Config, State};
 use shell_automaton_testing::one_real_node_cluster::{Cluster, HandshakeError};
 use shell_automaton_testing::service::IOCondition;
 use tezos_identity::Identity;
@@ -21,9 +21,6 @@ fn build_cluster(pow_target: f64) -> Cluster {
 
     let state = State::new(Config {
         initial_time,
-        port: 9732,
-        disable_mempool: false,
-        private_node: false,
         pow_target,
         identity: Identity::generate(pow_target).unwrap(),
         shell_compatibility_version: ShellCompatibilityVersion::new(
@@ -35,18 +32,10 @@ fn build_cluster(pow_target: f64) -> Cluster {
         check_timeouts_interval: Duration::from_millis(500),
         peer_connecting_timeout: Duration::from_millis(2000),
         peer_handshaking_timeout: Duration::from_secs(8),
-        peer_max_io_syscalls: 64,
         peers_potential_max: 2,
         peers_connected_max: 2,
         peers_graylist_disable: false,
         peers_graylist_timeout: Duration::from_secs(15 * 60),
-        record_state_snapshots_with_interval: None,
-        record_actions: false,
-        quota: Quota {
-            restore_duration_millis: 1000,
-            read_quota: 1024,
-            write_quota: 1024,
-        },
         ..default_test_config()
     });
 

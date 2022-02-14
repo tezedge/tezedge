@@ -145,6 +145,10 @@ impl Cluster {
         self.store.state()
     }
 
+    pub fn service(&mut self) -> &mut ServiceMocked {
+        self.store.service()
+    }
+
     pub fn dispatch<T>(&mut self, action: T) -> bool
     where
         T: Into<Action> + EnablingCondition<State>,
