@@ -874,12 +874,12 @@ steps:
     - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$$(rustc --print sysroot)"
     - >
-      drone-cache/build_files/light-node
-      --config-file=drone-cache/build_files/tezedge/tezedge_drone.config
-      --identity-file=drone-cache/build_files/identities/identity_2.json
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
@@ -911,12 +911,12 @@ steps:
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
     - >
-      drone-cache/build_files/light-node replay --target-path=./replay
-      --config-file "drone-cache/build_files/tezedge/tezedge_drone.config"
-      --identity-file "drone-cache/build_files/identities/identity_6.json"
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      ./drone-cache/build_files/light-node replay --target-path=./replay
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=tezedge
@@ -936,22 +936,22 @@ steps:
     - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
     - >
       drone-cache/build_files/light-node
-      --config-file "drone-cache/build_files/tezedge/tezedge_drone.config"
-      --identity-file "drone-cache/build_files/identities/identity_6.json"
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=irmin
       --network=$${NETWORK}
       snapshot --target-path=./snapshot --block BLrv1ad4744HodQZJaeHMgNxM4bNqzxAC7q1PDMbscCoBdBjGsR # level=19900
     - >
-      drone-cache/build_files/light-node
-      --config-file=drone-cache/build_files/tezedge/tezedge_drone.config
-      --identity-file=drone-cache/build_files/identities/identity_2.json
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
       --tezos-data-dir=./snapshot --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
