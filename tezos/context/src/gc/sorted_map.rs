@@ -1,21 +1,48 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Container of key-value pair
+///
+/// The key must be `Ord` and `Clone`
+/// It is intended to reduce the memory usage, compared to `BTreeMap` and `HashMap`
+/// It is also, sometimes, faster than `BTreeMap` and `HashMap`.
+///
+/// Performance / memory usage with `100_000_000` elements
+///
+/// `SortedMap`: 769 MB
+/// `HashMap`:  1154 MB
+/// `BTreeMap`: 1999 MB
+///
+/// SortedMap:
+///  insert: 5.785713747s
+///  search: 3.751386295s
+///  remove: 8.74024244s
+/// BTreeMap:
+///  insert: 7.825834568s
+///  search: 5.327495057s
+///  remove: 3.362372303s
+/// HashMap (with the default hasher):
+///  insert: 13.462065165s
+///  search: 10.665816797s
+///  remove: 16.224933928s
+///
+/// This can be reproduced with the test `compare_sorted_map` below
+///
 use std::{fmt::Debug, sync::Arc};
 
 use static_assertions::assert_eq_size;
 
 use crate::kv_store::HashId;
 
-#[cfg(not(test))]
-const MAX_CHUNK_SIZE: usize = 1_000;
+/// This affects both performance and memory usage
+/// 1_000 seems to be a good value.
+const DEFAULT_CHUNK_SIZE: usize = 1_000;
 
-#[cfg(test)]
-const MAX_CHUNK_SIZE: usize = 4;
+const fn const_split_at(chunk_size: usize) -> usize {
+    (chunk_size / 2) + (chunk_size / 4)
+}
 
-const SPLIT_AT: usize = (MAX_CHUNK_SIZE / 2) + (MAX_CHUNK_SIZE / 4);
-
-struct Chunk<K, V>
+struct Chunk<K, V, const CHUNK_SIZE: usize>
 where
     K: Ord,
 {
@@ -24,18 +51,18 @@ where
     max: K,
 }
 
-assert_eq_size!([u8; 40], Chunk<HashId, Arc<[u8]>>);
+assert_eq_size!([u8; 40], Chunk<HashId, Arc<[u8]>, 1>);
 assert_eq_size!([u8; 24], (HashId, Arc<[u8]>));
 assert_eq_size!([u8; 48], [(HashId, Arc<[u8]>); 2]);
 
-pub struct SortedMap<K, V>
+pub struct SortedMap<K, V, const CHUNK_SIZE: usize = DEFAULT_CHUNK_SIZE>
 where
     K: Ord,
 {
-    list: Vec<Chunk<K, V>>,
+    list: Vec<Chunk<K, V, CHUNK_SIZE>>,
 }
 
-impl<K, V> Default for SortedMap<K, V>
+impl<K, V, const CHUNK_SIZE: usize> Default for SortedMap<K, V, CHUNK_SIZE>
 where
     K: Ord,
 {
@@ -46,7 +73,7 @@ where
     }
 }
 
-impl<K, V> std::fmt::Debug for Chunk<K, V>
+impl<K, V, const CHUNK_SIZE: usize> std::fmt::Debug for Chunk<K, V, CHUNK_SIZE>
 where
     K: Ord + std::fmt::Debug,
     V: std::fmt::Debug,
@@ -61,7 +88,7 @@ where
     }
 }
 
-impl<K, V> std::fmt::Debug for SortedMap<K, V>
+impl<K, V, const CHUNK_SIZE: usize> std::fmt::Debug for SortedMap<K, V, CHUNK_SIZE>
 where
     K: Ord,
 {
@@ -82,7 +109,7 @@ where
     }
 }
 
-impl<K, V> Chunk<K, V>
+impl<K, V, const CHUNK_SIZE: usize> Chunk<K, V, CHUNK_SIZE>
 where
     K: Ord + Copy,
 {
@@ -99,7 +126,7 @@ where
     }
 
     fn new_with_element(key: K, value: V) -> Self {
-        let mut inner = Vec::with_capacity(MAX_CHUNK_SIZE / 2);
+        let mut inner = Vec::with_capacity(CHUNK_SIZE / 2);
 
         let min = key;
         let max = key;
@@ -148,15 +175,17 @@ where
 
         let mut next_chunk = None;
 
-        if self.len() == MAX_CHUNK_SIZE {
+        if self.len() == CHUNK_SIZE {
             // The chunk is full, split it in 2 chunks
 
-            let new_chunk = if insert_at >= SPLIT_AT {
-                let mut new_chunk = self.inner.split_off(SPLIT_AT);
-                new_chunk.insert(insert_at - SPLIT_AT, (key, value));
+            let const_split_at = const_split_at(CHUNK_SIZE);
+
+            let new_chunk = if insert_at >= const_split_at {
+                let mut new_chunk = self.inner.split_off(const_split_at);
+                new_chunk.insert(insert_at - const_split_at, (key, value));
                 new_chunk
             } else {
-                let new_chunk = self.inner.split_off(SPLIT_AT - 1);
+                let new_chunk = self.inner.split_off(const_split_at - 1);
                 self.inner.insert(insert_at, (key, value));
                 new_chunk
             };
@@ -187,7 +216,7 @@ where
     }
 }
 
-impl<K, V> SortedMap<K, V>
+impl<K, V, const CHUNK_SIZE: usize> SortedMap<K, V, CHUNK_SIZE>
 where
     K: Ord + Copy,
 {
@@ -253,7 +282,7 @@ where
                 let can_merge_with_next = self
                     .list
                     .get(index + 1)
-                    .map(|c| c.len() + new_chunk.len() < MAX_CHUNK_SIZE)
+                    .map(|c| c.len() + new_chunk.len() < CHUNK_SIZE)
                     .unwrap_or(false);
 
                 if can_merge_with_next {
@@ -264,22 +293,26 @@ where
                 }
             }
             Err(index) => {
+                // We first attempt to insert in the previous chunk
                 if let Some(prev) = index.checked_sub(1) {
+                    // Length of the next chunk
                     let next_size = self.list.get(index).map(|c| c.len());
 
                     let prev_chunk = &mut self.list[prev];
 
+                    // Does the next chunk has more space available ?
                     let next_is_less_busy = next_size
                         .map(|next_size| next_size < prev_chunk.len())
                         .unwrap_or(false);
 
-                    if !next_is_less_busy && prev_chunk.len() < MAX_CHUNK_SIZE {
+                    if !next_is_less_busy && prev_chunk.len() < CHUNK_SIZE {
                         let new = prev_chunk.insert(key, value);
                         debug_assert!(new.is_none());
                         return;
                     }
                 };
 
+                // Are we at the end of the list ?
                 if self.list.len() == index {
                     self.list.push(Chunk::new_with_element(key, value));
                     return;
@@ -287,12 +320,15 @@ where
 
                 let chunk = &mut self.list[index];
 
-                if chunk.len() < MAX_CHUNK_SIZE {
+                if chunk.len() < CHUNK_SIZE {
+                    // The next chunk has some space available, insert it our new elemet
                     let new = chunk.insert(key, value);
                     debug_assert!(new.is_none());
                     return;
                 }
 
+                // Neither the previous or next chunks have spaces, insert a new chunk in
+                // the middle
                 let chunk = Chunk::new_with_element(key, value);
                 self.list.insert(index, chunk);
             }
@@ -314,7 +350,7 @@ where
     }
 }
 
-impl<K, V> SortedMap<K, V>
+impl<K, V, const CHUNK_SIZE: usize> SortedMap<K, V, CHUNK_SIZE>
 where
     K: Ord + Copy + Debug,
 {
@@ -348,11 +384,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, HashMap};
+
     use super::*;
 
     #[test]
     fn test_sorted_map() {
-        let mut map = SortedMap::default();
+        let mut map = SortedMap::<_, _, 4>::default();
 
         map.insert(101, 101);
         map.insert(110, 110);
@@ -414,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_sorted_map_big() {
-        let mut map = SortedMap::default();
+        let mut map = SortedMap::<_, _, 4>::default();
 
         for index in 0..100_000 {
             map.insert(index, index);
@@ -426,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_sorted_map_big_revert() {
-        let mut map = SortedMap::default();
+        let mut map = SortedMap::<_, _, 4>::default();
 
         for index in 0..100_000 {
             map.insert(100_000 - index, index);
@@ -434,5 +472,84 @@ mod tests {
         map.assert_correct();
 
         assert_eq!(map.list.len(), 25_000);
+    }
+
+    #[test]
+    fn compare_sorted_map() {
+        macro_rules! impl_container {
+            ($container:ty) => {{
+                impl<K, V> Container<K, V> for $container
+                where
+                    K: Ord + Copy,
+                    K: std::hash::Hash,
+                {
+                    fn insert(&mut self, key: K, value: V) {
+                        self.insert(key, value);
+                    }
+                    fn get(&self, key: &K) -> Option<&V> {
+                        self.get(key)
+                    }
+                    fn remove(&mut self, key: &K) -> Option<V> {
+                        self.remove(key)
+                    }
+                }
+            }};
+        }
+
+        trait Container<K, V>: Default {
+            fn insert(&mut self, key: K, value: V);
+            fn get(&self, key: &K) -> Option<&V>;
+            fn remove(&mut self, key: &K) -> Option<V>;
+        }
+
+        impl_container!(SortedMap<K, V>);
+        impl_container!(BTreeMap<K, V>);
+        impl_container!(HashMap<K, V>);
+
+        const NUMBER_OF_INSERT: i32 = 1_000_000;
+        // const NUMBER_OF_INSERT: i32 = 100_000_000;
+
+        fn run<T>()
+        where
+            T: Container<i32, i32>,
+        {
+            let mut map = T::default();
+
+            let now = std::time::Instant::now();
+            for index in 0..NUMBER_OF_INSERT {
+                if index % 2 == 0 {
+                    map.insert(index, index);
+                }
+            }
+            for index in 0..NUMBER_OF_INSERT {
+                // This force our `SortedMap` to reallocate:
+                // Make it use the "worse case" path
+                if index % 2 != 0 {
+                    map.insert(index, index);
+                }
+            }
+            println!(" Insert: {:?}", now.elapsed());
+
+            let now = std::time::Instant::now();
+            for index in 0..NUMBER_OF_INSERT {
+                assert!(map.get(&index).is_some());
+            }
+            println!(" Search: {:?}", now.elapsed());
+
+            let now = std::time::Instant::now();
+            for index in 0..NUMBER_OF_INSERT {
+                assert!(map.remove(&index).is_some());
+            }
+            println!(" Remove: {:?}", now.elapsed());
+        }
+
+        println!("SortedMap:");
+        run::<SortedMap<_, _, DEFAULT_CHUNK_SIZE>>();
+
+        println!("BTreeMap:");
+        run::<BTreeMap<_, _>>();
+
+        println!("HashMap:");
+        run::<HashMap<_, _>>();
     }
 }
