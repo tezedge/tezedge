@@ -117,8 +117,10 @@ impl HashValueStore {
 
     pub(crate) fn get_vacant_object_hash(&mut self) -> Result<VacantObjectHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
-            if let Some(old_value) = self.values.set(free_id, None)? {
-                self.values_bytes = self.values_bytes.saturating_sub(old_value.len());
+            if self.values.contains_key(free_id)? {
+                if let Some(old_value) = self.values.set(free_id, None)? {
+                    self.values_bytes = self.values_bytes.saturating_sub(old_value.len());
+                }
             }
             (free_id, self.hashes.get_mut(free_id)?.ok_or(HashIdError)?)
         } else {

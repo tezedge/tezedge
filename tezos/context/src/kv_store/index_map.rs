@@ -67,6 +67,11 @@ impl<K, V> IndexMap<K, V>
 where
     K: TryInto<usize>,
 {
+    pub fn contains_key(&mut self, key: K) -> Result<bool, K::Error> {
+        let index = key.try_into()?;
+        Ok(index < self.entries.len())
+    }
+
     pub fn set(&mut self, key: K, value: V) -> Result<V, K::Error> {
         Ok(std::mem::replace(&mut self.entries[key.try_into()?], value))
     }
