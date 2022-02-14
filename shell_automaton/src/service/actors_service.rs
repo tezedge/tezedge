@@ -13,9 +13,7 @@ use networking::network_channel::{
 };
 use storage::BlockHeaderWithHash;
 use tezedge_actor_system::actors::*;
-use tezos_messages::p2p::encoding::prelude::{
-    MetadataMessage, NetworkVersion, PeerMessageResponse,
-};
+use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 use crate::peer::PeerId;
 
@@ -89,14 +87,6 @@ impl fmt::Debug for ApplyBlockCallback {
 #[derive(Debug)]
 pub enum ActorsMessageFrom {
     P2pInit,
-    PeerStalled(Arc<PeerId>),
-    BlacklistPeer(Arc<PeerId>, String),
-    SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
-    NewCurrentHead {
-        chain_id: Arc<ChainId>,
-        block: Arc<BlockHeaderWithHash>,
-        is_bootstrapped: bool,
-    },
     ApplyBlock {
         chain_id: Arc<ChainId>,
         block_hash: Arc<BlockHash>,

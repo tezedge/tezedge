@@ -56,6 +56,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetNextBlockIni
                 p.remote_requests
                     .current_branch_get
                     .next_block_is_idle_or_success()
+                    && !p.remote_requests.current_branch_get.is_complete()
             })
             .is_some()
     }

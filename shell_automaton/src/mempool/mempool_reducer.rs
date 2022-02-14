@@ -31,7 +31,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     if state.config.disable_mempool {
         return;
     }
-    let config = &state.config;
     let mempool_state = &mut state.mempool;
 
     match &action.action {

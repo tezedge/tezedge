@@ -147,14 +147,15 @@ impl PeerRemoteRequestsCurrentBranchGetState {
     pub fn is_complete(&self) -> bool {
         match self {
             Self::Pending {
-                step, next_block, ..
+                current_head,
+                step,
+                next_block,
+                ..
             } => {
+                let next_level = next_block.level().unwrap_or(current_head.level());
                 next_block.is_empty_success()
                     || next_block.is_error()
-                    || next_block
-                        .level()
-                        .filter(|level| *level < step.clone().next_step())
-                        .is_some()
+                    || next_level < step.clone().next_step().max(1)
             }
             _ => false,
         }

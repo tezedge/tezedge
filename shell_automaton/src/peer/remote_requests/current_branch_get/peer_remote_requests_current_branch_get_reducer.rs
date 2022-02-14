@@ -8,7 +8,7 @@ use crate::{Action, ActionWithMeta, State};
 
 use super::PeerRemoteRequestsCurrentBranchGetState;
 
-pub fn peer_remote_requests_block_header_get_reducer(state: &mut State, action: &ActionWithMeta) {
+pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::PeerRemoteRequestsCurrentBranchGetInit(content) => {
             let peer = match state.peers.get_handshaked_mut(&content.address) {
