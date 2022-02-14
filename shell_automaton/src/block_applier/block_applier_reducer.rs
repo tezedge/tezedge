@@ -14,7 +14,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                 .push_back((content.block_hash.clone(), content.injector_rpc_id.clone()));
         }
         Action::BlockApplierApplyInit(content) => {
-            if let Some((block_hash, injector_rpc_id)) = state.block_applier.queue.front() {
+            if let Some((block_hash, _)) = state.block_applier.queue.front() {
                 if block_hash == &content.block_hash {
                     state.block_applier.queue.pop_front();
                 }

@@ -19,7 +19,7 @@ use super::{
     PeerRemoteRequestsCurrentBranchGetSuccessAction,
 };
 
-pub fn peer_remote_requests_block_header_get_effects<S>(
+pub fn peer_remote_requests_current_branch_get_effects<S>(
     store: &mut Store<S>,
     action: &ActionWithMeta,
 ) where

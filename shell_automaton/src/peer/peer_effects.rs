@@ -435,12 +435,7 @@ where
                     });
                 }
                 Ok(StorageResponseSuccess::BlockHashByLevelGetSuccess(result)) => {
-                    if !req_id_matches(
-                        peer.remote_requests
-                            .block_operations_get
-                            .current
-                            .storage_req_id(),
-                    ) {
+                    if !req_id_matches(peer.remote_requests.current_branch_get.storage_req_id()) {
                         return;
                     }
                     store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction {

@@ -197,7 +197,6 @@ where
             start_applying_next_block(store);
         }
         Action::BlockApplierApplySuccess(_) => {
-            let chain_id = store.state().config.chain_id.clone();
             match &store.state.get().block_applier.current {
                 BlockApplierApplyState::Success {
                     block,
