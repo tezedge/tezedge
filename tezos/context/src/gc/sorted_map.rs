@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{fmt::Debug, sync::Arc};
 
 use static_assertions::assert_eq_size;

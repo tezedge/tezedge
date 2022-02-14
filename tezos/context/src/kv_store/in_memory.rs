@@ -46,6 +46,9 @@ use tezos_spsc::Consumer;
 use super::{index_map::IndexMap, persistent::PersistentConfiguration, HashIdError};
 use super::{HashId, VacantObjectHash};
 
+const NEW_IDS_CHUNK_CAPACITY: usize = 512 * 1024;
+const CURRENT_CYCLE_CHUNK_CAPACITY: usize = 512 * 1024;
+
 #[derive(Debug)]
 pub struct HashValueStore {
     hashes: IndexMap<HashId, ObjectHash>,
@@ -64,7 +67,7 @@ impl HashValueStore {
             hashes: IndexMap::with_chunk_capacity(10_000_000), // ~320MB
             values: IndexMap::with_chunk_capacity(10_000_000), // ~80MB
             free_ids: consumer.into(),
-            new_ids: ChunkedVec::with_chunk_capacity(512 * 1024), // ~8KB
+            new_ids: ChunkedVec::with_chunk_capacity(NEW_IDS_CHUNK_CAPACITY), // ~8KB
             values_bytes: 0,
         } // Total ~400MB
     }
@@ -168,7 +171,7 @@ impl HashValueStore {
     fn take_new_ids(&mut self) -> ChunkedVec<HashId> {
         std::mem::replace(
             &mut self.new_ids,
-            ChunkedVec::with_chunk_capacity(512 * 1024),
+            ChunkedVec::with_chunk_capacity(NEW_IDS_CHUNK_CAPACITY),
         )
     }
 }
@@ -390,7 +393,7 @@ impl InMemory {
             (Some(sender), Some(cons), Some(thread_handle))
         };
 
-        let current_cycle = ChunkedVec::with_chunk_capacity(512 * 1024);
+        let current_cycle = ChunkedVec::with_chunk_capacity(CURRENT_CYCLE_CHUNK_CAPACITY);
         let hashes = HashValueStore::new(cons);
         let context_hashes = Default::default();
 
@@ -416,7 +419,6 @@ impl InMemory {
         let (tree, parent_hash, commit) = {
             let mut ondisk = Persistent::try_new(PersistentConfiguration {
                 db_path: Some("/tmp/tezedge/context".to_string()),
-                // db_path: Some("/home/sebastien/tmp/replay/context".to_string()),
                 startup_check: false,
                 read_mode: true,
             })?;
@@ -572,7 +574,7 @@ impl InMemory {
         if let Some(sender) = &self.sender {
             let values_in_cycle = std::mem::replace(
                 &mut self.current_cycle,
-                ChunkedVec::with_chunk_capacity(512 * 1024),
+                ChunkedVec::with_chunk_capacity(CURRENT_CYCLE_CHUNK_CAPACITY),
             );
             let new_ids = self.hashes.take_new_ids();
 
