@@ -23,6 +23,7 @@ strum = "0.20"
 strum_macros = "0.20"
 zstd = "0.5.3+zstd.1.4.5"
 edgekv = { path = "../edgekv" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
 # local dependencies
 crypto = { path = "../crypto" }
@@ -51,3 +52,10 @@ commitlog = "0.1"
 maindb-backend-rocksdb = []
 maindb-backend-sled = []
 maindb-backend-edgekv = []
+fuzzing = [
+    "fuzzcheck",
+    "crypto/fuzzing",
+    "tezos_api/fuzzing",
+    "tezos_messages/fuzzing",
+    "tezos_context_api/fuzzing"
+    ]

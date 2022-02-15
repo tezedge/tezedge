@@ -11,6 +11,7 @@ use tezos_encoding::nom::NomReader;
 
 use super::limits::{MEMPOOL_MAX_OPERATIONS, MEMPOOL_MAX_SIZE};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Clone,
     Serialize,

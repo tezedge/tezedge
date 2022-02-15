@@ -26,6 +26,7 @@ pub fn display_fitness(fitness: &Fitness) -> String {
         .join("::")
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -55,6 +56,7 @@ impl From<BlockHeaderMessage> for BlockHeader {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -79,6 +81,7 @@ impl GetBlockHeadersMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -138,6 +141,10 @@ pub struct BlockHeader {
 
 /// Optional 256-bit digest of encoded data
 /// TODO https://viablesystems.atlassian.net/browse/TE-675
+#[cfg_attr(
+    feature = "fuzzing",
+    derive(fuzzcheck::DefaultMutator, Serialize, Deserialize)
+)]
 #[derive(Clone, Debug)]
 pub struct EncodingHash(pub Option<Vec<u8>>);
 

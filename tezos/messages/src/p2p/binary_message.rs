@@ -118,6 +118,7 @@ pub(crate) fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderErr
 ///
 /// Difference from [`BinaryMessage`] is that it also contains [`CONTENT_LENGTH_FIELD_BYTES`] bytes
 /// of information about how many bytes is the actual encoding.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct BinaryChunk(Vec<u8>);
 

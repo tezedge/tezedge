@@ -22,6 +22,7 @@ pub enum SignatureCurve {
     P256,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ConversionError {
     #[error("Conversion from invalid public key")]

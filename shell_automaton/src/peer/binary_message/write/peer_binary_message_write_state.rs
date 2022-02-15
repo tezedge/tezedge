@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::peer::chunk::write::{PeerChunkWrite, PeerChunkWriteError, WriteCrypto};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBinaryMessageWriteError {
     Chunk(PeerChunkWriteError),
@@ -16,6 +17,7 @@ impl From<PeerChunkWriteError> for PeerBinaryMessageWriteError {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBinaryMessageWriteState {
     Init {

@@ -18,6 +18,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 mod utils;
 
 /// Key identifying particular request for endorsing rights.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RightsKey(RightsInput);
 
@@ -105,6 +106,7 @@ impl<'de> serde::Deserialize<'de> for RightsKey {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
@@ -113,6 +115,7 @@ pub enum RightsInput {
     Endorsing(EndorsingRightsInput),
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
@@ -123,6 +126,7 @@ pub struct BakingRightsInput {
     pub level: Option<Level>,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]

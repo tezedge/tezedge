@@ -15,6 +15,7 @@ use super::ProtocolRunnerInitContextIpcServerState;
 /// Initializes server to listen for readonly context clients through IPC.
 ///
 /// Must be called after the writable context has been initialized.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextIpcServerAction {}
 
@@ -29,6 +30,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextIpcServerPendingAction {
     pub token: ProtocolRunnerToken,
@@ -46,6 +48,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerPendingActio
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextIpcServerErrorAction {
     pub token: ProtocolRunnerToken,
@@ -64,6 +67,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerErrorAction 
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextIpcServerSuccessAction {
     pub token: Option<ProtocolRunnerToken>,

@@ -43,6 +43,7 @@ fn init() -> HashMap<String, SupportedProtocol> {
     protos
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(EnumIter, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SupportedProtocol {
     Proto001,
@@ -80,6 +81,7 @@ impl SupportedProtocol {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Error, Clone, serde::Serialize, serde::Deserialize)]
 #[error("Protocol {protocol} is not yet supported!")]
 pub struct UnsupportedProtocolError {

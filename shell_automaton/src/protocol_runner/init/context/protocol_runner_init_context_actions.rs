@@ -12,6 +12,7 @@ use crate::{EnablingCondition, State};
 
 use super::ProtocolRunnerInitContextState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextAction {}
 
@@ -26,6 +27,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextPendingAction {
     pub token: ProtocolRunnerToken,
@@ -42,6 +44,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextPendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextErrorAction {
     pub token: Option<ProtocolRunnerToken>,
@@ -63,6 +66,7 @@ impl EnablingCondition<State> for ProtocolRunnerInitContextErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerInitContextSuccessAction {
     pub token: ProtocolRunnerToken,

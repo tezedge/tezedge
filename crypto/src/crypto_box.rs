@@ -135,6 +135,16 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);
 
+#[cfg(feature = "fuzzing")]
+impl fuzzcheck::DefaultMutator for PrecomputedKey {
+    type Mutator = fuzzcheck::mutators::unit::UnitMutator<PrecomputedKey>;
+    #[no_coverage]
+    fn default_mutator() -> Self::Mutator {
+        let pk = PrecomputedKey::from_bytes([0; box_::PRECOMPUTEDKEYBYTES]);
+        fuzzcheck::mutators::unit::UnitMutator::new(pk)
+    }
+}
+
 impl PrecomputedKey {
     /// Create `PrecomputedKey` from public key and secret key
     ///

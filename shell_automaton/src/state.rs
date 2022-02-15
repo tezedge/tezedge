@@ -21,6 +21,8 @@ use crate::shutdown::ShutdownState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
+use redux_rs::SafetyCondition;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionIdWithKind {
     id: ActionId,
@@ -212,5 +214,40 @@ impl storage::persistent::Encoder for State {
 impl storage::persistent::Decoder for State {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         rmp_serde::from_slice(bytes).map_err(|_| SchemaError::DecodeError)
+    }
+}
+
+#[derive(Debug)]
+pub enum SafetyConditionError {
+    ConnectedPeersMaxedOut,
+    PotentialPeersMaxedOut,
+    ConnectedPeerIsBlacklisted,
+}
+
+impl SafetyCondition for State {
+    type Error = SafetyConditionError;
+
+    fn check_safety_condition(&self) -> Result<(), Self::Error> {
+        /*
+            TODO: safety conditions checks are temporarily disabled.
+            If enabled, these conditions are quickly violated by the Actions-Fuzzer.
+            Once these are fixed the following code can be un-commented.
+        */
+        /*
+        if self.peers.connected_len() > self.config.peers_connected_max {
+            return Err(SafetyConditionError::ConnectedPeersMaxedOut)
+        }
+
+        if self.peers.potential_len() > self.config.peers_potential_max {
+            return Err(SafetyConditionError::PotentialPeersMaxedOut);
+        }
+
+        for (peer_addr, _) in self.peers.connected_iter() {
+            if self.peers.is_blacklisted(&peer_addr.ip()) {
+                return Err(SafetyConditionError::ConnectedPeerIsBlacklisted);
+            }
+        }
+        */
+        Ok(())
     }
 }

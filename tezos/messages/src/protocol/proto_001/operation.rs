@@ -134,6 +134,7 @@ impl TryFrom<P2POperation> for OperationContents {
 
 /// Inline endorsement content, Endorsement (tag 0).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsementVariant {
     pub level: i32,
@@ -141,6 +142,7 @@ pub struct InlinedEndorsementVariant {
 
 /// Inlined endorsement contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-inlined-endorsement-contents-5-bytes-8-bit-tag].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum InlinedEndorsementContents {
@@ -151,6 +153,7 @@ pub enum InlinedEndorsementContents {
 
 /// Inlined endorsement.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-inlined-endorsement].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct InlinedEndorsement {
     pub branch: BlockHash,
@@ -244,6 +247,7 @@ pub enum Contents {
 
 /// Endorsmnent (tag 0).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#id5].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct EndorsementOperation {
     #[encoding(builtin = "Int32")]
@@ -252,6 +256,7 @@ pub struct EndorsementOperation {
 
 /// Seed_nonce_revelation (tag 1).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#seed-nonce-revelation-tag-1].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct SeedNonceRevelationOperation {
     pub level: i32,
@@ -281,6 +286,7 @@ pub struct DoubleBakingEvidenceOperation {
 
 /// Activate_account (tag 4).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#activate-account-tag-4].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct ActivateAccountOperation {
     pub pkh: ContractTz1Hash,
@@ -290,6 +296,7 @@ pub struct ActivateAccountOperation {
 
 /// Proposals (tag 5).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#proposals-tag-5].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct ProposalsOperation {
     pub source: SignaturePublicKeyHash,
@@ -300,6 +307,7 @@ pub struct ProposalsOperation {
 
 /// Ballot (tag 6).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#ballot-tag-6].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct BallotOperation {
     pub source: SignaturePublicKeyHash,
@@ -310,6 +318,7 @@ pub struct BallotOperation {
 
 /// Reveal (tag 107).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#reveal-tag-107].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct RevealOperation {
     pub source: SignaturePublicKeyHash,
@@ -322,6 +331,7 @@ pub struct RevealOperation {
 
 /// Transaction (tag 108).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#transaction-tag-108].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct TransactionOperation {
     pub source: SignaturePublicKeyHash,
@@ -336,6 +346,7 @@ pub struct TransactionOperation {
 
 /// Origination (tag 109).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#origination-tag-109].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct OriginationOperation {
     pub source: SignaturePublicKeyHash,
@@ -350,6 +361,7 @@ pub struct OriginationOperation {
 
 /// Delegation (tag 110).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#delegation-tag-110].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct DelegationOperation {
     pub source: SignaturePublicKeyHash,
@@ -364,6 +376,7 @@ pub struct DelegationOperation {
 
 /// X_0.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#x-0.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct X0 {
     pub entrypoint: Entrypoint,
@@ -373,6 +386,7 @@ pub struct X0 {
 
 /// alpha.entrypoint.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-entrypoint-determined-from-data-8-bit-tag.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub enum Entrypoint {
     /// default (tag 0).
@@ -403,6 +417,7 @@ pub enum Entrypoint {
 
 /// .
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#named-tag-255.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct ShortDynamicData {
     #[encoding(short_dynamic, bytes)]
@@ -411,6 +426,7 @@ pub struct ShortDynamicData {
 
 /// alpha.scripted.contracts.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-scripted-contracts.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct ScriptedContract {
     #[encoding(dynamic, bytes)]
@@ -421,6 +437,7 @@ pub struct ScriptedContract {
 
 /// alpha.contract_id (22 bytes, 8-bit tag).
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-contract-id-22-bytes-8-bit-tag.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub enum ContractId {
     /// Implicit (tag 0).
@@ -434,6 +451,7 @@ pub enum ContractId {
 
 /// Originated (tag 1).
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#originated-tag-1.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
 pub struct OriginatedContractId {
     #[encoding(sized = "20", bytes)]

@@ -17,3 +17,8 @@ nom = "6.1"
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
+[features]
+fuzzing = ["fuzzcheck", "crypto/fuzzing", "tezos_encoding/fuzzing", "tezos_messages/fuzzing"]
+

@@ -86,6 +86,7 @@ impl PeerIOLoopState {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerIOLoopResult {
     /// We aren't ready for making more progress, even though resource

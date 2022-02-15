@@ -400,6 +400,7 @@ macro_rules! successors_count {
 }
 
 /// Meta information for the block
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Getters, CopyGetters, Setters, PartialEq, Debug, Clone)]
 pub struct Meta {
     #[get = "pub"]
@@ -766,6 +767,7 @@ pub fn merge_meta_value_edgekv(
 
 /// Struct holds informations as a result from block apllication,
 /// These data are used for appling next successor block
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, CopyGetters, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockAdditionalData {
     #[get_copy = "pub"]

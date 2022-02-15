@@ -14,6 +14,7 @@ use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 
 // TODO: include error in the state.
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum PeerMessageWriteError {
     #[error("Error while encoding PeerMessage: {0}")]

@@ -11,6 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::State;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RpcId(u64);
 

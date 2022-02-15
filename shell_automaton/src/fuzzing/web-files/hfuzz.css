@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+    color: rgba(255, 255, 255, 0.8);
+    background-color: #1b1b1d;
+    font-weight: 400;
+    height: 100%;
+    padding: 0 10%;
+    font-size: 12px;
+    margin: 0 20px;
+}
+
+table {
+    border-collapse: collapse;
+    border-radius: 2px;
+    border: none;
+    box-shadow: 0 0 0 1px #404343;
+}
+
+tr:nth-child(even) {
+    background-color: #404343;
+}
+
+tr > td.regression {
+    color: #EB5368;
+}
+
+tr > td.improvement {
+    color: #32D74B;
+}
+
+body > table > tbody > tr:nth-child(1) > td {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+
+td, th {
+    font-family: 'Inter', sans-serif;
+    text-align: left;
+    padding: 8px 0 8px 8px;
+    white-space: pre-wrap;
+    overflow: hidden;
+    max-width: 400px;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    border: none;
+}
+
+th {
+    text-transform: uppercase;
+    font-weight: 400;
+    padding-right: 8px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+th:first-child {
+    color: #fff;
+}
+
+body p:nth-child(3) {
+    margin-left: -20px;
+    margin-right: -20px;
+    margin-top: 20px;
+    padding-bottom: 140px;
+}
+
+h1 {
+    height: 15vh;
+    font-weight: 300;
+    font-size: 20px;
+    text-align: center;
+    line-height: 15vh;
+}
+
+table {
+    width: 100%;
+    max-width: 100%;
+}
+
+table tbody tr:first-child td:not(:first-child) {
+    color: rgba(255, 255, 255, 0.4);
+}

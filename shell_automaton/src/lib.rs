@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 pub mod io_error_kind;
 
@@ -51,6 +52,9 @@ pub mod block_applier;
 pub mod rpc;
 
 pub mod actors;
+
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 
 pub mod protocol;
 

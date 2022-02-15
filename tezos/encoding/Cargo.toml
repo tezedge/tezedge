@@ -16,3 +16,7 @@ lazy_static = "1.4"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding_derive = { path = "../encoding-derive" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
+[features]
+fuzzing = ["fuzzcheck", "crypto/fuzzing", "tezos_encoding_derive/fuzzing"]

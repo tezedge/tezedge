@@ -25,6 +25,7 @@ use crate::p2p::binary_message::{complete_input, SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -67,6 +68,7 @@ impl SizeFromChunk for AckMessage {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,
@@ -100,6 +102,7 @@ impl Arbitrary for NackInfo {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
     Serialize,
     Deserialize,

@@ -12,8 +12,13 @@ use crate::{EnablingCondition, State};
 
 use super::PeerMessageReadError;
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageReadInitAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -24,8 +29,10 @@ impl EnablingCondition<State> for PeerMessageReadInitAction {
 }
 
 /// PeerMessage has been read/received successfuly.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageReadErrorAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub error: PeerMessageReadError,
 }
@@ -37,8 +44,10 @@ impl EnablingCondition<State> for PeerMessageReadErrorAction {
 }
 
 /// PeerMessage has been read/received successfuly.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerMessageReadSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub message: Arc<PeerMessageResponse>,
 }

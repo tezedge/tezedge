@@ -54,6 +54,7 @@ pub trait HashTrait: Into<Hash> + AsRef<Hash> {
 }
 
 /// Error creating hash from bytes
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum FromBytesError {
     /// Invalid data size
@@ -97,6 +98,17 @@ macro_rules! define_hash {
                 // TODO - TE-373: with b58 this could be done without the need
                 // to perform a heap allocation.
                 write!(f, "{}", self.to_base58_check())
+            }
+        }
+
+        #[cfg(feature = "fuzzing")]
+        impl fuzzcheck::DefaultMutator for $name {
+            type Mutator = fuzzcheck::mutators::unit::UnitMutator<$name>;
+            #[no_coverage]
+            fn default_mutator() -> Self::Mutator {
+                fuzzcheck::mutators::unit::UnitMutator::new($name(
+                    [0u8; HashType::$name.size()].into(),
+                ))
             }
         }
 
@@ -428,6 +440,7 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake
         .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Error, serde::Serialize, serde::Deserialize)]
 pub enum TryFromPKError {
     #[error("Error calculating digest")]

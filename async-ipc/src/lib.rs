@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 //! Provides Async IPC communication.
 //!
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// IPC communication errors
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum IpcError {
     #[error("Receive message length error: {reason}")]

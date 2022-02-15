@@ -144,3 +144,7 @@ pub struct OCamlNodeMessage {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
+
+pub fn force_libtezos_linking() {
+    tezos_sys::force_libtezos_linking();
+}

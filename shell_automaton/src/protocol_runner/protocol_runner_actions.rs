@@ -10,6 +10,7 @@ use crate::{EnablingCondition, State};
 
 use super::init::ProtocolRunnerInitState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerStartAction {}
 
@@ -22,6 +23,7 @@ impl EnablingCondition<State> for ProtocolRunnerStartAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerReadyAction {}
 
@@ -34,6 +36,7 @@ impl EnablingCondition<State> for ProtocolRunnerReadyAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerResponseAction {
     pub result: ProtocolRunnerResult,
@@ -48,6 +51,7 @@ impl EnablingCondition<State> for ProtocolRunnerResponseAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerResponseUnexpectedAction {
     pub result: ProtocolRunnerResult,
@@ -61,6 +65,7 @@ impl EnablingCondition<State> for ProtocolRunnerResponseUnexpectedAction {
 
 /// Notify to pieces outside state machine about protocol runner's
 /// or context's initialization status.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerNotifyStatusAction {}
 
@@ -79,6 +84,7 @@ impl EnablingCondition<State> for ProtocolRunnerNotifyStatusAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerShutdownInitAction {}
 
@@ -91,6 +97,7 @@ impl EnablingCondition<State> for ProtocolRunnerShutdownInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerShutdownPendingAction {}
 
@@ -103,6 +110,7 @@ impl EnablingCondition<State> for ProtocolRunnerShutdownPendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolRunnerShutdownSuccessAction {}
 

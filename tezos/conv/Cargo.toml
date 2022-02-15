@@ -12,3 +12,4 @@ tezos_context_api = { path = "../context-api" }
 tezos_messages = { path = "../messages" }
 tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 crypto = { path = "../../crypto" }
+tezos-sys = { path = "../sys" }

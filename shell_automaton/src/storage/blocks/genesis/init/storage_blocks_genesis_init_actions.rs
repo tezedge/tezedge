@@ -10,6 +10,7 @@ use crate::{EnablingCondition, State};
 use super::commit_result_put::StorageBlocksGenesisInitCommitResultPutState;
 use super::StorageBlocksGenesisInitState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitAction {
     pub genesis_commit_hash: ContextHash,
@@ -25,6 +26,7 @@ impl EnablingCondition<State> for StorageBlocksGenesisInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageBlocksGenesisInitSuccessAction {}
 
