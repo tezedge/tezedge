@@ -76,9 +76,23 @@ impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
             BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
                 !peer_branches.contains_key(&self.peer)
             }
-            BootstrapState::PeersMainBranchFindSuccess { peer_branches, .. } => {
-                !peer_branches.contains_key(&self.peer)
-            }
+            // BootstrapState::PeersBlockHeadersGetPending {
+            //     main_chain_last_hash,
+            //     peer_intervals,
+            //     ..
+            // } => {
+            //     if peer_intervals.iter().any(|p| p.peer == self.peer) {
+            //         return false;
+            //     }
+            //     if self.current_branch.current_head().predecessor() == main_chain_last_hash {
+            //         return true;
+            //     }
+            //     let hash = match self.current_branch.current_head().message_typed_hash() {
+            //         Ok(v) => v,
+            //         Err(_) => return false,
+            //     };
+            //     &hash == main_chain_last_hash
+            // }
             _ => false,
         }
     }
@@ -121,17 +135,62 @@ impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BootstrapPeerBlockHeaderReceivedAction {
+pub struct BootstrapPeerBlockHeaderGetInitAction {
+    pub peer: SocketAddr,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .bootstrap
+            .peer_interval(self.peer, |p| p.current.is_idle())
+            .is_some()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockHeaderGetPendingAction {
+    pub peer: SocketAddr,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetPendingAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .bootstrap
+            .peer_interval(self.peer, |p| p.current.is_idle())
+            .is_some()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockHeaderGetSuccessAction {
     pub peer: SocketAddr,
     pub block: BlockHeaderWithHash,
 }
 
-impl EnablingCondition<State> for BootstrapPeerBlockHeaderReceivedAction {
+impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let level = self.block.header.level();
+        let hash = &self.block.hash;
+        state
+            .bootstrap
+            .peer_interval(self.peer, |p| p.current.is_pending())
+            .filter(|(_, p)| p.current.is_pending_block_level_and_hash_eq(level, hash))
+            .is_some()
+    }
+}
+
+/// Consume downloaded block header.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockHeaderGetFinishAction {
+    pub peer: SocketAddr,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetFinishAction {
     fn is_enabled(&self, state: &State) -> bool {
         state
             .bootstrap
-            .peer_interval_by_level(self.peer, self.block.header.level())
-            .filter(|p| p.is_current_hash_eq(&self.block.hash))
+            .peer_interval(self.peer, |p| p.current.is_success())
             .is_some()
     }
 }

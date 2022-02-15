@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, OperationListListHash};
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::CurrentBranch;
@@ -18,22 +19,143 @@ pub enum BootstrapError {}
 pub struct PeerIntervalState {
     pub peer: SocketAddr,
     pub downloaded: Vec<(Level, BlockHash, u8, OperationListListHash)>,
-    pub current: Option<(Level, BlockHash)>,
+    pub current: PeerIntervalCurrentState,
 }
 
-impl PeerIntervalState {
-    pub fn is_current_level_eq(&self, level: Level) -> bool {
-        self.current
-            .as_ref()
-            .filter(|(current_level, _)| *current_level == level)
-            .is_some()
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerIntervalCurrentState {
+    Idle {
+        block_level: Level,
+        block_hash: BlockHash,
+    },
+    Pending {
+        block_level: Level,
+        block_hash: BlockHash,
+    },
+    Success {
+        block: BlockHeaderWithHash,
+    },
+    Finished {},
+}
+
+impl PeerIntervalCurrentState {
+    pub fn idle(block_level: Level, block_hash: BlockHash) -> Self {
+        Self::Idle {
+            block_level,
+            block_hash,
+        }
     }
 
-    pub fn is_current_hash_eq(&self, hash: &BlockHash) -> bool {
-        self.current
-            .as_ref()
-            .filter(|(_, current_hash)| current_hash == hash)
-            .is_some()
+    pub fn block_level_with_hash(&self) -> Option<(Level, &BlockHash)> {
+        match self {
+            Self::Idle {
+                block_level,
+                block_hash,
+            }
+            | Self::Pending {
+                block_level,
+                block_hash,
+            } => Some((*block_level, block_hash)),
+            Self::Success { block, .. } => Some((block.header.level(), &block.hash)),
+            Self::Finished { .. } => None,
+        }
+    }
+
+    pub fn block_level(&self) -> Option<Level> {
+        self.block_level_with_hash().map(|(level, _)| level)
+    }
+
+    pub fn block_hash(&self) -> Option<&BlockHash> {
+        self.block_level_with_hash()
+            .map(|(_, block_hash)| block_hash)
+    }
+
+    pub fn block(&self) -> Option<&BlockHeaderWithHash> {
+        match self {
+            Self::Success { block, .. } => Some(block),
+            _ => None,
+        }
+    }
+
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle { .. })
+    }
+
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending { .. })
+    }
+
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success { .. })
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self, Self::Finished { .. })
+    }
+
+    pub fn is_pending_block_level_eq(&self, other: Level) -> bool {
+        match self {
+            Self::Pending { block_level, .. } => *block_level == other,
+            _ => false,
+        }
+    }
+
+    pub fn is_pending_block_hash_eq(&self, other: &BlockHash) -> bool {
+        match self {
+            Self::Pending { block_hash, .. } => block_hash == other,
+            _ => false,
+        }
+    }
+
+    pub fn is_pending_block_level_and_hash_eq(&self, level: Level, hash: &BlockHash) -> bool {
+        match self {
+            Self::Pending {
+                block_level,
+                block_hash,
+                ..
+            } => *block_level == level && block_hash == hash,
+            _ => false,
+        }
+    }
+
+    pub fn to_pending(&mut self) {
+        match self {
+            Self::Idle {
+                block_level,
+                block_hash,
+            } => {
+                *self = Self::Pending {
+                    block_level: *block_level,
+                    block_hash: block_hash.clone(),
+                };
+            }
+            _ => return,
+        }
+    }
+
+    pub fn to_success(&mut self, block: BlockHeaderWithHash) {
+        match self {
+            Self::Pending { .. } => {
+                *self = Self::Success { block };
+            }
+            _ => return,
+        }
+    }
+
+    pub fn to_next_block(&mut self, next_block_level: Level, next_block_hash: BlockHash) {
+        if !matches!(self, Self::Success { .. }) {
+            return;
+        }
+        *self = Self::idle(next_block_level, next_block_hash);
+    }
+
+    pub fn to_finished(&mut self) {
+        match self {
+            Self::Success { .. } => {
+                *self = Self::Finished {};
+            }
+            _ => return,
+        }
     }
 }
 
@@ -142,6 +264,9 @@ pub enum BootstrapState {
         /// Level of the last(highest) block in the main_chain.
         main_chain_last_level: Level,
 
+        /// Hash of the last(highest) block in the main_chain.
+        main_chain_last_hash: BlockHash,
+
         /// Initialy only `main_block_hash` from prev state.
         ///
         /// When we find chains that are predecessors of the first block
@@ -219,55 +344,44 @@ impl BootstrapState {
         }
     }
 
-    pub fn peer_interval_pos(&self, peer: SocketAddr) -> Option<usize> {
+    pub fn peer_interval_pos<F>(&self, peer: SocketAddr, predicate: F) -> Option<usize>
+    where
+        F: Fn(&PeerIntervalState) -> bool,
+    {
         self.peer_intervals().and_then(|intervals| {
             intervals
                 .iter()
                 .rev()
-                .position(|p| p.current.is_some() && p.peer.eq(&peer))
+                .filter(|p| p.peer.eq(&peer))
+                .position(predicate)
                 .map(|i| intervals.len() - i - 1)
         })
     }
 
-    pub fn peer_interval_by_level_pos(
+    pub fn peer_interval<F>(
         &self,
         peer: SocketAddr,
-        block_level: Level,
-    ) -> Option<usize> {
-        let index = self.peer_interval_pos(peer)?;
-        let is_level_eq = self
-            .peer_intervals()?
-            .get(index)?
-            .is_current_level_eq(block_level);
-        Some(index).filter(|_| is_level_eq)
+        predicate: F,
+    ) -> Option<(usize, &PeerIntervalState)>
+    where
+        F: Fn(&PeerIntervalState) -> bool,
+    {
+        let index = self.peer_interval_pos(peer, predicate)?;
+        self.peer_intervals()?.get(index).map(move |v| (index, v))
     }
 
-    pub fn peer_interval(&self, peer: SocketAddr) -> Option<&PeerIntervalState> {
-        let index = self.peer_interval_pos(peer)?;
-        self.peer_intervals()?.get(index)
-    }
-
-    pub fn peer_interval_mut(&mut self, peer: SocketAddr) -> Option<&mut PeerIntervalState> {
-        let index = self.peer_interval_pos(peer)?;
-        self.peer_intervals_mut()?.get_mut(index)
-    }
-
-    pub fn peer_interval_by_level(
-        &self,
-        peer: SocketAddr,
-        block_level: Level,
-    ) -> Option<&PeerIntervalState> {
-        self.peer_interval(peer)
-            .filter(|p| p.is_current_level_eq(block_level))
-    }
-
-    pub fn peer_interval_by_level_mut(
+    pub fn peer_interval_mut<F>(
         &mut self,
         peer: SocketAddr,
-        block_level: Level,
-    ) -> Option<&mut PeerIntervalState> {
-        self.peer_interval_mut(peer)
-            .filter(|p| p.is_current_level_eq(block_level))
+        predicate: F,
+    ) -> Option<(usize, &mut PeerIntervalState)>
+    where
+        F: Fn(&PeerIntervalState) -> bool,
+    {
+        let index = self.peer_interval_pos(peer, predicate)?;
+        self.peer_intervals_mut()?
+            .get_mut(index)
+            .map(move |v| (index, v))
     }
 
     pub fn operations_get_queue_next(&self) -> Option<&BlockWithDownloadedHeader> {
