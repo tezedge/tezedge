@@ -8,7 +8,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, CryptoboxPublicKeyHash, OperationHash,
+    OperationMetadataListListHash,
+};
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
@@ -82,6 +85,9 @@ pub struct HeadState {
     pub ops_removed: bool,
     // prevalidator for the head is created
     pub prevalidator_ready: bool,
+
+    pub metadata_hash: Option<BlockMetadataHash>,
+    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

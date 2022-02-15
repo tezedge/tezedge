@@ -152,23 +152,15 @@ where
                 if disable_endorsements_precheck || !is_endorsement {
                     store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
                 } else if disable_block_precheck {
-                    match &store.state().block_applier.current {
-                        BlockApplierApplyState::Success {
-                            block: current_block,
-                            ..
-                        } => {
-                            if &current_block.hash == &block {
-                                store.dispatch(PrecheckerGetEndorsingRightsAction {
-                                    key: key.clone(),
-                                });
-                            } else if Some(current_block.header.level() + 1) == endorsement_level {
-                                store.dispatch(PrecheckerWaitForBlockAppliedAction {
-                                    key: key.clone(),
-                                    branch: block,
-                                });
-                            }
+                    if let Some(mempool_state) = store.state().mempool.local_head_state.as_ref() {
+                        if &mempool_state.hash == &block {
+                            store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
+                        } else if Some(mempool_state.header.level() + 1) == endorsement_level {
+                            store.dispatch(PrecheckerWaitForBlockAppliedAction {
+                                key: key.clone(),
+                                branch: block,
+                            });
                         }
-                        _ => {}
                     }
                 } else if store.state.get().current_heads.current_level() == endorsement_level {
                     store.dispatch(PrecheckerWaitForBlockPrecheckedAction {
