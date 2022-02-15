@@ -15,7 +15,7 @@ use crate::{chunks::ChunkedVec, kv_store::HashId, serialize::in_memory::iter_has
 
 use tezos_spsc::Producer;
 
-use super::sorted_map::SortedMap;
+use super::SortedMap;
 
 pub(crate) const PRESERVE_CYCLE_COUNT: usize = 7;
 

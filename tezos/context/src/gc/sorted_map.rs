@@ -36,7 +36,7 @@ use crate::kv_store::HashId;
 
 /// This affects both performance and memory usage
 /// 1_000 seems to be a good value.
-const DEFAULT_CHUNK_SIZE: usize = 1_000;
+pub const DEFAULT_CHUNK_SIZE: usize = 1_000;
 
 const fn const_split_at(chunk_size: usize) -> usize {
     (chunk_size / 2) + (chunk_size / 4)
@@ -55,7 +55,9 @@ assert_eq_size!([u8; 40], Chunk<HashId, Arc<[u8]>, 1>);
 assert_eq_size!([u8; 24], (HashId, Arc<[u8]>));
 assert_eq_size!([u8; 48], [(HashId, Arc<[u8]>); 2]);
 
-pub struct SortedMap<K, V, const CHUNK_SIZE: usize = DEFAULT_CHUNK_SIZE>
+// TODO: Use const default when the feature is stabilized, it will be in 1.59.0:
+// https://github.com/rust-lang/rust/pull/90207
+pub struct SortedMap<K, V, const CHUNK_SIZE: usize>
 where
     K: Ord,
 {
@@ -502,7 +504,7 @@ mod tests {
             fn remove(&mut self, key: &K) -> Option<V>;
         }
 
-        impl_container!(SortedMap<K, V>);
+        impl_container!(SortedMap<K, V, DEFAULT_CHUNK_SIZE>);
         impl_container!(BTreeMap<K, V>);
         impl_container!(HashMap<K, V>);
 

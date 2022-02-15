@@ -7,7 +7,7 @@ use std::{
     ops::{Index, IndexMut, Range},
 };
 
-use crate::gc::sorted_map::SortedMap;
+use crate::gc::SortedMap;
 
 use super::{Chunk, DEFAULT_LIST_LENGTH};
 
