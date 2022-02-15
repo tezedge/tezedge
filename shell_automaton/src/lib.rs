@@ -64,6 +64,8 @@ pub mod current_head;
 
 pub mod stats;
 
+pub mod websocket;
+
 pub mod service;
 use service::MioService;
 pub use service::{Service, ServiceDefault};

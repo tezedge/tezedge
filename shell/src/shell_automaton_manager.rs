@@ -28,6 +28,7 @@ use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
     ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
     ProtocolServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    WebsocketServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::ShellAutomaton;
@@ -90,10 +91,12 @@ impl ShellAutomatonManager {
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
+        websocket_config: Option<(SocketAddr, u16)>,
         pow_target: f64,
         init_storage_data: StorageInitInfo,
         protocol_runner_config: ProtocolRunnerConfiguration,
         context_init_status_sender: tokio::sync::watch::Sender<bool>,
+        tokio_runtime: &tokio::runtime::Runtime,
     ) -> (Self, RpcShellAutomatonSender) {
         // resolve all bootstrap addresses - init from bootstrap_peers
         let mut bootstrap_addresses = HashSet::<_>::from_iter(
@@ -155,6 +158,11 @@ impl ShellAutomatonManager {
             context_init_status_sender,
         );
 
+        // TODO (monitoring-refactor): bound
+        let websocket_service = websocket_config.map(|(address, max_connections)| {
+            WebsocketServiceDefault::new(tokio_runtime, 1024, max_connections, address, log.clone())
+        });
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -166,6 +174,7 @@ impl ShellAutomatonManager {
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
             quota: quota_service,
             statistics: Some(Default::default()),
+            websocket: websocket_service,
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
