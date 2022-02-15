@@ -22,15 +22,16 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapPeerBlockOperationsGetPendingAction, BootstrapPeerBlockOperationsGetSuccessAction,
-    BootstrapPeersBlockHeadersGetInitAction, BootstrapPeersBlockHeadersGetPendingAction,
-    BootstrapPeersBlockHeadersGetSuccessAction, BootstrapPeersBlockOperationsGetInitAction,
-    BootstrapPeersBlockOperationsGetNextAction, BootstrapPeersBlockOperationsGetNextAllAction,
-    BootstrapPeersBlockOperationsGetPendingAction, BootstrapPeersBlockOperationsGetSuccessAction,
-    BootstrapPeersConnectPendingAction, BootstrapPeersConnectSuccessAction,
-    BootstrapPeersMainBranchFindInitAction, BootstrapPeersMainBranchFindPendingAction,
-    BootstrapPeersMainBranchFindSuccessAction, BootstrapScheduleBlockForApplyAction,
-    BootstrapScheduleBlocksForApplyAction,
+    BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
+    BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockOperationsGetPendingAction,
+    BootstrapPeerBlockOperationsGetSuccessAction, BootstrapPeersBlockHeadersGetInitAction,
+    BootstrapPeersBlockHeadersGetPendingAction, BootstrapPeersBlockHeadersGetSuccessAction,
+    BootstrapPeersBlockOperationsGetInitAction, BootstrapPeersBlockOperationsGetNextAction,
+    BootstrapPeersBlockOperationsGetNextAllAction, BootstrapPeersBlockOperationsGetPendingAction,
+    BootstrapPeersBlockOperationsGetSuccessAction, BootstrapPeersConnectPendingAction,
+    BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
+    BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
+    BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
 };
 
 pub fn bootstrap_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -93,33 +94,35 @@ where
             if let BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } =
                 bootstrap_state
             {
-                let mut already_seen_peer = BTreeSet::new();
-                let intervals = peer_intervals
+                let peers = peer_intervals
                     .iter()
-                    .rev()
-                    .filter_map(|p| p.current.clone().map(|block| (p.peer, block)))
-                    .filter(|(peer, _)| {
-                        if already_seen_peer.contains(peer) {
-                            false
-                        } else {
-                            already_seen_peer.insert(*peer);
-                            true
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                for (peer, (_, block_hash)) in intervals {
-                    let message = GetBlockHeadersMessage::new(vec![block_hash]);
-                    store.dispatch(PeerMessageWriteInitAction {
-                        address: peer,
-                        message: Arc::new(PeerMessage::GetBlockHeaders(message).into()),
-                    });
+                    .map(|p| p.peer)
+                    .collect::<BTreeSet<_>>();
+                for peer in peers {
+                    store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
                 }
             }
         }
         Action::BootstrapPeersBlockHeadersGetPending(_) => {
             store.dispatch(BootstrapPeersBlockHeadersGetSuccessAction {});
         }
-        Action::BootstrapPeerBlockHeaderReceived(content) => {
+        Action::BootstrapPeerBlockHeaderGetInit(content) => {
+            let bootstrap_state = &store.state().bootstrap;
+            let block_hash = match bootstrap_state
+                .peer_interval(content.peer, |p| p.current.is_idle())
+                .and_then(|(_, p)| p.current.block_hash())
+            {
+                Some(v) => v.clone(),
+                None => return,
+            };
+            let message = GetBlockHeadersMessage::new(vec![block_hash]);
+            store.dispatch(PeerMessageWriteInitAction {
+                address: content.peer,
+                message: Arc::new(PeerMessage::GetBlockHeaders(message).into()),
+            });
+            store.dispatch(BootstrapPeerBlockHeaderGetPendingAction { peer: content.peer });
+        }
+        Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
             store
                 .service
                 .actors()
@@ -134,21 +137,10 @@ where
                 requestor: StorageRequestor::Bootstrap,
             });
 
-            let next_block = store
-                .state
-                .get()
-                .bootstrap
-                .peer_interval(content.peer)
-                .and_then(|p| p.current.as_ref())
-                .map(|b| b.1.clone());
-            if let Some(block_hash) = next_block {
-                let message = GetBlockHeadersMessage::new(vec![block_hash]);
-                store.dispatch(PeerMessageWriteInitAction {
-                    address: content.peer,
-                    message: Arc::new(PeerMessage::GetBlockHeaders(message).into()),
-                });
-            }
-
+            store.dispatch(BootstrapPeerBlockHeaderGetFinishAction { peer: content.peer });
+        }
+        Action::BootstrapPeerBlockHeaderGetFinish(content) => {
+            store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer: content.peer });
             store.dispatch(BootstrapPeersBlockHeadersGetSuccessAction {});
         }
         Action::BootstrapPeersBlockHeadersGetSuccess(_) => {
@@ -237,6 +229,7 @@ where
                 injector_rpc_id: None,
             });
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
+            store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::CurrentHeadUpdate(_) => {
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
