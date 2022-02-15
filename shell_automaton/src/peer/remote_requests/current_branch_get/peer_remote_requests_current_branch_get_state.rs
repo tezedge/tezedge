@@ -11,6 +11,8 @@ use tezos_messages::p2p::encoding::prelude::CurrentBranch;
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 
+pub const MAX_CURRENT_BRANCH_HISTORY_LEN: usize = 200;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerRemoteRequestsCurrentBranchGetNextBlockState {
     Idle {},
@@ -148,12 +150,14 @@ impl PeerRemoteRequestsCurrentBranchGetState {
         match self {
             Self::Pending {
                 current_head,
+                history,
                 step,
                 next_block,
                 ..
             } => {
                 let next_level = next_block.level().unwrap_or(current_head.level());
-                next_block.is_empty_success()
+                history.len() >= MAX_CURRENT_BRANCH_HISTORY_LEN
+                    || next_block.is_empty_success()
                     || next_block.is_error()
                     || next_level < step.clone().next_step().max(1)
             }
