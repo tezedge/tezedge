@@ -1,9 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, net::SocketAddr};
 
-use crypto::seeded_step::{Seed, Step};
+use crypto::{
+    hash::BlockHash,
+    seeded_step::{Seed, Step},
+};
 use tezos_messages::p2p::{binary_message::MessageHash, encoding::block_header::Level};
 
 use crate::{Action, ActionWithMeta, State};
@@ -37,6 +40,24 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::BootstrapPeerCurrentBranchReceived(content) => {
+            let peer = content.peer;
+            let branch = &content.current_branch;
+            let branch_level = branch.current_head().level();
+            let branch_hash = match branch.current_head().message_typed_hash() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+            let branch_iter = match peer_branch_with_level_iter(
+                state,
+                peer,
+                branch_level,
+                branch_hash,
+                branch.history(),
+            ) {
+                Some(v) => v,
+                None => return,
+            };
+
             match &mut state.bootstrap {
                 BootstrapState::PeersMainBranchFindPending {
                     peer_branches,
@@ -66,8 +87,72 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             .insert(content.peer);
                     });
                 }
-                // TODO(zura): handle current branches when received after
-                // main chain is found.
+                BootstrapState::PeersBlockHeadersGetPending {
+                    main_chain_last_level,
+                    main_chain,
+                    peer_intervals,
+                    ..
+                } => {
+                    let current_head = match state.current_head.get() {
+                        Some(v) => v,
+                        None => return,
+                    };
+
+                    let (_, changed) = branch_iter
+                        .filter(|(level, _)| *level > current_head.header.level())
+                        .filter(|(level, _)| {
+                            *level <= *main_chain_last_level - main_chain.len() as Level
+                        })
+                        .fold(
+                            (peer_intervals.len() - 1, false),
+                            |(mut index, changed), (block_level, block_hash)| {
+                                while index > 0 {
+                                    let interval = &peer_intervals[index];
+                                    let (lowest_level, highest_level) =
+                                        match interval.lowest_and_highest_levels() {
+                                            Some(v) => v,
+                                            None => {
+                                                index -= 1;
+                                                continue;
+                                            }
+                                        };
+                                    if block_level <= highest_level {
+                                        if block_level >= lowest_level {
+                                            // no point to add new interval if we are downloading
+                                            // or have downloaded this block.
+                                            return (index, changed);
+                                        }
+                                        if index > 0
+                                            && peer_intervals[index - 1]
+                                                .highest_level()
+                                                .filter(|l| block_level <= *l)
+                                                .is_some()
+                                        {
+                                            index -= 1;
+                                            continue;
+                                        }
+                                        break;
+                                    }
+                                    index -= 1;
+                                }
+
+                                peer_intervals.push(PeerIntervalState {
+                                    peer,
+                                    downloaded: vec![],
+                                    current: PeerIntervalCurrentState::Idle {
+                                        block_level,
+                                        block_hash,
+                                    },
+                                });
+                                (index, true)
+                            },
+                        );
+
+                    if !changed {
+                        return;
+                    }
+                    peer_intervals.sort_by(peer_intervals_cmp_levels);
+                }
                 _ => {}
             }
         }
@@ -105,14 +190,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 let missing_levels_count = main_block.0 - current_head.header.level();
 
                 for (peer, branch) in std::mem::take(peer_branches) {
-                    // Calculate step for branch to associate block hashes
-                    // in the branch with expected levels.
-                    let peer_pkh = match state.peer_public_key_hash(peer) {
-                        Some(v) => v,
-                        None => continue,
-                    };
-                    let seed = Seed::new(peer_pkh, &state.config.identity.peer_id);
-                    let block_hash = if main_block.0 == branch.current_head().level() {
+                    let branch_level = branch.current_head().level();
+                    let branch_hash = if main_block.0 == branch.current_head().level() {
                         main_block.1.clone()
                     } else {
                         match branch.current_head().message_typed_hash() {
@@ -120,44 +199,32 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             Err(_) => continue,
                         }
                     };
-                    let mut step = Step::init(&seed, &block_hash);
-
-                    let mut level = branch.current_head().level();
-
-                    if level == main_block.0 {
-                        peer_intervals.push(PeerIntervalState {
-                            peer,
-                            downloaded: vec![],
-                            current: PeerIntervalCurrentState::Idle {
-                                block_level: level,
-                                block_hash: main_block.1.clone(),
-                            },
+                    let iter = match peer_branch_with_level_iter(
+                        state,
+                        peer,
+                        branch_level,
+                        branch_hash,
+                        branch.history(),
+                    ) {
+                        Some(v) => v,
+                        None => return,
+                    };
+                    iter.filter(|(level, _)| *level > current_head.header.level())
+                        .filter(|(level, _)| *level <= main_block.0)
+                        .for_each(|(block_level, block_hash)| {
+                            peer_intervals.push(PeerIntervalState {
+                                peer,
+                                downloaded: vec![],
+                                current: PeerIntervalCurrentState::Idle {
+                                    block_level,
+                                    block_hash,
+                                },
+                            });
                         });
-                    }
-                    for block_hash in branch.history() {
-                        level -= step.next_step();
-                        if level <= current_head.header.level() {
-                            break;
-                        }
-                        peer_intervals.push(PeerIntervalState {
-                            peer,
-                            downloaded: vec![],
-                            current: PeerIntervalCurrentState::Idle {
-                                block_level: level,
-                                block_hash: block_hash.clone(),
-                            },
-                        });
-                    }
                 }
 
-                let cmp_levels = |a: &PeerIntervalState, b: &PeerIntervalState| {
-                    a.current
-                        .block_level_with_hash()
-                        .map(|(l, _)| l)
-                        .cmp(&b.current.block_level_with_hash().map(|(l, _)| l))
-                };
-                peer_intervals.sort_by(|a, b| cmp_levels(a, b));
-                peer_intervals.dedup_by(|a, b| cmp_levels(a, b).is_eq());
+                peer_intervals.sort_by(peer_intervals_cmp_levels);
+                peer_intervals.dedup_by(|a, b| peer_intervals_cmp_levels(a, b).is_eq());
 
                 state.bootstrap = dbg!(BootstrapState::PeersBlockHeadersGetPending {
                     time: action.time_as_nanos(),
@@ -387,4 +454,33 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
         },
         _ => {}
     }
+}
+
+fn peer_intervals_cmp_levels(a: &PeerIntervalState, b: &PeerIntervalState) -> std::cmp::Ordering {
+    a.current.block_level().cmp(&b.current.block_level())
+}
+
+fn peer_branch_with_level_iter<'a>(
+    state: &State,
+    peer: SocketAddr,
+    branch_current_head_level: Level,
+    branch_current_head_hash: BlockHash,
+    history: &'a [BlockHash],
+) -> Option<impl 'a + Iterator<Item = (Level, BlockHash)>> {
+    // Calculate step for branch to associate block hashes
+    // in the branch with expected levels.
+    let peer_pkh = match state.peer_public_key_hash(peer) {
+        Some(v) => v,
+        None => return None,
+    };
+    let seed = Seed::new(peer_pkh, &state.config.identity.peer_id);
+    let step = Step::init(&seed, &branch_current_head_hash);
+
+    let level = branch_current_head_level;
+
+    let iter = history.iter().scan((level, step), |(level, step), hash| {
+        *level -= step.next_step();
+        Some((*level, hash.clone()))
+    });
+    Some(std::iter::once((branch_current_head_level, branch_current_head_hash)).chain(iter))
 }

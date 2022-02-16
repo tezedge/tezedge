@@ -76,23 +76,10 @@ impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
             BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
                 !peer_branches.contains_key(&self.peer)
             }
-            // BootstrapState::PeersBlockHeadersGetPending {
-            //     main_chain_last_hash,
-            //     peer_intervals,
-            //     ..
-            // } => {
-            //     if peer_intervals.iter().any(|p| p.peer == self.peer) {
-            //         return false;
-            //     }
-            //     if self.current_branch.current_head().predecessor() == main_chain_last_hash {
-            //         return true;
-            //     }
-            //     let hash = match self.current_branch.current_head().message_typed_hash() {
-            //         Ok(v) => v,
-            //         Err(_) => return false,
-            //     };
-            //     &hash == main_chain_last_hash
-            // }
+            BootstrapState::PeersBlockHeadersGetPending {
+                peer_intervals,
+                ..
+            } => !peer_intervals.iter().any(|p| p.peer == self.peer),
             _ => false,
         }
     }
@@ -143,7 +130,8 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         state
             .bootstrap
-            .peer_interval(self.peer, |p| p.current.is_idle())
+            .peer_interval(self.peer, |p| p.current.is_idle() || p.current.is_pending())
+            .filter(|(_, p)| p.current.is_idle())
             .is_some()
     }
 }
@@ -157,7 +145,8 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
         state
             .bootstrap
-            .peer_interval(self.peer, |p| p.current.is_idle())
+            .peer_interval(self.peer, |p| p.current.is_idle() || p.current.is_pending())
+            .filter(|(_, p)| p.current.is_idle())
             .is_some()
     }
 }

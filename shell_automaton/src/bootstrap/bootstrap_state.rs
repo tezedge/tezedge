@@ -22,6 +22,23 @@ pub struct PeerIntervalState {
     pub current: PeerIntervalCurrentState,
 }
 
+impl PeerIntervalState {
+    pub fn lowest_level(&self) -> Option<Level> {
+        self.current
+            .block_level()
+            .or_else(|| self.downloaded.last().map(|(l, ..)| *l))
+    }
+
+    pub fn highest_level(&self) -> Option<Level> {
+        let highest_downloaded = self.downloaded.first().map(|(l, ..)| *l);
+        highest_downloaded.or_else(|| self.current.block_level())
+    }
+
+    pub fn lowest_and_highest_levels(&self) -> Option<(Level, Level)> {
+        Some((self.lowest_level()?, self.highest_level()?))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerIntervalCurrentState {
     Idle {

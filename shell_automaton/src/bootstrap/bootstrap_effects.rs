@@ -81,8 +81,10 @@ where
 
             store.dispatch(BootstrapPeersMainBranchFindPendingAction {});
         }
-        Action::BootstrapPeerCurrentBranchReceived(_) => {
-            store.dispatch(BootstrapPeersMainBranchFindSuccessAction {});
+        Action::BootstrapPeerCurrentBranchReceived(content) => {
+            if !store.dispatch(BootstrapPeersMainBranchFindSuccessAction {}) {
+                store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer: content.peer });
+            }
         }
         Action::BootstrapPeersMainBranchFindSuccess(_) => {
             store.dispatch(BootstrapPeersBlockHeadersGetInitAction {});
