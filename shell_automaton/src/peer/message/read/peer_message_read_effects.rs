@@ -264,9 +264,10 @@ where
                         });
                     } else {
                         slog::warn!(&state.log, "Received unexpected BlockHeader from peer";
-                            "peer" => format!("{}", content.address),
-                            "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
-                            "block_header" => format!("{:?}", msg.block_header()));
+                            "peer" => format!("{}", action.address),
+                            "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(action.address)),
+                            "block_header" => format!("{:?}", msg.block_header()),
+                            "expected" => format!("{:?}", state.bootstrap.peer_interval(action.address, |p| p.current.is_pending())));
                         store.dispatch(PeersGraylistAddressAction {
                             address: content.address,
                         });
