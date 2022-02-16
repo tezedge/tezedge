@@ -76,10 +76,10 @@ impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
             BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
                 !peer_branches.contains_key(&self.peer)
             }
-            BootstrapState::PeersBlockHeadersGetPending {
-                peer_intervals,
-                ..
-            } => !peer_intervals.iter().any(|p| p.peer == self.peer),
+            BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } => {
+                !peer_intervals.iter().any(|p| p.peer == self.peer)
+                // TODO(zura): maybe check if same branch as ours.
+            }
             _ => false,
         }
     }

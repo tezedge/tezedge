@@ -53,6 +53,10 @@ pub enum PeerIntervalCurrentState {
         block: BlockHeaderWithHash,
     },
     Finished {},
+    Disconnected {
+        block_level: Level,
+        block_hash: BlockHash,
+    },
 }
 
 impl PeerIntervalCurrentState {
@@ -70,6 +74,10 @@ impl PeerIntervalCurrentState {
                 block_hash,
             }
             | Self::Pending {
+                block_level,
+                block_hash,
+            }
+            | Self::Disconnected {
                 block_level,
                 block_hash,
             } => Some((*block_level, block_hash)),
@@ -108,6 +116,10 @@ impl PeerIntervalCurrentState {
 
     pub fn is_finished(&self) -> bool {
         matches!(self, Self::Finished { .. })
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Disconnected { .. })
     }
 
     pub fn is_pending_block_level_eq(&self, other: Level) -> bool {
@@ -159,6 +171,27 @@ impl PeerIntervalCurrentState {
         }
     }
 
+    pub fn to_disconnected(&mut self) {
+        match self {
+            Self::Idle {
+                block_level,
+                block_hash,
+                ..
+            }
+            | Self::Pending {
+                block_level,
+                block_hash,
+                ..
+            } => {
+                *self = Self::Disconnected {
+                    block_level: *block_level,
+                    block_hash: block_hash.clone(),
+                };
+            }
+            _ => return,
+        }
+    }
+
     pub fn to_next_block(&mut self, next_block_level: Level, next_block_hash: BlockHash) {
         if !matches!(self, Self::Success { .. }) {
             return;
@@ -168,7 +201,7 @@ impl PeerIntervalCurrentState {
 
     pub fn to_finished(&mut self) {
         match self {
-            Self::Success { .. } => {
+            Self::Success { .. } | Self::Disconnected { .. } => {
                 *self = Self::Finished {};
             }
             _ => return,
@@ -212,6 +245,9 @@ pub enum PeerBlockOperationsGetState {
     Success {
         time: u64,
         operations: Vec<OperationsForBlocksMessage>,
+    },
+    Disconnected {
+        time: u64,
     },
 }
 
