@@ -176,7 +176,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             } => {
                                 peer_intervals.push(PeerIntervalState {
                                     peer,
-                                    downloaded: vec![],
+                                    downloaded: interval.downloaded,
                                     current: PeerIntervalCurrentState::Idle {
                                         block_level,
                                         block_hash,
