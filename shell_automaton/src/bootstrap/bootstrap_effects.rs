@@ -119,10 +119,10 @@ where
                 None => return,
             };
             let message = GetBlockHeadersMessage::new(vec![block_hash]);
-            store.dispatch(PeerMessageWriteInitAction {
+            store.dispatch(dbg!(PeerMessageWriteInitAction {
                 address: content.peer,
                 message: Arc::new(PeerMessage::GetBlockHeaders(message).into()),
-            });
+            }));
             store.dispatch(BootstrapPeerBlockHeaderGetPendingAction { peer: content.peer });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
@@ -165,6 +165,8 @@ where
                     Some(v) => (v.peer, v.block_hash.clone(), v.validation_pass),
                     None => return,
                 };
+
+            if store.state().peers.get(&peer).is_none() {}
 
             let operations_for_blocks = (0..(validation_pass.max(0)))
                 .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))

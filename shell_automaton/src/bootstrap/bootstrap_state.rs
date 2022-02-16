@@ -200,12 +200,7 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn to_finished(&mut self) {
-        match self {
-            Self::Success { .. } | Self::Disconnected { .. } => {
-                *self = Self::Finished {};
-            }
-            _ => return,
-        }
+        *self = Self::Finished {};
     }
 }
 
