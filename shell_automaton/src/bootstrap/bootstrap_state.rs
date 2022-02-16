@@ -397,20 +397,6 @@ impl BootstrapState {
         }
     }
 
-    pub fn peer_interval_pos<F>(&self, peer: SocketAddr, predicate: F) -> Option<usize>
-    where
-        F: Fn(&PeerIntervalState) -> bool,
-    {
-        self.peer_intervals().and_then(|intervals| {
-            intervals
-                .iter()
-                .rev()
-                .filter(|p| p.peer.eq(&peer))
-                .position(predicate)
-                .map(|i| intervals.len() - i - 1)
-        })
-    }
-
     pub fn peer_interval<F>(
         &self,
         peer: SocketAddr,
@@ -419,8 +405,20 @@ impl BootstrapState {
     where
         F: Fn(&PeerIntervalState) -> bool,
     {
-        let index = self.peer_interval_pos(peer, predicate)?;
-        self.peer_intervals()?.get(index).map(move |v| (index, v))
+        self.peer_intervals().and_then(|intervals| {
+            intervals
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, p)| p.peer.eq(&peer) && predicate(p))
+        })
+    }
+
+    pub fn peer_interval_pos<F>(&self, peer: SocketAddr, predicate: F) -> Option<usize>
+    where
+        F: Fn(&PeerIntervalState) -> bool,
+    {
+        self.peer_interval(peer, predicate).map(|(index, _)| index)
     }
 
     pub fn peer_interval_mut<F>(

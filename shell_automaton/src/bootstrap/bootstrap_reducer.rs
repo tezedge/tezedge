@@ -106,12 +106,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .fold(
                             (peer_intervals.len() - 1, false),
                             |(mut index, changed), (block_level, block_hash)| {
-                                while index > 0 {
+                                loop {
                                     let interval = &peer_intervals[index];
                                     let (lowest_level, highest_level) =
                                         match interval.lowest_and_highest_levels() {
                                             Some(v) => v,
                                             None => {
+                                                if index == 0 {
+                                                    return (index, changed);
+                                                }
                                                 index -= 1;
                                                 continue;
                                             }
@@ -138,6 +141,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                             continue;
                                         }
                                         break;
+                                    }
+                                    if index == 0 {
+                                        return (index, changed);
                                     }
                                     index -= 1;
                                 }
@@ -197,12 +203,12 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     .bootstrap
                     .main_block(state.config.peers_bootstrapped_min)
                 {
-                    state.bootstrap = dbg!(BootstrapState::PeersMainBranchFindSuccess {
+                    state.bootstrap = BootstrapState::PeersMainBranchFindSuccess {
                         time: action.time_as_nanos(),
 
                         main_block,
                         peer_branches,
-                    });
+                    };
                 }
             }
             _ => {}
