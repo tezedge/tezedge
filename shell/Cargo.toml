@@ -20,7 +20,7 @@ page_size = "0.4.1"
 rand = "0.7.3"
 regex = "1.5"
 tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 serde = "1.0"
 serde_json = "1.0"
 tokio = { version = "1.12", features = ["time"] }

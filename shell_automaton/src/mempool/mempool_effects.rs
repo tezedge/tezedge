@@ -247,6 +247,23 @@ where
                 _ => return,
             };
 
+            if let Some(local_head_state) = store.state().mempool.local_head_state.as_ref() {
+                if local_head_state.hash != block.hash {
+                    let req = BeginConstructionRequest {
+                        chain_id: (**chain_id).clone(),
+                        predecessor: local_head_state.header.clone(),
+                        protocol_data: None,
+                        predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
+                        predecessor_ops_metadata_hash: local_head_state.ops_metadata_hash.clone(),
+                    };
+                    store
+                        .service()
+                        .protocol()
+                        .begin_construction_for_prevalidation(req);
+                    return;
+                }
+            }
+
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
                     chain_id: (**chain_id).clone(),

@@ -1,3 +1,4 @@
+
 ##############################################################################################################
 # The pipelines are divided  into two categories:
 #   corr - implying that the pipeline is testing the correctness of the node
@@ -3761,6 +3762,274 @@ volumes:
 
 depends_on:
   - build-tezedge-binaries
+
+
+---
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 011 Hangzhou protocol
+# and ensures that endorsing works properly when two blocks are baked for the same level
+# close to each other.
+#
+# GIVEN that we run tezedge in sandbox mode with 011-hangzhou protocol WHEN it receives two different heads
+# THEN it successfully endorse the first one
+##############################################################################################################
+kind: pipeline
+name: corr/tezedge-alt-heads-011-hangzhou
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCTEZ_NODE_1_RPC_CONTEXT_ROOT: http://octez-node-1:8732
+  OCTEZ_NODE_2_RPC_CONTEXT_ROOT: http://octez-node-2:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_SECRET: unencrypted:edsk3JKD7xp7vfhVGeYLoS4SnJBzpnKs4CHpjPfzCditzaYvFh2XnK
+  BOOTSTRAP2_SECRET: unencrypted:edsk4X3Fhd1GceD3XtB6RQmkNVkdgov5zyCfSgYh9icE8DsVbP4dGM
+  BOOTSTRAP3_SECRET: unencrypted:edsk4KASiTWNfvfxUPK7d1mpNgu8dqGcPio9QsCMNVr9m7wXvhBjLF
+  TEZOS_LOG: debug
+  LWT_LOG: debug
+
+steps:
+
+- name: prepare-cache-dir
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - mkdir -p /data/sandbox
+    - mkdir -p /data/sandbox/tezos-client
+    - echo /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/011-hangzhou-protocol-parameters.json /data/sandbox
+
+# run empty tezedge node and wait for it
+- name: tezedge-node
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+
+- name: wait-for-tezedge-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# run empty octez sandbox and wait for it
+- name: octez-node-1
+  user: root
+  image: tezos/tezos:v11-release
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez1_ip.txt
+    - export TEZOS_NODE_DIR=/data/sandbox/octez-1-data
+    - mkdir -p $$TEZOS_NODE_DIR
+    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate
+    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+# run empty octez sandbox and wait for it
+- name: octez-node-2
+  user: root
+  image: tezos/tezos:v11-release
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez2_ip.txt
+    - export TEZOS_NODE_DIR=/data/sandbox/octez-2-data
+    - mkdir -p $$TEZOS_NODE_DIR
+    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate
+    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+
+- name: wait-for-octez-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT}  $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT}
+
+# inject protocol to octez node, means it creates the first block with level 1
+- name: inject-first-block-with-tezos_client
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-client -E http://tezedge-node:18732 import secret key activator $${ACTIVATOR_SECRET}
+    - tezos-client -E http://tezedge-node:18732 --block genesis activate protocol PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx  with fitness 1 and key activator and parameters /data/sandbox/011-hangzhou-protocol-parameters.json
+
+# connect both nodes with tezos-admin-client
+- name: connect-octez-and-tezedge
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - TEZEDGE_NODE_IP=$$(cat /data/sandbox/tezedge_ip.txt)
+    - tezos-admin-client -E http://octez-node-1:8732 connect address $$TEZEDGE_NODE_IP:9732
+    - tezos-admin-client -E http://octez-node-2:8732 connect address $$TEZEDGE_NODE_IP:9732
+    - sleep 3
+# TODO: instead of sleep 3, check status established
+# TODO: write rpc test for check network/peers
+
+# test checks if this block is synchronized to tezedge node through p2p
+- name: wait-for-sync-on-level-1
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT} $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: run-tezos-endorser-011-PtHANG
+  user: root
+  detach: true
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-client -E http://tezedge-node:18732 import secret key bootstrap3 $${BOOTSTRAP3_SECRET}
+    - tezos-endorser-011-PtHangz2 -E http://tezedge-node:18732 --log-requests run bootstrap3
+
+- name: check-endorsement-in-mempools
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - |
+      set -xe
+      apk add jq curl
+      tezos-client -E http://tezedge-node:18732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+      tezos-client -E http://tezedge-node:18732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+      bake() {
+          node=$1
+          data_dir=$2
+          address=$3
+          tezos-client -E http://$node:8732 bake for $address --context $data_dir/context
+      }
+      bake_both() {
+          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+          bake octez-node-2 /data/sandbox/octez-2-data bootstrap2 &
+      }
+      bake_one() {
+          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+      }
+      check_heads() {
+          header1=$(curl -s http://octez-node-1:8732/chains/main/blocks/head/header)
+          header2=$(curl -s http://octez-node-2:8732/chains/main/blocks/head/header)
+          echo $header1 | jq
+          echo $header2 | jq
+          head1=$(echo $header1 | jq -r .hash)
+          head2=$(echo $header2 | jq -r .hash)
+          level1=$(echo $header1 | jq -r .level)
+          level2=$(echo $header1 | jq -r .level)
+          if [ "$level1" -ne "$level2" ]; then
+              echo "ERROR: Different levels"
+              exit 1
+          fi
+          test "$head1" = "$head2"
+      }
+      check_endorsement() {
+          operations=$(curl -s http://tezedge-node:18732/chains/main/mempool/pending_operations)
+          echo $operations | jq
+          applied=$(echo $operations | jq '.applied | length')
+          if [ "$applied" -ne 1 ]; then
+              echo "FAIL: endorsement not found"
+              exit 1
+          fi
+      }
+
+      attempts=0
+      tests=0
+      while true; do
+          bake_both
+          sleep 3
+          attempts=$((attempts+1))
+          if check_heads; then
+              echo "WARN: Same heads"
+              continue
+          fi
+          if [ "$attempts" -ge 15 ]; then
+              echo "ERROR: Cannot reproduce use case for $attempts attempts"
+              exit 1
+          fi
+          tests=$((tests+1))
+          check_endorsement
+          if [ "$tests" -ge 5 ]; then
+              exit
+          fi
+          bake_one
+          sleep 3
+          if check_heads; then
+              true
+          else
+              echo "ERROR: Different heads"
+              exit 1
+          fi
+      done
+
+volumes:
+  - name: sandbox-data
+    temp: {}
+
+depends_on:
+  - build-tezedge-binaries
+
 
 ---
 ##############################################################################################################
