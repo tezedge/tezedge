@@ -52,7 +52,8 @@ where
             BootstrapState::PeersConnectPending { .. } => {
                 store.dispatch(BootstrapPeersConnectSuccessAction {});
             }
-            BootstrapState::PeersMainBranchFindPending { .. } => {
+            BootstrapState::PeersMainBranchFindPending { .. }
+            | BootstrapState::PeersBlockHeadersGetPending { .. } => {
                 let message = GetCurrentBranchMessage::new(store.state().config.chain_id.clone());
                 store.dispatch(PeerMessageWriteInitAction {
                     address: content.address,

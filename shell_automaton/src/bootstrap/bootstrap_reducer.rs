@@ -117,6 +117,12 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                             }
                                         };
                                     if block_level <= highest_level {
+                                        if block_level == lowest_level
+                                            && interval.current.is_disconnected()
+                                        {
+                                            peer_intervals[index].current.to_finished();
+                                            break;
+                                        }
                                         if block_level >= lowest_level {
                                             // no point to add new interval if we are downloading
                                             // or have downloaded this block.
@@ -148,10 +154,38 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             },
                         );
 
-                    if !changed {
-                        return;
+                    if changed {
+                        peer_intervals.sort_by(peer_intervals_cmp_levels);
                     }
-                    peer_intervals.sort_by(peer_intervals_cmp_levels);
+                    // We need to make sure that last interval isn't
+                    // disconnected as we will be stuck forever in block
+                    // headers fetching. So let's replace disconnected
+                    // interval with this new peer.
+                    if let Some(interval) = peer_intervals.pop() {
+                        match interval.current {
+                            PeerIntervalCurrentState::Disconnected {
+                                block_level,
+                                block_hash,
+                                ..
+                            } => {
+                                peer_intervals.push(PeerIntervalState {
+                                    peer,
+                                    downloaded: vec![],
+                                    current: PeerIntervalCurrentState::Idle {
+                                        block_level,
+                                        block_hash,
+                                    },
+                                });
+                            }
+                            current => {
+                                peer_intervals.push(PeerIntervalState {
+                                    peer: interval.peer,
+                                    downloaded: interval.downloaded,
+                                    current,
+                                });
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -326,15 +360,17 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         Some(v) => v,
                         None => break,
                     };
-                    let first_downloaded_level = match interval.downloaded.first() {
-                        Some(v) => v.0,
-                        None => break,
-                    };
-                    if first_downloaded_level != main_chain_next_level {
-                        break;
+                    let first_downloaded_level = interval.downloaded.first().map(|(l, ..)| *l);
+                    if let Some(first_downloaded_level) = first_downloaded_level {
+                        if first_downloaded_level < main_chain_next_level {
+                            // TODO(zura): log. Should be impossible.
+                            break;
+                        }
                     }
-                    for (_, block_hash, validation_pass, operations_hash) in
-                        interval.downloaded.drain(..)
+                    for (_, block_hash, validation_pass, operations_hash) in interval
+                        .downloaded
+                        .drain(..)
+                        .filter(|(l, ..)| *l <= main_chain_next_level)
                     {
                         main_chain.push_front(BlockWithDownloadedHeader {
                             peer: interval.peer,
@@ -345,6 +381,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                     if interval.current.is_finished() {
                         peer_intervals.pop();
+                    } else if first_downloaded_level.is_none() {
+                        break;
                     }
                 }
             }
@@ -452,6 +490,39 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
+        Action::PeerDisconnected(content) => {
+            match &mut state.bootstrap {
+                BootstrapState::PeersMainBranchFindPending {
+                    peer_branches,
+                    block_supporters,
+                    ..
+                } => {
+                    peer_branches.remove(&content.address);
+                    block_supporters.retain(|_, (_, peers)| {
+                        peers.remove(&content.address);
+                        !peers.is_empty()
+                    });
+                }
+                BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } => {
+                    peer_intervals
+                        .iter_mut()
+                        .filter(|p| p.peer == content.address)
+                        .for_each(|p| p.current.to_disconnected());
+                    // TODO(zura): remove all intervals that isn't last.
+                }
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    pending
+                        .iter_mut()
+                        .filter_map(|(_, b)| b.peers.get_mut(&content.address))
+                        .for_each(|p| {
+                            *p = PeerBlockOperationsGetState::Disconnected {
+                                time: action.time_as_nanos(),
+                            }
+                        });
+                }
+                _ => {}
+            }
+        }
         _ => {}
     }
 }
