@@ -51,9 +51,6 @@ where
             });
         }
         Action::BlockApplierApplySuccess(_) => {
-            if !store.state.get().is_bootstrapped() {
-                return;
-            }
             let block = match &store.state().block_applier.current {
                 BlockApplierApplyState::Success { block, .. } => block,
                 _ => return,

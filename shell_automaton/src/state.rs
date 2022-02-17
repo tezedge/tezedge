@@ -68,6 +68,8 @@ pub struct State {
 
     pub stats: super::stats::Stats,
 
+    pub rpc: super::rpc::RpcState,
+
     pub paused_loops: PausedLoopsState,
 
     /// Action before the `last_action`.
@@ -101,6 +103,8 @@ impl State {
             current_heads: CurrentHeads::default(),
 
             stats: super::stats::Stats::default(),
+
+            rpc: super::rpc::RpcState::default(),
 
             paused_loops: PausedLoopsState::new(),
 

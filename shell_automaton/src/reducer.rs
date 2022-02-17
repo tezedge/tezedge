@@ -42,6 +42,7 @@ use crate::protocol_runner::init::runtime::protocol_runner_init_runtime_reducer;
 use crate::protocol_runner::protocol_runner_reducer;
 use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_reducer;
 
+use crate::rpc::rpc_reducer;
 use crate::shutdown::shutdown_reducer;
 use crate::stats::current_head::stats_current_head_reducer;
 use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_reducer;
@@ -114,6 +115,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         current_head_reducer,
         stats_current_head_reducer,
         prechecker_reducer,
+        rpc_reducer,
         storage_request_reducer,
         storage_blocks_genesis_check_applied_reducer,
         storage_blocks_genesis_init_reducer,

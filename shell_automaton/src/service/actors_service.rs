@@ -82,6 +82,11 @@ pub enum ActorsMessageFrom {
     PeerStalled(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
+    NewCurrentHead {
+        chain_id: Arc<ChainId>,
+        block: Arc<BlockHeaderWithHash>,
+        is_bootstrapped: bool,
+    },
     ApplyBlock {
         chain_id: Arc<ChainId>,
         block_hash: Arc<BlockHash>,

@@ -101,6 +101,7 @@ use crate::protocol_runner::{
     ProtocolRunnerStartAction,
 };
 
+use crate::rpc::rpc_actions::*;
 use crate::stats::current_head::stats_current_head_actions::*;
 use crate::storage::blocks::genesis::check_applied::{
     StorageBlocksGenesisCheckAppliedGetMetaErrorAction,
@@ -470,6 +471,10 @@ pub enum Action {
     StatsCurrentHeadRpcGetApplication(StatsCurrentHeadRpcGetApplicationAction),
     StatsCurrentHeadPrune(StatsCurrentHeadPruneAction),
 
+    RpcBootstrapped(RpcBootstrappedAction),
+    RpcBootstrappedNewBlock(RpcBootstrappedNewBlockAction),
+    RpcBootstrappedDone(RpcBootstrappedDoneAction),
+
     StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),
     StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction),
     StorageBlockHeaderError(kv_block_header::StorageBlockHeaderErrorAction),
@@ -573,6 +578,8 @@ pub enum Action {
     ProtocolRunnerShutdownInit(ProtocolRunnerShutdownInitAction),
     ProtocolRunnerShutdownPending(ProtocolRunnerShutdownPendingAction),
     ProtocolRunnerShutdownSuccess(ProtocolRunnerShutdownSuccessAction),
+
+    BootstrapNewCurrentHead(BootstrapNewCurrentHeadAction),
 }
 
 impl Action {
@@ -606,5 +613,18 @@ impl<'a> From<&'a ActionWithMeta> for ActionKind {
 impl From<ActionWithMeta> for ActionKind {
     fn from(action: ActionWithMeta) -> ActionKind {
         action.action.kind()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapNewCurrentHeadAction {
+    pub chain_id: std::sync::Arc<crypto::hash::ChainId>,
+    pub block: std::sync::Arc<storage::BlockHeaderWithHash>,
+    pub is_bootstrapped: bool,
+}
+
+impl EnablingCondition<State> for BootstrapNewCurrentHeadAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
     }
 }

@@ -11,7 +11,6 @@ use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
 use crypto::hash::ProtocolHash;
 use shell_automaton::service::rpc_service::RpcRequestStream;
-use tezos_messages::ts_to_rfc3339;
 
 use crate::helpers::{
     create_rpc_request, parse_async, parse_block_hash, parse_chain_id, RpcServiceError,
@@ -20,13 +19,10 @@ use crate::helpers::{
 use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
 use crate::{
-    empty,
-    encoding::{base_types::*, monitor::BootstrapInfo},
-    error, helpers, make_json_response, make_json_stream_response, not_found,
-    parse_block_hash_or_fail, required_param, result_to_empty_json_response,
+    empty, encoding::base_types::*, error, helpers, make_json_response, make_json_stream_response,
+    not_found, parse_block_hash_or_fail, required_param, result_to_empty_json_response,
     result_to_json_response, services, ServiceResult,
 };
-use storage::BlockHeaderWithHash;
 
 pub async fn bootstrapped(
     _: Request<Body>,
@@ -34,21 +30,15 @@ pub async fn bootstrapped(
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let state_read = env
-        .state()
-        .read()
-        .map_err(|e| anyhow::format_err!("Failed to lock current state, reason: {}", e))?;
-
-    let bootstrap_info = {
-        let current_head: &BlockHeaderWithHash = state_read.current_head().as_ref();
-        let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
-        Ok(BootstrapInfo::new(
-            &current_head.hash,
-            TimeStamp::Rfc(timestamp),
-        ))
-    };
-
-    result_to_json_response(bootstrap_info, env.log())
+    let stream = env
+        .shell_automaton_sender()
+        .request_stream(RpcRequestStream::Bootstrapped)
+        .await
+        .ok()
+        .expect("state machine should be correct");
+    let stream =
+        UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
+    make_json_stream_response(stream)
 }
 
 pub async fn commit_hash(

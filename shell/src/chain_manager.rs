@@ -1030,6 +1030,17 @@ impl ChainManager {
                 );
             }
 
+            if let Err(err) = self
+                .shell_automaton
+                .send(ShellAutomatonMsg::NewCurrentHead {
+                    chain_id: chain_id.clone(),
+                    block: block.clone(),
+                    is_bootstrapped,
+                })
+            {
+                warn!(log, "Failed to send message to shell_automaton (chain_manager)"; "reason" => format!("{:?}", err));
+            }
+
             // notify other actors that new current head was changed
             self.shell_channel.tell(
                 Publish {
