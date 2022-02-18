@@ -1,6 +1,6 @@
 [package]
 name = "tezos_conv"
-version = "1.15.0"
+version = "1.16.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 

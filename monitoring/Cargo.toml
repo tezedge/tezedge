@@ -1,6 +1,6 @@
 [package]
 name = "monitoring"
-version = "1.15.0"
+version = "1.16.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
