@@ -297,6 +297,7 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
     // Commit time will differ, make it be the same so that the assert
     // doesn't fail because of this.
     apply_block_result_2.commit_time = apply_block_result_1.commit_time;
+    apply_block_result_2.execution_timestamps = apply_block_result_1.execution_timestamps.clone();
 
     // results should be eq
     assert_eq!(apply_block_result_1, apply_block_result_2);

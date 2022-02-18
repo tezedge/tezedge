@@ -11,7 +11,7 @@ use super::{Chunk, DEFAULT_LIST_LENGTH};
 /// Structure allocating multiple `Chunk`
 ///
 /// Example:
-/// ```
+/// ```no_run
 /// use tezos_context::chunks::ChunkedVec;
 ///
 /// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
@@ -200,15 +200,16 @@ impl<T> ChunkedVec<T> {
     fn get_next_chunk(&mut self) -> &mut Chunk<T> {
         let chunk_capacity = self.chunk_capacity;
 
-        if self
+        let must_alloc_new_chunk = self
             .list_of_chunks
             .last()
             .map(|chunk| {
                 debug_assert!(chunk.len() <= chunk_capacity);
                 chunk.len() == chunk_capacity
             })
-            .unwrap_or(true)
-        {
+            .unwrap_or(true);
+
+        if must_alloc_new_chunk {
             self.list_of_chunks
                 .push(Vec::with_capacity(self.chunk_capacity));
         }
@@ -287,6 +288,10 @@ impl<T> ChunkedVec<T> {
 
     pub fn len(&self) -> usize {
         self.nelems
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn deallocate(&mut self) {

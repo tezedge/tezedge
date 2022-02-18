@@ -4,8 +4,9 @@
 use std::convert::TryFrom;
 
 use crate::{
-    OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
-    OCamlInitProtocolContextResult, OCamlNodeMessage,
+    OCamlApplyBlockExecutionTimestamps, OCamlCommitGenesisResult, OCamlComputePathResponse,
+    OCamlCycleRollsOwnerSnapshot, OCamlInitProtocolContextResult, OCamlNodeMessage,
+    OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
@@ -27,16 +28,19 @@ use ocaml_interop::{
     FromOCaml, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlList,
 };
 use tezos_api::ffi::{
-    Applied, ApplyBlockError, ApplyBlockResponse, BeginApplicationError, BeginApplicationResponse,
-    BeginConstructionError, CommitGenesisResult, ComputePathError, ComputePathResponse,
-    CycleRollsOwnerSnapshot, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
-    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolDataError,
-    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosErrorTrace,
-    TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
+    Applied, ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse,
+    BeginApplicationError, BeginApplicationResponse, BeginConstructionError, CommitGenesisResult,
+    ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot, Errored, FfiJsonEncoderError,
+    ForkingTestchainData, GetDataError, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
+    ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod,
+    TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
+use tezos_context_api::{
+    ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezedgeOnDiskBackendOptions,
+};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
 use tezos_protocol_ipc_messages::NodeMessage;
 
@@ -92,11 +96,18 @@ unsafe impl FromOCaml<OCamlChainId> for ChainId {
     }
 }
 
+impl_from_ocaml_record! {
+    OCamlTezosContextTezedgeOnDiskBackendOptions => TezosContextTezedgeOnDiskBackendOptions {
+        base_path: String,
+        startup_check: bool,
+    }
+}
+
 impl_from_ocaml_variant! {
     OCamlContextKvStoreConfiguration => ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
-        ContextKvStoreConfiguration::OnDisk(path: String),
+        ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
 
@@ -143,6 +154,27 @@ impl_from_ocaml_record! {
         new_protocol_constants_json: Option<String>,
         new_cycle_eras_json: Option<String>,
         commit_time: OCamlFloat,
+        execution_timestamps: OCamlApplyBlockExecutionTimestamps,
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlApplyBlockExecutionTimestamps => ApplyBlockExecutionTimestamps {
+        apply_start_t: OCamlFloat,
+        operations_decoding_start_t: OCamlFloat,
+        operations_decoding_end_t: OCamlFloat,
+        operations_application_timestamps: OCamlList<OCamlList<(OCamlFloat, OCamlFloat)>>,
+        operations_metadata_encoding_start_t: OCamlFloat,
+        operations_metadata_encoding_end_t: OCamlFloat,
+        begin_application_start_t: OCamlFloat,
+        begin_application_end_t: OCamlFloat,
+        finalize_block_start_t: OCamlFloat,
+        finalize_block_end_t: OCamlFloat,
+        collect_new_rolls_owner_snapshots_start_t: OCamlFloat,
+        collect_new_rolls_owner_snapshots_end_t: OCamlFloat,
+        commit_start_t: OCamlFloat,
+        commit_end_t: OCamlFloat,
+        apply_end_t: OCamlFloat,
     }
 }
 

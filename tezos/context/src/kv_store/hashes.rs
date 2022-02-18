@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 use crate::{
     kv_store::{HashId, VacantObjectHash},
@@ -24,6 +27,9 @@ pub struct HashesContainer {
     is_commiting: bool,
     /// First `HashId` in `Self::working_tree` and `Self::commiting`
     first_index: usize,
+    /// Keep an index on duplicate hashes
+    /// old HashId to new HashId (before and during commit)
+    pub dedup_hashes: Option<HashMap<HashId, HashId>>,
 }
 
 impl HashesContainer {
@@ -33,6 +39,7 @@ impl HashesContainer {
             commiting: IndexMap::with_chunk_capacity(1000),
             is_commiting: false,
             first_index,
+            dedup_hashes: None,
         }
     }
 
@@ -46,8 +53,16 @@ impl HashesContainer {
 
     pub fn commited(&mut self) {
         self.first_index += self.commiting.len();
-        self.working_tree.clear();
-        self.commiting.clear();
+        if self.working_tree.capacity() > 1000 {
+            self.working_tree = IndexMap::with_chunk_capacity(1000);
+        } else {
+            self.working_tree.clear();
+        }
+        if self.commiting.capacity() > 1000 {
+            self.commiting = IndexMap::with_chunk_capacity(1000);
+        } else {
+            self.commiting.clear();
+        }
         self.is_commiting = false;
     }
 
@@ -72,6 +87,17 @@ impl HashesContainer {
             // We are not commiting, keep the same HashId
             return Ok(hash_id);
         }
+
+        if let Some(hash_id) = self
+            .dedup_hashes
+            .as_ref()
+            .and_then(|dedup| dedup.get(&hash_id))
+            .cloned()
+        {
+            return Ok(hash_id);
+        }
+
+        let old_hash_id = hash_id;
 
         // We are commiting, move the `ObjectHash` from `Self::working_tree`
         // into `Self::commiting` and return the new `HashId`.
@@ -98,6 +124,10 @@ impl HashesContainer {
 
         // Retrieve the `HashId`
         let hash_id = HashId::try_from(self.first_index + commiting_index)?;
+
+        if let Some(dedup) = self.dedup_hashes.as_mut() {
+            dedup.insert(old_hash_id, hash_id);
+        };
 
         // Return the new `HashId`
         Ok(hash_id)

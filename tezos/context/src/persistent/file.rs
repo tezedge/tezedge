@@ -4,7 +4,7 @@
 use std::{
     convert::TryInto,
     fs::OpenOptions,
-    io::{self, Seek, SeekFrom, Write},
+    io::{self, BufReader, Seek, SeekFrom, Write},
     os::unix::prelude::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -109,6 +109,11 @@ impl FileType {
 pub struct File<const T: TaggedFile> {
     file: std::fs::File,
     offset: u64,
+    /// Value used during reloading only. This is to keep track of until
+    /// where the checksum was computed
+    checksum_computed_until: u64,
+    crc32: crc32fast::Hasher,
+    read_only: bool,
 }
 
 /// Absolute offset in the file
@@ -156,24 +161,42 @@ fn get_custom_flags() -> i32 {
 }
 
 impl<const T: TaggedFile> File<T> {
-    pub fn try_new(base_path: &str) -> Result<Self, OpenFileError> {
+    pub fn try_new(base_path: &str, read_only: bool) -> Result<Self, OpenFileError> {
         std::fs::create_dir_all(&base_path)?;
 
         let file_type: FileType = T.into();
         let append_mode = !matches!(file_type, FileType::Sizes);
 
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .append(append_mode)
-            .create(true)
-            .custom_flags(get_custom_flags())
-            .open(PathBuf::from(base_path).join(file_type.get_path()))?;
+        let mut options = OpenOptions::new();
+
+        if read_only {
+            options
+                .read(true)
+                .write(false)
+                .create(false)
+                .custom_flags(get_custom_flags());
+        } else {
+            options
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .append(append_mode)
+                .create(true)
+                .custom_flags(get_custom_flags());
+        }
+
+        let mut file = options.open(PathBuf::from(base_path).join(file_type.get_path()))?;
 
         // We use seek, in cases metadatas were not synchronized
         let offset = file.seek(SeekFrom::End(0))?;
-        let mut file = Self { file, offset };
+        let crc32 = crc32fast::Hasher::new();
+        let mut file = Self {
+            file,
+            offset,
+            crc32,
+            checksum_computed_until: 0,
+            read_only,
+        };
 
         if offset == 0 {
             file.write_header()?;
@@ -184,13 +207,41 @@ impl<const T: TaggedFile> File<T> {
         Ok(file)
     }
 
+    pub fn create_new_file(base_path: &str) -> std::io::Result<()> {
+        std::fs::create_dir_all(&base_path)?;
+
+        let file_type: FileType = T.into();
+        let append_mode = !matches!(file_type, FileType::Sizes);
+
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .append(append_mode)
+            .create_new(true)
+            .custom_flags(get_custom_flags())
+            .open(PathBuf::from(base_path).join(file_type.get_path()))?;
+
+        Ok(())
+    }
+
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self {
+            file: self.file.try_clone()?,
+            offset: self.offset,
+            checksum_computed_until: self.checksum_computed_until,
+            crc32: self.crc32.clone(),
+            read_only: self.read_only,
+        })
+    }
+
     fn write_header(&mut self) -> Result<(), io::Error> {
         let mut bytes = Vec::with_capacity(16);
 
         let version_bytes = CURRENT_VERSION.to_le_bytes();
         bytes.extend_from_slice(&version_bytes[..]);
 
-        let file_type: u64 = T.into();
+        let file_type: u64 = T;
         let file_type_bytes = file_type.to_le_bytes();
         bytes.extend_from_slice(&file_type_bytes[..]);
 
@@ -202,7 +253,7 @@ impl<const T: TaggedFile> File<T> {
     }
 
     fn check_header(&self) -> Result<(), OpenFileError> {
-        let current_file_type: u64 = T.into();
+        let current_file_type: u64 = T;
 
         let mut bytes: [u8; 16] = Default::default();
         self.read_exact_at(&mut bytes, 0.into())?;
@@ -225,15 +276,74 @@ impl<const T: TaggedFile> File<T> {
         Ok(())
     }
 
+    /// Compute the checksum of the file from `Self::checksum_computed_until` until `end`
+    /// and return it
+    pub fn update_checksum_until(&mut self, end: u64) -> Result<u32, io::Error> {
+        // We read chunks of 4MB, an other value make the operation slower
+        // We are limited by IO here, `crc32` is very fast and is only a small fraction
+        // of the time spent.
+
+        let mut buffer = vec![0; 4 * 1024 * 1024];
+        let mut offset = self.checksum_computed_until;
+
+        while offset < end {
+            let length_to_read = if offset + buffer.len() as u64 > end {
+                (end - offset) as usize
+            } else {
+                buffer.len()
+            };
+
+            let buffer = &mut buffer[..length_to_read];
+
+            self.read_exact_at(buffer, (offset as u64).into())?;
+            offset += buffer.len() as u64;
+            self.crc32.update(buffer);
+
+            assert!(!buffer.is_empty());
+        }
+
+        self.checksum_computed_until = end;
+        Ok(self.checksum())
+    }
+
+    pub fn truncate_with_checksum(
+        &mut self,
+        new_size: u64,
+        checksum: u32,
+    ) -> Result<(), io::Error> {
+        if new_size != self.offset {
+            assert!(new_size < self.offset);
+
+            if !self.read_only {
+                self.file.set_len(new_size)?;
+            }
+            self.offset = new_size;
+        }
+        self.checksum_computed_until = new_size;
+        self.crc32 = crc32fast::Hasher::new_with_initial(checksum);
+
+        Ok(())
+    }
+
     pub fn truncate(&mut self, new_size: u64) -> Result<(), io::Error> {
         if new_size != self.offset {
             assert!(new_size < self.offset);
 
-            self.file.set_len(new_size)?;
+            if !self.read_only {
+                self.file.set_len(new_size)?;
+            }
             self.offset = new_size;
         }
 
         Ok(())
+    }
+
+    pub fn buffered(self) -> Result<BufReader<std::fs::File>, io::Error> {
+        let start = self.start();
+        let mut file = self.file;
+
+        file.seek(SeekFrom::Start(start))?;
+        Ok(BufReader::with_capacity(4 * 1024 * 1024, file)) // 4 MB
     }
 
     pub fn start(&self) -> u64 {
@@ -255,10 +365,18 @@ impl<const T: TaggedFile> File<T> {
     }
 
     pub fn append(&mut self, bytes: impl AsRef<[u8]>) -> Result<(), io::Error> {
+        assert!(!self.read_only);
+
         let bytes = bytes.as_ref();
 
+        self.crc32.update(bytes);
         self.offset += bytes.len() as u64;
+        self.checksum_computed_until = self.offset;
         self.file.write_all(bytes)
+    }
+
+    pub fn checksum(&self) -> u32 {
+        self.crc32.clone().finalize()
     }
 
     pub fn write_all_at(
@@ -267,6 +385,11 @@ impl<const T: TaggedFile> File<T> {
         offset: AbsoluteOffset,
     ) -> Result<(), io::Error> {
         use std::os::unix::prelude::FileExt;
+
+        assert!(!self.read_only);
+
+        // This method must be used with TAG_SIZES only, other files are append only
+        assert_eq!(T, TAG_SIZES);
 
         let bytes = bytes.as_ref();
         self.file.write_all_at(bytes, offset.as_u64())

@@ -4,6 +4,7 @@
 //! Implementation of string interning used to implement hash-consing for context path fragments.
 //! This avoids un-necessary duplication of strings, saving memory.
 
+use std::io::Read;
 use std::{borrow::Cow, collections::hash_map::DefaultHasher, convert::TryInto, hash::Hasher};
 
 use static_assertions::const_assert;
@@ -171,7 +172,7 @@ impl BigStrings {
     }
 
     fn deserialize(
-        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+        big_strings_file: File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
 
@@ -189,13 +190,15 @@ impl BigStrings {
         // [u32 start le bytes | u32 end le bytes]
         // but using `result.push_str` with the string seems to be enough to also update the offsets?
 
+        let mut big_strings_file = big_strings_file.buffered()?;
+
         while offset < end {
-            big_strings_file.read_exact_at(&mut length_bytes, offset.into())?;
+            big_strings_file.read_exact(&mut length_bytes)?;
 
             let length = u32::from_le_bytes(length_bytes) as usize;
             offset += length_bytes.len() as u64;
 
-            big_strings_file.read_exact_at(&mut string_bytes[0..length], offset.into())?;
+            big_strings_file.read_exact(&mut string_bytes[0..length])?;
             offset += length as u64;
 
             let s = std::str::from_utf8(&string_bytes[..length])?;
@@ -279,6 +282,14 @@ impl StringInterner {
         debug_assert_eq!(self.all_strings, other.all_strings);
 
         self.big_strings.extend_from(&other.big_strings);
+    }
+
+    pub fn len(&self) -> usize {
+        self.all_strings.len() + self.big_strings.strings.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn make_string_id(&mut self, s: &str) -> StringId {
@@ -375,8 +386,8 @@ impl StringInterner {
     }
 
     pub fn deserialize(
-        strings_file: &mut File<{ TAG_STRINGS }>,
-        big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
+        strings_file: File<{ TAG_STRINGS }>,
+        big_strings_file: File<{ TAG_BIG_STRINGS }>,
     ) -> Result<Self, DeserializationError> {
         // TODO: maybe start with higher capacity values knowing the file sizes
         let mut result = Self::default();
@@ -391,12 +402,14 @@ impl StringInterner {
         let mut length_byte = [0u8; 1];
         let mut string_bytes = [0u8; 256]; //  30 should be enough here
 
+        let mut strings_file = strings_file.buffered()?;
+
         while offset < end {
-            strings_file.read_exact_at(&mut length_byte, offset.into())?;
+            strings_file.read_exact(&mut length_byte)?;
             offset += length_byte.len() as u64;
 
             let length = u8::from_le_bytes(length_byte) as usize;
-            strings_file.read_exact_at(&mut string_bytes[..length], offset.into())?;
+            strings_file.read_exact(&mut string_bytes[..length])?;
 
             offset += length as u64;
 

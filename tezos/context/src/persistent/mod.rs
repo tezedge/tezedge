@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, convert::TryFrom, io, sync::PoisonError};
+use std::{borrow::Cow, collections::HashMap, convert::TryFrom, io, sync::PoisonError};
 
 use crypto::hash::ContextHash;
 use thiserror::Error;
@@ -14,11 +14,12 @@ use crate::serialize::persistent::AbsoluteOffset;
 use std::sync::Arc;
 
 use crate::{
+    initializer::IndexInitializationError,
     kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash},
     serialize::DeserializationError,
     working_tree::{
         shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
-        storage::{DirEntryId, Storage},
+        storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{MerkleError, WorkingTree},
         Object, ObjectReference,
@@ -90,6 +91,13 @@ pub trait KeyValueStoreBackend {
         storage: &mut Storage,
         strings: &mut StringInterner,
     ) -> Result<Object, DBError>;
+    /// Return the inode associated to this `object_ref`.
+    fn get_inode(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<DirectoryOrInodeId, DBError>;
     /// Return the object bytes associated to this `object_ref`.
     ///
     /// The object bytes will be inserted at the beginning of `buffer`.
@@ -127,6 +135,12 @@ pub trait KeyValueStoreBackend {
     ///
     /// This is used on the persistent context, to avoid commiting unused HashId
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError>;
+    /// Reload the persistent database and verify its integrity
+    fn reload_database(&mut self) -> Result<(), DBError>;
+    /// Return the file's statistics
+    ///
+    /// `Self::try_new` needs to be called with `read_mode=true`
+    fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError>;
     /// Simulate a `commit`, by writing data to disk/memory, without computing hash
     #[cfg(test)]
     fn synchronize_data(
@@ -134,6 +148,27 @@ pub trait KeyValueStoreBackend {
         batch: &[(HashId, Arc<[u8]>)],
         output: &[u8],
     ) -> Result<Option<AbsoluteOffset>, DBError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ReadStatistics {
+    pub nobjects: usize,
+    pub objects_total_bytes: usize,
+    pub lowest_offset: u64,
+    pub unique_shapes: HashMap<DirectoryShapeId, ()>,
+    pub shapes_length: usize,
+}
+
+impl Default for ReadStatistics {
+    fn default() -> Self {
+        Self {
+            nobjects: 0,
+            objects_total_bytes: 0,
+            lowest_offset: u64::MAX,
+            unique_shapes: HashMap::default(),
+            shapes_length: 0,
+        }
+    }
 }
 
 /// Possible errors for schema
@@ -186,6 +221,11 @@ pub enum DBError {
     },
     #[error("Commit to disk error: {err:?}")]
     CommitToDiskError { err: io::Error },
+    #[error("Reloading database error: {err:?}")]
+    ReloadingError {
+        #[from]
+        err: IndexInitializationError,
+    },
 }
 
 impl From<HashIdError> for DBError {

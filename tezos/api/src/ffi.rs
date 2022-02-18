@@ -24,6 +24,7 @@ pub mod ffi_error_ids {
     pub const APPLY_ERROR: &str = "ffi.apply_error";
     pub const CALL_ERROR: &str = "ffi.call_error";
     pub const CALL_EXCEPTION: &str = "ffi.call_exception";
+    pub const CONTEXT_HASH_RESULT_MISMATCH: &str = "ffi.context_hash_result_mismatch";
     pub const INCONSISTENT_OPERATIONS_HASH: &str = "ffi.inconsistent_operations_hash";
     pub const INCOMPLETE_OPERATIONS: &str = "ffi.incomplete_operations";
     pub const PREDECESSOR_MISMATCH: &str = "ffi.predecessor_mismatch";
@@ -111,6 +112,27 @@ pub struct ApplyBlockResponse {
     pub new_protocol_constants_json: Option<String>,
     pub new_cycle_eras_json: Option<String>,
     pub commit_time: f64,
+    pub execution_timestamps: ApplyBlockExecutionTimestamps,
+}
+
+/// Block application execution timestamps
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct ApplyBlockExecutionTimestamps {
+    pub apply_start_t: f64,
+    pub operations_decoding_start_t: f64,
+    pub operations_decoding_end_t: f64,
+    pub operations_application_timestamps: Vec<Vec<(f64, f64)>>,
+    pub operations_metadata_encoding_start_t: f64,
+    pub operations_metadata_encoding_end_t: f64,
+    pub begin_application_start_t: f64,
+    pub begin_application_end_t: f64,
+    pub finalize_block_start_t: f64,
+    pub finalize_block_end_t: f64,
+    pub collect_new_rolls_owner_snapshots_start_t: f64,
+    pub collect_new_rolls_owner_snapshots_end_t: f64,
+    pub commit_start_t: f64,
+    pub commit_end_t: f64,
+    pub apply_end_t: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -407,7 +429,7 @@ impl From<TezosErrorTrace> for GetDataError {
 
 #[derive(Serialize, Deserialize, Debug, Error, PartialEq)]
 pub enum ApplyBlockError {
-    #[error("Incomplete operations, exptected: {expected}, has actual: {actual}!")]
+    #[error("Incomplete operations, expected: {expected}, has actual: {actual}!")]
     IncompleteOperations { expected: usize, actual: usize },
     #[error("Failed to apply block - message: {message}!")]
     FailedToApplyBlock { message: String },
@@ -417,6 +439,12 @@ pub enum ApplyBlockError {
     PredecessorMismatch { message: String },
     #[error("Invalid request/response data - message: {message}!")]
     InvalidRequestResponseData { message: String },
+    #[error("Context hash result mismatch, expected: {expected}, got: {actual}. Cache: {cache}")]
+    ContextHashResultMismatch {
+        expected: String,
+        actual: String,
+        cache: bool,
+    },
 }
 
 // Extracts the parameters from a JSON error coming from the protocol runner like:
@@ -428,6 +456,21 @@ fn extract_incomplete_operation_values_from_json(json: &str) -> (usize, usize) {
     let actual = json[0]["actual"].as_u64().unwrap_or(0) as usize;
 
     (expected, actual)
+}
+
+// Extracts the parameters from a JSON error coming from the protocol runner like:
+// [{"kind":"permanent\","id":"ffi.context_hash_result_mismatch",
+//   "cache": true,
+//   "expected":"CoVNCRLzHYtuQUjr6Z8prM4bsSKmDdqAzGujufNzLBHMVcSktggN",
+//   "actual":"CoVcvh86Pm1LikBq68oAcDiMKzbMdsZUU1KBh4WtjCCnPhS2wvfr"}]
+// If cannot be parsed, returns empty strings.
+fn extract_expected_and_actual_context_hash_from_json(json: &str) -> (String, String, bool) {
+    let json = serde_json::from_str::<serde_json::Value>(json).unwrap_or(serde_json::Value::Null);
+    let expected = json[0]["expected"].as_str().unwrap_or("").into();
+    let actual = json[0]["actual"].as_str().unwrap_or("").into();
+    let cache = json[0]["cache"].as_bool().unwrap_or(false);
+
+    (expected, actual, cache)
 }
 
 impl From<CallError> for ApplyBlockError {
@@ -449,6 +492,15 @@ impl From<CallError> for ApplyBlockError {
                     let (expected, actual) =
                         extract_incomplete_operation_values_from_json(&trace_message);
                     ApplyBlockError::IncompleteOperations { expected, actual }
+                }
+                ffi_error_ids::CONTEXT_HASH_RESULT_MISMATCH => {
+                    let (expected, actual, cache) =
+                        extract_expected_and_actual_context_hash_from_json(&trace_message);
+                    ApplyBlockError::ContextHashResultMismatch {
+                        expected,
+                        actual,
+                        cache,
+                    }
                 }
                 _ => ApplyBlockError::FailedToApplyBlock {
                     message: trace_message,
@@ -921,6 +973,20 @@ pub enum ProtocolError {
     ContextGetKeyFromHistoryError { reason: String },
     #[error("Failed to get values by prefix: {reason}")]
     ContextGetKeyValuesByPrefixError { reason: String },
+}
+
+impl ProtocolError {
+    /// Returns true if this a context hash mismatch error for which the cache was loaded
+    pub fn is_cache_context_hash_mismatch_error(&self) -> bool {
+        if let Self::ApplyBlockError { reason } = self {
+            matches!(
+                reason,
+                ApplyBlockError::ContextHashResultMismatch { cache: true, .. }
+            )
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]

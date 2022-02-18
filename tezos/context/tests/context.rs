@@ -10,13 +10,18 @@ use storage::{BlockHeaderWithHash, BlockStorage};
 use tezos_context::initializer::{initialize_tezedge_context, ContextKvStoreConfiguration};
 use tezos_context::{context_key, ContextError, TezedgeContext};
 use tezos_context::{IndexApi, ProtocolContextApi, ShellContextApi};
-use tezos_context_api::{ContextKey, TezosContextTezEdgeStorageConfiguration};
+use tezos_context_api::{
+    ContextKey, TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
+};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 #[test]
 pub fn test_context_set_get_commit_persistent() -> Result<(), anyhow::Error> {
     context_set_get_commit(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_set_get_commit_persistent",
     )
 }
@@ -84,7 +89,10 @@ pub fn context_set_get_commit(
 #[test]
 pub fn test_context_hash_from_working_tree_persistent() -> Result<(), anyhow::Error> {
     context_hash_from_working_tree(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_hash_from_working_tree_persistent",
     )
 }
@@ -107,7 +115,7 @@ pub fn context_hash_from_working_tree(
 
     // init block storage (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -126,14 +134,26 @@ pub fn context_hash_from_working_tree(
     }
 
     // Create 'temporary' hashes
-    context
-        .hash("tezos".to_string(), "hello".to_string(), 123)
+    let hash = context
+        .hash("Tezos".to_string(), "Genesis".to_string(), 0)
         .unwrap();
 
     // Created hashes must be commited, this must not panic
-    context
+    let commit_hash = context
         .commit("Tezos".to_string(), "Genesis".to_string(), 0)
         .unwrap();
+
+    assert_eq!(hash, commit_hash);
+
+    let mut context = context.index.checkout(&commit_hash).unwrap().unwrap();
+
+    // Enough to create inodes
+    for index in 1000..1010 {
+        context = context.add(
+            &context_key!(format!("data/rolls/owner/current/index/{}", index)),
+            &[1, 2, 3, 4, 5, 6],
+        )?;
+    }
 
     Ok(())
 }
@@ -141,7 +161,10 @@ pub fn context_hash_from_working_tree(
 #[test]
 pub fn test_context_delete_and_remove_persistent() -> Result<(), anyhow::Error> {
     context_delete_and_remove(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_delete_and_remove_persistent",
     )
 }
@@ -321,7 +344,10 @@ fn ctx_copy(
 #[test]
 pub fn test_context_copy_persistent() -> Result<(), anyhow::Error> {
     context_copy(
-        ContextKvStoreConfiguration::OnDisk("".to_string()),
+        ContextKvStoreConfiguration::OnDisk(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_copy_persistent",
     )
 }

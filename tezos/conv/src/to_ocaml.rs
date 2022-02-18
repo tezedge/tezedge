@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    OCamlApplyBlockRequest, OCamlBeginApplicationRequest, OCamlBeginConstructionRequest,
-    OCamlBlockHeader, OCamlBlockHeaderShellHeader, OCamlComputePathRequest,
-    OCamlContextGetKeyFromHistoryRequest, OCamlContextGetKeyValuesByPrefixRequest,
-    OCamlContextGetTreeByPrefixRequest, OCamlCycleRollsOwnerSnapshot, OCamlGenesisChain,
-    OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
+    OCamlApplyBlockExecutionTimestamps, OCamlApplyBlockRequest, OCamlBeginApplicationRequest,
+    OCamlBeginConstructionRequest, OCamlBlockHeader, OCamlBlockHeaderShellHeader,
+    OCamlComputePathRequest, OCamlContextGetKeyFromHistoryRequest,
+    OCamlContextGetKeyValuesByPrefixRequest, OCamlContextGetTreeByPrefixRequest,
+    OCamlCycleRollsOwnerSnapshot, OCamlGenesisChain, OCamlGenesisResultDataParams,
+    OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
     OCamlJsonEncodeApplyBlockOperationsMetadataParams,
     OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRpcRequest, OCamlTezosContextConfiguration, OCamlTezosContextIrminStorageConfiguration,
-    OCamlTezosContextStorageConfiguration, OCamlTezosRuntimeConfiguration,
-    OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
+    OCamlTezosContextStorageConfiguration, OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlTezosRuntimeConfiguration, OCamlTezosRuntimeLogLevel, OCamlValidateOperationRequest,
 };
 
 use super::{
@@ -33,15 +34,16 @@ use ocaml_interop::{
     OCamlInt64, OCamlList, OCamlRuntime, ToOCaml,
 };
 use tezos_api::ffi::{
-    ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData, HelpersPreapplyBlockRequest,
-    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosRuntimeConfiguration,
-    TezosRuntimeLogLevel, ValidateOperationRequest,
+    ApplyBlockExecutionTimestamps, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
+    BeginConstructionRequest, ComputePathRequest, CycleRollsOwnerSnapshot, ForkingTestchainData,
+    HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest,
+    TezosRuntimeConfiguration, TezosRuntimeLogLevel, ValidateOperationRequest,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, PatchContext, ProtocolOverrides,
     TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use tezos_protocol_ipc_messages::{
@@ -104,11 +106,18 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_record! {
+    TezosContextTezedgeOnDiskBackendOptions => OCamlTezosContextTezedgeOnDiskBackendOptions {
+        base_path: String,
+        startup_check: bool,
+    }
+}
+
 impl_to_ocaml_variant! {
     ContextKvStoreConfiguration => OCamlContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
-        ContextKvStoreConfiguration::OnDisk(path: String),
+        ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
 
@@ -249,6 +258,27 @@ impl_to_ocaml_record! {
         new_protocol_constants_json: Option<String>,
         new_cycle_eras_json: Option<String>,
         commit_time: OCamlFloat,
+        execution_timestamps: OCamlApplyBlockExecutionTimestamps,
+    }
+}
+
+impl_to_ocaml_record! {
+    ApplyBlockExecutionTimestamps => OCamlApplyBlockExecutionTimestamps {
+        apply_start_t: OCamlFloat,
+        operations_decoding_start_t: OCamlFloat,
+        operations_decoding_end_t: OCamlFloat,
+        operations_application_timestamps: OCamlList<OCamlList<(OCamlFloat, OCamlFloat)>>,
+        operations_metadata_encoding_start_t: OCamlFloat,
+        operations_metadata_encoding_end_t: OCamlFloat,
+        begin_application_start_t: OCamlFloat,
+        begin_application_end_t: OCamlFloat,
+        finalize_block_start_t: OCamlFloat,
+        finalize_block_end_t: OCamlFloat,
+        collect_new_rolls_owner_snapshots_start_t: OCamlFloat,
+        collect_new_rolls_owner_snapshots_end_t: OCamlFloat,
+        commit_start_t: OCamlFloat,
+        commit_end_t: OCamlFloat,
+        apply_end_t: OCamlFloat,
     }
 }
 

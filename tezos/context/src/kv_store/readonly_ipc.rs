@@ -17,11 +17,11 @@ use slog::{error, info};
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use thiserror::Error;
 
-use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable};
+use crate::persistent::{get_commit_hash, DBError, Flushable, Persistable, ReadStatistics};
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
-use crate::working_tree::storage::{DirEntryId, Storage};
+use crate::working_tree::storage::{DirEntryId, DirectoryOrInodeId, Storage};
 use crate::working_tree::string_interner::{StringId, StringInterner};
 use crate::working_tree::working_tree::{PostCommitData, WorkingTree};
 use crate::working_tree::{Object, ObjectReference};
@@ -60,6 +60,10 @@ impl ReadonlyIpcBackend {
 impl NotGarbageCollected for ReadonlyIpcBackend {}
 
 impl KeyValueStoreBackend for ReadonlyIpcBackend {
+    fn reload_database(&mut self) -> Result<(), DBError> {
+        Ok(())
+    }
+
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
         if let Some(hash_id) = hash_id.get_in_working_tree()? {
             self.hashes.contains(hash_id).map_err(Into::into)
@@ -141,12 +145,11 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         strings: &mut StringInterner,
     ) -> Result<Object, DBError> {
         self.get_object_bytes(object_ref, &mut storage.data)?;
-
         let bytes = std::mem::take(&mut storage.data);
 
         let object_header: ObjectHeader = ObjectHeader::from_bytes([bytes[0]; 1]);
 
-        let result = if object_header.get_persistent() {
+        let result = if object_header.get_is_persistent() {
             persistent::deserialize_object(&bytes, object_ref.offset(), storage, strings, self)
         } else {
             in_memory::deserialize_object(&bytes, storage, strings, self)
@@ -157,11 +160,41 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         result.map_err(Into::into)
     }
 
+    fn get_inode(
+        &self,
+        object_ref: ObjectReference,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+    ) -> Result<DirectoryOrInodeId, DBError> {
+        self.get_object_bytes(object_ref, &mut storage.data)?;
+        let object_bytes = std::mem::take(&mut storage.data);
+
+        let object_header: ObjectHeader = ObjectHeader::from_bytes([object_bytes[0]; 1]);
+
+        let result = if object_header.get_is_persistent() {
+            persistent::deserialize_inode(
+                &object_bytes,
+                object_ref.offset(),
+                storage,
+                self,
+                strings,
+            )
+        } else {
+            in_memory::deserialize_inode(&object_bytes, storage, strings, self)
+        };
+
+        storage.data = object_bytes;
+
+        result.map_err(Into::into)
+    }
+
     fn get_object_bytes<'a>(
         &self,
         object_ref: ObjectReference,
         buffer: &'a mut Vec<u8>,
     ) -> Result<&'a [u8], DBError> {
+        buffer.clear();
+
         if let Some(hash_id) = object_ref
             .hash_id_opt()
             .and_then(|h| h.get_in_working_tree().ok()?)
@@ -202,6 +235,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
                 None,
                 None,
                 false,
+                false,
             )
             .map_err(Box::new)?;
 
@@ -229,6 +263,10 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
         // HashId in the read-only backend are never commited
         Ok(hash_id)
+    }
+
+    fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError> {
+        Ok(None)
     }
 
     #[cfg(test)]

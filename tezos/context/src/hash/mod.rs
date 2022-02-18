@@ -13,6 +13,7 @@ use thiserror::Error;
 
 use ocaml::ocaml_hash_string;
 
+use crate::working_tree::storage::DirectoryOrInodeId;
 use crate::working_tree::string_interner::StringInterner;
 use crate::working_tree::ObjectReference;
 use crate::{
@@ -61,6 +62,10 @@ pub enum HashingError {
     BlobNotFound,
     #[error("StorageIdError: {error:?}")]
     StorageIdError { error: StorageError },
+    #[error("Missing InodeId")]
+    MissingInodeId,
+    #[error("Missing Pointer")]
+    MissingPointer,
 }
 
 impl From<DBError> for HashingError {
@@ -105,15 +110,15 @@ pub(crate) fn index(depth: u32, name: &str) -> u32 {
 }
 
 fn hash_long_inode(
-    inode: &Inode,
+    ptr_id: DirectoryOrInodeId,
     store: &mut ContextKeyValueStore,
     storage: &Storage,
     strings: &StringInterner,
 ) -> Result<HashId, HashingError> {
     let mut hasher = VarBlake2b::new(OBJECT_HASH_LEN)?;
 
-    match inode {
-        Inode::Directory(dir_id) => {
+    match ptr_id {
+        DirectoryOrInodeId::Directory(dir_id) => {
             // Inode value:
             //
             // |   1   |   1  |     n_1      |  ...  |      n_k      |
@@ -122,7 +127,7 @@ fn hash_long_inode(
             //
             // where n_i = len(prehash(e_i))
 
-            let dir = storage.get_small_dir(*dir_id)?;
+            let dir = storage.get_small_dir(dir_id)?;
 
             hasher.update(&[0u8]); // type tag
             hasher.update(&[dir.len() as u8]);
@@ -153,12 +158,16 @@ fn hash_long_inode(
                 }
             }
         }
-        Inode::Pointers {
-            depth,
-            nchildren,
-            npointers,
-            pointers,
-        } => {
+        DirectoryOrInodeId::Inode(inode_id) => {
+            let Inode {
+                depth,
+                nchildren,
+                pointers,
+                ..
+            } = storage.get_inode(inode_id)?;
+
+            let npointers = pointers.npointers();
+
             // Inode directory:
             //
             // |   1    | (LEB128) |   (LEB128)    |    1   |  33  | ... |  33  |
@@ -168,7 +177,7 @@ fn hash_long_inode(
             hasher.update(&[1u8]); // type tag
             leb128::write::unsigned(&mut hasher, *depth as u64)?;
             leb128::write::unsigned(&mut hasher, *nchildren as u64)?;
-            hasher.update(&[*npointers as u8]);
+            hasher.update(&[npointers as u8]);
 
             // Inode pointer:
 
@@ -177,31 +186,28 @@ fn hash_long_inode(
             // +---------+--------+
             // |  index  |  hash  |
 
-            for (index, pointer) in pointers.iter().enumerate() {
-                // When the pointer is `None`, it means that there is no DirEntry
-                // under that index.
+            for (ptr_index, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
 
-                // Skip pointers without entries.
-                if let Some(pointer) = pointer.as_ref() {
-                    let index: u8 = index as u8;
+                let ptr_index: u8 = ptr_index as u8;
 
-                    hasher.update(&[index]);
+                hasher.update(&[ptr_index]);
 
-                    let hash_id = match pointer.hash_id(storage, store)? {
-                        Some(hash_id) => hash_id,
-                        None => {
-                            let inode_id = pointer.inode_id();
-                            let inode = storage.get_inode(inode_id)?;
-                            let hash_id = hash_long_inode(inode, store, storage, strings)?;
-                            pointer.set_hash_id(Some(hash_id));
-                            hash_id
-                        }
-                    };
+                let hash_id = match storage.pointer_retrieve_hashid(&pointer, store)? {
+                    Some(hash_id) => hash_id,
+                    None => {
+                        let ptr_id = pointer.ptr_id().ok_or(HashingError::MissingInodeId)?;
 
-                    let hash = store.get_hash(ObjectReference::new(Some(hash_id), None))?;
+                        let hash_id = hash_long_inode(ptr_id, store, storage, strings)?;
+                        storage.pointer_set_hashid(&pointer, hash_id)?;
 
-                    hasher.update(hash.as_ref());
+                        hash_id
+                    }
                 };
+
+                let hash = store.get_hash(ObjectReference::new(Some(hash_id), None))?;
+
+                hasher.update(hash.as_ref());
             }
         }
     }
@@ -274,8 +280,7 @@ pub(crate) fn hash_directory(
     strings: &StringInterner,
 ) -> Result<HashId, HashingError> {
     if let Some(inode_id) = dir_id.get_inode_id() {
-        let inode = storage.get_inode(inode_id)?;
-        hash_long_inode(inode, store, storage, strings)
+        hash_long_inode(DirectoryOrInodeId::Inode(inode_id), store, storage, strings)
     } else {
         hash_short_inode(dir_id, store, storage, strings)
     }
@@ -377,7 +382,6 @@ pub(crate) fn hash_object(
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::convert::TryInto;
     use std::{collections::HashSet, env, fs::File, io::Read, path::Path};
 
     use flate2::read::GzDecoder;
@@ -386,7 +390,7 @@ mod tests {
     use tezos_timing::SerializeStats;
 
     use crate::kv_store::in_memory::InMemory;
-    use crate::kv_store::persistent::Persistent;
+    use crate::kv_store::persistent::{Persistent, PersistentConfiguration};
     use crate::serialize::{in_memory, persistent, SerializeObjectSignature};
     use crate::working_tree::ObjectReference;
     use crate::working_tree::{DirEntry, DirEntryKind};
@@ -395,7 +399,12 @@ mod tests {
 
     #[test]
     fn test_hash_of_commit_persistent() {
-        let mut repo = Persistent::try_new(None).expect("failed to create persistent context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create persistent context");
         hash_of_commit(&mut repo);
     }
 
@@ -467,14 +476,14 @@ mod tests {
         println!("[hex] commit_message_length : {}", commit_message_length);
         println!("[hex] commit_message : {}", commit_message);
 
-        bytes += &hash_length;
-        bytes += &dir_hash;
-        bytes += &parents_count;
-        bytes += &commit_time;
-        bytes += &commit_author_name_length;
-        bytes += &commit_author_name;
-        bytes += &commit_message_length;
-        bytes += &commit_message;
+        bytes += hash_length;
+        bytes += dir_hash;
+        bytes += parents_count;
+        bytes += commit_time;
+        bytes += commit_author_name_length;
+        bytes += commit_author_name;
+        bytes += commit_message_length;
+        bytes += commit_message;
 
         println!(
             "manually calculated haxedemical representation of commit: {}",
@@ -505,7 +514,12 @@ mod tests {
 
     #[test]
     fn test_hash_of_small_dir_persistent() {
-        let mut repo = Persistent::try_new(None).expect("failed to create persistent context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create persistent context");
         hash_of_small_dir(&mut repo);
     }
 
@@ -534,7 +548,7 @@ mod tests {
         let dir_entry = DirEntry::new(DirEntryKind::Blob, Object::Blob(blob_id));
 
         let dummy_dir = storage
-            .dir_insert(dummy_dir, "a", dir_entry, &mut strings)
+            .dir_insert(dummy_dir, "a", dir_entry, &mut strings, repo)
             .unwrap();
 
         // hexademical representation of above directory:
@@ -562,12 +576,12 @@ mod tests {
         println!("[hex] hash_length      : {}", hash_length);
         println!("[hex] hash             : {}", hash);
 
-        bytes += &child_dir_entries;
-        bytes += &blob_dir_entry;
-        bytes += &string_length;
-        bytes += &string_value;
-        bytes += &hash_length;
-        bytes += &hash;
+        bytes += child_dir_entries;
+        bytes += blob_dir_entry;
+        bytes += string_length;
+        bytes += string_value;
+        bytes += hash_length;
+        bytes += hash;
 
         println!(
             "manually calculated haxedemical representation of directory: {}",
@@ -583,7 +597,7 @@ mod tests {
             hex::encode(calculated_dir_hash.as_ref())
         );
 
-        let hash_id = hash_directory(dummy_dir, repo, &mut storage, &strings).unwrap();
+        let hash_id = hash_directory(dummy_dir, repo, &storage, &strings).unwrap();
         let object_ref = ObjectReference::new(Some(hash_id), None);
 
         assert_eq!(
@@ -613,24 +627,34 @@ mod tests {
 
     #[test]
     fn test_dir_entry_hashes_persistent() {
-        let mut repo = Persistent::try_new(None).expect("failed to create persistent context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create persistent context");
         test_type_hashes("nodes.json.gz", &mut repo, persistent::serialize_object);
     }
 
     #[test]
     fn test_inode_hashes_persistent() {
-        let mut repo = Persistent::try_new(None).expect("failed to create persistent context");
+        let mut repo = Persistent::try_new(PersistentConfiguration {
+            db_path: None,
+            startup_check: true,
+            read_mode: false,
+        })
+        .expect("failed to create persistent context");
         test_type_hashes("inodes.json.gz", &mut repo, persistent::serialize_object);
     }
 
     #[test]
-    fn test_dir_entry_hashes() {
+    fn test_dir_entry_hashes_memory() {
         let mut repo = InMemory::try_new().expect("failed to create in-memory context");
         test_type_hashes("nodes.json.gz", &mut repo, in_memory::serialize_object);
     }
 
     #[test]
-    fn test_inode_hashes() {
+    fn test_inode_hashes_memory() {
         let mut repo = InMemory::try_new().expect("failed to create in-memory context");
         test_type_hashes("inodes.json.gz", &mut repo, in_memory::serialize_object);
     }
@@ -675,9 +699,10 @@ mod tests {
                 };
                 let object_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
 
-                let hash_id = repo.get_vacant_object_hash().unwrap().write_with(|bytes| {
-                    bytes.copy_from_slice(object_hash.as_ref().as_slice().try_into().unwrap())
-                });
+                let hash_id = repo
+                    .get_vacant_object_hash()
+                    .unwrap()
+                    .write_with(|bytes| bytes.copy_from_slice(object_hash.as_ref()));
 
                 let object = match dir_entry_kind {
                     DirEntryKind::Blob => Object::Blob(
@@ -694,11 +719,12 @@ mod tests {
                 names.insert(binding.name.clone());
 
                 dir_id = storage
-                    .dir_insert(dir_id, binding.name.as_str(), dir_entry, &mut strings)
+                    .dir_insert(dir_id, binding.name.as_str(), dir_entry, &mut strings, repo)
                     .unwrap();
 
                 assert!(storage
-                    .dir_find_dir_entry(dir_id, binding.name.as_str(), &strings)
+                    .dir_find_dir_entry(dir_id, binding.name.as_str(), &mut strings, repo)
+                    .unwrap()
                     .is_some());
             }
 
@@ -717,6 +743,7 @@ mod tests {
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
                                 .with_offset(1.into()),
                             &mut strings,
+                            repo,
                         )
                         .unwrap();
                     let a = dir_id;
@@ -730,6 +757,7 @@ mod tests {
                             DirEntry::new_commited(DirEntryKind::Blob, Some(hash_id), None)
                                 .with_offset(1.into()),
                             &mut strings,
+                            repo,
                         )
                         .unwrap();
                     let b = dir_id;
@@ -740,11 +768,15 @@ mod tests {
                 // Remove the elements we just inserted
                 for index in 0..10000 {
                     let key = format!("abc{}", index);
-                    dir_id = storage.dir_remove(dir_id, &key, &strings).unwrap();
+                    dir_id = storage
+                        .dir_remove(dir_id, &key, &mut strings, repo)
+                        .unwrap();
                     let a = dir_id;
 
                     // Remove the same key twice
-                    dir_id = storage.dir_remove(dir_id, &key, &strings).unwrap();
+                    dir_id = storage
+                        .dir_remove(dir_id, &key, &mut strings, repo)
+                        .unwrap();
                     let b = dir_id;
 
                     // The 2nd remove should not modify the existing inode or create a new one
@@ -753,7 +785,7 @@ mod tests {
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
-            let computed_hash_id = hash_directory(dir_id, repo, &mut storage, &strings).unwrap();
+            let computed_hash_id = hash_directory(dir_id, repo, &storage, &strings).unwrap();
             let computed_hash_ref = ObjectReference::new(Some(computed_hash_id), None);
             let computed_hash = repo.get_hash(computed_hash_ref).unwrap();
             let computed_hash = ContextHash::try_from_bytes(computed_hash.as_ref()).unwrap();
@@ -821,13 +853,18 @@ mod tests {
                 match object {
                     Object::Directory(new_dir) => {
                         if let Some(inode_id) = new_dir.get_inode_id() {
+                            // Force to read the full inodes in repo
+                            storage
+                                .dir_to_vec_unsorted(new_dir, &mut strings, repo)
+                                .unwrap();
+
                             // Remove existing hash ids from all the inodes children,
                             // to force recomputation of the hash.
                             storage.inodes_drop_hash_ids(inode_id);
                         }
 
                         let new_computed_hash_id =
-                            hash_directory(new_dir, repo, &mut storage, &strings).unwrap();
+                            hash_directory(new_dir, repo, &storage, &strings).unwrap();
                         let new_computed_hash_ref =
                             ObjectReference::new(Some(new_computed_hash_id), None);
                         let new_computed_hash = repo.get_hash(new_computed_hash_ref).unwrap();

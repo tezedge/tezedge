@@ -1073,6 +1073,17 @@ pub enum ProtocolServiceError {
     ContextIpcServerError { message: String },
 }
 
+impl ProtocolServiceError {
+    /// Returns true if this a context hash mismatch error for which the cache was loaded
+    pub fn is_cache_context_hash_mismatch_error(&self) -> bool {
+        if let Self::ProtocolError { reason } = self {
+            reason.is_cache_context_hash_mismatch_error()
+        } else {
+            false
+        }
+    }
+}
+
 impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
     fn from(source: std::sync::PoisonError<T>) -> Self {
         Self::LockPoisonError {

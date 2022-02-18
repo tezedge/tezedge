@@ -67,11 +67,11 @@ assert_eq_size!([u8; 22], DirEntry);
 /// Commit objects are the entry points to different versions of the context tree.
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Commit {
-    pub(crate) parent_commit_ref: Option<ObjectReference>,
-    pub(crate) root_ref: ObjectReference,
-    pub(crate) time: u64,
-    pub(crate) author: String,
-    pub(crate) message: String,
+    pub parent_commit_ref: Option<ObjectReference>,
+    pub root_ref: ObjectReference,
+    pub time: u64,
+    pub author: String,
+    pub message: String,
 }
 
 impl Commit {
@@ -88,11 +88,13 @@ pub enum Object {
     Commit(Box<Commit>),
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct ObjectReference {
     hash_id: Option<HashId>,
     offset: Option<AbsoluteOffset>,
 }
+
+assert_eq_size!([u8; 24], ObjectReference);
 
 impl From<HashId> for ObjectReference {
     fn from(hash_id: HashId) -> Self {
@@ -111,6 +113,10 @@ impl ObjectReference {
     pub fn offset(&self) -> AbsoluteOffset {
         self.offset
             .expect("ObjectReference::offset called outside of the persistent context")
+    }
+
+    pub fn offset_opt(&self) -> Option<AbsoluteOffset> {
+        self.offset
     }
 
     pub fn hash_id(&self) -> HashId {
@@ -146,12 +152,27 @@ impl DirEntry {
         HashId::new(id)
     }
 
-    pub fn set_offset(&self, offset: AbsoluteOffset) {
-        debug_assert_ne!(offset.as_u64(), 0);
+    pub fn set_hash_id(&self, hash_id: impl Into<Option<HashId>>) {
+        let hash_id: Option<HashId> = hash_id.into();
+        let hash_id = hash_id.map(|h| h.as_u64()).unwrap_or(0);
 
+        let inner = self.inner.get().with_object_hash_id(hash_id);
+        self.inner.set(inner);
+    }
+
+    pub fn set_offset(&self, offset: impl Into<Option<AbsoluteOffset>>) {
+        let offset = offset.into();
+
+        if let Some(offset) = offset {
+            debug_assert_ne!(offset.as_u64(), 0);
+        };
+
+        let offset = offset.unwrap_or_else(|| 0.into());
         let inner = self.inner.get().with_file_offset(offset.as_u64());
 
         self.inner.set(inner);
+
+        assert_eq!(self.inner.get().file_offset(), offset.as_u64());
     }
 
     pub fn with_offset(self, offset: AbsoluteOffset) -> Self {
@@ -203,14 +224,16 @@ impl DirEntry {
     /// If this dir_entry is an inlined blob, this will return an error.
     pub fn object_hash<'a>(
         &self,
-        store: &'a mut ContextKeyValueStore,
+        repository: &'a mut ContextKeyValueStore,
         storage: &Storage,
         strings: &StringInterner,
     ) -> Result<Cow<'a, ObjectHash>, HashingError> {
         let _ = self
-            .object_hash_id(store, storage, strings)?
+            .object_hash_id(repository, storage, strings)?
             .ok_or(HashingError::HashIdEmpty)?;
-        store.get_hash(self.get_reference()).map_err(Into::into)
+        repository
+            .get_hash(self.get_reference())
+            .map_err(Into::into)
     }
 
     /// Returns the `HashId` of this dir_entry, it will compute the hash if necessary.
@@ -218,7 +241,7 @@ impl DirEntry {
     /// If this dir_entry is an inlined blob, this will return `None`.
     fn object_hash_id(
         &self,
-        store: &mut ContextKeyValueStore,
+        repository: &mut ContextKeyValueStore,
         storage: &Storage,
         strings: &StringInterner,
     ) -> Result<Option<HashId>, HashingError> {
@@ -237,13 +260,13 @@ impl DirEntry {
                 {
                     Some(*hash_id)
                 } else if self.get_object().is_none() {
-                    Some(store.get_hash_id(self.get_reference())?)
+                    Some(repository.get_hash_id(self.get_reference())?)
                 } else {
                     hash_object(
                         self.get_object()
                             .as_ref()
                             .ok_or(HashingError::MissingObject)?,
-                        store,
+                        repository,
                         storage,
                         strings,
                     )?
