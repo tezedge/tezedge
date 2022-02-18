@@ -46,10 +46,17 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             store
                 .service()
                 .client
-                .monitor_proposals(delegate, Action::NewProposal)
+                .monitor_proposals(
+                    delegate,
+                    // it is first time we listening proposals,
+                    // we know nothing, so no timeout required
+                    i64::MAX,
+                    Action::Timeout,
+                    Action::NewProposal,
+                )
                 .unwrap();
         }
-        Action::NewProposal(NewProposal { .. }) => {
+        Action::NewProposal(NewProposalAction { .. }) => {
             store.dispatch(InjectPreendorsementInitAction {});
         }
         // split in two, sign and inject
@@ -67,7 +74,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let op = &hex::encode(data);
             service
                 .client
-                .inject_operation(chain_id, &op, |hash| {
+                .inject_operation(chain_id, &op, i64::MAX, Action::Timeout, |hash| {
                     InjectPreendorsementSuccessAction { hash }.into()
                 })
                 .unwrap();
@@ -76,7 +83,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             store
                 .service()
                 .client
-                .monitor_operations(Action::NewOperationSeen)
+                .monitor_operations(i64::MAX, Action::Timeout, Action::NewOperationSeen)
                 .unwrap();
         }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {

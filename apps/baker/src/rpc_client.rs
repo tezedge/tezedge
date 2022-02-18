@@ -9,10 +9,11 @@ use reqwest::{
     Url,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tezos_messages::protocol::proto_012::operation::Operation;
 use thiserror::Error;
+use chrono::Utc;
 
 use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
+use tezos_messages::protocol::proto_012::operation::Operation;
 
 use super::types::ShellBlockHeader;
 use crate::{
@@ -94,13 +95,16 @@ impl RpcClient {
         self.single_response_blocking(url, None)
     }
 
-    pub fn monitor_proposals<F>(
+    pub fn monitor_proposals<F, G>(
         &self,
         this_delegate: ContractTz1Hash,
+        deadline: i64,
+        deadline_wrapper: G,
         wrapper: F,
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
-        F: Fn(NewProposal) -> Action + Sync + Send + 'static,
+        F: Fn(NewProposalAction) -> Action + Sync + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
     {
         let mut url = self
             .endpoint
@@ -109,24 +113,27 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("next_protocol", Self::PROTOCOL);
         let this = self.clone();
-        self.multiple_responses::<ShellBlockHeader, _>(url, None, move |shell_header| {
+        self.multiple_responses::<ShellBlockHeader, _, _>(url, deadline, deadline_wrapper, move |shell_header| {
             let hash = shell_header.hash.clone().to_base58_check();
             let predecessor_hash = shell_header.predecessor.to_base58_check();
 
             let s = format!("chains/main/blocks/{}/protocols", hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let protocols = this.single_response_blocking(url, None)?;
+            let timeout = Self::deadline_to_duration(deadline)?;
+            let protocols = this.single_response_blocking(url, Some(timeout))?;
             let s = format!("chains/main/blocks/{}/operations", hash);
             let url = this.endpoint.join(&s).expect("valid url");
+            let timeout = Self::deadline_to_duration(deadline)?;
             let operations = this
-                .single_response_blocking::<[Vec<Operation>; 4]>(url, None)?;
+                .single_response_blocking::<[Vec<Operation>; 4]>(url, Some(timeout))?;
             let mut url = this
                 .endpoint
                 .join("chains/main/blocks/head/helpers/validators")
                 .expect("valid constant url");
             url.query_pairs_mut()
                 .append_pair("level", &shell_header.level.to_string());
-            let validators = this.single_response_blocking::<Vec<Validator>>(url, None)?;
+            let timeout = Self::deadline_to_duration(deadline)?;
+            let validators = this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
             let delegate_slots = {
                 let mut v = DelegateSlots::default();
                 for validator in validators {
@@ -144,14 +151,17 @@ impl RpcClient {
 
             let s = format!("chains/main/blocks/{}/header", predecessor_hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let shell_header = this.single_response_blocking::<FullHeader>(url, None)?;
+            let timeout = Self::deadline_to_duration(deadline)?;
+            let shell_header = this.single_response_blocking::<FullHeader>(url, Some(timeout))?;
             let s = format!("chains/main/blocks/{}/protocols", predecessor_hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let protocols = this.single_response_blocking(url, None)?;
+            let timeout = Self::deadline_to_duration(deadline)?;
+            let protocols = this.single_response_blocking(url, Some(timeout))?;
             let s = format!("chains/main/blocks/{}/operations", predecessor_hash);
             let url = this.endpoint.join(&s).expect("valid url");
+            let timeout = Self::deadline_to_duration(deadline)?;
             let operations = this
-                .single_response_blocking::<Vec<Vec<Operation>>>(url, None)?;
+                .single_response_blocking::<Vec<Vec<Operation>>>(url, Some(timeout))?;
             let operations = [
                 operations.get(0).cloned().unwrap_or(vec![]),
                 operations.get(1).cloned().unwrap_or(vec![]),
@@ -164,7 +174,8 @@ impl RpcClient {
                 .expect("valid constant url");
             url.query_pairs_mut()
                 .append_pair("level", &shell_header.level.to_string());
-            let validators = this.single_response_blocking::<Vec<Validator>>(url, None)?;
+            let timeout = Self::deadline_to_duration(deadline)?;
+            let validators = this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
             let next_level_delegate_slots = {
                 let mut v = DelegateSlots::default();
                 for validator in validators {
@@ -180,18 +191,24 @@ impl RpcClient {
             };
             let predecessor = BlockInfo::new_with_full_header(shell_header, protocols, operations);
 
-            Ok(wrapper(NewProposal {
+            Ok(wrapper(NewProposalAction {
                 new_proposal: Proposal { block, predecessor },
                 delegate_slots,
                 next_level_delegate_slots,
-                now_timestamp: chrono::Utc::now().timestamp(),
+                now_timestamp: Utc::now().timestamp(),
             }))
         })
     }
 
-    pub fn monitor_operations<F>(&self, wrapper: F) -> reqwest::Result<thread::JoinHandle<()>>
+    pub fn monitor_operations<F, G>(
+        &self,
+        deadline: i64,
+        deadline_wrapper: G,
+        wrapper: F,
+    ) -> reqwest::Result<thread::JoinHandle<()>>
     where
         F: Fn(NewOperationSeenAction) -> Action + Sync + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
     {
         let mut url = self
             .endpoint
@@ -203,19 +220,22 @@ impl RpcClient {
             .append_pair("outdated", "no")
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
-        self.multiple_responses(url, None, move |operations| {
+        self.multiple_responses(url, deadline, deadline_wrapper, move |operations| {
             Ok(wrapper(NewOperationSeenAction { operations }))
         })
     }
 
-    pub fn inject_operation<F>(
+    pub fn inject_operation<F, G>(
         &self,
         chain_id: &ChainId,
         op_hex: &str,
+        deadline: i64,
+        deadline_wrapper: G,
         wrapper: F,
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
         F: Fn(OperationHash) -> Action + Sync + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
     {
         let mut url = self
             .endpoint
@@ -224,7 +244,7 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("chain", &chain_id.to_base58_check());
         let body = format!("{:?}", op_hex);
-        self.single_response::<OperationHash, _>(url, Some(body), None, move |operation_hash| {
+        self.single_response::<OperationHash, _, _>(url, Some(body), deadline, deadline_wrapper, move |operation_hash| {
             wrapper(operation_hash)
         })
     }
@@ -266,28 +286,56 @@ impl RpcClient {
         }
     }
 
-    fn single_response<T, F>(
+    fn single_response<T, F, G>(
         &self,
         url: Url,
         body: Option<String>,
-        timeout: Option<Duration>,
+        deadline: i64,
+        deadline_wrapper: G,
         wrapper: F,
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
         T: DeserializeOwned + Send + 'static,
         F: FnOnce(T) -> Action + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Send + 'static,
     {
+        let tx = self.tx.clone();
+        let timeout = match Self::deadline_to_duration(deadline) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(thread::spawn(move || {
+                    let now = Utc::now();
+                    let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                    let _ = tx.send(deadline_wrapper(action));
+                }));
+            }
+        };
         let mut response = match body {
-            None => self.get(url, timeout)?,
-            Some(body) => self.post(url, body, timeout)?,
+            None => self.get(url, Some(timeout))?,
+            Some(body) => self.post(url, body, Some(timeout))?,
         };
 
-        let tx = self.tx.clone();
         let handle = thread::spawn(move || {
             if response.status().is_success() {
                 match serde_json::from_reader::<_, T>(response) {
                     Ok(value) => {
                         let _ = tx.send(wrapper(value));
+                    }
+                    Err(err) if err.is_io() => {
+                        let io_err = io::Error::from(err);
+                        if io_err.kind() == io::ErrorKind::TimedOut {
+                            let now = Utc::now();
+                            let action = TimeoutAction {
+                                now_timestamp_millis: now.timestamp_millis(),
+                            };
+                            let _ = tx.send(deadline_wrapper(action));
+                        } else {
+                            let action = UnrecoverableErrorAction {
+                                rpc_error: io_err.into(),
+                            };
+                            let _ = tx.send(Action::UnrecoverableError(action));
+                            panic!()
+                        }
                     }
                     Err(err) => {
                         let action = UnrecoverableErrorAction {
@@ -310,19 +358,31 @@ impl RpcClient {
         Ok(handle)
     }
 
-    fn multiple_responses<T, F>(
+    fn multiple_responses<T, F, G>(
         &self,
         url: Url,
-        timeout: Option<Duration>,
+        deadline: i64,
+        deadline_wrapper: G,
         wrapper: F,
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
         T: DeserializeOwned + Send + 'static,
         F: Fn(T) -> Result<Action, RpcError> + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Send + 'static,
     {
-        let mut response = self.get(url, timeout)?;
-
         let tx = self.tx.clone();
+        let timeout = match Self::deadline_to_duration(deadline) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(thread::spawn(move || {
+                    let now = Utc::now();
+                    let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                    let _ = tx.send(deadline_wrapper(action));
+                }));
+            }
+        };
+        let mut response = self.get(url, Some(timeout))?;
+
         let handle = thread::spawn(move || {
             let status = response.status();
 
@@ -333,6 +393,12 @@ impl RpcClient {
                     match v.map_err(Into::into).and_then(|v| wrapper(v)) {
                         Ok(action) => {
                             let _ = tx.send(action);
+                        }
+                        Err(RpcError::Io(io_err)) if io_err.kind() == io::ErrorKind::TimedOut => {
+                            let now = Utc::now();
+                            let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                            let _ = tx.send(deadline_wrapper(action));
+                            break;
                         }
                         Err(err) => {
                             let action = UnrecoverableErrorAction {
@@ -364,5 +430,15 @@ impl RpcClient {
         Ok(RecoverableErrorAction {
             description: err.to_string(),
         })
+    }
+
+    fn deadline_to_duration(deadline: i64) -> Result<Duration, RpcError> {
+        let now = Utc::now();
+        let millis = deadline * 1_000 - now.timestamp_millis();
+        if millis > 0 {
+            Ok(Duration::from_millis(millis as u64))
+        } else {
+            Err(RpcError::Io(io::ErrorKind::TimedOut.into()))
+        }
     }
 }

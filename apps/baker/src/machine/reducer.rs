@@ -51,7 +51,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 _ => (),
             }
         }
-        Action::NewProposal(NewProposal {
+        Action::NewProposal(NewProposalAction {
             new_proposal,
             delegate_slots,
             next_level_delegate_slots,

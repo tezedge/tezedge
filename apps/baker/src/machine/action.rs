@@ -80,14 +80,25 @@ impl EnablingCondition<State> for GetConstantsErrorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NewProposal {
+pub struct TimeoutAction {
+    pub now_timestamp_millis: i64,
+}
+
+impl EnablingCondition<State> for TimeoutAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(state, State::Ready { .. })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NewProposalAction {
     pub new_proposal: Proposal,
     pub delegate_slots: DelegateSlots,
     pub next_level_delegate_slots: DelegateSlots,
     pub now_timestamp: i64,
 }
 
-impl EnablingCondition<State> for NewProposal {
+impl EnablingCondition<State> for NewProposalAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(state, State::GotConstants(_) | State::Ready { .. })
     }
@@ -176,7 +187,8 @@ pub enum Action {
     GetConstantsInit(GetConstantsInitAction),
     GetConstantsSuccess(GetConstantsSuccessAction),
     GetConstantsError(GetConstantsErrorAction),
-    NewProposal(NewProposal),
+    Timeout(TimeoutAction),
+    NewProposal(NewProposalAction),
     InjectPreendorsementInit(InjectPreendorsementInitAction),
     InjectPreendorsementSuccess(InjectPreendorsementSuccessAction),
     NewOperationSeen(NewOperationSeenAction),
@@ -194,6 +206,7 @@ impl fmt::Debug for Action {
             Action::GetConstantsInit(v) => fmt::Debug::fmt(v, f),
             Action::GetConstantsSuccess(v) => fmt::Debug::fmt(v, f),
             Action::GetConstantsError(v) => fmt::Debug::fmt(v, f),
+            Action::Timeout(v) => fmt::Debug::fmt(v, f),
             Action::NewProposal(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementInit(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementSuccess(v) => fmt::Debug::fmt(v, f),
@@ -214,6 +227,7 @@ impl EnablingCondition<State> for Action {
             Action::GetConstantsInit(v) => v.is_enabled(state),
             Action::GetConstantsSuccess(v) => v.is_enabled(state),
             Action::GetConstantsError(v) => v.is_enabled(state),
+            Action::Timeout(v) => v.is_enabled(state),
             Action::NewProposal(v) => v.is_enabled(state),
             Action::InjectPreendorsementInit(v) => v.is_enabled(state),
             Action::InjectPreendorsementSuccess(v) => v.is_enabled(state),
