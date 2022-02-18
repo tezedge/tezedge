@@ -31,7 +31,7 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.14.0-frame-pointers-enabled
+    image: tezedge/tezedge:v1.15.0-frame-pointers-enabled
     environment:
       - TEZOS_CONTEXT=index-log-size=2_500_000
     command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
@@ -52,7 +52,7 @@ services:
       - "3030:3030"       # sandbox launcher port
 
   tezedge-sandbox:
-    image: tezedge/tezedge:sandbox-v1.14.0
+    image: tezedge/tezedge:sandbox-v1.15.0
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
