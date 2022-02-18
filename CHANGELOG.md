@@ -34,6 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.15.0] - 2022-02-18
+
+### Added
+
+- Various tools for the Rust implementation of the context storage (see `tezos/context-tool`).
+- `context-integrity-check` flag to check the integrity of the Rust implementatino of the context storage at startup.
+
+### Changed
+
+- Released binaries no longer make use of ADX instructions, increasing comptability with more CPUs.
+
+### Performance
+
+- Improved the representation of the context storage inodes so that less memory is used.
+
 ## [1.14.0] - 2021-12-24
 
 ### Fixed
@@ -659,7 +674,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/tezedge/tezedge/releases/v1.15.0
 [1.14.0]: https://github.com/tezedge/tezedge/releases/v1.14.0
 [1.13.0]: https://github.com/tezedge/tezedge/releases/v1.13.0
 [1.12.0]: https://github.com/tezedge/tezedge/releases/v1.12.0
