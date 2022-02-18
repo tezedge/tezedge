@@ -17,7 +17,7 @@ pub enum BootstrapError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerIntervalState {
-    pub peer: SocketAddr,
+    pub peers: BTreeSet<SocketAddr>,
     pub downloaded: Vec<(Level, BlockHash, u8, OperationListListHash)>,
     pub current: PeerIntervalCurrentState,
 }
@@ -46,14 +46,19 @@ pub enum PeerIntervalCurrentState {
         block_hash: BlockHash,
     },
     Pending {
+        peer: SocketAddr,
         block_level: Level,
         block_hash: BlockHash,
     },
     Success {
+        peer: SocketAddr,
         block: BlockHeaderWithHash,
     },
-    Finished {},
+    Finished {
+        peer: SocketAddr,
+    },
     Disconnected {
+        peer: SocketAddr,
         block_level: Level,
         block_hash: BlockHash,
     },
@@ -67,6 +72,16 @@ impl PeerIntervalCurrentState {
         }
     }
 
+    pub fn peer(&self) -> Option<SocketAddr> {
+        match self {
+            Self::Pending { peer, .. }
+            | Self::Success { peer, .. }
+            | Self::Finished { peer, .. }
+            | Self::Disconnected { peer, .. } => Some(*peer),
+            _ => None,
+        }
+    }
+
     pub fn block_level_with_hash(&self) -> Option<(Level, &BlockHash)> {
         match self {
             Self::Idle {
@@ -76,10 +91,12 @@ impl PeerIntervalCurrentState {
             | Self::Pending {
                 block_level,
                 block_hash,
+                ..
             }
             | Self::Disconnected {
                 block_level,
                 block_hash,
+                ..
             } => Some((*block_level, block_hash)),
             Self::Success { block, .. } => Some((block.header.level(), &block.hash)),
             Self::Finished { .. } => None,
@@ -147,13 +164,19 @@ impl PeerIntervalCurrentState {
         }
     }
 
-    pub fn to_pending(&mut self) {
+    pub fn to_pending(&mut self, peer: SocketAddr) {
         match self {
             Self::Idle {
                 block_level,
                 block_hash,
+            }
+            | Self::Disconnected {
+                block_level,
+                block_hash,
+                ..
             } => {
                 *self = Self::Pending {
+                    peer,
                     block_level: *block_level,
                     block_hash: block_hash.clone(),
                 };
@@ -164,8 +187,9 @@ impl PeerIntervalCurrentState {
 
     pub fn to_success(&mut self, block: BlockHeaderWithHash) {
         match self {
-            Self::Pending { .. } => {
-                *self = Self::Success { block };
+            Self::Pending { peer, .. } => {
+                let peer = peer.clone();
+                *self = Self::Success { peer, block };
             }
             _ => return,
         }
@@ -173,17 +197,14 @@ impl PeerIntervalCurrentState {
 
     pub fn to_disconnected(&mut self) {
         match self {
-            Self::Idle {
-                block_level,
-                block_hash,
-                ..
-            }
-            | Self::Pending {
+            Self::Pending {
+                peer,
                 block_level,
                 block_hash,
                 ..
             } => {
                 *self = Self::Disconnected {
+                    peer: *peer,
                     block_level: *block_level,
                     block_hash: block_hash.clone(),
                 };
@@ -200,13 +221,15 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn to_finished(&mut self) {
-        *self = Self::Finished {};
+        if let Some(peer) = self.peer() {
+            *self = Self::Finished { peer };
+        }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockWithDownloadedHeader {
-    pub peer: SocketAddr,
+    pub peer: Option<SocketAddr>,
     pub block_hash: BlockHash,
     pub validation_pass: u8,
     pub operations_hash: OperationListListHash,
@@ -392,6 +415,14 @@ impl BootstrapState {
         }
     }
 
+    pub fn peer_next_interval(&self, peer: SocketAddr) -> Option<(usize, &PeerIntervalState)> {
+        self.peer_intervals().and_then(|intervals| {
+            intervals.iter().enumerate().rev().find(|(_, p)| {
+                (p.current.is_idle() || p.current.is_disconnected()) && p.peers.contains(&peer)
+            })
+        })
+    }
+
     pub fn peer_interval<F>(
         &self,
         peer: SocketAddr,
@@ -405,8 +436,13 @@ impl BootstrapState {
                 .iter()
                 .enumerate()
                 .rev()
-                .find(|(_, p)| p.peer.eq(&peer) && predicate(p))
+                .filter(|(_, p)| p.current.peer().filter(|p| p == &peer).is_some())
+                .find(|(_, p)| predicate(p))
         })
+    }
+
+    pub fn peer_next_interval_pos(&self, peer: SocketAddr) -> Option<usize> {
+        self.peer_next_interval(peer).map(|(index, _)| index)
     }
 
     pub fn peer_interval_pos<F>(&self, peer: SocketAddr, predicate: F) -> Option<usize>
@@ -425,6 +461,16 @@ impl BootstrapState {
         F: Fn(&PeerIntervalState) -> bool,
     {
         let index = self.peer_interval_pos(peer, predicate)?;
+        self.peer_intervals_mut()?
+            .get_mut(index)
+            .map(move |v| (index, v))
+    }
+
+    pub fn peer_next_interval_mut(
+        &mut self,
+        peer: SocketAddr,
+    ) -> Option<(usize, &mut PeerIntervalState)> {
+        let index = self.peer_next_interval_pos(peer)?;
         self.peer_intervals_mut()?
             .get_mut(index)
             .map(move |v| (index, v))

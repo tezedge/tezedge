@@ -17,7 +17,7 @@ use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::storage_service::StorageRequestPayload;
-use crate::service::ActorsService;
+use crate::service::{ActorsService, RandomnessService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -93,17 +93,14 @@ where
         Action::BootstrapPeersBlockHeadersGetInit(_) => {
             store.dispatch(BootstrapPeersBlockHeadersGetPendingAction {});
 
-            let bootstrap_state = &store.state.get().bootstrap;
-            if let BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } =
-                bootstrap_state
-            {
-                let peers = peer_intervals
-                    .iter()
-                    .map(|p| p.peer)
-                    .collect::<BTreeSet<_>>();
-                for peer in peers {
-                    store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
-                }
+            let state = store.state.get();
+            let peers = state
+                .peers
+                .handshaked_iter()
+                .map(|(addr, _)| addr)
+                .collect::<BTreeSet<_>>();
+            for peer in peers {
+                store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
             }
         }
         Action::BootstrapPeersBlockHeadersGetPending(_) => {
@@ -112,17 +109,17 @@ where
         Action::BootstrapPeerBlockHeaderGetInit(content) => {
             let bootstrap_state = &store.state().bootstrap;
             let block_hash = match bootstrap_state
-                .peer_interval(content.peer, |p| p.current.is_idle())
+                .peer_next_interval(content.peer)
                 .and_then(|(_, p)| p.current.block_hash())
             {
                 Some(v) => v.clone(),
                 None => return,
             };
             let message = GetBlockHeadersMessage::new(vec![block_hash]);
-            store.dispatch(dbg!(PeerMessageWriteInitAction {
+            store.dispatch(PeerMessageWriteInitAction {
                 address: content.peer,
                 message: Arc::new(PeerMessage::GetBlockHeaders(message).into()),
-            }));
+            });
             store.dispatch(BootstrapPeerBlockHeaderGetPendingAction { peer: content.peer });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
@@ -166,7 +163,17 @@ where
                     None => return,
                 };
 
-            if store.state().peers.get(&peer).is_none() {}
+            let peer = match peer
+                .filter(|peer| store.state().peers.get_handshaked(peer).is_some())
+                .or_else(|| {
+                    let handshaked_iter = store.state().peers.handshaked_iter();
+                    let peers = handshaked_iter.map(|(addr, _)| addr).collect::<Vec<_>>();
+                    store.service.randomness().choose_peer(&peers)
+                }) {
+                Some(v) => v,
+                // TODO(zura): log that we dont have peers for getting ops.
+                None => return,
+            };
 
             let operations_for_blocks = (0..(validation_pass.max(0)))
                 .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))
@@ -239,6 +246,22 @@ where
         Action::CurrentHeadUpdate(_) => {
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
+        }
+        Action::PeerDisconnected(_) => {
+            let state = store.state.get();
+            match &state.bootstrap {
+                BootstrapState::PeersBlockHeadersGetPending { .. } => {
+                    let peers = state
+                        .peers
+                        .handshaked_iter()
+                        .map(|(addr, _)| addr)
+                        .collect::<BTreeSet<_>>();
+                    for peer in peers {
+                        store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
+                    }
+                }
+                _ => {}
+            }
         }
         _ => {}
     }
