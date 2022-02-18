@@ -145,72 +145,113 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         // let's check if it's a valid one for us.
                         if level_state.latest_proposal.predecessor.hash != new_proposal.predecessor.hash {
                             // new_proposal_is_on_another_branch
-                        } else {
-                            let current_round = round_state.current_round;
-                            if current_round < new_proposal_round {
-                                // The proposal is invalid: we ignore it.
+                            let switch = match (&level_state.endorsable_payload, &new_proposal.block.prequorum) {
+                                (None, _) => {
+                                    // The new branch contains a PQC (and we do not) or a better
+                                    // fitness, we switch.
+                                    true
+                                }
+                                (Some(_), None) => {
+                                    // We have a better PQC, we don't switch as we are able to
+                                    // propose a better chain if we stay on our current one.
+                                    false
+                                }
+                                (Some(EndorsablePayload { prequorum: current_pqc, .. } ), Some(new_pqc)) => {
+                                    if current_pqc.round > new_pqc.round {
+                                        // The other's branch PQC is lower than ours, do not switch
+                                        false
+                                    } else if current_pqc.round < new_pqc.round {
+                                        // Their PQC is better than ours: we switch
+                                        true
+                                    } else {
+                                        // `current_pqc.round < new_pqc.round`
+                                        // There is a PQC on two branches with the same round and
+                                        // the same level but not the same predecessor : it's
+                                        // impossible unless if there was some double-baking. This
+                                        // shouldn't happen but do nothing anyway.
+                                        false
+                                    }
+                                }
+                            };
+                            if switch {
+                                level_state.latest_proposal = new_proposal.clone();
+                                *round_state = RoundState {
+                                    current_round: round_by_timestamp(
+                                        *now_timestamp,
+                                        &new_proposal.predecessor,
+                                        &*config,
+                                    ),
+                                    current_phase: Phase::NonProposer,
+                                };
                             } else {
-                                if current_round == new_proposal_round
-                                    && new_proposal.block.round == level_state.latest_proposal.block.round
-                                    && new_proposal.block.hash != level_state.latest_proposal.block.hash
-                                    && new_proposal.predecessor.hash == level_state.latest_proposal.predecessor.hash
-                                {
-                                    // An existing proposal was found at the same round: the
-                                    // proposal is bad and should be punished by the accuser
-                                    return;
-                                }
+                                return;
+                            }
+                        }
 
-                                // Check whether we need to update our endorsable payload.
-                                may_update_endorsable_payload_with_internal_pqc(level_state, new_proposal);
-                                assert_eq!(level_state.latest_proposal.block.level, new_proposal.block.level);
+                        let current_round = round_state.current_round;
+                        if current_round < new_proposal_round {
+                            // The proposal is invalid: we ignore it.
+                        } else {
+                            if current_round == new_proposal_round
+                                && new_proposal.block.round == level_state.latest_proposal.block.round
+                                && new_proposal.block.hash != level_state.latest_proposal.block.hash
+                                && new_proposal.predecessor.hash == level_state.latest_proposal.predecessor.hash
+                            {
+                                // An existing proposal was found at the same round: the
+                                // proposal is bad and should be punished by the accuser
+                                return;
+                            }
 
-                                if level_state.latest_proposal.block.round < new_proposal_round {
-                                    // updating_latest_proposal
-                                    level_state.latest_proposal = new_proposal.clone();
-                                }
+                            // Check whether we need to update our endorsable payload.
+                            may_update_endorsable_payload_with_internal_pqc(level_state, new_proposal);
+                            assert_eq!(level_state.latest_proposal.block.level, new_proposal.block.level);
 
-                                if current_round == new_proposal_round {
-                                    // Valid proposal.
-                                    let need_preendorse = match &level_state.locked_round {
-                                        Some(locked_round) => {
-                                            if locked_round.payload_hash == new_proposal.block.payload_hash {
-                                                true
-                                            } else {
-                                                match &new_proposal.block.prequorum {
-                                                    Some(Prequorum { round, .. }) => locked_round.round < *round,
-                                                    // do nothing, should not preendorse
-                                                    _ => false,
-                                                }
-                                            }
-                                        }
-                                        None => true,
-                                    };
-                                    if need_preendorse {
-                                        if new_proposal.block.protocol == new_proposal.block.next_protocol {
-                                            if let Some(slot) = delegate_slots.slot {
-                                                let inlined = InlinedPreendorsementVariant {
-                                                    slot,
-                                                    level: new_proposal.block.level,
-                                                    round: new_proposal.block.round,
-                                                    block_payload_hash: new_proposal
-                                                        .block
-                                                        .payload_hash
-                                                        .clone(),
-                                                };
-                                                *preendorsement = Some(PreendorsementUnsignedOperation {
-                                                    branch: level_state.latest_proposal.predecessor.hash.clone(),
-                                                    content: InlinedPreendorsementContents::Preendorsement(inlined),
-                                                });
-                                            }
-                                            round_state.current_phase = Phase::CollectingPreendorsements;
+                            if level_state.latest_proposal.block.round < new_proposal_round {
+                                // updating_latest_proposal
+                                level_state.latest_proposal = new_proposal.clone();
+                            }
+
+                            if current_round == new_proposal_round {
+                                // Valid proposal.
+                                let need_preendorse = match &level_state.locked_round {
+                                    Some(locked_round) => {
+                                        if locked_round.payload_hash == new_proposal.block.payload_hash {
+                                            true
                                         } else {
-                                            round_state.current_phase = Phase::NonProposer;
+                                            match &new_proposal.block.prequorum {
+                                                Some(Prequorum { round, .. }) => locked_round.round < *round,
+                                                // do nothing, should not preendorse
+                                                _ => false,
+                                            }
                                         }
                                     }
-                                } else {
-                                    // `current_round > new_proposal_round`
-                                    // Outdated proposal.
+                                    None => true,
+                                };
+                                if need_preendorse {
+                                    if new_proposal.block.protocol == new_proposal.block.next_protocol {
+                                        if let Some(slot) = delegate_slots.slot {
+                                            let inlined = InlinedPreendorsementVariant {
+                                                slot,
+                                                level: new_proposal.block.level,
+                                                round: new_proposal.block.round,
+                                                block_payload_hash: new_proposal
+                                                    .block
+                                                    .payload_hash
+                                                    .clone(),
+                                            };
+                                            *preendorsement = Some(PreendorsementUnsignedOperation {
+                                                branch: level_state.latest_proposal.predecessor.hash.clone(),
+                                                content: InlinedPreendorsementContents::Preendorsement(inlined),
+                                            });
+                                        }
+                                        round_state.current_phase = Phase::CollectingPreendorsements;
+                                    } else {
+                                        round_state.current_phase = Phase::NonProposer;
+                                    }
                                 }
+                            } else {
+                                // `current_round > new_proposal_round`
+                                // Outdated proposal.
                             }
                         }
                     }
@@ -270,7 +311,7 @@ fn round_by_timestamp(now_timestamp: i64, predecessor: &BlockInfo, config: &Conf
     let elapsed = now_timestamp - start_of_current_level;
     if elapsed < 0 {
         // receive proposal from the future
-        0
+        i32::MIN
     } else {
         // m := minimal_block_delay
         // d := delay_increment_per_round
