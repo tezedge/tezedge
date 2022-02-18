@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
-    hash::{ChainId, ContractTz1Hash, SecretKeyEd25519, Signature},
+    hash::{ChainId, ContractTz1Hash, SecretKeyEd25519, Signature, TryFromPKError},
     CryptoError,
 };
 use tezos_encoding::enc::{BinError, BinWriter};
@@ -31,6 +31,8 @@ pub enum ReadKeyError {
     InvalidKey(FromBase58CheckError),
     #[error("crypto error {_0}")]
     Crypto(CryptoError),
+    #[error("public key format error {_0}")]
+    PkFormat(TryFromPKError),
 }
 
 #[derive(Debug, Error, From)]
@@ -79,7 +81,7 @@ impl CryptoService {
         let (public_key, secret_key) = SeedEd25519::from_base58_check(secret_key)?
             .keypair()
             .map_err(ReadKeyError::Crypto)?;
-        let public_key_hash = ContractTz1Hash::try_from(public_key.clone()).unwrap();
+        let public_key_hash = ContractTz1Hash::try_from(public_key.clone())?;
 
         Ok(CryptoService {
             secret_key,

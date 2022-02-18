@@ -50,12 +50,9 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .unwrap();
         }
         Action::NewProposal(NewProposal { .. }) => {
-            store.dispatch(SignPreendorsementAction {});
-        }
-        Action::SignPreendorsement(SignPreendorsementAction {}) => {
             store.dispatch(InjectPreendorsementInitAction {});
         }
-        // split in two, sing and inject
+        // split in two, sign and inject
         Action::InjectPreendorsementInit(InjectPreendorsementInitAction {}) => {
             let Store { state, service, .. } = store;
             let (chain_id, preendorsement) = match state.get() {

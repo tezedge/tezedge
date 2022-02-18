@@ -119,8 +119,7 @@ impl RpcClient {
             let s = format!("chains/main/blocks/{}/operations", hash);
             let url = this.endpoint.join(&s).expect("valid url");
             let operations = this
-                .single_response_blocking::<[Vec<Operation>; 4]>(url, None)
-                .unwrap();
+                .single_response_blocking::<[Vec<Operation>; 4]>(url, None)?;
             let mut url = this
                 .endpoint
                 .join("chains/main/blocks/head/helpers/validators")
@@ -152,8 +151,7 @@ impl RpcClient {
             let s = format!("chains/main/blocks/{}/operations", predecessor_hash);
             let url = this.endpoint.join(&s).expect("valid url");
             let operations = this
-                .single_response_blocking::<Vec<Vec<Operation>>>(url, None)
-                .unwrap();
+                .single_response_blocking::<Vec<Vec<Operation>>>(url, None)?;
             let operations = [
                 operations.get(0).cloned().unwrap_or(vec![]),
                 operations.get(1).cloned().unwrap_or(vec![]),

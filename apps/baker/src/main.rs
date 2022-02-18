@@ -33,7 +33,13 @@ fn main() {
             let _ = node_dir;
 
             slog::info!(logger, "creating crypto service");
-            let crypto = CryptoService::read_key(&base_dir, &baker).unwrap();
+            let crypto = match CryptoService::read_key(&base_dir, &baker) {
+                Ok(v) => v,
+                Err(err) => {
+                    slog::error!(logger, "error creating crypto service: {err}");
+                    return;
+                }
+            };
 
             let service = ServiceDefault {
                 logger: logger.clone(),
