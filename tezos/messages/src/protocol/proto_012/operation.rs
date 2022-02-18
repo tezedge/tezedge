@@ -64,7 +64,7 @@ pub struct Operation {
     pub branch: BlockHash,
     #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
-    pub signature: Signature,
+    pub signature: Option<Signature>,
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -80,7 +80,7 @@ impl TryFrom<P2POperation> for Operation {
         Ok(Operation {
             branch,
             contents,
-            signature,
+            signature: Some(signature),
         })
     }
 }

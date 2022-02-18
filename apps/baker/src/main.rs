@@ -32,16 +32,18 @@ fn main() {
             // We don't use context storage and protocol_runner
             let _ = node_dir;
 
+            slog::info!(logger, "creating crypto service");
             let crypto = CryptoService::read_key(&base_dir, &baker).unwrap();
 
             let service = ServiceDefault {
-                logger,
+                logger: logger.clone(),
                 client,
                 crypto,
             };
             let initial_time = SystemTime::now();
             let initial_state = State::Initial;
 
+            slog::info!(logger, "creating state machine");
             let mut store =
                 redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
             store.dispatch(GetChainIdInitAction {});

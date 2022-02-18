@@ -6,11 +6,11 @@ use redux_rs::{ActionWithMeta, Store};
 use super::{
     action::*,
     service::ServiceDefault,
-    state::{BlockData, Config, State},
+    state::{Config, State},
 };
 
 pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &ActionWithMeta<Action>) {
-    slog::info!(store.service().logger, "{:?}", action.action);
+    slog::info!(store.service().logger, "{:#?}", action.action);
 
     match &action.action {
         Action::GetChainIdInit(GetChainIdInitAction {}) => {
@@ -42,33 +42,14 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
         Action::GetConstantsSuccess(_) => {
             // the result is stream of heads,
             // they will be dispatched from event loop
-            store
-                .service()
-                .client
-                .monitor_main_head(Action::NewHeadSeen)
-                .unwrap();
-        }
-        Action::NewHeadSeen(NewHeadSeenAction { .. }) => {
-            store.dispatch(GetSlotsInitAction {});
-        }
-        Action::GetSlotsInit(GetSlotsInitAction {}) => {
-            let level = match store.state() {
-                State::Ready {
-                    current_head_data: Some(block_data),
-                    ..
-                } => block_data.level,
-                _ => return,
-            };
             let delegate = store.service().crypto.public_key_hash().clone();
-
-            // the result will be dispatched from event loop
             store
                 .service()
                 .client
-                .get_validators(level, delegate, Action::GetSlotsSuccess)
+                .monitor_proposals(delegate, Action::NewProposal)
                 .unwrap();
         }
-        Action::GetSlotsSuccess(GetSlotsSuccessAction { .. }) => {
+        Action::NewProposal(NewProposal { .. }) => {
             store.dispatch(SignPreendorsementAction {});
         }
         Action::SignPreendorsement(SignPreendorsementAction {}) => {
@@ -80,11 +61,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             let (chain_id, preendorsement) = match state.get() {
                 State::Ready {
                     config: Config { chain_id, .. },
-                    current_head_data:
-                        Some(BlockData {
-                            preendorsement: Some(preendorsement),
-                            ..
-                        }),
+                    preendorsement: Some(preendorsement),
                     ..
                 } => (chain_id, preendorsement),
                 _ => return,
@@ -106,34 +83,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .unwrap();
         }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {
-            store.dispatch(SignEndorsementAction {});
-        }
-        Action::SignEndorsement(SignEndorsementAction {}) => {
-            store.dispatch(InjectEndorsementInitAction {});
-        }
-        // split in two, sing and inject
-        Action::InjectEndorsementInit(InjectEndorsementInitAction {}) => {
-            let Store { state, service, .. } = store;
-            let (chain_id, endorsement) = match state.get() {
-                State::Ready {
-                    config: Config { chain_id, .. },
-                    current_head_data:
-                        Some(BlockData {
-                            endorsement: Some(endorsement),
-                            ..
-                        }),
-                    ..
-                } => (chain_id, endorsement),
-                _ => return,
-            };
-            let (data, _) = service.crypto.sign(0x13, chain_id, endorsement).unwrap();
-            let op = &hex::encode(data);
-            service
-                .client
-                .inject_operation(chain_id, &op, |hash| {
-                    InjectEndorsementSuccessAction { hash }.into()
-                })
-                .unwrap();
+            // store.dispatch(SignEndorsementAction {});
         }
 
         /*Action::WaitBootstrappedPending(WaitBootstrappedPendingAction {

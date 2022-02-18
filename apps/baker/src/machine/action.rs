@@ -8,12 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use redux_rs::EnablingCondition;
 
-use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
+use crypto::hash::{ChainId, OperationHash};
 use tezos_messages::protocol::proto_012::operation::Operation;
 
 use crate::{
-    machine::state::{BlockData, State},
-    rpc_client::{BlockHeaderJson, Constants, RpcError, Validator},
+    machine::state::State,
+    rpc_client::{Constants, RpcError},
+    types::{DelegateSlots, Proposal},
 };
 
 #[derive(Debug)]
@@ -79,34 +80,16 @@ impl EnablingCondition<State> for GetConstantsErrorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NewHeadSeenAction {
-    pub head: BlockHeaderJson,
+pub struct NewProposal {
+    pub new_proposal: Proposal,
+    pub delegate_slots: DelegateSlots,
+    pub next_level_delegate_slots: DelegateSlots,
+    pub now_timestamp: i64,
 }
 
-impl EnablingCondition<State> for NewHeadSeenAction {
+impl EnablingCondition<State> for NewProposal {
     fn is_enabled(&self, state: &State) -> bool {
-        matches!(state, State::Ready { .. })
-    }
-}
-
-#[derive(Debug)]
-pub struct GetSlotsInitAction {}
-
-impl EnablingCondition<State> for GetSlotsInitAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        matches!(state, State::Ready { .. })
-    }
-}
-
-#[derive(Debug)]
-pub struct GetSlotsSuccessAction {
-    pub validators: Vec<Validator>,
-    pub this_delegate: ContractTz1Hash,
-}
-
-impl EnablingCondition<State> for GetSlotsSuccessAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        matches!(state, State::Ready { .. })
+        matches!(state, State::GotConstants(_) | State::Ready { .. })
     }
 }
 
@@ -116,10 +99,7 @@ pub struct SignPreendorsementAction {}
 impl EnablingCondition<State> for SignPreendorsementAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready {
-                current_head_data: Some(v),
-                ..
-            } => v.slot.is_some(),
+            State::Ready { level_state, .. } => level_state.delegate_slots.slot.is_some(),
             _ => false,
         }
     }
@@ -131,10 +111,7 @@ pub struct InjectPreendorsementInitAction {}
 impl EnablingCondition<State> for InjectPreendorsementInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready {
-                current_head_data: Some(BlockData { preendorsement, .. }),
-                ..
-            } => preendorsement.is_some(),
+            State::Ready { preendorsement, .. } => preendorsement.is_some(),
             _ => false,
         }
     }
@@ -158,58 +135,12 @@ pub struct NewOperationSeenAction {
 
 impl EnablingCondition<State> for NewOperationSeenAction {
     fn is_enabled(&self, state: &State) -> bool {
-        if self.operations.is_empty() {
-            return false;
-        }
-        match state {
-            State::Ready {
-                current_head_data: Some(BlockData { block_hash, .. }),
-                ..
-            } => self.operations.first().unwrap().branch.eq(block_hash),
+        match (self.operations.first(), state) {
+            (Some(op), State::Ready { level_state, .. }) => {
+                op.branch.eq(&level_state.latest_proposal.block.hash)
+            }
             _ => false,
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct SignEndorsementAction {}
-
-impl EnablingCondition<State> for SignEndorsementAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        match state {
-            State::Ready {
-                current_head_data: Some(block_data),
-                config,
-                ..
-            } => block_data.seen_preendorsement >= config.quorum_size,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct InjectEndorsementInitAction {}
-
-impl EnablingCondition<State> for InjectEndorsementInitAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        match state {
-            State::Ready {
-                current_head_data: Some(BlockData { endorsement, .. }),
-                ..
-            } => endorsement.is_some(),
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct InjectEndorsementSuccessAction {
-    pub hash: OperationHash,
-}
-
-impl EnablingCondition<State> for InjectEndorsementSuccessAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        InjectEndorsementInitAction {}.is_enabled(state)
     }
 }
 
@@ -245,16 +176,11 @@ pub enum Action {
     GetConstantsInit(GetConstantsInitAction),
     GetConstantsSuccess(GetConstantsSuccessAction),
     GetConstantsError(GetConstantsErrorAction),
-    NewHeadSeen(NewHeadSeenAction),
-    GetSlotsInit(GetSlotsInitAction),
-    GetSlotsSuccess(GetSlotsSuccessAction),
+    NewProposal(NewProposal),
     SignPreendorsement(SignPreendorsementAction),
     InjectPreendorsementInit(InjectPreendorsementInitAction),
     InjectPreendorsementSuccess(InjectPreendorsementSuccessAction),
     NewOperationSeen(NewOperationSeenAction),
-    SignEndorsement(SignEndorsementAction),
-    InjectEndorsementInit(InjectEndorsementInitAction),
-    InjectEndorsementSuccess(InjectEndorsementSuccessAction),
 
     RecoverableError(RecoverableErrorAction),
     UnrecoverableError(UnrecoverableErrorAction),
@@ -269,16 +195,11 @@ impl fmt::Debug for Action {
             Action::GetConstantsInit(v) => fmt::Debug::fmt(v, f),
             Action::GetConstantsSuccess(v) => fmt::Debug::fmt(v, f),
             Action::GetConstantsError(v) => fmt::Debug::fmt(v, f),
-            Action::NewHeadSeen(v) => fmt::Debug::fmt(v, f),
-            Action::GetSlotsInit(v) => fmt::Debug::fmt(v, f),
-            Action::GetSlotsSuccess(v) => fmt::Debug::fmt(v, f),
+            Action::NewProposal(v) => fmt::Debug::fmt(v, f),
             Action::SignPreendorsement(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementInit(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementSuccess(v) => fmt::Debug::fmt(v, f),
             Action::NewOperationSeen(v) => fmt::Debug::fmt(v, f),
-            Action::SignEndorsement(v) => fmt::Debug::fmt(v, f),
-            Action::InjectEndorsementInit(v) => fmt::Debug::fmt(v, f),
-            Action::InjectEndorsementSuccess(v) => fmt::Debug::fmt(v, f),
 
             Action::RecoverableError(v) => fmt::Debug::fmt(v, f),
             Action::UnrecoverableError(v) => fmt::Debug::fmt(v, f),
@@ -295,17 +216,14 @@ impl EnablingCondition<State> for Action {
             Action::GetConstantsInit(v) => v.is_enabled(state),
             Action::GetConstantsSuccess(v) => v.is_enabled(state),
             Action::GetConstantsError(v) => v.is_enabled(state),
-            Action::NewHeadSeen(v) => v.is_enabled(state),
-            Action::GetSlotsInit(v) => v.is_enabled(state),
-            Action::GetSlotsSuccess(v) => v.is_enabled(state),
+            Action::NewProposal(v) => v.is_enabled(state),
             Action::SignPreendorsement(v) => v.is_enabled(state),
             Action::InjectPreendorsementInit(v) => v.is_enabled(state),
             Action::InjectPreendorsementSuccess(v) => v.is_enabled(state),
             Action::NewOperationSeen(v) => v.is_enabled(state),
-            Action::SignEndorsement(v) => v.is_enabled(state),
-            Action::InjectEndorsementInit(v) => v.is_enabled(state),
-            Action::InjectEndorsementSuccess(v) => v.is_enabled(state),
-
+            // Action::SignEndorsement(v) => v.is_enabled(state),
+            // Action::InjectEndorsementInit(v) => v.is_enabled(state),
+            // Action::InjectEndorsementSuccess(v) => v.is_enabled(state),
             Action::RecoverableError(v) => v.is_enabled(state),
             Action::UnrecoverableError(v) => v.is_enabled(state),
         }

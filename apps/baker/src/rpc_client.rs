@@ -9,12 +9,18 @@ use reqwest::{
     Url,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tezos_messages::protocol::proto_012::operation::Operation;
 use thiserror::Error;
 
-use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, OperationHash};
+use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
 
-use crate::machine::action::*;
+use super::types::ShellBlockHeader;
+use crate::{
+    machine::action::*,
+    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots},
+};
 
+#[derive(Clone)]
 pub struct RpcClient {
     tx: mpsc::Sender<Action>,
     endpoint: Url,
@@ -33,15 +39,6 @@ pub enum RpcError {
     Utf8(str::Utf8Error),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct BlockHeaderJson {
-    pub level: i32,
-    pub predecessor: BlockHash,
-    pub timestamp: String,
-    pub protocol_data: String,
-    pub hash: BlockHash,
-}
-
 #[derive(Deserialize, Debug)]
 pub struct Constants {
     pub consensus_committee_size: u32,
@@ -49,7 +46,7 @@ pub struct Constants {
     pub delay_increment_per_round: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Validator {
     pub level: i32,
     pub delegate: ContractTz1Hash,
@@ -97,33 +94,13 @@ impl RpcClient {
         self.single_response_blocking(url, None)
     }
 
-    pub fn get_validators<F>(
+    pub fn monitor_proposals<F>(
         &self,
-        level: i32,
         this_delegate: ContractTz1Hash,
         wrapper: F,
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
-        F: Fn(GetSlotsSuccessAction) -> Action + Send + 'static,
-    {
-        let mut url = self
-            .endpoint
-            .join("chains/main/blocks/head/helpers/validators")
-            .expect("valid constant url");
-        url.query_pairs_mut()
-            .append_pair("level", &level.to_string());
-
-        self.single_response::<Vec<Validator>, _>(url, None, None, move |validators| {
-            wrapper(GetSlotsSuccessAction {
-                validators,
-                this_delegate,
-            })
-        })
-    }
-
-    pub fn monitor_main_head<F>(&self, wrapper: F) -> reqwest::Result<thread::JoinHandle<()>>
-    where
-        F: Fn(NewHeadSeenAction) -> Action + Sync + Send + 'static,
+        F: Fn(NewProposal) -> Action + Sync + Send + 'static,
     {
         let mut url = self
             .endpoint
@@ -131,7 +108,87 @@ impl RpcClient {
             .expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("next_protocol", Self::PROTOCOL);
-        self.multiple_responses(url, None, move |head| wrapper(NewHeadSeenAction { head }))
+        let this = self.clone();
+        self.multiple_responses::<ShellBlockHeader, _>(url, None, move |shell_header| {
+            let hash = shell_header.hash.clone().to_base58_check();
+            let predecessor_hash = shell_header.predecessor.to_base58_check();
+
+            let s = format!("chains/main/blocks/{}/protocols", hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let protocols = this.single_response_blocking(url, None)?;
+            let s = format!("chains/main/blocks/{}/operations", hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let operations = this
+                .single_response_blocking::<[Vec<Operation>; 4]>(url, None)
+                .unwrap();
+            let mut url = this
+                .endpoint
+                .join("chains/main/blocks/head/helpers/validators")
+                .expect("valid constant url");
+            url.query_pairs_mut()
+                .append_pair("level", &shell_header.level.to_string());
+            let validators = this.single_response_blocking::<Vec<Validator>>(url, None)?;
+            let delegate_slots = {
+                let mut v = DelegateSlots::default();
+                for validator in validators {
+                    let Validator {
+                        delegate, slots, ..
+                    } = validator;
+                    if delegate.eq(&this_delegate) {
+                        v.slot = slots.first().cloned();
+                    }
+                    v.delegates.insert(delegate, Slots(slots));
+                }
+                v
+            };
+            let block = BlockInfo::new(shell_header, protocols, operations);
+
+            let s = format!("chains/main/blocks/{}/header", predecessor_hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let shell_header = this.single_response_blocking::<FullHeader>(url, None)?;
+            let s = format!("chains/main/blocks/{}/protocols", predecessor_hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let protocols = this.single_response_blocking(url, None)?;
+            let s = format!("chains/main/blocks/{}/operations", predecessor_hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let operations = this
+                .single_response_blocking::<Vec<Vec<Operation>>>(url, None)
+                .unwrap();
+            let operations = [
+                operations.get(0).cloned().unwrap_or(vec![]),
+                operations.get(1).cloned().unwrap_or(vec![]),
+                operations.get(2).cloned().unwrap_or(vec![]),
+                operations.get(3).cloned().unwrap_or(vec![]),
+            ];
+            let mut url = this
+                .endpoint
+                .join("chains/main/blocks/head/helpers/validators")
+                .expect("valid constant url");
+            url.query_pairs_mut()
+                .append_pair("level", &shell_header.level.to_string());
+            let validators = this.single_response_blocking::<Vec<Validator>>(url, None)?;
+            let next_level_delegate_slots = {
+                let mut v = DelegateSlots::default();
+                for validator in validators {
+                    let Validator {
+                        delegate, slots, ..
+                    } = validator;
+                    if delegate.eq(&this_delegate) {
+                        v.slot = slots.first().cloned();
+                    }
+                    v.delegates.insert(delegate, Slots(slots));
+                }
+                v
+            };
+            let predecessor = BlockInfo::new_with_full_header(shell_header, protocols, operations);
+
+            Ok(wrapper(NewProposal {
+                new_proposal: Proposal { block, predecessor },
+                delegate_slots,
+                next_level_delegate_slots,
+                now_timestamp: chrono::Utc::now().timestamp(),
+            }))
+        })
     }
 
     pub fn monitor_operations<F>(&self, wrapper: F) -> reqwest::Result<thread::JoinHandle<()>>
@@ -149,7 +206,7 @@ impl RpcClient {
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
         self.multiple_responses(url, None, move |operations| {
-            wrapper(NewOperationSeenAction { operations })
+            Ok(wrapper(NewOperationSeenAction { operations }))
         })
     }
 
@@ -239,6 +296,7 @@ impl RpcClient {
                             rpc_error: err.into(),
                         };
                         let _ = tx.send(Action::UnrecoverableError(action));
+                        panic!()
                     }
                 }
             } else {
@@ -262,7 +320,7 @@ impl RpcClient {
     ) -> reqwest::Result<thread::JoinHandle<()>>
     where
         T: DeserializeOwned + Send + 'static,
-        F: Fn(T) -> Action + Send + 'static,
+        F: Fn(T) -> Result<Action, RpcError> + Send + 'static,
     {
         let mut response = self.get(url, timeout)?;
 
@@ -274,16 +332,16 @@ impl RpcClient {
                 let mut deserializer =
                     serde_json::Deserializer::from_reader(response).into_iter::<T>();
                 while let Some(v) = deserializer.next() {
-                    match v {
-                        Ok(value) => {
-                            let _ = tx.send(wrapper(value));
+                    match v.map_err(Into::into).and_then(|v| wrapper(v)) {
+                        Ok(action) => {
+                            let _ = tx.send(action);
                         }
                         Err(err) => {
                             let action = UnrecoverableErrorAction {
                                 rpc_error: err.into(),
                             };
                             let _ = tx.send(Action::UnrecoverableError(action));
-                            panic!();
+                            panic!()
                         }
                     }
                 }
