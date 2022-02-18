@@ -76,10 +76,7 @@ impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
             BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
                 !peer_branches.contains_key(&self.peer)
             }
-            BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } => {
-                !peer_intervals.iter().any(|p| p.peer == self.peer)
-                // TODO(zura): maybe check if same branch as ours.
-            }
+            BootstrapState::PeersBlockHeadersGetPending { .. } => true,
             _ => false,
         }
     }
@@ -130,9 +127,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         state
             .bootstrap
-            .peer_interval(self.peer, |p| p.current.is_idle() || p.current.is_pending())
-            .filter(|(_, p)| p.current.is_idle())
-            .is_some()
+            .peer_interval(self.peer, |p| p.current.is_pending())
+            .is_none()
+            && state.bootstrap.peer_next_interval(self.peer).is_some()
     }
 }
 
@@ -145,9 +142,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
         state
             .bootstrap
-            .peer_interval(self.peer, |p| p.current.is_idle() || p.current.is_pending())
-            .filter(|(_, p)| p.current.is_idle())
-            .is_some()
+            .peer_interval(self.peer, |p| p.current.is_pending())
+            .is_none()
+            && state.bootstrap.peer_next_interval(self.peer).is_some()
     }
 }
 
@@ -163,8 +160,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetSuccessAction {
         let hash = &self.block.hash;
         state
             .bootstrap
-            .peer_interval(self.peer, |p| p.current.is_pending())
-            .filter(|(_, p)| p.current.is_pending_block_level_and_hash_eq(level, hash))
+            .peer_interval(self.peer, |p| {
+                p.current.is_pending_block_level_and_hash_eq(level, hash)
+            })
             .is_some()
     }
 }
@@ -267,8 +265,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetPendingAction {
                     && pending.get(&self.block_hash).is_none()
                     && queue
                         .front()
-                        .map(|v| v.block_hash == self.block_hash && v.peer == self.peer)
-                        .unwrap_or(false)
+                        .filter(|v| v.block_hash == self.block_hash)
+                        .filter(|v| v.peer.map(|p| p == self.peer).unwrap_or(true))
+                        .is_some()
             }
             _ => false,
         }

@@ -242,11 +242,9 @@ where
                             return;
                         }
                     };
-                    if let Some((_, p)) = state
-                        .bootstrap
-                        .peer_interval(action.address, |p| p.current.is_pending())
-                        .filter(|(_, p)| p.current.is_pending_block_hash_eq(&block.hash))
-                    {
+                    if let Some((_, p)) = state.bootstrap.peer_interval(action.address, |p| {
+                        p.current.is_pending_block_hash_eq(&block.hash)
+                    }) {
                         if !p.current.is_pending_block_level_eq(block.header.level()) {
                             slog::warn!(&state.log, "BlockHeader level didn't match expected level for requested block hash";
                                 "peer" => format!("{}", action.address),
@@ -263,14 +261,22 @@ where
                             block,
                         });
                     } else {
+                        // dbg!(&state.bootstrap);
+                        dbg!(state
+                            .bootstrap
+                            .peer_intervals()
+                            .and_then(|intervals| intervals
+                                .iter()
+                                .find(|p| p.current.block_hash() == Some(&block.hash))));
                         slog::warn!(&state.log, "Received unexpected BlockHeader from peer";
                             "peer" => format!("{}", action.address),
                             "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(action.address)),
-                            "block_header" => format!("{:?}", msg.block_header()),
+                            "block" => format!("{:?}", &block),
                             "expected" => format!("{:?}", state.bootstrap.peer_interval(action.address, |p| p.current.is_pending())));
-                        store.dispatch(PeersGraylistAddressAction {
-                            address: content.address,
-                        });
+                        // TODO(zura): fix us requesting same block header multiple times.
+                        // store.dispatch(PeersGraylistAddressAction {
+                        //     address: action.address,
+                        // });
                     }
                 }
                 PeerMessage::OperationsForBlocks(msg) => {
