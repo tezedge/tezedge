@@ -894,8 +894,6 @@ pub enum ProtocolRpcError {
     RPCErrorCannotParsePath(Vec<String>, RpcArgDesc, String),
     #[error("RPC: cannot parse query: {0}")]
     RPCErrorCannotParseQuery(String),
-    #[error("RPC: invalid method string: {0}")]
-    RPCErrorInvalidMethodString(String),
     #[error("RPC: method not allowed: {0:?}")]
     RPCErrorMethodNotAllowed(Vec<RpcMethod>),
     #[error("RPC: service not found")]
