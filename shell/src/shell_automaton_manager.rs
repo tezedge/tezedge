@@ -189,7 +189,7 @@ impl ShellAutomatonManager {
             pow_target,
             chain_id,
 
-            check_timeouts_interval: Duration::from_millis(500),
+            check_timeouts_interval: Duration::from_millis(200),
 
             peers_dns_lookup_addresses: bootstrap_addresses.into_iter().collect(),
 
@@ -206,6 +206,9 @@ impl ShellAutomatonManager {
 
             peers_graylist_disable: p2p_config.disable_peer_graylist,
             peers_graylist_timeout: Duration::from_secs(15 * 60),
+
+            bootstrap_block_header_get_timeout: Duration::from_millis(500),
+            bootstrap_block_operations_get_timeout: Duration::from_millis(1000),
 
             record_state_snapshots_with_interval: match p2p_config
                 .record_shell_automaton_state_snapshots

@@ -167,6 +167,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                         peers: std::iter::once(peer).collect(),
                                         downloaded: vec![],
                                         current: PeerIntervalCurrentState::idle(
+                                            action.time_as_nanos(),
                                             block_level,
                                             block_hash,
                                         ),
@@ -251,12 +252,17 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     .map(|(block_level, (block_hash, peers))| PeerIntervalState {
                         peers,
                         downloaded: vec![],
-                        current: PeerIntervalCurrentState::idle(block_level, block_hash),
+                        current: PeerIntervalCurrentState::idle(
+                            action.time_as_nanos(),
+                            block_level,
+                            block_hash,
+                        ),
                     })
                     .collect();
 
                 state.bootstrap = dbg!(BootstrapState::PeersBlockHeadersGetPending {
                     time: action.time_as_nanos(),
+                    timeouts_last_check: None,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
                     main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
@@ -268,7 +274,18 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             state
                 .bootstrap
                 .peer_next_interval_mut(content.peer)
-                .map(|(_, p)| p.current.to_pending(content.peer));
+                .map(|(_, p)| p.current.to_pending(action.time_as_nanos(), content.peer));
+        }
+        Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
+            state
+                .bootstrap
+                .peer_interval_mut(content.peer, |p| {
+                    p.current.is_pending_block_hash_eq(&content.block_hash)
+                })
+                .map(|(_, p)| {
+                    p.peers.remove(&content.peer);
+                    p.current.to_timed_out(action.time_as_nanos());
+                });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
             state
@@ -277,7 +294,10 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     p.current
                         .is_pending_block_level_eq(content.block.header.level())
                 })
-                .map(|(_, p)| p.current.to_success(content.block.clone()));
+                .map(|(_, p)| {
+                    p.current
+                        .to_success(action.time_as_nanos(), content.block.clone())
+                });
         }
         Action::BootstrapPeerBlockHeaderGetFinish(content) => {
             let current_head = match state.current_head.get() {
@@ -313,7 +333,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     if index <= 0 {
                         let pred_level = block.header.level() - 1;
                         if pred_level <= current_head.header.level() {
-                            peer_intervals[index].current.to_finished();
+                            peer_intervals[index]
+                                .current
+                                .to_finished(action.time_as_nanos());
                         }
                         break;
                     }
@@ -343,7 +365,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 todo!("log and remove pred interval, update `index -= 1`, somehow trigger blacklisting a peer.");
                             } else {
                                 let pred = &mut peer_intervals[pred_index];
-                                if pred.current.is_disconnected()
+                                if pred.current.is_timed_out_or_disconnected()
                                     || (pred.current.is_idle() && pred.peers.is_empty())
                                 {
                                     let pred_downloaded = std::mem::take(&mut pred.downloaded);
@@ -354,7 +376,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                     index -= 1;
                                 } else {
                                     // We finished interval.
-                                    peer_intervals[index].current.to_finished();
+                                    peer_intervals[index]
+                                        .current
+                                        .to_finished(action.time_as_nanos());
                                     break;
                                 }
                             }
@@ -372,6 +396,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
 
                 if !peer_intervals[index].current.is_finished() {
                     peer_intervals[index].current = PeerIntervalCurrentState::idle(
+                        action.time_as_nanos(),
                         block.header.level() - 1,
                         block.header.predecessor().clone(),
                     );
@@ -450,6 +475,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             } => {
                 state.bootstrap = BootstrapState::PeersBlockOperationsGetPending {
                     time: action.time_as_nanos(),
+                    timeouts_last_check: None,
                     last_level: *chain_last_level,
                     queue: std::mem::take(chain),
                     pending: Default::default(),
@@ -486,6 +512,36 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             operations: vec![None; next_block.validation_pass as usize],
                         },
                     );
+            }
+            _ => {}
+        },
+        Action::BootstrapPeerBlockOperationsGetTimeout(content) => match &mut state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                pending
+                    .get_mut(&content.block_hash)
+                    .and_then(|b| b.peers.get_mut(&content.peer))
+                    .map(|p| p.to_timed_out(action.time_as_nanos()));
+            }
+            _ => {}
+        },
+        Action::BootstrapPeerBlockOperationsGetRetry(content) => match &mut state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                let block_state = match pending.get_mut(&content.block_hash) {
+                    Some(v) => v,
+                    None => return,
+                };
+
+                let validation_pass = block_state.validation_pass as usize;
+                let peer_state_build = move || PeerBlockOperationsGetState::Pending {
+                    time: action.time_as_nanos(),
+                    operations: vec![None; validation_pass],
+                };
+
+                block_state
+                    .peers
+                    .entry(content.peer)
+                    .and_modify(|p| *p = peer_state_build())
+                    .or_insert_with(peer_state_build);
             }
             _ => {}
         },
@@ -556,6 +612,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             if let Some((level, hash)) = interval.current.block_level_with_hash() {
                                 let hash = hash.clone();
                                 interval.current = PeerIntervalCurrentState::Disconnected {
+                                    time: action.time_as_nanos(),
                                     peer: content.address,
                                     block_level: level,
                                     block_hash: hash,
@@ -577,6 +634,11 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
+        Action::BootstrapCheckTimeoutsInit(_) => {
+            state
+                .bootstrap
+                .set_timeouts_last_check(action.time_as_nanos());
+        }
         _ => {}
     }
 }
