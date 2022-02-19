@@ -354,6 +354,10 @@ impl PeerBlockOperationsGetState {
         matches!(self, Self::Pending { .. })
     }
 
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Disconnected { .. })
+    }
+
     pub fn is_success(&self) -> bool {
         matches!(self, Self::Success { .. })
     }
