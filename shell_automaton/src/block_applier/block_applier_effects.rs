@@ -125,19 +125,21 @@ where
             };
         }
         Action::BlockApplierApplyProtocolRunnerApplySuccess(_) => {
-            let (block_hash, block_metadata, block_result) = match &state.block_applier.current {
-                BlockApplierApplyState::ProtocolRunnerApplySuccess {
-                    block,
-                    block_meta,
-                    apply_result,
-                    ..
-                } => (
-                    Arc::new(block.hash.clone()),
-                    block_meta.clone(),
-                    apply_result.clone(),
-                ),
-                _ => return,
-            };
+            let (block_hash, block_fitness, block_metadata, block_result) =
+                match &state.block_applier.current {
+                    BlockApplierApplyState::ProtocolRunnerApplySuccess {
+                        block,
+                        block_meta,
+                        apply_result,
+                        ..
+                    } => (
+                        Arc::new(block.hash.clone()),
+                        block.header.fitness().clone(),
+                        block_meta.clone(),
+                        apply_result.clone(),
+                    ),
+                    _ => return,
+                };
             store
                 .service
                 .statistics()
@@ -145,6 +147,7 @@ where
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::StoreApplyBlockResult {
                     block_hash,
+                    block_fitness,
                     block_metadata,
                     block_result,
                 },
