@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crypto::hash::BlockHash;
 use networking::network_channel::{AllBlockOperationsReceived, BlockReceived};
 use tezos_messages::p2p::encoding::block_header::GetBlockHeadersMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
@@ -22,9 +24,11 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
-    BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockOperationsGetPendingAction,
-    BootstrapPeerBlockOperationsGetSuccessAction, BootstrapPeersBlockHeadersGetInitAction,
+    BootstrapCheckTimeoutsInitAction, BootstrapPeerBlockHeaderGetFinishAction,
+    BootstrapPeerBlockHeaderGetInitAction, BootstrapPeerBlockHeaderGetPendingAction,
+    BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
+    BootstrapPeerBlockOperationsGetRetryAction, BootstrapPeerBlockOperationsGetSuccessAction,
+    BootstrapPeerBlockOperationsGetTimeoutAction, BootstrapPeersBlockHeadersGetInitAction,
     BootstrapPeersBlockHeadersGetPendingAction, BootstrapPeersBlockHeadersGetSuccessAction,
     BootstrapPeersBlockOperationsGetInitAction, BootstrapPeersBlockOperationsGetNextAction,
     BootstrapPeersBlockOperationsGetNextAllAction, BootstrapPeersBlockOperationsGetPendingAction,
@@ -32,12 +36,14 @@ use super::{
     BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
     BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
     BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
+    PeerIntervalCurrentState,
 };
 
 pub fn bootstrap_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
+    store.dispatch(BootstrapCheckTimeoutsInitAction {});
     match &action.action {
         Action::BootstrapInit(_) => {
             store.dispatch(BootstrapPeersConnectPendingAction {});
@@ -93,15 +99,7 @@ where
         Action::BootstrapPeersBlockHeadersGetInit(_) => {
             store.dispatch(BootstrapPeersBlockHeadersGetPendingAction {});
 
-            let state = store.state.get();
-            let peers = state
-                .peers
-                .handshaked_iter()
-                .map(|(addr, _)| addr)
-                .collect::<BTreeSet<_>>();
-            for peer in peers {
-                store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
-            }
+            request_block_headers_from_available_peers(store);
         }
         Action::BootstrapPeersBlockHeadersGetPending(_) => {
             store.dispatch(BootstrapPeersBlockHeadersGetSuccessAction {});
@@ -154,7 +152,11 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::BootstrapPeersBlockOperationsGetNextAll(_) => {
-            while store.dispatch(BootstrapPeersBlockOperationsGetNextAction {}) {}
+            for _ in 0..2 {
+                if !store.dispatch(BootstrapPeersBlockOperationsGetNextAction {}) {
+                    break;
+                }
+            }
         }
         Action::BootstrapPeersBlockOperationsGetNext(_) => {
             let (peer, block_hash, validation_pass) =
@@ -175,18 +177,24 @@ where
                 None => return,
             };
 
-            let operations_for_blocks = (0..(validation_pass.max(0)))
-                .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))
-                .collect();
-            let message = GetOperationsForBlocksMessage::new(operations_for_blocks);
-            store.dispatch(PeerMessageWriteInitAction {
-                address: peer,
-                message: Arc::new(PeerMessage::GetOperationsForBlocks(message).into()),
-            });
-            store.dispatch(BootstrapPeerBlockOperationsGetPendingAction {
-                peer,
-                block_hash: block_hash.clone(),
-            });
+            request_block_operations(store, peer, block_hash, validation_pass);
+        }
+        Action::BootstrapPeerBlockOperationsGetRetry(content) => {
+            let validation_pass = match &store.state().bootstrap {
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    match pending.get(&content.block_hash) {
+                        Some(v) => v.validation_pass,
+                        None => return,
+                    }
+                }
+                _ => return,
+            };
+            request_block_operations(
+                store,
+                content.peer.clone(),
+                content.block_hash.clone(),
+                validation_pass,
+            );
         }
         Action::BootstrapPeerBlockOperationsReceived(content) => {
             store.dispatch(BootstrapPeerBlockOperationsGetSuccessAction {
@@ -247,17 +255,81 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
         }
-        Action::PeerDisconnected(_) => {
+        Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
+            request_block_headers_from_available_peers(store);
+        }
+        Action::BootstrapPeerBlockOperationsGetTimeout(content) => {
+            retry_block_operations_request(store, content.block_hash.clone());
+        }
+        Action::PeerDisconnected(content) => {
             let state = store.state.get();
             match &state.bootstrap {
                 BootstrapState::PeersBlockHeadersGetPending { .. } => {
-                    let peers = state
-                        .peers
-                        .handshaked_iter()
-                        .map(|(addr, _)| addr)
-                        .collect::<BTreeSet<_>>();
-                    for peer in peers {
-                        store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
+                    request_block_headers_from_available_peers(store);
+                }
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    let blocks = pending
+                        .iter()
+                        .filter(|(_, b)| {
+                            b.peers
+                                .get(&content.address)
+                                .map(|p| p.is_pending())
+                                .unwrap_or(false)
+                        })
+                        .map(|(block_hash, _)| block_hash.clone())
+                        .collect::<Vec<_>>();
+                    for block_hash in blocks {
+                        retry_block_operations_request(store, block_hash);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Action::BootstrapCheckTimeoutsInit(_) => {
+            let state = store.state.get();
+            match &state.bootstrap {
+                BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } => {
+                    let current_time = state.time_as_nanos();
+                    let timeout = state.config.bootstrap_block_header_get_timeout.as_nanos() as u64;
+                    let timeouts = peer_intervals
+                        .iter()
+                        .filter(|p| p.current.is_pending_timed_out(timeout, current_time))
+                        .filter_map(|p| match &p.current {
+                            PeerIntervalCurrentState::Pending {
+                                peer, block_hash, ..
+                            } => Some((*peer, block_hash.clone())),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+
+                    for (peer, block_hash) in timeouts {
+                        store.dispatch(BootstrapPeerBlockHeaderGetTimeoutAction {
+                            peer,
+                            block_hash,
+                        });
+                    }
+                }
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    let current_time = state.time_as_nanos();
+                    let timeout = state
+                        .config
+                        .bootstrap_block_operations_get_timeout
+                        .as_nanos() as u64;
+                    let timeouts = pending
+                        .iter()
+                        .flat_map(|(block_hash, b)| {
+                            b.peers
+                                .iter()
+                                .filter(|(_, p)| p.is_pending_timed_out(timeout, current_time))
+                                .map(move |(peer, _)| (*peer, block_hash.clone()))
+                        })
+                        .collect::<Vec<_>>();
+
+                    for (peer, block_hash) in timeouts {
+                        store.dispatch(BootstrapPeerBlockOperationsGetTimeoutAction {
+                            peer,
+                            block_hash,
+                        });
                     }
                 }
                 _ => {}
@@ -265,4 +337,83 @@ where
         }
         _ => {}
     }
+}
+
+pub fn request_block_headers_from_available_peers<S>(store: &mut Store<S>)
+where
+    S: Service,
+{
+    let state = store.state.get();
+    let peers = state
+        .peers
+        .handshaked_iter()
+        .map(|(addr, _)| addr)
+        .collect::<BTreeSet<_>>();
+    for peer in peers {
+        store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer });
+    }
+}
+
+pub fn retry_block_operations_request<S>(store: &mut Store<S>, block_hash: BlockHash)
+where
+    S: Service,
+{
+    // peers that we have already tried to get these operations from.
+    let existing_peers = match &store.state().bootstrap {
+        BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+            match pending.get(&block_hash) {
+                Some(v) => v
+                    .peers
+                    .iter()
+                    .map(|(addr, _)| *addr)
+                    .collect::<BTreeSet<_>>(),
+                None => return,
+            }
+        }
+        _ => return,
+    };
+    let peers = store
+        .state()
+        .peers
+        .handshaked_iter()
+        .map(|(addr, _)| addr)
+        .collect::<Vec<_>>();
+    let new_peers = peers
+        .iter()
+        .map(|p| *p)
+        .filter(|p| !existing_peers.contains(p))
+        .collect::<Vec<_>>();
+    let peers = if new_peers.is_empty() {
+        peers
+    } else {
+        new_peers
+    };
+    let peer = match store.service.randomness().choose_peer(&peers) {
+        Some(v) => v,
+        // TODO(zura): log.
+        None => return,
+    };
+    store.dispatch(BootstrapPeerBlockOperationsGetRetryAction { peer, block_hash });
+}
+
+pub fn request_block_operations<S>(
+    store: &mut Store<S>,
+    peer: SocketAddr,
+    block_hash: BlockHash,
+    validation_pass: u8,
+) where
+    S: Service,
+{
+    let operations_for_blocks = (0..validation_pass)
+        .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))
+        .collect();
+    let message = GetOperationsForBlocksMessage::new(operations_for_blocks);
+    store.dispatch(PeerMessageWriteInitAction {
+        address: peer,
+        message: Arc::new(PeerMessage::GetOperationsForBlocks(message).into()),
+    });
+    store.dispatch(BootstrapPeerBlockOperationsGetPendingAction {
+        peer,
+        block_hash: block_hash.clone(),
+    });
 }

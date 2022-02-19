@@ -149,6 +149,26 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockHeaderGetTimeoutAction {
+    pub peer: SocketAddr,
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetTimeoutAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let current_time = state.time_as_nanos();
+        let timeout = state.config.bootstrap_block_header_get_timeout.as_nanos() as u64;
+        state
+            .bootstrap
+            .peer_interval(self.peer, |p| {
+                p.current.is_pending_block_hash_eq(&self.block_hash)
+            })
+            .filter(|(_, p)| p.current.is_pending_timed_out(timeout, current_time))
+            .is_some()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapPeerBlockHeaderGetSuccessAction {
     pub peer: SocketAddr,
     pub block: BlockHeaderWithHash,
@@ -275,6 +295,50 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockOperationsGetTimeoutAction {
+    pub peer: SocketAddr,
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetTimeoutAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                let current_time = state.time_as_nanos();
+                let timeout = state
+                    .config
+                    .bootstrap_block_operations_get_timeout
+                    .as_nanos() as u64;
+                pending
+                    .get(&self.block_hash)
+                    .and_then(|p| p.peers.get(&self.peer))
+                    .filter(|p| p.is_pending_timed_out(timeout, current_time))
+                    .is_some()
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapPeerBlockOperationsGetRetryAction {
+    pub peer: SocketAddr,
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetRetryAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => pending
+                .get(&self.block_hash)
+                .map(|b| !b.peers.iter().any(|(_, p)| p.is_pending()))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapPeerBlockOperationsReceivedAction {
     pub peer: SocketAddr,
     pub message: OperationsForBlocksMessage,
@@ -377,10 +441,28 @@ pub struct BootstrapPeersBlockOperationsGetSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        // TODO(zura)
-        matches!(
-            &state.bootstrap,
-            BootstrapState::PeersBlockOperationsGetPending { .. }
-        )
+        match &state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { queue, pending, .. } => {
+                queue.is_empty() && pending.is_empty()
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapCheckTimeoutsInitAction {}
+
+impl EnablingCondition<State> for BootstrapCheckTimeoutsInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match state.bootstrap.timeouts_last_check() {
+            Some(time) => {
+                let check_timeouts_interval =
+                    state.config.check_timeouts_interval.as_nanos() as u64;
+                let current_time = state.time_as_nanos();
+                current_time - time >= check_timeouts_interval
+            }
+            None => false,
+        }
     }
 }

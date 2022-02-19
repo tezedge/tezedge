@@ -42,22 +42,33 @@ impl PeerIntervalState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerIntervalCurrentState {
     Idle {
+        time: u64,
         block_level: Level,
         block_hash: BlockHash,
     },
     Pending {
+        time: u64,
         peer: SocketAddr,
         block_level: Level,
         block_hash: BlockHash,
     },
     Success {
+        time: u64,
         peer: SocketAddr,
         block: BlockHeaderWithHash,
     },
     Finished {
+        time: u64,
         peer: SocketAddr,
     },
+    TimedOut {
+        time: u64,
+        peer: SocketAddr,
+        block_level: Level,
+        block_hash: BlockHash,
+    },
     Disconnected {
+        time: u64,
         peer: SocketAddr,
         block_level: Level,
         block_hash: BlockHash,
@@ -65,8 +76,9 @@ pub enum PeerIntervalCurrentState {
 }
 
 impl PeerIntervalCurrentState {
-    pub fn idle(block_level: Level, block_hash: BlockHash) -> Self {
+    pub fn idle(time: u64, block_level: Level, block_hash: BlockHash) -> Self {
         Self::Idle {
+            time,
             block_level,
             block_hash,
         }
@@ -77,7 +89,8 @@ impl PeerIntervalCurrentState {
             Self::Pending { peer, .. }
             | Self::Success { peer, .. }
             | Self::Finished { peer, .. }
-            | Self::Disconnected { peer, .. } => Some(*peer),
+            | Self::TimedOut { peer, .. } => Some(*peer),
+            Self::Disconnected { peer, .. } => Some(*peer),
             _ => None,
         }
     }
@@ -87,8 +100,14 @@ impl PeerIntervalCurrentState {
             Self::Idle {
                 block_level,
                 block_hash,
+                ..
             }
             | Self::Pending {
+                block_level,
+                block_hash,
+                ..
+            }
+            | Self::TimedOut {
                 block_level,
                 block_hash,
                 ..
@@ -124,7 +143,7 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn is_pending(&self) -> bool {
-        matches!(self, Self::Pending { .. })
+        matches!(self, Self::Pending { .. } | Self::TimedOut { .. })
     }
 
     pub fn is_success(&self) -> bool {
@@ -139,16 +158,35 @@ impl PeerIntervalCurrentState {
         matches!(self, Self::Disconnected { .. })
     }
 
+    pub fn is_timed_out_or_disconnected(&self) -> bool {
+        match self {
+            Self::TimedOut { .. } | Self::Disconnected { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// If we are in pending state and it is timed out.
+    pub fn is_pending_timed_out(&self, timeout: u64, current_time: u64) -> bool {
+        match self {
+            Self::Pending { time, .. } => current_time - time >= timeout,
+            _ => false,
+        }
+    }
+
     pub fn is_pending_block_level_eq(&self, other: Level) -> bool {
         match self {
-            Self::Pending { block_level, .. } => *block_level == other,
+            Self::Pending { block_level, .. } | Self::TimedOut { block_level, .. } => {
+                *block_level == other
+            }
             _ => false,
         }
     }
 
     pub fn is_pending_block_hash_eq(&self, other: &BlockHash) -> bool {
         match self {
-            Self::Pending { block_hash, .. } => block_hash == other,
+            Self::Pending { block_hash, .. } | Self::TimedOut { block_hash, .. } => {
+                block_hash == other
+            }
             _ => false,
         }
     }
@@ -159,16 +197,27 @@ impl PeerIntervalCurrentState {
                 block_level,
                 block_hash,
                 ..
+            }
+            | Self::TimedOut {
+                block_level,
+                block_hash,
+                ..
             } => *block_level == level && block_hash == hash,
             _ => false,
         }
     }
 
-    pub fn to_pending(&mut self, peer: SocketAddr) {
+    pub fn to_pending(&mut self, time: u64, peer: SocketAddr) {
         match self {
             Self::Idle {
                 block_level,
                 block_hash,
+                ..
+            }
+            | Self::TimedOut {
+                block_level,
+                block_hash,
+                ..
             }
             | Self::Disconnected {
                 block_level,
@@ -176,6 +225,7 @@ impl PeerIntervalCurrentState {
                 ..
             } => {
                 *self = Self::Pending {
+                    time,
                     peer,
                     block_level: *block_level,
                     block_hash: block_hash.clone(),
@@ -185,17 +235,17 @@ impl PeerIntervalCurrentState {
         }
     }
 
-    pub fn to_success(&mut self, block: BlockHeaderWithHash) {
+    pub fn to_success(&mut self, time: u64, block: BlockHeaderWithHash) {
         match self {
-            Self::Pending { peer, .. } => {
+            Self::Pending { peer, .. } | Self::TimedOut { peer, .. } => {
                 let peer = peer.clone();
-                *self = Self::Success { peer, block };
+                *self = Self::Success { time, peer, block };
             }
             _ => return,
         }
     }
 
-    pub fn to_disconnected(&mut self) {
+    pub fn to_timed_out(&mut self, time: u64) {
         match self {
             Self::Pending {
                 peer,
@@ -203,7 +253,8 @@ impl PeerIntervalCurrentState {
                 block_hash,
                 ..
             } => {
-                *self = Self::Disconnected {
+                *self = Self::TimedOut {
+                    time,
                     peer: *peer,
                     block_level: *block_level,
                     block_hash: block_hash.clone(),
@@ -213,16 +264,34 @@ impl PeerIntervalCurrentState {
         }
     }
 
-    pub fn to_next_block(&mut self, next_block_level: Level, next_block_hash: BlockHash) {
-        if !matches!(self, Self::Success { .. }) {
-            return;
+    pub fn to_disconnected(&mut self, time: u64) {
+        match self {
+            Self::Pending {
+                peer,
+                block_level,
+                block_hash,
+                ..
+            }
+            | Self::TimedOut {
+                peer,
+                block_level,
+                block_hash,
+                ..
+            } => {
+                *self = Self::Disconnected {
+                    time,
+                    peer: *peer,
+                    block_level: *block_level,
+                    block_hash: block_hash.clone(),
+                };
+            }
+            _ => return,
         }
-        *self = Self::idle(next_block_level, next_block_hash);
     }
 
-    pub fn to_finished(&mut self) {
+    pub fn to_finished(&mut self, time: u64) {
         if let Some(peer) = self.peer() {
-            *self = Self::Finished { peer };
+            *self = Self::Finished { time, peer };
         }
     }
 }
@@ -264,6 +333,10 @@ pub enum PeerBlockOperationsGetState {
         time: u64,
         operations: Vec<OperationsForBlocksMessage>,
     },
+    TimedOut {
+        time: u64,
+        operations: Vec<Option<OperationsForBlocksMessage>>,
+    },
     Disconnected {
         time: u64,
     },
@@ -277,8 +350,20 @@ impl PeerBlockOperationsGetState {
         }
     }
 
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending { .. })
+    }
+
     pub fn is_success(&self) -> bool {
         matches!(self, Self::Success { .. })
+    }
+
+    /// If we are in pending state and it is timed out.
+    pub fn is_pending_timed_out(&self, timeout: u64, current_time: u64) -> bool {
+        match self {
+            Self::Pending { time, .. } => current_time - time >= timeout,
+            _ => false,
+        }
     }
 
     pub fn is_validation_pass_pending(&self, validation_pass: u8) -> bool {
@@ -289,6 +374,14 @@ impl PeerBlockOperationsGetState {
                 .unwrap_or(false),
             _ => false,
         }
+    }
+
+    pub fn to_timed_out(&mut self, time: u64) {
+        let operations = match self {
+            Self::Pending { operations, .. } => std::mem::take(operations),
+            _ => return,
+        };
+        *self = Self::TimedOut { time, operations };
     }
 }
 
@@ -331,6 +424,7 @@ pub enum BootstrapState {
 
     PeersBlockHeadersGetPending {
         time: u64,
+        timeouts_last_check: Option<u64>,
 
         /// Level of the last(highest) block in the main_chain.
         main_chain_last_level: Level,
@@ -365,6 +459,7 @@ pub enum BootstrapState {
 
     PeersBlockOperationsGetPending {
         time: u64,
+        timeouts_last_check: Option<u64>,
 
         last_level: Level,
         queue: VecDeque<BlockWithDownloadedHeader>,
@@ -381,6 +476,38 @@ impl BootstrapState {
     #[inline(always)]
     pub fn new() -> Self {
         Self::Idle {}
+    }
+
+    pub fn timeouts_last_check(&self) -> Option<u64> {
+        match self {
+            Self::PeersBlockHeadersGetPending {
+                time,
+                timeouts_last_check,
+                ..
+            }
+            | Self::PeersBlockOperationsGetPending {
+                time,
+                timeouts_last_check,
+                ..
+            } => timeouts_last_check.or(Some(*time)),
+            _ => None,
+        }
+    }
+
+    pub fn set_timeouts_last_check(&mut self, time: u64) {
+        match self {
+            Self::PeersBlockHeadersGetPending {
+                timeouts_last_check,
+                ..
+            }
+            | Self::PeersBlockOperationsGetPending {
+                timeouts_last_check,
+                ..
+            } => {
+                *timeouts_last_check = Some(time);
+            }
+            _ => {}
+        }
     }
 
     pub fn main_block(&self, peers_bootstrapped_min: usize) -> Option<(Level, BlockHash)> {
@@ -418,7 +545,8 @@ impl BootstrapState {
     pub fn peer_next_interval(&self, peer: SocketAddr) -> Option<(usize, &PeerIntervalState)> {
         self.peer_intervals().and_then(|intervals| {
             intervals.iter().enumerate().rev().find(|(_, p)| {
-                (p.current.is_idle() || p.current.is_disconnected()) && p.peers.contains(&peer)
+                (p.current.is_idle() || p.current.is_timed_out_or_disconnected())
+                    && p.peers.contains(&peer)
             })
         })
     }

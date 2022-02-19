@@ -440,6 +440,7 @@ pub enum Action {
 
     BootstrapPeerBlockHeaderGetInit(BootstrapPeerBlockHeaderGetInitAction),
     BootstrapPeerBlockHeaderGetPending(BootstrapPeerBlockHeaderGetPendingAction),
+    BootstrapPeerBlockHeaderGetTimeout(BootstrapPeerBlockHeaderGetTimeoutAction),
     BootstrapPeerBlockHeaderGetSuccess(BootstrapPeerBlockHeaderGetSuccessAction),
     BootstrapPeerBlockHeaderGetFinish(BootstrapPeerBlockHeaderGetFinishAction),
 
@@ -450,6 +451,8 @@ pub enum Action {
     BootstrapPeersBlockOperationsGetNextAll(BootstrapPeersBlockOperationsGetNextAllAction),
     BootstrapPeersBlockOperationsGetNext(BootstrapPeersBlockOperationsGetNextAction),
     BootstrapPeerBlockOperationsGetPending(BootstrapPeerBlockOperationsGetPendingAction),
+    BootstrapPeerBlockOperationsGetTimeout(BootstrapPeerBlockOperationsGetTimeoutAction),
+    BootstrapPeerBlockOperationsGetRetry(BootstrapPeerBlockOperationsGetRetryAction),
     BootstrapPeerBlockOperationsReceived(BootstrapPeerBlockOperationsReceivedAction),
     BootstrapPeerBlockOperationsGetSuccess(BootstrapPeerBlockOperationsGetSuccessAction),
 
@@ -457,6 +460,8 @@ pub enum Action {
     BootstrapScheduleBlockForApply(BootstrapScheduleBlockForApplyAction),
 
     BootstrapPeersBlockOperationsGetSuccess(BootstrapPeersBlockOperationsGetSuccessAction),
+
+    BootstrapCheckTimeoutsInit(BootstrapCheckTimeoutsInitAction),
 
     Protocol(ProtocolAction),
 
