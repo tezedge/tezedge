@@ -271,7 +271,6 @@ impl_from_ocaml_variant! {
         ProtocolRpcError::RPCErrorCannotParseBody(s: OCamlBytes),
         ProtocolRpcError::RPCErrorCannotParsePath(p: OCamlList<OCamlBytes>, d: OCamlRpcArgDesc, s: OCamlBytes),
         ProtocolRpcError::RPCErrorCannotParseQuery(s: OCamlBytes),
-        ProtocolRpcError::RPCErrorInvalidMethodString(s: OCamlBytes),
         ProtocolRpcError::RPCErrorMethodNotAllowed(m: OCamlList<OCamlRpcMethod>),
         ProtocolRpcError::RPCErrorServiceNotFound,
     }
