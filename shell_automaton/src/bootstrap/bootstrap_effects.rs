@@ -273,8 +273,9 @@ where
                         .filter(|(_, b)| {
                             b.peers
                                 .get(&content.address)
-                                .map(|p| p.is_pending())
+                                .map(|p| p.is_disconnected())
                                 .unwrap_or(false)
+                                && b.peers.iter().all(|(_, p)| !p.is_pending())
                         })
                         .map(|(block_hash, _)| block_hash.clone())
                         .collect::<Vec<_>>();
