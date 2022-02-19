@@ -404,16 +404,19 @@ pub fn request_block_operations<S>(
 ) where
     S: Service,
 {
-    let operations_for_blocks = (0..validation_pass)
-        .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))
-        .collect();
-    let message = GetOperationsForBlocksMessage::new(operations_for_blocks);
-    store.dispatch(PeerMessageWriteInitAction {
-        address: peer,
-        message: Arc::new(PeerMessage::GetOperationsForBlocks(message).into()),
-    });
+    if validation_pass > 0 {
+        let operations_for_blocks = (0..validation_pass)
+            .map(|vp| OperationsForBlock::new(block_hash.clone(), vp as i8))
+            .collect();
+        let message = GetOperationsForBlocksMessage::new(operations_for_blocks);
+        store.dispatch(PeerMessageWriteInitAction {
+            address: peer,
+            message: Arc::new(PeerMessage::GetOperationsForBlocks(message).into()),
+        });
+    }
     store.dispatch(BootstrapPeerBlockOperationsGetPendingAction {
         peer,
         block_hash: block_hash.clone(),
     });
+    store.dispatch(BootstrapPeerBlockOperationsGetSuccessAction { block_hash });
 }
