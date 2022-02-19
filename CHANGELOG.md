@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.15.1] - 2022-02-18
+
+### Fixed
+
+- Bug when mapping OCaml->Rust values representing error responses from protocol RPCs.
+
 ## [1.15.0] - 2022-02-18
 
 ### Added
@@ -674,7 +680,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.15.1...HEAD
+[1.15.1]: https://github.com/tezedge/tezedge/releases/v1.15.1
 [1.15.0]: https://github.com/tezedge/tezedge/releases/v1.15.0
 [1.14.0]: https://github.com/tezedge/tezedge/releases/v1.14.0
 [1.13.0]: https://github.com/tezedge/tezedge/releases/v1.13.0
