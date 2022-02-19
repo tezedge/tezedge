@@ -411,9 +411,11 @@ fn resolve_block_data(
 
 /// Stores apply result to storage and mark block as applied, if everythnig is ok.
 pub fn store_applied_block_result(
+    chain_meta_storage: &ChainMetaStorage,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
+    block_fitness: Vec<Vec<u8>>,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta,
     cycle_meta_storage: &CycleMetaStorage,
@@ -480,6 +482,12 @@ pub fn store_applied_block_result(
     // mark current head as applied
     block_metadata.set_is_applied(true);
     block_meta_storage.put(block_hash, block_metadata)?;
+
+    // TODO(zura): maybe move to separate storage call.
+    chain_meta_storage.set_current_head(
+        block_metadata.chain_id(),
+        Head::new(block_hash.clone(), block_metadata.level(), block_fitness),
+    )?;
 
     // return additional data for later use
     Ok(block_additional_data)

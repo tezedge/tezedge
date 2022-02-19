@@ -108,6 +108,7 @@ pub enum StorageRequestPayload {
     },
     StoreApplyBlockResult {
         block_hash: Arc<BlockHash>,
+        block_fitness: Vec<Vec<u8>>,
         block_result: Arc<ApplyBlockResponse>,
         block_metadata: Arc<Meta>,
     },
@@ -274,6 +275,7 @@ impl StorageServiceDefault {
         let action_storage = ShellAutomatonActionStorage::new(&storage);
         let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
 
+        let chain_meta_storage = ChainMetaStorage::new(&storage);
         let block_storage = BlockStorage::new(&storage);
         let block_meta_storage = BlockMetaStorage::new(&storage);
         let operations_storage = OperationsStorage::new(&storage);
@@ -448,14 +450,17 @@ impl StorageServiceDefault {
                 }
                 StoreApplyBlockResult {
                     block_hash,
+                    block_fitness,
                     block_result,
                     block_metadata,
                 } => {
                     let mut block_meta = (*block_metadata).clone();
                     let result = storage::store_applied_block_result(
+                        &chain_meta_storage,
                         &block_storage,
                         &block_meta_storage,
                         &block_hash,
+                        block_fitness,
                         (*block_result).clone(),
                         &mut block_meta,
                         &cycle_meta_storage,
