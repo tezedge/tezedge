@@ -51,6 +51,7 @@ fn stats_message_received(
                             time,
                             Some(address),
                             node_id,
+                            None,
                         );
                     })
                     .unwrap_or(());
@@ -68,6 +69,7 @@ fn stats_message_received(
                         time,
                         Some(address),
                         node_id,
+                        None,
                     );
                     if let Some(time) = pending_block_header_requests.get(&b) {
                         stats.block_header_download_start(&b, *time);

@@ -7,11 +7,11 @@
 // to reproduce the same functionality.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
-use crypto::hash::ContractKt1Hash;
+use crypto::hash::{ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::storage_service::ActionGraph;
@@ -44,7 +44,9 @@ use crate::server::RpcServiceEnvironment;
 
 use crate::services::protocol::get_blocks_per_cycle;
 
-use super::base_services::{get_additional_data_or_fail, get_raw_block_header_with_hash};
+use super::base_services::{
+    get_additional_data_or_fail, get_raw_block_header_with_hash,
+};
 
 pub type ContractAddress = Vec<u8>;
 
@@ -720,6 +722,7 @@ pub struct OperationStats {
     )>,
     validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
+    injected_timestamp: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -773,6 +776,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                 .unwrap_or(0) as i128;
 
             let op_stats = OperationStats {
+                injected_timestamp: op_stats.injected_timestamp,
                 kind: op_stats.kind,
                 min_time: op_stats.min_time,
                 first_block_timestamp: op_stats.first_block_timestamp,
@@ -900,8 +904,8 @@ pub struct BlockStats {
     /// Time(ns) it took to store the result.
     store_result: Option<u64>,
 
-    /// Is block injected
-    injected: bool,
+    /// Injection time
+    injected: Option<u64>,
 }
 
 pub(crate) async fn get_shell_automaton_block_stats_graph(
@@ -1001,4 +1005,131 @@ pub(crate) async fn get_shell_automaton_stats_current_head(
         .await?;
     let response = rx.await?;
     Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_endrosement_stats(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<BTreeMap<String, OperationStats>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetMempooEndrosementsStats { channel: tx })
+        .await?;
+
+    // TODO: this is a duplicate, move it to a function
+    let result = rx
+        .await?
+        .into_iter()
+        .map(|(op_hash, op_stats)| {
+            let start_time = op_stats
+                .first_block_timestamp
+                // convert from seconds to nanoseconds.
+                .and_then(|v| v.checked_mul(1_000_000_000))
+                .unwrap_or(0) as i128;
+
+            let op_stats = OperationStats {
+                injected_timestamp: op_stats.injected_timestamp,
+                kind: op_stats.kind,
+                min_time: op_stats.min_time,
+                first_block_timestamp: op_stats.first_block_timestamp,
+                validation_started: op_stats
+                    .validation_started
+                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                validation_result: op_stats.validation_result.map(
+                    |(t, result, preapply_started, preapply_ended)| {
+                        (
+                            (t as i128).checked_sub(start_time).unwrap_or(0),
+                            result,
+                            preapply_started.map(|preapply_started| {
+                                (preapply_started as i128)
+                                    .checked_sub(start_time)
+                                    .unwrap_or(0)
+                            }),
+                            preapply_ended.map(|preapply_ended| {
+                                (preapply_ended as i128)
+                                    .checked_sub(start_time)
+                                    .unwrap_or(0)
+                            }),
+                        )
+                    },
+                ),
+                validations: op_stats
+                    .validations
+                    .into_iter()
+                    .map(|v| OperationValidationStats {
+                        started: v
+                            .started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        finished: v
+                            .finished
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_started: v
+                            .preapply_started
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        preapply_ended: v
+                            .preapply_ended
+                            .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0)),
+                        current_head_level: v.current_head_level,
+                        result: v.result,
+                    })
+                    .collect(),
+                nodes: op_stats
+                    .nodes
+                    .into_iter()
+                    .map(|(k, stats)| {
+                        (
+                            k.to_base58_check(),
+                            OperationNodeStats {
+                                received: stats
+                                    .received
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: (stats.time as i128)
+                                            .checked_sub(start_time)
+                                            .unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                                sent: stats
+                                    .sent
+                                    .into_iter()
+                                    .map(|stats| OperationNodeCurrentHeadStats {
+                                        latency: (stats.time as i128)
+                                            .checked_sub(start_time)
+                                            .unwrap_or(0),
+                                        block_level: stats.block_level,
+                                        block_timestamp: stats.block_timestamp,
+                                    })
+                                    .collect(),
+                                content_requested: stats
+                                    .content_requested
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_received: stats
+                                    .content_received
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_requested_remote: stats
+                                    .content_requested_remote
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                                content_sent: stats
+                                    .content_sent
+                                    .into_iter()
+                                    .map(|t| (t as i128).checked_sub(start_time).unwrap_or(0))
+                                    .collect(),
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+
+            (op_hash.to_base58_check(), op_stats)
+        })
+        .collect();
+    Ok(result)
 }

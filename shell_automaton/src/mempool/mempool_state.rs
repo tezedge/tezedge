@@ -136,6 +136,7 @@ pub struct OperationStats {
     pub validation_result: Option<(u64, OperationValidationResult, Option<u64>, Option<u64>)>,
     pub validations: Vec<OperationValidationStats>,
     pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
+    pub injected_timestamp: Option<u64>,
 }
 
 impl OperationStats {
@@ -148,6 +149,7 @@ impl OperationStats {
             validation_result: None,
             validations: vec![],
             nodes: HashMap::new(),
+            injected_timestamp: None,
         }
     }
 
@@ -229,7 +231,9 @@ impl OperationStats {
         self_pkh: &CryptoboxPublicKeyHash,
         stats: OperationNodeCurrentHeadStats,
         op_content: &[u8],
+        injected_timestamp: &u64,
     ) {
+        self.injected(injected_timestamp);
         self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
         self.min_time = Some(
             self.min_time
@@ -376,6 +380,9 @@ impl OperationStats {
                 },
             );
         }
+    }
+    pub fn injected(&mut self, time: &u64) {
+        self.injected_timestamp = Some(*time);
     }
 }
 

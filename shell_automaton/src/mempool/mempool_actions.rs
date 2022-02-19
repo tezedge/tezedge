@@ -86,6 +86,7 @@ pub struct MempoolOperationInjectAction {
     pub operation: Operation,
     pub operation_hash: OperationHash,
     pub rpc_id: RpcId,
+    pub injected_timestamp: u64,
 }
 
 impl EnablingCondition<State> for MempoolOperationInjectAction {
@@ -102,6 +103,7 @@ pub struct BlockInjectAction {
     pub chain_id: ChainId,
     pub block_hash: BlockHash,
     pub block_header: Arc<BlockHeader>,
+    pub injected_timestamp: u64,
 }
 
 impl EnablingCondition<State> for BlockInjectAction {

@@ -32,7 +32,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trac
 strum = "0.20"
 strum_macros = "0.20"
 
-redux-rs = { git = "https://github.com/tezedge/redux-rs.git", rev = "c2f6946", features = ["serde"] }
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", rev = "56e116d", features = ["serde"] }
 
 crypto = { path = "../crypto" }
 storage = { path = "../storage" }

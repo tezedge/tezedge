@@ -639,3 +639,12 @@ pub async fn dev_shell_automaton_stats_current_head_peers(
 
     make_json_response(&result)
 }
+
+pub async fn dev_shell_automaton_endrosement_stats(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_endrosement_stats(&env).await?)
+}

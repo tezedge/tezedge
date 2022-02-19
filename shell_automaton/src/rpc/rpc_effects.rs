@@ -3,11 +3,13 @@
 
 use crate::action::BootstrapNewCurrentHeadAction;
 use crate::block_applier::BlockApplierApplyState;
+
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
     MempoolOperationInjectAction, MempoolRegisterOperationsStreamAction,
     MempoolRemoveAppliedOperationsAction, MempoolRpcEndorsementsStatusGetAction,
 };
+use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
@@ -58,22 +60,28 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::InjectOperation {
                         operation,
                         operation_hash,
+                        injected,
                     } => {
+                        let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
                             operation_hash,
                             rpc_id,
+                            injected_timestamp,
                         });
                     }
                     RpcRequest::InjectBlock {
                         chain_id,
                         block_hash,
                         block_header,
+                        injected,
                     } => {
+                        let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(BlockInjectAction {
                             chain_id,
                             block_hash,
                             block_header,
+                            injected_timestamp,
                         });
                     }
                     RpcRequest::RequestCurrentHeadFromConnectedPeers => {
@@ -119,6 +127,30 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                                 .statistics()
                                 .map_or(Vec::new(), |s| s.block_stats_get_by_level(level)),
                         );
+                    }
+                    RpcRequest::GetMempooEndrosementsStats { channel } => {
+                        let stats = store
+                            .state()
+                            .mempool
+                            .validated_operations
+                            .ops
+                            .iter()
+                            .filter(|(_, op)| {
+                                OperationKind::from_operation_content_raw(op.data())
+                                    .is_endorsement()
+                            })
+                            .map(|(op_hash, _)| op_hash.clone())
+                            .filter_map(|op| {
+                                store
+                                    .state()
+                                    .mempool
+                                    .operation_stats
+                                    .get(&op)
+                                    .cloned()
+                                    .map(|stat| (op, stat))
+                            })
+                            .collect();
+                        let _ = channel.send(stats);
                     }
                 }
             }

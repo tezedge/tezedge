@@ -481,6 +481,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             operation,
             operation_hash,
             rpc_id,
+            injected_timestamp,
         }) => {
             let level = mempool_state
                 .local_head_state
@@ -529,6 +530,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         block_timestamp,
                     },
                     operation.data(),
+                    injected_timestamp,
                 );
         }
         Action::MempoolRegisterOperationsStream(act) => {

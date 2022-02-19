@@ -71,6 +71,7 @@ pub async fn inject_operation(
     let msg = RpcShellAutomatonMsg::InjectOperation {
         operation: operation.clone(),
         operation_hash: operation_hash.clone(),
+        injected: start_request,
     };
     let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> =
         env.shell_automaton_sender().send(msg).await.map_err(|_| {
@@ -207,6 +208,7 @@ pub async fn inject_block(
             chain_id: chain_id.as_ref().clone(),
             block_hash: header.hash.clone(),
             block_header: header.header.clone(),
+            injected: start_request,
         })
         .await
     {

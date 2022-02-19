@@ -30,6 +30,7 @@ where
             chain_id: _,
             block_hash,
             block_header,
+            injected_timestamp,
         }) => {
             let node_id = store.state.get().config.identity.peer_id.clone();
             store.service.statistics().map(|s| {
@@ -41,6 +42,7 @@ where
                     action.time_as_nanos(),
                     None,
                     Some(node_id),
+                    Some(*injected_timestamp),
                 );
             });
         }
