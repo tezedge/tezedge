@@ -289,10 +289,8 @@ impl PeerIntervalCurrentState {
         }
     }
 
-    pub fn to_finished(&mut self, time: u64) {
-        if let Some(peer) = self.peer() {
-            *self = Self::Finished { time, peer };
-        }
+    pub fn to_finished(&mut self, time: u64, peer: SocketAddr) {
+        *self = Self::Finished { time, peer };
     }
 }
 
