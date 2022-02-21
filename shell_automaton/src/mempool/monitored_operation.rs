@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -133,6 +133,24 @@ pub struct MonitoredOperation<'a> {
 }
 
 impl<'a> MonitoredOperation<'a> {
+    pub fn new(
+        branch: &BlockHash,
+        protocol_data: HashMap<String, Value>,
+        protocol: &'a str,
+        hash: &OperationHash,
+        error: Vec<String>,
+        protocol_data_parse_error: Option<String>,
+    ) -> MonitoredOperation<'a> {
+        MonitoredOperation {
+            branch: branch.to_base58_check(),
+            protocol_data,
+            protocol,
+            hash: hash.to_base58_check(),
+            error,
+            protocol_data_parse_error,
+        }
+    }
+
     pub fn collect_applied(
         applied: &'a [Applied],
         operations: &'a HashMap<OperationHash, Operation>,
