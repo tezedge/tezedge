@@ -8,12 +8,10 @@ use tezos_messages::protocol::proto_012::operation::{
     InlinedPreendorsementContents, InlinedPreendorsementVariant,
 };
 
-use crate::types::PreendorsementUnsignedOperation;
-
 use super::{
     super::types::{
         BlockInfo, EndorsablePayload, LevelState, Phase, Prequorum,
-        Proposal, RoundState,
+        Proposal, RoundState, PreendorsementUnsignedOperation, Timestamp,
     },
     action::*,
     state::{Config, State},
@@ -73,21 +71,25 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             next_level_delegate_slots: next_level_delegate_slots.clone(),
                             next_level_proposed_round: None,
                         },
-                        round_state: RoundState {
-                            current_round: {
-                                if new_proposal.block.protocol != new_proposal.block.next_protocol {
-                                    // If our current proposal is the transition block, we suppose a
-                                    // never ending round 0
-                                    0
-                                } else {
-                                    round_by_timestamp(
-                                        now_timestamp.0,
-                                        &new_proposal.predecessor,
-                                        &*config,
-                                    )
-                                }
-                            },
-                            current_phase: Phase::NonProposer,
+                        round_state: {
+                            let (current_round, next_timeout) = round_by_timestamp(
+                                now_timestamp.0,
+                                &new_proposal.predecessor,
+                                &*config,
+                            );
+                            RoundState {
+                                current_round: {
+                                    if new_proposal.block.protocol != new_proposal.block.next_protocol {
+                                        // If our current proposal is the transition block, we suppose a
+                                        // never ending round 0
+                                        0
+                                    } else {
+                                        current_round
+                                    }
+                                },
+                                current_phase: Phase::NonProposer,
+                                next_timeout,
+                            }
                         },
                     }
                 }
@@ -116,21 +118,25 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             next_level_delegate_slots: next_level_delegate_slots.clone(),
                             next_level_proposed_round: None,
                         };
-                        *round_state = RoundState {
-                            current_round: {
-                                if new_proposal.block.protocol != new_proposal.block.next_protocol {
-                                    // If our current proposal is the transition block, we suppose a
-                                    // never ending round 0
-                                    0
-                                } else {
-                                    round_by_timestamp(
-                                        now_timestamp.0,
-                                        &new_proposal.predecessor,
-                                        &*config,
-                                    )
-                                }
-                            },
-                            current_phase: Phase::NonProposer,
+                        *round_state = {
+                            let (current_round, next_timeout) = round_by_timestamp(
+                                now_timestamp.0,
+                                &new_proposal.predecessor,
+                                &*config,
+                            );
+                            RoundState {
+                                current_round: {
+                                    if new_proposal.block.protocol != new_proposal.block.next_protocol {
+                                        // If our current proposal is the transition block, we suppose a
+                                        // never ending round 0
+                                        0
+                                    } else {
+                                        current_round
+                                    }
+                                },
+                                current_phase: Phase::NonProposer,
+                                next_timeout,
+                            }
                         };
                     }
 
@@ -175,13 +181,15 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             };
                             if switch {
                                 level_state.latest_proposal = new_proposal.clone();
+                                let (current_round, next_timeout) = round_by_timestamp(
+                                    now_timestamp.0,
+                                    &new_proposal.predecessor,
+                                    &*config,
+                                );
                                 *round_state = RoundState {
-                                    current_round: round_by_timestamp(
-                                        now_timestamp.0,
-                                        &new_proposal.predecessor,
-                                        &*config,
-                                    ),
+                                    current_round,
                                     current_phase: Phase::NonProposer,
+                                    next_timeout,
                                 };
                             } else {
                                 return;
@@ -301,7 +309,7 @@ fn may_update_endorsable_payload_with_internal_pqc(
     }
 }
 
-fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Config) -> i32 {
+fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Config) -> (i32, Option<Timestamp>) {
     let pred_round = predecessor.round as u32;
     let pred_time = predecessor.timestamp as u64;
     let last_round_duration =
@@ -310,7 +318,8 @@ fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Conf
     let start_of_current_level = pred_time + last_round_duration;
     if now_timestamp < start_of_current_level {
         // receive proposal from the future
-        i32::MIN
+        // TODO: handle this properly, most likely the sate machine stuck forever here
+        (i32::MIN, None)
     } else {
         let elapsed = now_timestamp - start_of_current_level;
         // m := minimal_block_delay
@@ -327,7 +336,17 @@ fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Conf
         let m = config.minimal_block_delay.as_secs() as f64;
         let p = d - 2.0 * m;
         let r = (p + (p * p + 8.0 * d * e).sqrt()) / (2.0 * d);
+        let r = r.floor() as u64;
 
-        r.floor() as i32
+        let t = start_of_current_level + config.minimal_block_delay.as_secs() * (r + 1) +
+            config.delay_increment_per_round.as_secs() * (r + 1) * r / 2;
+        
+        println!(
+            "current round: {r}, now: {:?}, level started: {:?}, next timeout: {:?}",
+            chrono::TimeZone::timestamp(&chrono::Utc, now_timestamp as i64, 0),
+            chrono::TimeZone::timestamp(&chrono::Utc, start_of_current_level as i64, 0),
+            chrono::TimeZone::timestamp(&chrono::Utc, t as i64, 0),
+        );
+        (r as i32, Some(Timestamp(t)))
     }
 }

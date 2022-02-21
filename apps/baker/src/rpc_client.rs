@@ -18,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::Operation;
 use super::types::ShellBlockHeader;
 use crate::{
     machine::action::*,
-    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots}, timer::Timestamp,
+    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots, Timestamp},
 };
 
 #[derive(Clone)]
@@ -301,7 +301,7 @@ impl RpcClient {
             Err(_) => {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
-                    let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                    let action = TimeoutAction { now_timestamp: now.timestamp() };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
@@ -322,7 +322,7 @@ impl RpcClient {
                         if io_err.kind() == io::ErrorKind::TimedOut {
                             let now = Utc::now();
                             let action = TimeoutAction {
-                                now_timestamp_millis: now.timestamp_millis(),
+                                now_timestamp: now.timestamp(),
                             };
                             let _ = tx.send(deadline_wrapper(action));
                         } else {
@@ -372,7 +372,7 @@ impl RpcClient {
             Err(_) => {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
-                    let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                    let action = TimeoutAction { now_timestamp: now.timestamp() };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
@@ -392,7 +392,7 @@ impl RpcClient {
                         }
                         Err(RpcError::Io(io_err)) if io_err.kind() == io::ErrorKind::TimedOut => {
                             let now = Utc::now();
-                            let action = TimeoutAction { now_timestamp_millis: now.timestamp_millis() };
+                            let action = TimeoutAction { now_timestamp: now.timestamp() };
                             let _ = tx.send(deadline_wrapper(action));
                             break;
                         }
@@ -430,11 +430,15 @@ impl RpcClient {
 
     fn deadline_to_duration(deadline: i64) -> Result<Duration, RpcError> {
         let now = Utc::now();
-        let millis = deadline * 1_000 - now.timestamp_millis();
-        if millis > 0 {
-            Ok(Duration::from_millis(millis as u64))
+        if let Some(deadline_millis) = deadline.checked_mul(1_000) {
+            let millis = deadline_millis - now.timestamp_millis();
+            if millis > 0 {
+                Ok(Duration::from_millis(millis as u64))
+            } else {
+                Err(RpcError::Io(io::ErrorKind::TimedOut.into()))
+            }
         } else {
-            Err(RpcError::Io(io::ErrorKind::TimedOut.into()))
+            Ok(Duration::from_secs(2 << 21))
         }
     }
 }

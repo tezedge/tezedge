@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, time::{SystemTime, Duration}};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,26 @@ use tezos_messages::{
         Contents, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, Operation, InlinedPreendorsementContents,
     },
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Timestamp(pub u64);
+
+impl Timestamp {
+    pub fn duration_from_now(&self) -> Duration {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("the unix epoch has begun");
+
+        Duration::from_secs(self.0) - now
+    }
+
+    pub fn now() -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("the unix epoch has begun");
+        Timestamp(now.as_secs())
+    }
+}
 
 #[derive(BinWriter, Debug)]
 pub struct PreendorsementUnsignedOperation {
@@ -240,6 +260,7 @@ pub enum Phase {
 pub struct RoundState {
     pub current_round: i32,
     pub current_phase: Phase,
+    pub next_timeout: Option<Timestamp>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

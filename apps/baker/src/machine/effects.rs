@@ -3,6 +3,8 @@
 
 use redux_rs::{ActionWithMeta, Store};
 
+use crate::types::RoundState;
+
 use super::{
     action::*,
     service::ServiceDefault,
@@ -57,6 +59,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .unwrap();
         }
         Action::NewProposal(NewProposalAction { .. }) => {
+            store.dispatch(TimeoutScheduleAction {});
             store.dispatch(InjectPreendorsementInitAction {});
         }
         // split in two, sign and inject
@@ -85,6 +88,20 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .client
                 .monitor_operations(i64::MAX, Action::Timeout, Action::NewOperationSeen)
                 .unwrap();
+        }
+        Action::Timeout(TimeoutAction { .. }) => {
+            store.dispatch(TimeoutScheduleAction {});
+        }
+        Action::TimeoutSchedule(TimeoutScheduleAction {}) => {
+            match store.state() {
+                &State::Ready {
+                    round_state: RoundState { next_timeout: Some(timestamp), .. },
+                    ..
+                } => {
+                    store.service().timer.timeout(timestamp, Action::Timeout)
+                },
+                _ => (),
+            }
         }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {
             // store.dispatch(SignEndorsementAction {});
