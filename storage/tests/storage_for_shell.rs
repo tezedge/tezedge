@@ -219,9 +219,11 @@ fn test_storage() -> Result<(), Error> {
         execution_timestamps: Default::default(),
     };
     let block_additional_data = store_applied_block_result(
+        &chain_meta_storage,
         &block_storage,
         &block_meta_storage,
         &block.hash,
+        block.header.fitness().clone(),
         apply_result.clone(),
         &mut metadata,
         &cycle_meta_storage,
