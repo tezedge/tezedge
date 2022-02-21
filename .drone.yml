@@ -4755,6 +4755,7 @@ environment:
   NETWORK: granadanet
   FROM_BLOCK_HEADER: 4050 # 4096-4097 is florence-granada proto switch
   TO_BLOCK_HEADER: 5000 # also check parameter --stop=
+  TO_BLOCK_HEADER_LATEST: 10000
   SODIUM_USE_PKG_CONFIG: 1
   OCTEZ_NODE_RPC_CONTEXT_ROOT_1: http://octez-node-granadanet-run-1:8732
   OCTEZ_NODE_RPC_CONTEXT_ROOT_2: http://octez-node-granadanet-run-2:8732
@@ -4875,6 +4876,23 @@ steps:
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
     - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
 
+- name: tezos-client-bootstrapped-for-tezedge-node
+  user: root
+  image: tezos/tezos:v9-release
+  detach: true
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - |
+      for i in $(seq 1 12); do
+          if tezos-client -E $${TEZEDGE_NODE_RPC_CONTEXT_ROOT} bootstrapped > /data/cache/tezedge-node-bootstrapped.log; then
+              cp /dev/null /data/cache/tezedge-node-bootstrapped.done
+              break
+          fi
+          sleep 5
+      done
+
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
   commands:
@@ -4939,8 +4957,25 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
-  # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
-  detach: true
+
+- name: bootstrapping-tezedge-latest
+  image: tezedge/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER_LATEST} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+
+- name: bootstrapped-rpc-check
+  user: root
+  image: tezos/tezos:v9-release
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - test -f /data/cache/tezedge-node-bootstrapped.done
+    - grep -F "Waiting for the node to be bootstrapped..." -q /data/cache/tezedge-node-bootstrapped.log
+    - >-
+      grep -F "Current head: BKyjtcb7VhJf" -q /data/cache/tezedge-node-bootstrapped.log
+    - grep -F "Node is bootstrapped." -q /data/cache/tezedge-node-bootstrapped.log
 
 volumes:
   - name: octez-node-granadanet-snapshot-data-1

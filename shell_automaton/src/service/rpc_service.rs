@@ -77,6 +77,7 @@ pub enum RpcRequest {
 
 #[derive(Debug)]
 pub enum RpcRequestStream {
+    Bootstrapped,
     GetOperations {
         applied: bool,
         refused: bool,

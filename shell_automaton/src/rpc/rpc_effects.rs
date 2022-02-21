@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::action::BootstrapNewCurrentHeadAction;
+use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::mempool_actions::{
     MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction, MempoolOperationInjectAction,
     MempoolRegisterOperationsStreamAction, MempoolRemoveAppliedOperationsAction,
@@ -14,11 +16,19 @@ use crate::stats::current_head::stats_current_head_actions::{
 };
 use crate::{Action, ActionWithMeta, Store};
 
+use super::rpc_actions::{
+    RpcBootstrappedAction, RpcBootstrappedDoneAction, RpcBootstrappedNewBlockAction,
+};
+use super::BootstrapState;
+
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WakeupEvent(_) => {
             while let Ok((msg, rpc_id)) = store.service().rpc().try_recv_stream() {
                 match msg {
+                    RpcRequestStream::Bootstrapped => {
+                        store.dispatch(RpcBootstrappedAction { rpc_id });
+                    }
                     RpcRequestStream::GetOperations {
                         applied,
                         refused,
@@ -101,6 +111,74 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         store.dispatch(StatsCurrentHeadRpcGetApplicationAction { rpc_id, level });
                     }
                 }
+            }
+        }
+
+        Action::BootstrapNewCurrentHead(BootstrapNewCurrentHeadAction {
+            chain_id: _,
+            block,
+            is_bootstrapped,
+        }) => {
+            store.dispatch(RpcBootstrappedNewBlockAction {
+                block: block.hash.clone(),
+                timestamp: block.header.timestamp(),
+                is_bootstrapped: *is_bootstrapped,
+            });
+        }
+        Action::BlockApplierApplySuccess(_) => {
+            if let BlockApplierApplyState::Success { block, .. } =
+                &store.state().block_applier.current
+            {
+                let timestamp = block.header.timestamp();
+                let block = block.hash.clone();
+
+                store.dispatch(RpcBootstrappedNewBlockAction {
+                    block,
+                    timestamp,
+                    is_bootstrapped: true,
+                });
+            }
+        }
+
+        Action::RpcBootstrapped(RpcBootstrappedAction { rpc_id }) => {
+            if let Some(BootstrapState {
+                json,
+                is_bootstrapped,
+            }) = &store.state.get().rpc.bootstrapped.state
+            {
+                store
+                    .service
+                    .rpc()
+                    .respond_stream(*rpc_id, Some(json.clone()));
+                if *is_bootstrapped {
+                    store.dispatch(RpcBootstrappedDoneAction {
+                        rpc_ids: vec![*rpc_id],
+                    });
+                }
+            }
+        }
+        Action::RpcBootstrappedNewBlock(RpcBootstrappedNewBlockAction { .. }) => {
+            let bootstrapped = &store.state.get().rpc.bootstrapped;
+            let rpc_ids: Vec<_> = bootstrapped.requests.iter().cloned().collect();
+            if let Some(BootstrapState {
+                json,
+                is_bootstrapped,
+            }) = &bootstrapped.state
+            {
+                for rpc_id in &rpc_ids {
+                    store
+                        .service
+                        .rpc()
+                        .respond_stream(*rpc_id, Some(json.clone()));
+                }
+                if *is_bootstrapped {
+                    store.dispatch(RpcBootstrappedDoneAction { rpc_ids });
+                }
+            }
+        }
+        Action::RpcBootstrappedDone(RpcBootstrappedDoneAction { rpc_ids }) => {
+            for rpc_id in rpc_ids {
+                store.service.rpc().respond_stream(*rpc_id, None);
             }
         }
         _ => {}
