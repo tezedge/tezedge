@@ -286,7 +286,6 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetPendingAction {
                     && queue
                         .front()
                         .filter(|v| v.block_hash == self.block_hash)
-                        .filter(|v| v.peer.map(|p| p == self.peer).unwrap_or(true))
                         .is_some()
             }
             _ => false,

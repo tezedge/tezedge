@@ -121,6 +121,9 @@ where
             store.dispatch(BootstrapPeerBlockHeaderGetPendingAction { peer: content.peer });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
+            slog::debug!(&store.state().log, "BlockHeader downloaded";
+                "block_hash" => format!("{:?}", content.block.hash),
+                "block_level" => content.block.header.level());
             store
                 .service
                 .actors()
@@ -219,6 +222,9 @@ where
                 }
                 _ => return,
             };
+            slog::debug!(&store.state().log, "BlockOperations downloaded";
+                "block_hash" => format!("{:?}", content.block_hash),
+                "block_level" => level);
             store
                 .service
                 .actors()
@@ -232,6 +238,7 @@ where
                 });
             }
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
+            store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::BootstrapScheduleBlocksForApply(_) => loop {
@@ -244,6 +251,8 @@ where
             }
         },
         Action::BootstrapScheduleBlockForApply(content) => {
+            slog::debug!(&store.state().log, "Scheduled BlockForApply";
+                "block_hash" => format!("{:?}", content.block_hash));
             store.dispatch(BlockApplierEnqueueBlockAction {
                 block_hash: content.block_hash.clone().into(),
                 injector_rpc_id: None,
@@ -252,8 +261,8 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::CurrentHeadUpdate(_) => {
-            store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
+            store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
             request_block_headers_from_available_peers(store);
