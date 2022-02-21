@@ -157,6 +157,7 @@ pub struct BlockApplicationMessage {
     pub(crate) current_application_speed: f32,
     pub(crate) average_application_speed: f32,
     pub(crate) last_applied_block: Option<BlockInfo>,
+    pub(crate) remote_best_known_level: i32,
 }
 
 #[derive(Clone, Serialize, Debug)]

@@ -308,6 +308,8 @@ impl Receive<ShellChannelMsg> for Monitor {
                     notification.block.header.level(),
                     notification.block.header.fitness().clone(),
                 ));
+                self.block_application_monitor
+                    .update_remote_best_known_level(notification.remote_best_known_level);
             }
             ShellChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
