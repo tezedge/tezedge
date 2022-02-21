@@ -360,7 +360,8 @@ where
                     &prot,
                 ))
                 .collect::<Vec<_>>();
-            if let Ok(json) = serde_json::to_value(resp) {
+            if let Ok(json) = serde_json::to_value(&resp) {
+                slog::trace!(&store.state().log, "============\n{:#?}", resp);
                 store.service().rpc().respond_stream(act.rpc_id, Some(json));
             }
         }
@@ -442,17 +443,20 @@ where
             match response {
                 PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
                     operation_decoded_contents,
+                    hash,
                     ..
                 })
                 | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
                     operation_decoded_contents,
+                    hash,
                     ..
                 }) => {
                     store.dispatch(MempoolBroadcastAction {
                         send_operations: true,
                         prechecked_head: Some(operation_decoded_contents.branch().clone()),
                     });
-                    // respond
+
+                    // respond to injection RPC
                     let resp = if store.state().mempool.local_head_state.is_some() {
                         serde_json::Value::Null
                     } else {
@@ -463,6 +467,58 @@ where
                         store.service().rpc().respond(rpc_id, resp.clone());
                     }
                     store.dispatch(MempoolRpcRespondAction {});
+
+                    // respond to mempool_operations
+                    let streams = store.state().mempool.operation_streams.clone();
+                    if streams.is_empty() {
+                        return;
+                    }
+
+                    if let Some(prevalidator) = store.state().mempool.prevalidator.as_ref() {
+                        let (protocol_data, protocol_data_parse_error) = if let Some(json_object) =
+                            operation_decoded_contents.as_json().as_object()
+                        {
+                            (
+                                json_object
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect::<HashMap<_, _>>(),
+                                Option::<String>::None,
+                            )
+                        } else {
+                            (
+                                HashMap::new(),
+                                Some("Cannot interpred protocol data as object".to_string()),
+                            )
+                        };
+                        let error = if let PrecheckerPrecheckOperationResponse::Refused(
+                            PrecheckerErrored { error, .. },
+                        ) = response
+                        {
+                            vec![error.clone()]
+                        } else {
+                            Vec::new()
+                        };
+
+                        let protocol = prevalidator.protocol.to_base58_check();
+                        let monitored_operation = MonitoredOperation::new(
+                            operation_decoded_contents.branch(),
+                            protocol_data,
+                            &protocol,
+                            hash,
+                            error,
+                            protocol_data_parse_error,
+                        );
+
+                        if let Ok(json) = serde_json::to_value(vec![monitored_operation]) {
+                            for stream in streams {
+                                store
+                                    .service()
+                                    .rpc()
+                                    .respond_stream(stream.rpc_id, Some(json.clone()));
+                            }
+                        }
+                    }
                 }
                 PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
                     if let Some(operation) = store
