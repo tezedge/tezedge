@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::mpsc;
+
 mod command_line;
 mod key;
 mod logger;
 mod machine;
 mod rpc_client;
+mod timer;
 mod types;
 
 fn main() {
@@ -14,6 +17,7 @@ fn main() {
         key::CryptoService,
         machine::{action::*, effects, reducer, service::ServiceDefault, state::State},
         rpc_client::RpcClient,
+        timer::Timer,
     };
     use std::time::SystemTime;
 
@@ -25,7 +29,9 @@ fn main() {
     } = Arguments::from_args();
 
     let logger = logger::main_logger();
-    let (client, events) = RpcClient::new(endpoint);
+    let (sender, events) = mpsc::channel();
+    let client = RpcClient::new(endpoint, sender.clone());
+    let timer = Timer::spawn(sender);
 
     match command {
         Command::RunWithLocalNode { node_dir, baker } => {
@@ -45,6 +51,7 @@ fn main() {
                 logger: logger.clone(),
                 client,
                 crypto,
+                timer,
             };
             let initial_time = SystemTime::now();
             let initial_state = State::Initial;
@@ -53,9 +60,12 @@ fn main() {
             let mut store =
                 redux_rs::Store::new(reducer, effects, service, initial_time, initial_state);
             store.dispatch(GetChainIdInitAction {});
-            for event in events {
+            for event in events.into_iter() {
                 store.dispatch(event);
             }
+
+            let service = store.service;
+            service.timer.join().unwrap();
         }
     }
 }

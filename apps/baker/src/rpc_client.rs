@@ -18,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::Operation;
 use super::types::ShellBlockHeader;
 use crate::{
     machine::action::*,
-    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots},
+    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots}, timer::Timestamp,
 };
 
 #[derive(Clone)]
@@ -58,16 +58,12 @@ impl RpcClient {
     // 012-Psithaca
     pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
-    pub fn new(endpoint: Url) -> (Self, impl Iterator<Item = Action>) {
-        let (tx, rx) = mpsc::channel();
-        (
-            RpcClient {
-                tx,
-                endpoint,
-                inner: Client::new(),
-            },
-            rx.into_iter(),
-        )
+    pub fn new(endpoint: Url, tx: mpsc::Sender<Action>) -> Self {
+        RpcClient {
+            tx,
+            endpoint,
+            inner: Client::new(),
+        }
     }
 
     pub fn get_constants(&self) -> Result<Constants, RpcError> {
@@ -195,7 +191,7 @@ impl RpcClient {
                 new_proposal: Proposal { block, predecessor },
                 delegate_slots,
                 next_level_delegate_slots,
-                now_timestamp: Utc::now().timestamp(),
+                now_timestamp: Timestamp::now(),
             }))
         })
     }

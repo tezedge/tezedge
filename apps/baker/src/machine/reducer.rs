@@ -81,7 +81,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                     0
                                 } else {
                                     round_by_timestamp(
-                                        *now_timestamp,
+                                        now_timestamp.0,
                                         &new_proposal.predecessor,
                                         &*config,
                                     )
@@ -124,7 +124,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                     0
                                 } else {
                                     round_by_timestamp(
-                                        *now_timestamp,
+                                        now_timestamp.0,
                                         &new_proposal.predecessor,
                                         &*config,
                                     )
@@ -177,7 +177,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                 level_state.latest_proposal = new_proposal.clone();
                                 *round_state = RoundState {
                                     current_round: round_by_timestamp(
-                                        *now_timestamp,
+                                        now_timestamp.0,
                                         &new_proposal.predecessor,
                                         &*config,
                                     ),
@@ -301,18 +301,18 @@ fn may_update_endorsable_payload_with_internal_pqc(
     }
 }
 
-fn round_by_timestamp(now_timestamp: i64, predecessor: &BlockInfo, config: &Config) -> i32 {
+fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Config) -> i32 {
     let pred_round = predecessor.round as u32;
-    let pred_time = predecessor.timestamp;
+    let pred_time = predecessor.timestamp as u64;
     let last_round_duration =
         config.minimal_block_delay + config.delay_increment_per_round * pred_round;
-    let last_round_duration = last_round_duration.as_secs() as i64;
+    let last_round_duration = last_round_duration.as_secs();
     let start_of_current_level = pred_time + last_round_duration;
-    let elapsed = now_timestamp - start_of_current_level;
-    if elapsed < 0 {
+    if now_timestamp < start_of_current_level {
         // receive proposal from the future
         i32::MIN
     } else {
+        let elapsed = now_timestamp - start_of_current_level;
         // m := minimal_block_delay
         // d := delay_increment_per_round
         // r := round

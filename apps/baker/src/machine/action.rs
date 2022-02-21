@@ -14,7 +14,7 @@ use tezos_messages::protocol::proto_012::operation::Operation;
 use crate::{
     machine::state::State,
     rpc_client::{Constants, RpcError},
-    types::{DelegateSlots, Proposal},
+    types::{DelegateSlots, Proposal}, timer::Timestamp,
 };
 
 #[derive(Debug)]
@@ -95,7 +95,7 @@ pub struct NewProposalAction {
     pub new_proposal: Proposal,
     pub delegate_slots: DelegateSlots,
     pub next_level_delegate_slots: DelegateSlots,
-    pub now_timestamp: i64,
+    pub now_timestamp: Timestamp,
 }
 
 impl EnablingCondition<State> for NewProposalAction {

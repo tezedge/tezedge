@@ -232,6 +232,7 @@ pub struct LevelState {
 pub enum Phase {
     NonProposer,
     CollectingPreendorsements,
+    #[allow(dead_code)]
     CollectingEndorsements,
 }
 
