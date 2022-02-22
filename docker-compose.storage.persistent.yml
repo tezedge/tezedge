@@ -13,7 +13,7 @@ services:
       - "tezedge-with-persistent-storage-data:/tmp/tezedge"
 
   tezedge-explorer-with-persistent-storage:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:v1.15.1
     hostname: tezedge-explorer-with-persistent-storage
     environment:
       - API=[{"id":"tezedge-with-persistent-storage","name":"tezedge-with-persistent-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5555","p2p_port":5554,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:5556"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5557/resources/tezedge"}]}]

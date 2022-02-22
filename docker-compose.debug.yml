@@ -36,7 +36,7 @@ services:
       - TEZOS_CONTEXT=index-log-size=2_500_000
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:v1.15.1
     environment:
       # need a better way to provide such information
       - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"tezedge","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4444/resources/tezedge"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"},{"name":"state"}]}]

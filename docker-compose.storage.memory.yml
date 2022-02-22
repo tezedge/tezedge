@@ -13,7 +13,7 @@ services:
       - "tezedge-with-memory-storage-data:/tmp/tezedge"
 
   tezedge-explorer-with-memory-storage:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:v1.15.1
     hostname: tezedge-explorer-with-memory-storage
     environment:
       - API=[{"id":"tezedge-with-memory-storage","name":"tezedge-with-memory-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5555","p2p_port":5554,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:5556"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5557/resources/tezedge"}]}]
