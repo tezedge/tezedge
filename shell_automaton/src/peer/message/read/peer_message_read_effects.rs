@@ -278,13 +278,6 @@ where
                             block,
                         });
                     } else {
-                        // dbg!(&state.bootstrap);
-                        dbg!(state
-                            .bootstrap
-                            .peer_intervals()
-                            .and_then(|intervals| intervals
-                                .iter()
-                                .find(|p| p.current.block_hash() == Some(&block.hash))));
                         slog::warn!(&state.log, "Received unexpected BlockHeader from peer";
                             "peer" => format!("{}", action.address),
                             "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(action.address)),

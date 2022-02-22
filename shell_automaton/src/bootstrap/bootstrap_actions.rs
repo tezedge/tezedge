@@ -404,7 +404,12 @@ impl EnablingCondition<State> for BootstrapScheduleBlocksForApplyAction {
                 state.block_applier.queue.len() < MAX_PENDING_GET_OPERATIONS / 2
                     && pending
                         .iter()
-                        .any(|(_, b)| b.block_level == next_block_level && b.is_success())
+                        .filter(|(_, b)| {
+                            b.block_level <= next_block_level
+                                && b.block_level >= next_block_level - 2
+                        })
+                        .take(1)
+                        .any(|(_, b)| b.is_success())
             }
             _ => false,
         }
@@ -426,9 +431,13 @@ impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
                         None => return false,
                     };
                     pending
-                        .get(&self.block_hash)
-                        .filter(|b| b.block_level == next_block_level && b.is_success())
-                        .is_some()
+                        .iter()
+                        .filter(|(_, b)| {
+                            b.block_level <= next_block_level
+                                && b.block_level >= next_block_level - 2
+                        })
+                        .take(1)
+                        .any(|(_, b)| b.is_success())
                 }
                 _ => false,
             }
@@ -446,6 +455,18 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetSuccessAction 
             }
             _ => false,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapFinishedAction {}
+
+impl EnablingCondition<State> for BootstrapFinishedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(
+            &state.bootstrap,
+            BootstrapState::PeersBlockOperationsGetSuccess { .. }
+        )
     }
 }
 
