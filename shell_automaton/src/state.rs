@@ -206,7 +206,8 @@ impl State {
         let bootstrapped_peers_len = self
             .peers
             .handshaked_iter()
-            .filter_map(|(_, peer)| peer.current_head_level)
+            .filter_map(|(_, peer)| peer.current_head.as_ref())
+            .map(|current_head| current_head.header.level())
             .filter_map(|level| {
                 // calculate what percentage is our current head of
                 // peer's current head. If percentage is greater than

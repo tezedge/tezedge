@@ -7,6 +7,7 @@ use crypto::hash::BlockHash;
 use networking::network_channel::PeerMessageReceived;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
 
@@ -20,7 +21,7 @@ use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::remote_requests::block_header_get::PeerRemoteRequestsBlockHeaderGetEnqueueAction;
 use crate::peer::remote_requests::block_operations_get::PeerRemoteRequestsBlockOperationsGetEnqueueAction;
 use crate::peer::remote_requests::current_branch_get::PeerRemoteRequestsCurrentBranchGetInitAction;
-use crate::peer::Peer;
+use crate::peer::{Peer, PeerCurrentHeadUpdateAction};
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
@@ -190,13 +191,29 @@ where
                                     "current" => format!("{:?}", current));
                     }
                 }
-                PeerMessage::CurrentBranch(msg) => {
-                    if msg.chain_id() == &store.state().config.chain_id {
-                        store.dispatch(BootstrapPeerCurrentBranchReceivedAction {
-                            peer: content.address,
-                            current_branch: msg.current_branch().clone(),
-                        });
+                PeerMessage::CurrentHead(msg) => {
+                    if msg.chain_id() != &store.state().config.chain_id {
+                        return;
                     }
+                    update_peer_current_head(
+                        store,
+                        action.address,
+                        msg.current_block_header().clone(),
+                    );
+                }
+                PeerMessage::CurrentBranch(msg) => {
+                    if msg.chain_id() != &store.state().config.chain_id {
+                        return;
+                    }
+                    update_peer_current_head(
+                        store,
+                        action.address,
+                        msg.current_branch().current_head().clone(),
+                    );
+                    store.dispatch(BootstrapPeerCurrentBranchReceivedAction {
+                        peer: action.address,
+                        current_branch: msg.current_branch().clone(),
+                    });
                 }
                 PeerMessage::GetBlockHeaders(msg) => {
                     for block_hash in msg.get_block_headers() {
@@ -307,5 +324,23 @@ where
             });
         }
         _ => {}
+    }
+}
+pub fn update_peer_current_head<S>(
+    store: &mut Store<S>,
+    address: SocketAddr,
+    block_header: BlockHeader,
+) where
+    S: Service,
+{
+    match BlockHeaderWithHash::new(block_header) {
+        Ok(current_head) => {
+            store.dispatch(PeerCurrentHeadUpdateAction {
+                address,
+                current_head,
+            });
+        }
+        // TODO(zura): log
+        Err(_) => return,
     }
 }
