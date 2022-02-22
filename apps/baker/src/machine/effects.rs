@@ -61,6 +61,12 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
         Action::NewProposal(NewProposalAction { .. }) => {
             store.dispatch(TimeoutScheduleAction {});
             store.dispatch(InjectPreendorsementInitAction {});
+            store.dispatch(InjectEndorsementInitAction {});
+            store
+                .service()
+                .client
+                .monitor_operations(i64::MAX, Action::Timeout, Action::NewOperationSeen)
+                .unwrap();
         }
         // split in two, sign and inject
         Action::InjectPreendorsementInit(InjectPreendorsementInitAction {}) => {
@@ -73,6 +79,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 } => (chain_id, preendorsement),
                 _ => return,
             };
+            slog::info!(service.logger, "{:?}", preendorsement);
             let (data, _) = service.crypto.sign(0x12, chain_id, preendorsement).unwrap();
             let op = &hex::encode(data);
             service
@@ -82,30 +89,49 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 })
                 .unwrap();
         }
-        Action::InjectPreendorsementSuccess(InjectPreendorsementSuccessAction { .. }) => {
-            store
-                .service()
-                .client
-                .monitor_operations(i64::MAX, Action::Timeout, Action::NewOperationSeen)
-                .unwrap();
-        }
-        Action::Timeout(TimeoutAction { .. }) => {
-            store.dispatch(TimeoutScheduleAction {});
-        }
+        Action::InjectPreendorsementSuccess(InjectPreendorsementSuccessAction { .. }) => {}
         Action::TimeoutSchedule(TimeoutScheduleAction {}) => {
             match store.state() {
                 &State::Ready {
-                    round_state: RoundState { next_timeout: Some(timestamp), .. },
+                    round_state:
+                        RoundState {
+                            next_timeout: Some(timestamp),
+                            ..
+                        },
                     ..
                 } => {
-                    store.service().timer.timeout(timestamp, Action::Timeout)
-                },
+                    // slog::info!(
+                    //     store.service().logger,
+                    //     "timeout: {:?}",
+                    //     chrono::TimeZone::timestamp(&chrono::Utc, timestamp.0 as i64, 0),
+                    // );
+                    store.service().timer.timeout(timestamp, Action::Timeout);
+                }
                 _ => (),
             }
         }
-        Action::NewOperationSeen(NewOperationSeenAction { .. }) => {
-            // store.dispatch(SignEndorsementAction {});
+        Action::NewOperationSeen(NewOperationSeenAction { .. }) => {}
+        Action::InjectEndorsementInit(InjectEndorsementInitAction {}) => {
+            let Store { state, service, .. } = store;
+            let (chain_id, endorsement) = match state.get() {
+                State::Ready {
+                    config: Config { chain_id, .. },
+                    endorsement: Some(endorsement),
+                    ..
+                } => (chain_id, endorsement),
+                _ => return,
+            };
+            slog::info!(service.logger, "{:?}", endorsement);
+            let (data, _) = service.crypto.sign(0x13, chain_id, endorsement).unwrap();
+            let op = &hex::encode(data);
+            service
+                .client
+                .inject_operation(chain_id, &op, i64::MAX, Action::Timeout, |hash| {
+                    InjectEndorsementSuccessAction { hash }.into()
+                })
+                .unwrap();
         }
+        Action::InjectEndorsementSuccess(InjectEndorsementSuccessAction { .. }) => {}
 
         /*Action::WaitBootstrappedPending(WaitBootstrappedPendingAction {
             base_dir,

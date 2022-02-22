@@ -1,7 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, fmt, time::{SystemTime, Duration}};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    time::{Duration, SystemTime},
+};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -28,6 +32,7 @@ impl Timestamp {
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("the unix epoch has begun");
 
+        // TODO: check overflow
         Duration::from_secs(self.0) - now
     }
 
@@ -59,11 +64,19 @@ pub struct Prequorum {
     pub firsts_slot: Vec<u16>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct BlockPayload {
     pub votes_payload: Vec<Operation>,
     pub anonymous_payload: Vec<Operation>,
     pub managers_payload: Vec<Operation>,
+}
+
+impl fmt::Debug for BlockPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("BlockPayload")
+            .field(&"content omitted")
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -119,7 +132,6 @@ impl BlockInfo {
         (prequorum, quorum)
     }
 
-    // TODO:
     pub fn new_with_full_header(
         header: FullHeader,
         protocols: Protocols,

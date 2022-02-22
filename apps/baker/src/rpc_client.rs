@@ -3,6 +3,7 @@
 
 use std::{io, str, sync::mpsc, thread, time::Duration};
 
+use chrono::Utc;
 use derive_more::From;
 use reqwest::{
     blocking::{Client, Response},
@@ -10,7 +11,6 @@ use reqwest::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
-use chrono::Utc;
 
 use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
 use tezos_messages::protocol::proto_012::operation::Operation;
@@ -109,91 +109,100 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("next_protocol", Self::PROTOCOL);
         let this = self.clone();
-        self.multiple_responses::<ShellBlockHeader, _, _>(url, deadline, deadline_wrapper, move |shell_header| {
-            let hash = shell_header.hash.clone().to_base58_check();
-            let predecessor_hash = shell_header.predecessor.to_base58_check();
+        self.multiple_responses::<ShellBlockHeader, _, _>(
+            url,
+            deadline,
+            deadline_wrapper,
+            move |shell_header| {
+                let hash = shell_header.hash.clone().to_base58_check();
+                let predecessor_hash = shell_header.predecessor.to_base58_check();
 
-            let s = format!("chains/main/blocks/{}/protocols", hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let protocols = this.single_response_blocking(url, Some(timeout))?;
-            let s = format!("chains/main/blocks/{}/operations", hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let operations = this
-                .single_response_blocking::<[Vec<Operation>; 4]>(url, Some(timeout))?;
-            let mut url = this
-                .endpoint
-                .join("chains/main/blocks/head/helpers/validators")
-                .expect("valid constant url");
-            url.query_pairs_mut()
-                .append_pair("level", &shell_header.level.to_string());
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let validators = this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
-            let delegate_slots = {
-                let mut v = DelegateSlots::default();
-                for validator in validators {
-                    let Validator {
-                        delegate, slots, ..
-                    } = validator;
-                    if delegate.eq(&this_delegate) {
-                        v.slot = slots.first().cloned();
+                let s = format!("chains/main/blocks/{}/protocols", hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let protocols = this.single_response_blocking(url, Some(timeout))?;
+                let s = format!("chains/main/blocks/{}/operations", hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let operations =
+                    this.single_response_blocking::<[Vec<Operation>; 4]>(url, Some(timeout))?;
+                let mut url = this
+                    .endpoint
+                    .join("chains/main/blocks/head/helpers/validators")
+                    .expect("valid constant url");
+                url.query_pairs_mut()
+                    .append_pair("level", &shell_header.level.to_string());
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let validators =
+                    this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
+                let delegate_slots = {
+                    let mut v = DelegateSlots::default();
+                    for validator in validators {
+                        let Validator {
+                            delegate, slots, ..
+                        } = validator;
+                        if delegate.eq(&this_delegate) {
+                            v.slot = slots.first().cloned();
+                        }
+                        v.delegates.insert(delegate, Slots(slots));
                     }
-                    v.delegates.insert(delegate, Slots(slots));
-                }
-                v
-            };
-            let block = BlockInfo::new(shell_header, protocols, operations);
+                    v
+                };
+                let block = BlockInfo::new(shell_header, protocols, operations);
 
-            let s = format!("chains/main/blocks/{}/header", predecessor_hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let shell_header = this.single_response_blocking::<FullHeader>(url, Some(timeout))?;
-            let s = format!("chains/main/blocks/{}/protocols", predecessor_hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let protocols = this.single_response_blocking(url, Some(timeout))?;
-            let s = format!("chains/main/blocks/{}/operations", predecessor_hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let operations = this
-                .single_response_blocking::<Vec<Vec<Operation>>>(url, Some(timeout))?;
-            let operations = [
-                operations.get(0).cloned().unwrap_or(vec![]),
-                operations.get(1).cloned().unwrap_or(vec![]),
-                operations.get(2).cloned().unwrap_or(vec![]),
-                operations.get(3).cloned().unwrap_or(vec![]),
-            ];
-            let mut url = this
-                .endpoint
-                .join("chains/main/blocks/head/helpers/validators")
-                .expect("valid constant url");
-            url.query_pairs_mut()
-                .append_pair("level", &shell_header.level.to_string());
-            let timeout = Self::deadline_to_duration(deadline)?;
-            let validators = this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
-            let next_level_delegate_slots = {
-                let mut v = DelegateSlots::default();
-                for validator in validators {
-                    let Validator {
-                        delegate, slots, ..
-                    } = validator;
-                    if delegate.eq(&this_delegate) {
-                        v.slot = slots.first().cloned();
+                let s = format!("chains/main/blocks/{}/header", predecessor_hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let shell_header =
+                    this.single_response_blocking::<FullHeader>(url, Some(timeout))?;
+                let s = format!("chains/main/blocks/{}/protocols", predecessor_hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let protocols = this.single_response_blocking(url, Some(timeout))?;
+                let s = format!("chains/main/blocks/{}/operations", predecessor_hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let operations =
+                    this.single_response_blocking::<Vec<Vec<Operation>>>(url, Some(timeout))?;
+                let operations = [
+                    operations.get(0).cloned().unwrap_or(vec![]),
+                    operations.get(1).cloned().unwrap_or(vec![]),
+                    operations.get(2).cloned().unwrap_or(vec![]),
+                    operations.get(3).cloned().unwrap_or(vec![]),
+                ];
+                let mut url = this
+                    .endpoint
+                    .join("chains/main/blocks/head/helpers/validators")
+                    .expect("valid constant url");
+                url.query_pairs_mut()
+                    .append_pair("level", &shell_header.level.to_string());
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let validators =
+                    this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
+                let next_level_delegate_slots = {
+                    let mut v = DelegateSlots::default();
+                    for validator in validators {
+                        let Validator {
+                            delegate, slots, ..
+                        } = validator;
+                        if delegate.eq(&this_delegate) {
+                            v.slot = slots.first().cloned();
+                        }
+                        v.delegates.insert(delegate, Slots(slots));
                     }
-                    v.delegates.insert(delegate, Slots(slots));
-                }
-                v
-            };
-            let predecessor = BlockInfo::new_with_full_header(shell_header, protocols, operations);
+                    v
+                };
+                let predecessor =
+                    BlockInfo::new_with_full_header(shell_header, protocols, operations);
 
-            Ok(wrapper(NewProposalAction {
-                new_proposal: Proposal { block, predecessor },
-                delegate_slots,
-                next_level_delegate_slots,
-                now_timestamp: Timestamp::now(),
-            }))
-        })
+                Ok(wrapper(NewProposalAction {
+                    new_proposal: Proposal { block, predecessor },
+                    delegate_slots,
+                    next_level_delegate_slots,
+                    now_timestamp: Timestamp::now(),
+                }))
+            },
+        )
     }
 
     pub fn monitor_operations<F, G>(
@@ -240,9 +249,13 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("chain", &chain_id.to_base58_check());
         let body = format!("{:?}", op_hex);
-        self.single_response::<OperationHash, _, _>(url, Some(body), deadline, deadline_wrapper, move |operation_hash| {
-            wrapper(operation_hash)
-        })
+        self.single_response::<OperationHash, _, _>(
+            url,
+            Some(body),
+            deadline,
+            deadline_wrapper,
+            move |operation_hash| wrapper(operation_hash),
+        )
     }
 
     fn get(&self, url: Url, timeout: Option<Duration>) -> reqwest::Result<Response> {
@@ -301,7 +314,9 @@ impl RpcClient {
             Err(_) => {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
-                    let action = TimeoutAction { now_timestamp: now.timestamp() };
+                    let action = TimeoutAction {
+                        now_timestamp: now.timestamp(),
+                    };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
@@ -372,7 +387,9 @@ impl RpcClient {
             Err(_) => {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
-                    let action = TimeoutAction { now_timestamp: now.timestamp() };
+                    let action = TimeoutAction {
+                        now_timestamp: now.timestamp(),
+                    };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
@@ -392,7 +409,9 @@ impl RpcClient {
                         }
                         Err(RpcError::Io(io_err)) if io_err.kind() == io::ErrorKind::TimedOut => {
                             let now = Utc::now();
-                            let action = TimeoutAction { now_timestamp: now.timestamp() };
+                            let action = TimeoutAction {
+                                now_timestamp: now.timestamp(),
+                            };
                             let _ = tx.send(deadline_wrapper(action));
                             break;
                         }

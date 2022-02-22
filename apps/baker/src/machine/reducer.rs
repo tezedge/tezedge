@@ -5,18 +5,21 @@ use std::time::Duration;
 
 use redux_rs::ActionWithMeta;
 use tezos_messages::protocol::proto_012::operation::{
-    InlinedPreendorsementContents, InlinedPreendorsementVariant,
+    InlinedPreendorsementContents, InlinedPreendorsementVariant, Contents,
+    InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant,
 };
 
 use super::{
     super::types::{
         BlockInfo, EndorsablePayload, LevelState, Phase, Prequorum,
-        Proposal, RoundState, PreendorsementUnsignedOperation, Timestamp,
+        Proposal, RoundState, PreendorsementUnsignedOperation, Timestamp, LockedRound,
+        EndorsementUnsignedOperation,
     },
     action::*,
     state::{Config, State},
 };
 
+#[rustfmt::skip]
 pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
     match &action.action {
         Action::GetChainIdSuccess(GetChainIdSuccessAction { chain_id }) => {
@@ -268,21 +271,95 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             }
         }
         Action::NewOperationSeen(NewOperationSeenAction { operations }) => {
-            let _ = operations;
-            // for operation in operations {
-            //     for content in &operation.contents {
-            //         if let Contents::Preendorsement(preendorsement) = content {
-            //             let mut power = 0;
-            //             for slots in validators.values() {
-            //                 if slots.contains(&preendorsement.slot) {
-            //                     power = slots.len();
-            //                 }
-            //             }
-            //             block_data.seen_preendorsement += power;
-            //         }
-            //     }
-            // }
+            match state {
+                State::Ready { config, level_state: LevelState { delegate_slots, endorsable_payload, latest_proposal, locked_round, current_level, .. }, round_state, endorsement, .. } => {
+                    if let Some(e) = endorsable_payload  {
+                        if e.prequorum.round > latest_proposal.block.round {
+                            return;
+                        }
+                    }
+                    let mut e = endorsable_payload
+                        .take()
+                        .unwrap_or_else(|| EndorsablePayload {
+                            proposal: latest_proposal.clone(),
+                            prequorum: Prequorum {
+                                level: latest_proposal.block.level,
+                                round: latest_proposal.block.round,
+                                payload_hash: latest_proposal.block.payload_hash.clone(),
+                                firsts_slot: vec![],
+                            },
+                        });
+                    for content in operations.iter().map(|op| &op.contents).flatten() {
+                        match content {
+                            Contents::Preendorsement(v) => {
+                                e.prequorum.firsts_slot.push(v.slot);
+                            }
+                            Contents::Endorsement(v) => {
+                                // TODO: quorum
+                                let _ = v;
+                            }
+                            _ => (),
+                        }
+                    }
+                    *endorsable_payload = Some(e);
+                    let power = if let Some(endorsable_payload) = &*endorsable_payload {
+                        endorsable_payload
+                            .prequorum
+                            .firsts_slot
+                            .iter()
+                            .map(|slot| {
+                                delegate_slots
+                                    .delegates
+                                    .values()
+                                    .find(|slots| slots.0.contains(slot))
+                                    .map(|slots| slots.0.len())
+                                    .unwrap_or(0)
+                            })
+                            .sum::<usize>()
+                    } else {
+                        0
+                    };
+                    if power >= config.quorum_size {
+                        if let Some(slot) = delegate_slots.slot {
+                            let inlined = InlinedEndorsementMempoolContentsEndorsementVariant {
+                                slot,
+                                level: *current_level,
+                                round: latest_proposal.block.round,
+                                block_payload_hash: latest_proposal.block.payload_hash.clone(),
+                            };
+                            *endorsement = Some(EndorsementUnsignedOperation {
+                                branch: latest_proposal.predecessor.hash.clone(),
+                                content: InlinedEndorsementMempoolContents::Endorsement(inlined),
+                            });
+                            round_state.current_phase = Phase::CollectingEndorsements;
+                            let l = locked_round.take().unwrap_or(LockedRound {
+                                round: latest_proposal.block.round,
+                                payload_hash: latest_proposal.block.payload_hash.clone(),
+                            });
+                            *locked_round = Some(l);
+                        }
+                    }
+                }
+                _ => (),
+            }
         }
+        Action::Timeout(TimeoutAction { now_timestamp }) => match state {
+            State::Ready { round_state, .. } => {
+                let _ = now_timestamp;
+                round_state.next_timeout = None;
+            }
+            _ => (),
+        },
+        Action::InjectPreendorsementSuccess(InjectPreendorsementSuccessAction { .. }) => {
+            match state {
+                State::Ready { preendorsement, .. } => *preendorsement = None,
+                _ => (),
+            }
+        }
+        Action::InjectEndorsementSuccess(InjectEndorsementSuccessAction { .. }) => match state {
+            State::Ready { endorsement, .. } => *endorsement = None,
+            _ => (),
+        },
         _ => {}
     }
 }
@@ -309,7 +386,11 @@ fn may_update_endorsable_payload_with_internal_pqc(
     }
 }
 
-fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Config) -> (i32, Option<Timestamp>) {
+fn round_by_timestamp(
+    now_timestamp: u64,
+    predecessor: &BlockInfo,
+    config: &Config,
+) -> (i32, Option<Timestamp>) {
     let pred_round = predecessor.round as u32;
     let pred_time = predecessor.timestamp as u64;
     let last_round_duration =
@@ -338,15 +419,16 @@ fn round_by_timestamp(now_timestamp: u64, predecessor: &BlockInfo, config: &Conf
         let r = (p + (p * p + 8.0 * d * e).sqrt()) / (2.0 * d);
         let r = r.floor() as u64;
 
-        let t = start_of_current_level + config.minimal_block_delay.as_secs() * (r + 1) +
-            config.delay_increment_per_round.as_secs() * (r + 1) * r / 2;
-        
-        println!(
-            "current round: {r}, now: {:?}, level started: {:?}, next timeout: {:?}",
-            chrono::TimeZone::timestamp(&chrono::Utc, now_timestamp as i64, 0),
-            chrono::TimeZone::timestamp(&chrono::Utc, start_of_current_level as i64, 0),
-            chrono::TimeZone::timestamp(&chrono::Utc, t as i64, 0),
-        );
+        let t = start_of_current_level
+            + config.minimal_block_delay.as_secs() * (r + 1)
+            + config.delay_increment_per_round.as_secs() * (r + 1) * r / 2;
+
+        // println!(
+        //     "current round: {r}, now: {:?}, level started: {:?}, next timeout: {:?}",
+        //     chrono::TimeZone::timestamp(&chrono::Utc, now_timestamp as i64, 0),
+        //     chrono::TimeZone::timestamp(&chrono::Utc, start_of_current_level as i64, 0),
+        //     chrono::TimeZone::timestamp(&chrono::Utc, t as i64, 0),
+        // );
         (r as i32, Some(Timestamp(t)))
     }
 }

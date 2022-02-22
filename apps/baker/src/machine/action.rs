@@ -80,8 +80,7 @@ impl EnablingCondition<State> for GetConstantsErrorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TimeoutScheduleAction {
-}
+pub struct TimeoutScheduleAction {}
 
 impl EnablingCondition<State> for TimeoutScheduleAction {
     fn is_enabled(&self, state: &State) -> bool {
@@ -156,12 +155,38 @@ pub struct NewOperationSeenAction {
 
 impl EnablingCondition<State> for NewOperationSeenAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match (self.operations.first(), state) {
-            (Some(op), State::Ready { level_state, .. }) => {
-                op.branch.eq(&level_state.latest_proposal.block.hash)
-            }
+        // match (self.operations.first(), state) {
+        //     (Some(op), State::Ready { level_state, .. }) => {
+        //         op.branch.eq(&level_state.latest_proposal.block.hash)
+        //     }
+        //     _ => false,
+        // }
+        // TODO: check operations
+        matches!(state, State::Ready { .. })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InjectEndorsementInitAction {}
+
+impl EnablingCondition<State> for InjectEndorsementInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match state {
+            State::Ready { endorsement, .. } => endorsement.is_some(),
             _ => false,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InjectEndorsementSuccessAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for InjectEndorsementSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
     }
 }
 
@@ -203,6 +228,8 @@ pub enum Action {
     InjectPreendorsementInit(InjectPreendorsementInitAction),
     InjectPreendorsementSuccess(InjectPreendorsementSuccessAction),
     NewOperationSeen(NewOperationSeenAction),
+    InjectEndorsementInit(InjectEndorsementInitAction),
+    InjectEndorsementSuccess(InjectEndorsementSuccessAction),
 
     RecoverableError(RecoverableErrorAction),
     UnrecoverableError(UnrecoverableErrorAction),
@@ -223,6 +250,8 @@ impl fmt::Debug for Action {
             Action::InjectPreendorsementInit(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementSuccess(v) => fmt::Debug::fmt(v, f),
             Action::NewOperationSeen(v) => fmt::Debug::fmt(v, f),
+            Action::InjectEndorsementInit(v) => fmt::Debug::fmt(v, f),
+            Action::InjectEndorsementSuccess(v) => fmt::Debug::fmt(v, f),
 
             Action::RecoverableError(v) => fmt::Debug::fmt(v, f),
             Action::UnrecoverableError(v) => fmt::Debug::fmt(v, f),
@@ -245,6 +274,8 @@ impl EnablingCondition<State> for Action {
             Action::InjectPreendorsementInit(v) => v.is_enabled(state),
             Action::InjectPreendorsementSuccess(v) => v.is_enabled(state),
             Action::NewOperationSeen(v) => v.is_enabled(state),
+            Action::InjectEndorsementInit(v) => v.is_enabled(state),
+            Action::InjectEndorsementSuccess(v) => v.is_enabled(state),
 
             Action::RecoverableError(v) => v.is_enabled(state),
             Action::UnrecoverableError(v) => v.is_enabled(state),
