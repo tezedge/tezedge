@@ -471,6 +471,11 @@ pub enum BootstrapState {
         time: u64,
     },
 
+    /// We are in sync with the network (with other peers).
+    Finished {
+        time: u64,
+    },
+
     Error(BootstrapError),
 }
 

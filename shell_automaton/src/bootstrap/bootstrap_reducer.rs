@@ -10,7 +10,13 @@ use crypto::{
     hash::BlockHash,
     seeded_step::{Seed, Step},
 };
-use tezos_messages::p2p::{binary_message::MessageHash, encoding::block_header::Level};
+use tezos_messages::{
+    base::fitness_comparator::FitnessWrapper,
+    p2p::{
+        binary_message::MessageHash,
+        encoding::block_header::{BlockHeader, Fitness, Level},
+    },
+};
 
 use crate::{Action, ActionWithMeta, State};
 
@@ -61,6 +67,10 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 None => return,
             };
 
+            if !can_accept_new_head(state, branch.current_head()) {
+                return;
+            }
+
             match &mut state.bootstrap {
                 BootstrapState::PeersMainBranchFindPending {
                     peer_branches,
@@ -100,7 +110,6 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         Some(v) => v,
                         None => return,
                     };
-
                     let branch = branch_iter.collect::<Vec<_>>();
 
                     branch
@@ -177,6 +186,58 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
 
                             index
                         });
+                }
+                _ => {}
+            }
+        }
+        // TODO(zura): maybe add another action.
+        Action::PeerCurrentHeadUpdate(content) => {
+            if !can_accept_new_head(state, &content.current_head.header) {
+                return;
+            }
+            match &mut state.bootstrap {
+                // TODO(zura).
+                // BootstrapState::PeersBlockHeadersGetPending { main_chain_last_level, main_chain_last_hash, main_chain, peer_intervals, .. } => {
+                //     let level = content.current_head.header.level();
+                //     let is_same_chain = if *main_chain_last_level >= level {
+                //         let index = *main_chain_last_level - *level;
+                //         main_chain.get(index).filter()
+                //     } else if main_chain_last_hash == content.current_head.header.predecessor() {
+
+                //     }
+                //             if let Some(v) = main_chain.get(index as usize) {
+                //                 if &v.block_hash == hash {
+                //                     peer_intervals.last_mut().map(|p| p.peers.insert(peer));
+                //                     return true;
+                //                 }
+                //             }
+                //     if let Some(interval) = peer_intervals.last_mut() {
+                //         if interval.current.is_pending_block_hash_eq(&content.current_head.hash) {
+                //         }
+                //     };
+
+                //     if is_same_chain {
+                //         peer_intervals.last_mut().map(|p| p.peers.insert(content.address));
+                //     }
+                // }
+                BootstrapState::Finished { .. } => {
+                    state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
+                        time: action.time_as_nanos(),
+                        timeouts_last_check: None,
+                        main_chain_last_level: content.current_head.header.level(),
+                        main_chain_last_hash: content.current_head.hash.clone(),
+                        main_chain: Default::default(),
+                        peer_intervals: vec![PeerIntervalState {
+                            peers: std::iter::once(content.address).collect(),
+                            downloaded: Default::default(),
+                            current: PeerIntervalCurrentState::Pending {
+                                time: action.time_as_nanos(),
+                                peer: content.address,
+                                block_level: content.current_head.header.level(),
+                                block_hash: content.current_head.hash.clone(),
+                            },
+                        }],
+                    };
                 }
                 _ => {}
             }
@@ -260,14 +321,14 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     })
                     .collect();
 
-                state.bootstrap = dbg!(BootstrapState::PeersBlockHeadersGetPending {
+                state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                     time: action.time_as_nanos(),
                     timeouts_last_check: None,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
                     main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
                     peer_intervals,
-                });
+                };
             }
         }
         Action::BootstrapPeerBlockHeaderGetPending(content) => {
@@ -339,10 +400,22 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 // pred_interval_level == current_interval_next_level.
                 if index == 0 {
                     let pred_level = block.header.level() - 1;
-                    if pred_level <= current_head.header.level() {
+                    let pred_hash = block.header.predecessor();
+                    let current_level = current_head.header.level();
+                    if pred_level == current_level && pred_hash == &current_head.hash {
                         peer_intervals[index]
                             .current
                             .to_finished(action.time_as_nanos(), content.peer);
+                    } else if current_level - 1 == pred_level {
+                        if pred_hash == current_head.header.predecessor() {
+                            // allow 1 level reorg
+                            peer_intervals[index]
+                                .current
+                                .to_finished(action.time_as_nanos(), content.peer);
+                        } else {
+                            dbg!(&state.bootstrap);
+                            todo!("Reorg bigger than 1 level detected. Clear whole block header chain.");
+                        }
                     }
                 } else {
                     let pred_index = index - 1;
@@ -586,6 +659,14 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
+        Action::BootstrapPeersBlockOperationsGetSuccess(_) => match &mut state.bootstrap {
+            BootstrapState::PeersBlockOperationsGetPending { .. } => {
+                state.bootstrap = BootstrapState::PeersBlockOperationsGetSuccess {
+                    time: action.time_as_nanos(),
+                };
+            }
+            _ => {}
+        },
         Action::PeerDisconnected(content) => match &mut state.bootstrap {
             BootstrapState::PeersMainBranchFindPending {
                 peer_branches,
@@ -637,6 +718,11 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             state
                 .bootstrap
                 .set_timeouts_last_check(action.time_as_nanos());
+        }
+        Action::BootstrapFinished(_) => {
+            state.bootstrap = BootstrapState::Finished {
+                time: action.time_as_nanos(),
+            }
         }
         _ => {}
     }
@@ -694,4 +780,33 @@ fn peer_branch_with_level_iter<'a>(
         })
         .take_while(|(level, _)| *level >= 0);
     Some(std::iter::once((branch_current_head_level, branch_current_head_hash)).chain(iter))
+}
+
+// fn fitness_gt(left_fitness: &Fitness, right_fitness: &Fitness) -> bool {
+//     FitnessWrapper::new(right_fitness).gt(&FitnessWrapper::new(left_fitness))
+// }
+
+fn can_accept_new_head(state: &State, header: &BlockHeader) -> bool {
+    let current_head = match state.current_head.get() {
+        Some(v) => v,
+        None => return false,
+    };
+
+    if current_head.header.level() > header.level() {
+        return false;
+    }
+    if current_head.header.level() == header.level() {
+        return header
+            .message_typed_hash::<BlockHash>()
+            .ok()
+            .map(|hash| current_head.hash != hash)
+            .unwrap_or(false);
+    }
+
+    // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
+    //     return false;
+    // }
+
+    // TODO(zura): other checks
+    true
 }

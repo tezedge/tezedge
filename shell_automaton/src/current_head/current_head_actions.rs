@@ -95,10 +95,7 @@ pub struct CurrentHeadUpdateAction {
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
         match &state.current_head {
-            CurrentHeadState::Rehydrated { head } => {
-                self.new_head.header.level() > head.header.level()
-                // TODO(zura): maybe also check fitness.
-            }
+            CurrentHeadState::Rehydrated { head } => true,
             _ => false,
         }
     }

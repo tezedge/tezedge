@@ -465,6 +465,8 @@ pub enum Action {
 
     BootstrapCheckTimeoutsInit(BootstrapCheckTimeoutsInitAction),
 
+    BootstrapFinished(BootstrapFinishedAction),
+
     Protocol(ProtocolAction),
 
     MempoolRecvDone(MempoolRecvDoneAction),

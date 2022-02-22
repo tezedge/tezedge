@@ -24,8 +24,9 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapCheckTimeoutsInitAction, BootstrapPeerBlockHeaderGetFinishAction,
-    BootstrapPeerBlockHeaderGetInitAction, BootstrapPeerBlockHeaderGetPendingAction,
+    BootstrapCheckTimeoutsInitAction, BootstrapFinishedAction,
+    BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
+    BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
     BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
     BootstrapPeerBlockOperationsGetRetryAction, BootstrapPeerBlockOperationsGetSuccessAction,
     BootstrapPeerBlockOperationsGetTimeoutAction, BootstrapPeersBlockHeadersGetInitAction,
@@ -239,7 +240,6 @@ where
             }
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
-            store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::BootstrapScheduleBlocksForApply(_) => loop {
             let block_hash = match store.state().bootstrap.next_block_for_apply() {
@@ -269,6 +269,40 @@ where
         }
         Action::BootstrapPeerBlockOperationsGetTimeout(content) => {
             retry_block_operations_request(store, content.block_hash.clone());
+        }
+        Action::BootstrapPeersBlockOperationsGetSuccess(_) => {
+            store.dispatch(BootstrapFinishedAction {});
+        }
+        Action::PeerCurrentHeadUpdate(content) => {
+            if store
+                .state
+                .get()
+                .bootstrap
+                .peer_intervals()
+                .and_then(|intervals| intervals.last())
+                .filter(|p| {
+                    p.current
+                        .peer()
+                        .filter(|addr| *addr == content.address)
+                        .is_some()
+                })
+                .and_then(|p| p.current.block_hash())
+                .filter(|hash| *hash == &content.current_head.hash)
+                .is_some()
+            {
+                let chain_id = store.state().config.chain_id.clone();
+                store.dispatch(StorageRequestCreateAction {
+                    payload: StorageRequestPayload::BlockHeaderPut(
+                        chain_id,
+                        content.current_head.clone(),
+                    ),
+                    requestor: StorageRequestor::Bootstrap,
+                });
+                store.dispatch(BootstrapPeerBlockHeaderGetSuccessAction {
+                    peer: content.address,
+                    block: content.current_head.clone(),
+                });
+            }
         }
         Action::PeerDisconnected(content) => {
             let state = store.state.get();
