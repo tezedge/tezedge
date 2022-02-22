@@ -203,6 +203,29 @@ impl State {
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
     }
 
+    /// Global bootstrap status is considered as bootstrapped, only if
+    /// number of bootstrapped peers is above threshold.
+    ///
+    /// NOTE that it uses level+/-1 criteria instead of `Self::HIGH_LEVEL_MARGIN_PERCENTAGE`
+    /// to match against peers level.
+    pub fn is_bootstrapped_strict(&self) -> bool {
+        let current_head_level = match self.current_head_level() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        let bootstrapped_peers_len = self
+            .peers
+            .iter()
+            .filter_map(|(_, p)| p.status.as_handshaked())
+            .filter_map(|peer| peer.current_head_level)
+            .filter(|level| (level - current_head_level).abs() <= 1)
+            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
+            .count();
+
+        bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
     /// If shutdown was initiated and finished or not.
     pub fn is_shutdown(&self) -> bool {
         matches!(self.shutdown, ShutdownState::Success { .. })
