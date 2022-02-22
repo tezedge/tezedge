@@ -32,7 +32,7 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:v1.15.1
     environment:
       API: >
         [

@@ -17,7 +17,7 @@ services:
       - TEZOS_CONTEXT=index-log-size=2_500_000
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.9.1
+    image: tezedge/tezedge-explorer:v1.15.1
     hostname: explorer
     environment:
       - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"rust.dev.mainnet.localhost","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"monitoring"},{"name":"mempool"},{"name":"storage"}]}]
