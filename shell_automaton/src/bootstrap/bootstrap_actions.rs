@@ -15,7 +15,7 @@ use crate::current_head::CurrentHeadState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::{EnablingCondition, State};
 
-pub const MAX_PENDING_GET_OPERATIONS: usize = 256;
+pub const MAX_PENDING_GET_OPERATIONS: usize = 128;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapInitAction {}
@@ -264,7 +264,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetNextAction {
     fn is_enabled(&self, state: &State) -> bool {
         match &state.bootstrap {
             BootstrapState::PeersBlockOperationsGetPending { queue, pending, .. } => {
-                pending.len() < MAX_PENDING_GET_OPERATIONS / 2 && !queue.is_empty()
+                pending.len() < MAX_PENDING_GET_OPERATIONS && !queue.is_empty()
             }
             _ => false,
         }
@@ -395,35 +395,7 @@ pub struct BootstrapScheduleBlocksForApplyAction {}
 
 impl EnablingCondition<State> for BootstrapScheduleBlocksForApplyAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                let next_block_level = match next_block_apply_level(state) {
-                    Some(v) => v,
-                    None => return false,
-                };
-                state.block_applier.queue.len() < MAX_PENDING_GET_OPERATIONS / 2
-                    && pending
-                        .iter()
-                        .filter(|(_, b)| {
-                            b.block_level <= next_block_level
-                                && b.block_level >= next_block_level - 2
-                        })
-                        .take(1)
-                        .any(|(_, b)| b.is_success())
-            }
-            _ => false,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BootstrapScheduleBlockForApplyAction {
-    pub block_hash: BlockHash,
-}
-
-impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        BootstrapScheduleBlocksForApplyAction {}.is_enabled(state)
+        !state.block_applier.current.is_pending()
             && match &state.bootstrap {
                 BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
                     let next_block_level = match next_block_apply_level(state) {
@@ -438,6 +410,34 @@ impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
                         })
                         .take(1)
                         .any(|(_, b)| b.is_success())
+                }
+                _ => false,
+            }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapScheduleBlockForApplyAction {
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.block_applier.current.is_pending()
+            && match &state.bootstrap {
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    let next_block_level = match next_block_apply_level(state) {
+                        Some(v) => v,
+                        None => return false,
+                    };
+                    pending
+                        .get(&self.block_hash)
+                        .filter(|b| {
+                            b.block_level <= next_block_level
+                                && b.block_level >= next_block_level - 2
+                                && b.is_success()
+                        })
+                        .is_some()
                 }
                 _ => false,
             }
@@ -466,7 +466,7 @@ impl EnablingCondition<State> for BootstrapFinishedAction {
         matches!(
             &state.bootstrap,
             BootstrapState::PeersBlockOperationsGetSuccess { .. }
-        )
+        ) && !state.block_applier.current.is_pending()
     }
 }
 

@@ -263,6 +263,7 @@ where
         Action::CurrentHeadUpdate(_) => {
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
+            store.dispatch(BootstrapFinishedAction {});
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
             request_block_headers_from_available_peers(store);
