@@ -37,8 +37,8 @@ use crate::peer::remote_requests::block_header_get::*;
 use crate::peer::remote_requests::block_operations_get::*;
 use crate::peer::remote_requests::current_branch_get::*;
 use crate::peer::{
-    PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
-    PeerTryWriteLoopStartAction,
+    PeerCurrentHeadUpdateAction, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
+    PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
 };
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
@@ -391,6 +391,8 @@ pub enum Action {
 
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
+
+    PeerCurrentHeadUpdate(PeerCurrentHeadUpdateAction),
 
     PeerRemoteRequestsBlockHeaderGetEnqueue(PeerRemoteRequestsBlockHeaderGetEnqueueAction),
     PeerRemoteRequestsBlockHeaderGetInitNext(PeerRemoteRequestsBlockHeaderGetInitNextAction),

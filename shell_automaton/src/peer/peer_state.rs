@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::crypto_box::PublicKey;
 use crypto::hash::CryptoboxPublicKeyHash;
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::{ActionId, Port};
@@ -35,7 +36,7 @@ pub struct PeerHandshaked {
     pub remote_requests: PeerRemoteRequestsState,
 
     /// Level of the current head received from peer.
-    pub current_head_level: Option<i32>,
+    pub current_head: Option<BlockHeaderWithHash>,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
