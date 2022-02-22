@@ -33,11 +33,6 @@ where
 
     match &action.action {
         Action::BlockApplierApplyInit(content) => {
-            store
-                .service()
-                .statistics()
-                .map(|s| s.block_new(content.block_hash.clone()));
-
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::PrepareApplyBlockData {
                     chain_id: content.chain_id.clone(),

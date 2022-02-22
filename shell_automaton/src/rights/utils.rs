@@ -161,7 +161,6 @@ pub(super) fn random_owner(
         if let Some(delegate) = rolls_map.get(&next) {
             break delegate.clone();
         }
-        eprintln!("random_owner: loop `{next}`");
     };
 
     Ok(owner)

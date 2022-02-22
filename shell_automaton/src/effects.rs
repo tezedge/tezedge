@@ -112,6 +112,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     paused_loops_effects(store, action);
 
+    stats_current_head_effects(store, action);
+
     protocol_runner_effects(store, action);
 
     protocol_runner_spawn_server_effects(store, action);
@@ -168,8 +170,6 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     rights_effects(store, action);
 
     current_head_effects(store, action);
-
-    stats_current_head_effects(store, action);
 
     prechecker_effects(store, action);
 

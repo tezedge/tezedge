@@ -34,7 +34,7 @@ mod protocol_service;
 pub use protocol_service::{ProtocolService, ProtocolServiceDefault};
 
 mod statistics_service;
-pub use statistics_service::StatisticsService;
+pub use statistics_service::{BlockApplyStats, BlockPeerStats, StatisticsService};
 
 pub trait Service: TimeService {
     type Randomness: RandomnessService;

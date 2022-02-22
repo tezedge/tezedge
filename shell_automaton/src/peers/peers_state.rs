@@ -1,10 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+
+use crypto::hash::BlockHash;
 
 use crate::peer::{Peer, PeerStatus};
 
@@ -28,12 +31,16 @@ impl PeerBlacklistState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersState {
-    list: BTreeMap<SocketAddr, Peer>,
+    pub list: BTreeMap<SocketAddr, Peer>,
     ip_blacklist: BTreeMap<IpAddr, PeerBlacklistState>,
 
     pub dns_lookup: Option<PeersDnsLookupState>,
 
     pub check_timeouts: PeersCheckTimeoutsState,
+
+    // TODO(zura): implement p2p peer requests to better track each request.
+    /// Maps BlockHash to time request was initiated.
+    pub pending_block_header_requests: BTreeMap<BlockHash, u64>,
 }
 
 impl PeersState {
@@ -45,6 +52,8 @@ impl PeersState {
             dns_lookup: None,
 
             check_timeouts: PeersCheckTimeoutsState::new(),
+
+            pending_block_header_requests: BTreeMap::new(),
         }
     }
 
@@ -100,6 +109,10 @@ impl PeersState {
 
     pub fn iter_addr<'a>(&'a self) -> impl Iterator<Item = &'a SocketAddr> + 'a {
         self.list.keys()
+    }
+
+    pub fn iter_handshaked<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+        self.list.iter().filter(|(_, p)| p.is_handshaked())
     }
 
     #[inline(always)]

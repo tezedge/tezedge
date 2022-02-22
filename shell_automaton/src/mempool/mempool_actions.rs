@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, OperationHash};
-use tezos_messages::p2p::encoding::block_header::Level;
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
 use crate::prechecker::OperationDecodedContents;
@@ -91,6 +92,20 @@ impl EnablingCondition<State> for MempoolOperationInjectAction {
     fn is_enabled(&self, state: &State) -> bool {
         // TODO(vlad):
         let _ = state;
+        true
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BlockInjectAction {
+    pub chain_id: ChainId,
+    pub block_hash: BlockHash,
+    pub block_header: Arc<BlockHeader>,
+}
+
+impl EnablingCondition<State> for BlockInjectAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }

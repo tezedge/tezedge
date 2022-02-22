@@ -1,25 +1,42 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::hash_map;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
+use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 fn ocaml_time_normalize(ocaml_time: f64) -> u64 {
     (ocaml_time * 1_000_000_000.0) as u64
 }
 
-pub type BlocksStats = HashMap<Arc<BlockHash>, BlockStats>;
+pub type BlocksApplyStats = HashMap<BlockHash, BlockApplyStats>;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct BlockStats {
-    pub level: Option<Level>,
+pub struct BlockApplyStats {
+    pub level: Level,
+    pub block_timestamp: i64,
+    pub validation_pass: u8,
+
+    pub receive_timestamp: u64,
+
+    pub injected: bool,
+    pub baker: Option<SignaturePublicKey>,
+    pub priority: Option<u16>,
+
+    pub precheck_start: Option<u64>,
+    pub precheck_end: Option<u64>,
+
+    pub download_block_header_start: Option<u64>,
+    pub download_block_header_end: Option<u64>,
+
+    pub download_block_operations_start: Option<u64>,
+    pub download_block_operations_end: Option<u64>,
 
     pub load_data_start: Option<u64>,
     pub load_data_end: Option<u64>,
@@ -30,6 +47,22 @@ pub struct BlockStats {
 
     pub store_result_start: Option<u64>,
     pub store_result_end: Option<u64>,
+
+    pub head_send_start: Option<u64>,
+    pub head_send_end: Option<u64>,
+
+    pub peers: HashMap<SocketAddr, BlockPeerStats>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct BlockPeerStats {
+    pub node_id: Option<CryptoboxPublicKeyHash>,
+    pub head_recv: Vec<u64>,
+    pub head_send_start: Vec<u64>,
+    pub head_send_end: Vec<u64>,
+    pub get_ops_recv: Vec<(u64, i8)>,
+    pub ops_send_start: Vec<(u64, i8)>,
+    pub ops_send_end: Vec<(u64, i8)>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -93,80 +126,190 @@ impl From<&ApplyBlockExecutionTimestamps> for ApplyBlockProtocolStats {
 
 #[derive(Debug, Default)]
 pub struct StatisticsService {
-    blocks: BlocksStats,
-    blocks_by_level: VecDeque<Arc<BlockHash>>,
+    blocks_apply: BlocksApplyStats,
+    levels: VecDeque<(Level, Vec<BlockHash>)>,
 }
 
 impl StatisticsService {
-    pub fn block_stats_get_all(&self) -> &BlocksStats {
-        &self.blocks
+    pub fn block_stats_get_all(&self) -> &BlocksApplyStats {
+        &self.blocks_apply
     }
 
-    fn find_min_index_for_block_level(&self, level: Level) -> Option<usize> {
-        let first_block_level = self
-            .blocks_by_level
-            .get(0)
-            .and_then(|hash| self.blocks.get(hash))
-            .and_then(|block| block.level)?;
-
-        let index = level.checked_sub(first_block_level)?;
-        if index < 0 {
-            return None;
+    pub fn block_stats_get_by_level(&self, level: Level) -> Vec<(BlockHash, BlockApplyStats)> {
+        match self.levels.binary_search_by_key(&level, |(l, _)| *l) {
+            Ok(idx) => self.levels[idx]
+                .1
+                .iter()
+                .filter_map(|h| {
+                    self.blocks_apply
+                        .get(h)
+                        .and_then(|s| Some((h.clone(), s.clone())))
+                })
+                .collect(),
+            Err(_) => Vec::new(),
         }
-
-        Some(index as usize)
     }
 
-    fn blocks_for_level_iter<'a>(
-        &'a self,
+    fn add_block_level(
+        levels: &mut VecDeque<(Level, Vec<BlockHash>)>,
+        block_hash: BlockHash,
         level: Level,
-    ) -> impl 'a + Iterator<Item = &'a BlockStats> {
-        let start_index = self
-            .find_min_index_for_block_level(level)
-            .unwrap_or(usize::MAX);
-
-        self.blocks_by_level
-            .iter()
-            .skip(start_index)
-            .filter_map(move |hash| self.blocks.get(hash))
-            .filter(move |v| v.level.filter(|l| *l == level).is_some())
-    }
-
-    pub fn block_stats_get_by_level(&self, level: Level) -> Option<&BlockStats> {
-        self.blocks_for_level_iter(level).nth(0)
-    }
-
-    pub fn block_new(&mut self, block_hash: Arc<BlockHash>) {
-        if let hash_map::Entry::Vacant(e) = self.blocks.entry(block_hash) {
-            let block_hash = e.key().clone();
-            e.insert(Default::default());
-            self.blocks_by_level.push_back(block_hash);
-
-            if self.blocks_by_level.len() > 20000 {
-                if let Some(oldest_block) = self.blocks_by_level.pop_front() {
-                    self.blocks.remove(&oldest_block);
-                }
-            }
+    ) {
+        match levels.back_mut() {
+            Some((l, hs)) if l == &level => hs.push(block_hash.clone()),
+            Some((l, _)) if *l < level => levels.push_back((level, vec![block_hash.clone()])),
+            None => levels.push_back((level, vec![block_hash.clone()])),
+            _ => match levels.binary_search_by_key(&level, |(l, _)| *l) {
+                Ok(idx) => levels[idx].1.push(block_hash.clone()),
+                Err(idx) => levels.insert(idx, (level, vec![block_hash.clone()])),
+            },
         }
+        levels.drain(0..(levels.len().saturating_sub(120)));
+    }
+
+    pub fn block_new(
+        &mut self,
+        block_hash: BlockHash,
+        level: Level,
+        block_timestamp: i64,
+        validation_pass: u8,
+        receive_timestamp: u64,
+        peer: Option<SocketAddr>,
+        node_id: Option<CryptoboxPublicKeyHash>,
+    ) {
+        let levels = &mut self.levels;
+        let stats = self
+            .blocks_apply
+            .entry(block_hash.clone())
+            .or_insert_with(|| {
+                Self::add_block_level(levels, block_hash.clone(), level);
+                BlockApplyStats {
+                    level,
+                    block_timestamp,
+                    validation_pass,
+                    receive_timestamp,
+                    injected: peer.is_none(),
+                    ..BlockApplyStats::default()
+                }
+            });
+        if let Some(peer) = peer {
+            stats
+                .peers
+                .entry(peer)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id,
+                    ..BlockPeerStats::default()
+                })
+                .head_recv
+                .push(receive_timestamp);
+        }
+    }
+
+    pub fn block_send_start(
+        &mut self,
+        block_hash: &BlockHash,
+        peer: SocketAddr,
+        node_id: Option<&CryptoboxPublicKeyHash>,
+        time: u64,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.peers
+                .entry(peer)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id: node_id.cloned(),
+                    ..BlockPeerStats::default()
+                })
+                .head_send_start
+                .push(time);
+            v.head_send_start.get_or_insert(time)
+        });
+    }
+
+    pub fn block_send_end(
+        &mut self,
+        block_hash: &BlockHash,
+        peer: SocketAddr,
+        node_id: Option<&CryptoboxPublicKeyHash>,
+        time: u64,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.peers
+                .entry(peer)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id: node_id.cloned(),
+                    ..BlockPeerStats::default()
+                })
+                .head_send_end
+                .push(time);
+            v.head_send_end = Some(time);
+        });
+    }
+
+    pub fn block_precheck_start(&mut self, block_hash: &BlockHash, time: u64) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.precheck_start = Some(time);
+        });
+    }
+
+    pub fn block_precheck_end(
+        &mut self,
+        block_hash: &BlockHash,
+        baker: SignaturePublicKey,
+        priority: u16,
+        time: u64,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.precheck_end = Some(time);
+            v.baker = Some(baker);
+            v.priority = Some(priority);
+        });
+    }
+
+    pub fn block_header_download_start(&mut self, block_hash: &BlockHash, time: u64) {
+        self.blocks_apply
+            .get_mut(block_hash)
+            .filter(|v| v.load_data_start.is_none())
+            .map(|v| v.download_block_header_start.get_or_insert(time));
+    }
+
+    pub fn block_header_download_end(&mut self, block_hash: &BlockHash, time: u64) {
+        self.blocks_apply
+            .get_mut(block_hash)
+            .filter(|v| v.load_data_start.is_none())
+            .map(|v| v.download_block_header_end.get_or_insert(time));
+    }
+
+    pub fn block_operations_download_start(&mut self, block_hash: &BlockHash, time: u64) {
+        self.blocks_apply
+            .get_mut(block_hash)
+            .filter(|v| v.load_data_start.is_none())
+            .map(|v| v.download_block_operations_start.get_or_insert(time));
+    }
+
+    pub fn block_operations_download_end(&mut self, block_hash: &BlockHash, time: u64) {
+        self.blocks_apply
+            .get_mut(block_hash)
+            .filter(|v| v.load_data_start.is_none())
+            .map(|v| v.download_block_operations_end.get_or_insert(time));
     }
 
     /// Started loading block data from storage for block application.
     pub fn block_load_data_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks
+        self.blocks_apply
             .get_mut(block_hash)
             .map(|v| v.load_data_start = Some(time));
     }
 
     /// Finished loading block data from storage for block application.
     pub fn block_load_data_end(&mut self, block_hash: &BlockHash, block_level: Level, time: u64) {
-        self.blocks.get_mut(block_hash).map(|v| {
-            v.level = Some(block_level);
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.level = block_level;
             v.load_data_end = Some(time);
         });
     }
 
     pub fn block_apply_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks
+        self.blocks_apply
             .get_mut(block_hash)
             .map(|v| v.apply_block_start = Some(time));
     }
@@ -177,21 +320,81 @@ impl StatisticsService {
         time: u64,
         result: &ApplyBlockResponse,
     ) {
-        self.blocks.get_mut(block_hash).map(|v| {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
             v.apply_block_stats = Some((&result.execution_timestamps).into());
             v.apply_block_end = Some(time)
         });
     }
 
     pub fn block_store_result_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks
+        self.blocks_apply
             .get_mut(block_hash)
             .map(|v| v.store_result_start = Some(time));
     }
 
     pub fn block_store_result_end(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks
+        self.blocks_apply
             .get_mut(block_hash)
             .map(|v| v.store_result_end = Some(time));
+    }
+
+    pub fn block_get_operations_recv(
+        &mut self,
+        block_hash: &BlockHash,
+        time: u64,
+        address: SocketAddr,
+        node_id: Option<&CryptoboxPublicKeyHash>,
+        validation_pass: i8,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.peers
+                .entry(address)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id: node_id.cloned(),
+                    ..BlockPeerStats::default()
+                })
+                .get_ops_recv
+                .push((time, validation_pass));
+        });
+    }
+
+    pub fn block_operations_send_start(
+        &mut self,
+        block_hash: &BlockHash,
+        time: u64,
+        address: SocketAddr,
+        node_id: Option<&CryptoboxPublicKeyHash>,
+        validation_pass: i8,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.peers
+                .entry(address)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id: node_id.cloned(),
+                    ..BlockPeerStats::default()
+                })
+                .ops_send_start
+                .push((time, validation_pass));
+        });
+    }
+
+    pub fn block_operations_send_end(
+        &mut self,
+        block_hash: &BlockHash,
+        time: u64,
+        address: SocketAddr,
+        node_id: Option<&CryptoboxPublicKeyHash>,
+        validation_pass: i8,
+    ) {
+        self.blocks_apply.get_mut(block_hash).map(|v| {
+            v.peers
+                .entry(address)
+                .or_insert_with(|| BlockPeerStats {
+                    node_id: node_id.cloned(),
+                    ..BlockPeerStats::default()
+                })
+                .ops_send_end
+                .push((time, validation_pass));
+        });
     }
 }

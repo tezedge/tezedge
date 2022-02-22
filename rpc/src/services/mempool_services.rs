@@ -201,6 +201,18 @@ pub async fn inject_block(
         (Some(result_callback_sender), Some(result_callback_receiver))
     };
 
+    if let Err(err) = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::InjectBlock {
+            chain_id: chain_id.as_ref().clone(),
+            block_hash: header.hash.clone(),
+            block_header: header.header.clone(),
+        })
+        .await
+    {
+        warn!(env.log(), "state machine failed to remove ops: {}", err);
+    }
+
     let start_async = Instant::now();
 
     // notify other actors, that a block was injected
