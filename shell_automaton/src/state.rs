@@ -191,7 +191,8 @@ impl State {
     pub fn best_remote_level(&self) -> Option<i32> {
         self.peers
             .handshaked_iter()
-            .filter_map(|(_, peer)| peer.current_head_level)
+            .filter_map(|(_, peer)| peer.current_head.as_ref())
+            .map(|head| head.header.level())
             .max()
     }
 
@@ -248,7 +249,8 @@ impl State {
             .peers
             .iter()
             .filter_map(|(_, p)| p.status.as_handshaked())
-            .filter_map(|peer| peer.current_head_level)
+            .filter_map(|peer| peer.current_head.as_ref())
+            .map(|head| head.header.level())
             .filter(|level| (level - current_head_level).abs() <= 1)
             .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
             .count();

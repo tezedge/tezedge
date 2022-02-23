@@ -27,8 +27,6 @@ pub fn block_applier_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    let state = store.state.get();
-
     match &action.action {
         Action::BlockApplierEnqueueBlock(_) => {
             start_applying_next_block(store);
@@ -131,7 +129,7 @@ where
         }
         Action::BlockApplierApplyProtocolRunnerApplySuccess(_) => {
             let (block_hash, block_fitness, block_metadata, block_result) =
-                match &state.block_applier.current {
+                match &store.state().block_applier.current {
                     BlockApplierApplyState::ProtocolRunnerApplySuccess {
                         block,
                         block_meta,
@@ -223,7 +221,7 @@ where
         }
 
         Action::StorageResponseReceived(content) => {
-            let expected_req_id = match &state.block_applier.current {
+            let expected_req_id = match &store.state().block_applier.current {
                 BlockApplierApplyState::PrepareDataPending { storage_req_id, .. } => {
                     *storage_req_id
                 }
