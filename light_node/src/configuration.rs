@@ -327,6 +327,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(false)
             .conflicts_with("bootstrap-lookup-address")
             .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
+        .arg(Arg::with_name("current-head-level-override")
+            .long("current-head-level-override")
+            .global(true)
+            .takes_value(true)
+            .help("Override node's current head level in order to bootstrap from that block.")
+            .validator(parse_validator_fn!(u32, "Value must be a valid number")))
         .arg(Arg::with_name("log")
             .long("log")
             .global(true)
@@ -1059,6 +1065,9 @@ impl Environment {
                             .collect()
                     })
                     .unwrap_or_default(),
+                current_head_level_override: args
+                    .value_of("current-head-level-override")
+                    .and_then(|level| level.parse().ok()),
                 peer_threshold: PeerConnectionThreshold::try_new(
                     args.value_of("peer-thresh-low")
                         .unwrap_or("")

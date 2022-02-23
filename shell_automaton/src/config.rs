@@ -12,6 +12,7 @@ use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration,
 };
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
@@ -98,6 +99,11 @@ pub struct Config {
 
     pub bootstrap_block_header_get_timeout: Duration,
     pub bootstrap_block_operations_get_timeout: Duration,
+
+    /// Override level that we will start bootstrapping from.
+    /// If we don't have block with such level in storage, we will use
+    /// actuall current head stored in storage instead.
+    pub current_head_level_override: Option<Level>,
 
     /// If `Some(interval)` record/persist state snapshots to storage
     /// every `interval` actions.
@@ -203,6 +209,8 @@ pub fn default_test_config() -> Config {
 
         bootstrap_block_header_get_timeout: Duration::from_millis(500),
         bootstrap_block_operations_get_timeout: Duration::from_millis(1000),
+
+        current_head_level_override: None,
 
         record_state_snapshots_with_interval: None,
         record_actions: false,

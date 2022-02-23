@@ -17,6 +17,7 @@ use storage::{PersistentStorage, StorageInitInfo};
 
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 pub use shell_automaton::service::actors_service::{
@@ -57,6 +58,8 @@ pub struct P2p {
 
     /// Peers (IP:port) which we try to connect all the time
     pub bootstrap_peers: Vec<SocketAddr>,
+
+    pub current_head_level_override: Option<Level>,
 
     /// Randomness seed for [shell_automaton::ShellAutomaton].
     pub randomness_seed: Option<u64>,
@@ -206,6 +209,8 @@ impl ShellAutomatonManager {
 
             bootstrap_block_header_get_timeout: Duration::from_millis(500),
             bootstrap_block_operations_get_timeout: Duration::from_millis(1000),
+
+            current_head_level_override: p2p_config.current_head_level_override,
 
             record_state_snapshots_with_interval: match p2p_config
                 .record_shell_automaton_state_snapshots
