@@ -10,6 +10,7 @@ use crypto::{
     hash::BlockHash,
     seeded_step::{Seed, Step},
 };
+use storage::BlockHeaderWithHash;
 use tezos_messages::{
     base::fitness_comparator::FitnessWrapper,
     p2p::{
@@ -52,7 +53,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             let peer = content.peer;
             let branch = &content.current_branch;
             let branch_level = branch.current_head().level();
-            let branch_hash = match branch.current_head().message_typed_hash() {
+            let branch_hash = match branch.current_head().message_typed_hash::<BlockHash>() {
                 Ok(v) => v,
                 Err(_) => return,
             };
@@ -60,14 +61,18 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 state,
                 peer,
                 branch_level,
-                branch_hash,
+                branch_hash.clone(),
                 branch.history(),
             ) {
                 Some(v) => v,
                 None => return,
             };
 
-            if !can_accept_new_head(state, branch.current_head()) {
+            let head = BlockHeaderWithHash {
+                hash: branch_hash.clone(),
+                header: branch.current_head().clone().into(),
+            };
+            if !state.can_accept_new_head(&head) {
                 return;
             }
 
@@ -78,20 +83,13 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     ..
                 } => {
                     peer_branches.insert(content.peer, content.current_branch.clone());
-                    let level = content.current_branch.current_head().level();
-
                     IntoIterator::into_iter([
-                        Ok((
-                            level - 1,
-                            content.current_branch.current_head().predecessor().clone(),
-                        )),
-                        content
-                            .current_branch
-                            .current_head()
-                            .message_typed_hash()
-                            .map(|hash| (level, hash)),
+                        (
+                            branch_level - 1,
+                            branch.current_head().predecessor().clone(),
+                        ),
+                        (branch_level, branch_hash.clone()),
                     ])
-                    .filter_map(Result::ok)
                     .for_each(|(level, block_hash)| {
                         block_supporters
                             .entry(block_hash)
@@ -190,59 +188,73 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 _ => {}
             }
         }
-        // TODO(zura): maybe add another action.
-        Action::PeerCurrentHeadUpdate(content) => {
-            if !can_accept_new_head(state, &content.current_head.header) {
-                return;
+        Action::PeerCurrentHeadUpdate(content) => match &mut state.bootstrap {
+            BootstrapState::PeersBlockHeadersGetPending {
+                main_chain_last_level,
+                main_chain_last_hash,
+                main_chain,
+                peer_intervals,
+                ..
+            } => {
+                let level = content.current_head.header.level();
+                let hash = &content.current_head.hash;
+                let is_same_chain = if *main_chain_last_level >= level {
+                    let index = *main_chain_last_level - level;
+                    main_chain
+                        .get(index as usize)
+                        .filter(|b| &b.block_hash == hash)
+                        .is_some()
+                } else if main_chain_last_hash == content.current_head.header.predecessor() {
+                    true
+                } else {
+                    false
+                };
+                if is_same_chain {
+                    peer_intervals
+                        .last_mut()
+                        .map(|p| p.peers.insert(content.address));
+                }
             }
-            match &mut state.bootstrap {
-                BootstrapState::PeersBlockHeadersGetPending {
-                    main_chain_last_level,
-                    main_chain_last_hash,
-                    main_chain,
-                    peer_intervals,
-                    ..
-                } => {
-                    let level = content.current_head.header.level();
-                    let hash = &content.current_head.hash;
-                    let is_same_chain = if *main_chain_last_level >= level {
-                        let index = *main_chain_last_level - level;
-                        main_chain
-                            .get(index as usize)
-                            .filter(|b| &b.block_hash == hash)
-                            .is_some()
-                    } else if main_chain_last_hash == content.current_head.header.predecessor() {
-                        true
+            _ => {}
+        },
+        Action::BootstrapFromPeerCurrentHead(content) => {
+            let peers = state
+                .peers
+                .handshaked_iter()
+                .filter(|(_, p)| {
+                    let head = match p.current_head.as_ref() {
+                        Some(v) => v,
+                        None => return false,
+                    };
+
+                    if head.header.level() == content.current_head.header.level() {
+                        head.hash == content.current_head.hash
+                    } else if head.header.level() - 1 == content.current_head.header.level() {
+                        head.header.predecessor() == &content.current_head.hash
                     } else {
                         false
-                    };
-                    if is_same_chain {
-                        peer_intervals
-                            .last_mut()
-                            .map(|p| p.peers.insert(content.address));
                     }
-                }
-                BootstrapState::Finished { .. } => {
-                    state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
+                })
+                .map(|(addr, _)| addr)
+                .chain(std::iter::once(content.peer))
+                .collect();
+            state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
+                time: action.time_as_nanos(),
+                timeouts_last_check: None,
+                main_chain_last_level: content.current_head.header.level(),
+                main_chain_last_hash: content.current_head.hash.clone(),
+                main_chain: Default::default(),
+                peer_intervals: vec![PeerIntervalState {
+                    peers,
+                    downloaded: Default::default(),
+                    current: PeerIntervalCurrentState::Pending {
                         time: action.time_as_nanos(),
-                        timeouts_last_check: None,
-                        main_chain_last_level: content.current_head.header.level(),
-                        main_chain_last_hash: content.current_head.hash.clone(),
-                        main_chain: Default::default(),
-                        peer_intervals: vec![PeerIntervalState {
-                            peers: std::iter::once(content.address).collect(),
-                            downloaded: Default::default(),
-                            current: PeerIntervalCurrentState::Pending {
-                                time: action.time_as_nanos(),
-                                peer: content.address,
-                                block_level: content.current_head.header.level(),
-                                block_hash: content.current_head.hash.clone(),
-                            },
-                        }],
-                    };
-                }
-                _ => {}
-            }
+                        peer: content.peer,
+                        block_level: content.current_head.header.level(),
+                        block_hash: content.current_head.hash.clone(),
+                    },
+                }],
+            };
         }
         Action::BootstrapPeersMainBranchFindSuccess(_) => match &mut state.bootstrap {
             BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
@@ -787,28 +799,3 @@ fn peer_branch_with_level_iter<'a>(
 // fn fitness_gt(left_fitness: &Fitness, right_fitness: &Fitness) -> bool {
 //     FitnessWrapper::new(right_fitness).gt(&FitnessWrapper::new(left_fitness))
 // }
-
-fn can_accept_new_head(state: &State, header: &BlockHeader) -> bool {
-    let current_head = match state.current_head.get() {
-        Some(v) => v,
-        None => return false,
-    };
-
-    if current_head.header.level() > header.level() {
-        return false;
-    }
-    if current_head.header.level() == header.level() {
-        return header
-            .message_typed_hash::<BlockHash>()
-            .ok()
-            .map(|hash| current_head.hash != hash)
-            .unwrap_or(false);
-    }
-
-    // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
-    //     return false;
-    // }
-
-    // TODO(zura): other checks
-    true
-}

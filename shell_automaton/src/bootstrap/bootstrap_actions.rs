@@ -471,6 +471,19 @@ impl EnablingCondition<State> for BootstrapFinishedAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapFromPeerCurrentHeadAction {
+    pub peer: SocketAddr,
+    pub current_head: BlockHeaderWithHash,
+}
+
+impl EnablingCondition<State> for BootstrapFromPeerCurrentHeadAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(&state.bootstrap, BootstrapState::Finished { .. })
+            && state.can_accept_new_head(&self.current_head)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapCheckTimeoutsInitAction {}
 
 impl EnablingCondition<State> for BootstrapCheckTimeoutsInitAction {
