@@ -196,30 +196,32 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
             match &mut state.bootstrap {
-                // TODO(zura).
-                // BootstrapState::PeersBlockHeadersGetPending { main_chain_last_level, main_chain_last_hash, main_chain, peer_intervals, .. } => {
-                //     let level = content.current_head.header.level();
-                //     let is_same_chain = if *main_chain_last_level >= level {
-                //         let index = *main_chain_last_level - *level;
-                //         main_chain.get(index).filter()
-                //     } else if main_chain_last_hash == content.current_head.header.predecessor() {
-
-                //     }
-                //             if let Some(v) = main_chain.get(index as usize) {
-                //                 if &v.block_hash == hash {
-                //                     peer_intervals.last_mut().map(|p| p.peers.insert(peer));
-                //                     return true;
-                //                 }
-                //             }
-                //     if let Some(interval) = peer_intervals.last_mut() {
-                //         if interval.current.is_pending_block_hash_eq(&content.current_head.hash) {
-                //         }
-                //     };
-
-                //     if is_same_chain {
-                //         peer_intervals.last_mut().map(|p| p.peers.insert(content.address));
-                //     }
-                // }
+                BootstrapState::PeersBlockHeadersGetPending {
+                    main_chain_last_level,
+                    main_chain_last_hash,
+                    main_chain,
+                    peer_intervals,
+                    ..
+                } => {
+                    let level = content.current_head.header.level();
+                    let hash = &content.current_head.hash;
+                    let is_same_chain = if *main_chain_last_level >= level {
+                        let index = *main_chain_last_level - level;
+                        main_chain
+                            .get(index as usize)
+                            .filter(|b| &b.block_hash == hash)
+                            .is_some()
+                    } else if main_chain_last_hash == content.current_head.header.predecessor() {
+                        true
+                    } else {
+                        false
+                    };
+                    if is_same_chain {
+                        peer_intervals
+                            .last_mut()
+                            .map(|p| p.peers.insert(content.address));
+                    }
+                }
                 BootstrapState::Finished { .. } => {
                     state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                         time: action.time_as_nanos(),
