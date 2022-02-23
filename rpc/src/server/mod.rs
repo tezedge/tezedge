@@ -11,6 +11,7 @@ use std::{
 };
 
 use getset::{CopyGetters, Getters};
+use hyper::body::HttpBody;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
@@ -228,20 +229,36 @@ pub fn spawn_server(
                             not_found()
                         };
 
-                        slog::debug!(&log, "Rpc response";
-                            "remote_addr" => remote_addr,
-                            "method" => req_method.to_string(),
-                            "normalized_path" => &normalized_path,
-                            "status" => match &result {
-                                Ok(v) => v.status().to_string(),
-                                Err(_) => "500".to_owned(),
-                            },
-                            "body" => slog::FnValue(|_| {
-                                match &result {
-                                    Ok(resp) => format!("{:?}", resp.body()),
-                                    Err(err) => format!("Err: {}", err),
-                                }
-                            }));
+                        let result = match result {
+                            Ok(v) => {
+                                let remote_addr = remote_addr.clone();
+                                let req_method = req_method.clone();
+                                let normalized_path = normalized_path.clone();
+                                let status = v.status();
+
+                                let data = v.map_data(move |data| {
+                                    slog::trace!(&log, "Rpc response";
+                                        "remote_addr" => remote_addr,
+                                        "method" => req_method.to_string(),
+                                        "normalized_path" => &normalized_path,
+                                        "status" => status.to_string(),
+                                        "body" => slog::FnValue(|_| {
+                                            format!("{:?}", data)
+                                        }));
+                                    data
+                                });
+                                Ok(Response::new(data))
+                            }
+                            Err(err) => {
+                                slog::trace!(&log, "Rpc response error";
+                                    "remote_addr" => remote_addr,
+                                    "method" => req_method.to_string(),
+                                    "normalized_path" => &normalized_path,
+                                    "status" => "500".to_owned(),
+                                    "body" => slog::FnValue(|_| format!("Err: {}", err)));
+                                Err(err)
+                            }
+                        };
 
                         result
                     }
