@@ -28,6 +28,10 @@ pub fn peer_remote_requests_block_header_get_reducer(state: &mut State, action: 
             let next_block = queue.iter().nth(0).cloned();
             let block_hash = next_block
                 .filter(|nb| nb == &content.block_hash)
+                .map(|key| {
+                    queue.remove(&key);
+                    key
+                })
                 .unwrap_or_else(|| content.block_hash.clone());
             peer.remote_requests.block_header_get.current =
                 PeerRemoteRequestsBlockHeaderGetCurrentState::Pending {

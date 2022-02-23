@@ -31,6 +31,10 @@ pub fn peer_remote_requests_block_operations_get_reducer(
             let next_key = queue.iter().nth(0).cloned();
             let key = next_key
                 .filter(|nb| nb == &content.key)
+                .map(|key| {
+                    queue.remove(&key);
+                    key
+                })
                 .unwrap_or_else(|| content.key.clone());
             peer.remote_requests.block_operations_get.current =
                 PeerRemoteRequestsBlockOperationsGetCurrentState::Pending {
