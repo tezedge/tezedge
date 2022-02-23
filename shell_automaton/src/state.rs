@@ -200,6 +200,7 @@ impl State {
     /// Global bootstrap status is considered as bootstrapped, only if
     /// number of bootstrapped peers is above threshold.
     pub fn is_bootstrapped(&self) -> bool {
+        // TODO(zura): maybe use timestamps instead.
         let current_head_level = match self.current_head_level() {
             Some(v) => v,
             None => return false,
@@ -210,16 +211,7 @@ impl State {
             .handshaked_iter()
             .filter_map(|(_, peer)| peer.current_head.as_ref())
             .map(|current_head| current_head.header.level())
-            .filter_map(|level| {
-                // calculate what percentage is our current head of
-                // peer's current head. If percentage is greater than
-                // or equal to `Self::HIGH_LEVEL_MARGIN_PERCENTAGE`,
-                // then we are in sync with the peer.
-                current_head_level
-                    .checked_mul(100)
-                    .and_then(|l| l.checked_div(level))
-            })
-            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
+            .filter(|level| current_head_level + 1 >= *level)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
