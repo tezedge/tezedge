@@ -10,7 +10,6 @@ use crypto::hash::{BlockHash, OperationListListHash};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
-use tezos_messages::p2p::encoding::prelude::CurrentBranch;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BootstrapError {}
@@ -388,6 +387,12 @@ impl PeerBlockOperationsGetState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PeerBranch {
+    pub current_head: BlockHeaderWithHash,
+    pub history: Vec<BlockHash>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BootstrapState {
     Idle {},
 
@@ -410,7 +415,7 @@ pub enum BootstrapState {
         time: u64,
 
         /// Current branches received from peers.
-        peer_branches: BTreeMap<SocketAddr, CurrentBranch>,
+        peer_branches: BTreeMap<SocketAddr, PeerBranch>,
 
         /// Block hashes and their supporting peers. Once we have found
         /// block hash on which majority of peers agree on, we start
@@ -421,7 +426,7 @@ pub enum BootstrapState {
         time: u64,
 
         main_block: (Level, BlockHash),
-        peer_branches: BTreeMap<SocketAddr, CurrentBranch>,
+        peer_branches: BTreeMap<SocketAddr, PeerBranch>,
     },
 
     PeersBlockHeadersGetPending {

@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::peer::PeerStatus;
 use crate::{Action, ActionWithMeta, Service, Store};
 
 #[allow(unused)]

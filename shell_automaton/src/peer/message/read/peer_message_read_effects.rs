@@ -195,24 +195,34 @@ where
                     if msg.chain_id() != &store.state().config.chain_id {
                         return;
                     }
-                    update_peer_current_head(
-                        store,
-                        content.address,
-                        msg.current_block_header().clone(),
-                    );
+                    let current_head =
+                        match BlockHeaderWithHash::new(msg.current_block_header().clone()) {
+                            Ok(v) => v,
+                            Err(_) => return,
+                        };
+                    store.dispatch(PeerCurrentHeadUpdateAction {
+                        address: content.address,
+                        current_head,
+                    });
                 }
                 PeerMessage::CurrentBranch(msg) => {
                     if msg.chain_id() != &store.state().config.chain_id {
                         return;
                     }
-                    update_peer_current_head(
-                        store,
-                        content.address,
-                        msg.current_branch().current_head().clone(),
-                    );
+                    let current_head =
+                        match BlockHeaderWithHash::new(msg.current_branch().current_head().clone())
+                        {
+                            Ok(v) => v,
+                            Err(_) => return,
+                        };
+                    store.dispatch(PeerCurrentHeadUpdateAction {
+                        address: content.address,
+                        current_head: current_head.clone(),
+                    });
                     store.dispatch(BootstrapPeerCurrentBranchReceivedAction {
                         peer: content.address,
-                        current_branch: msg.current_branch().clone(),
+                        current_head,
+                        history: msg.current_branch().history().clone(),
                     });
                 }
                 PeerMessage::GetBlockHeaders(msg) => {
@@ -317,23 +327,5 @@ where
             });
         }
         _ => {}
-    }
-}
-pub fn update_peer_current_head<S>(
-    store: &mut Store<S>,
-    address: SocketAddr,
-    block_header: BlockHeader,
-) where
-    S: Service,
-{
-    match BlockHeaderWithHash::new(block_header) {
-        Ok(current_head) => {
-            store.dispatch(PeerCurrentHeadUpdateAction {
-                address,
-                current_head,
-            });
-        }
-        // TODO(zura): log
-        Err(_) => return,
     }
 }

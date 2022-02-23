@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
-use tezos_messages::p2p::encoding::prelude::CurrentBranch;
 
 use crate::bootstrap::BootstrapState;
 use crate::current_head::CurrentHeadState;
@@ -67,7 +66,8 @@ impl EnablingCondition<State> for BootstrapPeersMainBranchFindPendingAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapPeerCurrentBranchReceivedAction {
     pub peer: SocketAddr,
-    pub current_branch: CurrentBranch,
+    pub current_head: BlockHeaderWithHash,
+    pub history: Vec<BlockHash>,
 }
 
 impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
@@ -463,10 +463,14 @@ pub struct BootstrapFinishedAction {}
 
 impl EnablingCondition<State> for BootstrapFinishedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        matches!(
-            &state.bootstrap,
-            BootstrapState::PeersBlockOperationsGetSuccess { .. }
-        ) && !state.block_applier.current.is_pending()
+        !state.block_applier.current.is_pending()
+            && match &state.bootstrap {
+                BootstrapState::PeersMainBranchFindSuccess { main_block, .. } => {
+                    state.is_same_head(main_block.0, &main_block.1)
+                }
+                BootstrapState::PeersBlockOperationsGetSuccess { .. } => true,
+                _ => false,
+            }
     }
 }
 
@@ -480,6 +484,7 @@ impl EnablingCondition<State> for BootstrapFromPeerCurrentHeadAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(&state.bootstrap, BootstrapState::Finished { .. })
             && state.can_accept_new_head(&self.current_head)
+            && !state.is_same_head(self.current_head.header.level(), &self.current_head.hash)
     }
 }
 
