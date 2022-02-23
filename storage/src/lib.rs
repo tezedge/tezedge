@@ -80,12 +80,12 @@ impl BlockHeaderWithHash {
     /// Create block header extensions from plain block header
     /// TODO https://viablesystems.atlassian.net/browse/TE-674
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
-        let hash = if let Some(hash) = block_header.hash().as_ref() {
-            hash.as_slice().try_into()?
-        } else if block_header.level() == 0 {
+        let hash = if block_header.level() == 0 {
             // For genesis block, we don't get the genesis block hash by
             // hashing the header. Instead we need to use predecessor.
             block_header.predecessor().clone()
+        } else if let Some(hash) = block_header.hash().as_ref() {
+            hash.as_slice().try_into()?
         } else {
             block_header.message_hash()?.try_into()?
         };
