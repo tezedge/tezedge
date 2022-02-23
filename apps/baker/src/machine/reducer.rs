@@ -272,7 +272,19 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
         }
         Action::NewOperationSeen(NewOperationSeenAction { operations }) => {
             match state {
-                State::Ready { config, level_state: LevelState { delegate_slots, endorsable_payload, latest_proposal, locked_round, current_level, .. }, round_state, endorsement, .. } => {
+                State::Ready {
+                    config,
+                    level_state: LevelState {
+                        delegate_slots,
+                        endorsable_payload,
+                        latest_proposal,
+                        locked_round,
+                        ..
+                    },
+                    round_state,
+                    endorsement,
+                    ..
+                } => {
                     if let Some(e) = endorsable_payload  {
                         if e.prequorum.round > latest_proposal.block.round {
                             return;
@@ -292,7 +304,13 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     for content in operations.iter().map(|op| &op.contents).flatten() {
                         match content {
                             Contents::Preendorsement(v) => {
-                                e.prequorum.firsts_slot.push(v.slot);
+                                if v.level == latest_proposal.block.level &&
+                                    v.block_payload_hash == latest_proposal.block.payload_hash &&
+                                    v.round == latest_proposal.block.round &&
+                                    v.round == round_state.current_round
+                                {
+                                    e.prequorum.firsts_slot.push(v.slot);
+                                }
                             }
                             Contents::Endorsement(v) => {
                                 // TODO: quorum
@@ -321,22 +339,28 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     };
                     if power >= config.quorum_size {
                         if let Some(slot) = delegate_slots.slot {
-                            let inlined = InlinedEndorsementMempoolContentsEndorsementVariant {
-                                slot,
-                                level: *current_level,
-                                round: latest_proposal.block.round,
-                                block_payload_hash: latest_proposal.block.payload_hash.clone(),
+                            let is_locked = match &*locked_round {
+                                Some(l) => l.payload_hash == latest_proposal.block.payload_hash,
+                                None => false,
                             };
-                            *endorsement = Some(EndorsementUnsignedOperation {
-                                branch: latest_proposal.predecessor.hash.clone(),
-                                content: InlinedEndorsementMempoolContents::Endorsement(inlined),
-                            });
-                            round_state.current_phase = Phase::CollectingEndorsements;
-                            let l = locked_round.take().unwrap_or(LockedRound {
-                                round: latest_proposal.block.round,
-                                payload_hash: latest_proposal.block.payload_hash.clone(),
-                            });
-                            *locked_round = Some(l);
+                            if !is_locked {
+                                let inlined = InlinedEndorsementMempoolContentsEndorsementVariant {
+                                    slot,
+                                    level: latest_proposal.block.level,
+                                    round: latest_proposal.block.round,
+                                    block_payload_hash: latest_proposal.block.payload_hash.clone(),
+                                };
+                                *endorsement = Some(EndorsementUnsignedOperation {
+                                    branch: latest_proposal.predecessor.hash.clone(),
+                                    content: InlinedEndorsementMempoolContents::Endorsement(inlined),
+                                });
+                                round_state.current_phase = Phase::CollectingEndorsements;
+                                let l = locked_round.take().unwrap_or(LockedRound {
+                                    round: latest_proposal.block.round,
+                                    payload_hash: latest_proposal.block.payload_hash.clone(),
+                                });
+                                *locked_round = Some(l);
+                            }
                         }
                     }
                 }
@@ -347,6 +371,13 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             State::Ready { round_state, .. } => {
                 let _ = now_timestamp;
                 round_state.next_timeout = None;
+                round_state.current_round += 1;
+
+                let proposer_of_next_level = false;
+                let proposer_of_next_round = false;
+                if !proposer_of_next_level && !proposer_of_next_round {
+                    round_state.current_phase = Phase::NonProposer;
+                }
             }
             _ => (),
         },
@@ -364,6 +395,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
     }
 }
 
+#[rustfmt::skip]
 fn may_update_endorsable_payload_with_internal_pqc(
     level_state: &mut LevelState,
     new_proposal: &Proposal,

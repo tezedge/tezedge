@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use redux_rs::EnablingCondition;
 
 use crypto::hash::{ChainId, OperationHash};
-use tezos_messages::protocol::proto_012::operation::Operation;
+use tezos_messages::protocol::proto_012::operation::{Operation, InlinedEndorsementMempoolContents};
 
 use crate::{
     machine::state::State,
     rpc_client::{Constants, RpcError},
-    types::{DelegateSlots, Proposal, Timestamp},
+    types::{DelegateSlots, EndorsementUnsignedOperation, Proposal, Timestamp},
 };
 
 #[derive(Debug)]
@@ -172,7 +172,19 @@ pub struct InjectEndorsementInitAction {}
 impl EnablingCondition<State> for InjectEndorsementInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state {
-            State::Ready { endorsement, .. } => endorsement.is_some(),
+            State::Ready {
+                endorsement:
+                    Some(EndorsementUnsignedOperation {
+                        content: InlinedEndorsementMempoolContents::Endorsement(e),
+                        ..
+                    }),
+                level_state,
+                ..
+            } => {
+                // endorsement should be included in next block
+                // after the block where consensus was observed
+                e.level + 1 == level_state.current_level
+            }
             _ => false,
         }
     }
