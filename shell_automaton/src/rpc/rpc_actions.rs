@@ -5,6 +5,7 @@ use crypto::hash::BlockHash;
 
 use crate::{service::rpc_service::RpcId, EnablingCondition, State};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RpcBootstrappedAction {
     pub rpc_id: RpcId,
@@ -16,6 +17,7 @@ impl EnablingCondition<State> for RpcBootstrappedAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RpcBootstrappedNewBlockAction {
     pub block: BlockHash,
@@ -29,6 +31,7 @@ impl EnablingCondition<State> for RpcBootstrappedNewBlockAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RpcBootstrappedDoneAction {
     pub rpc_ids: Vec<RpcId>,

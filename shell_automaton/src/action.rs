@@ -615,6 +615,7 @@ impl From<ActionWithMeta> for ActionKind {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BootstrapNewCurrentHeadAction {
     pub chain_id: std::sync::Arc<crypto::hash::ChainId>,

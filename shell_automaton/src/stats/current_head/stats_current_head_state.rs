@@ -10,6 +10,7 @@ pub struct CurrentHeadStats {
     pub pending_messages: HashMap<SocketAddr, PendingMessage>,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PendingMessage {
     CurrentHead {

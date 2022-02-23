@@ -22,6 +22,7 @@ use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
 use shell_automaton::stats::current_head::stats_current_head_actions;
 //use shell_automaton::storage::request::StorageRequestSuccessAction;
+use shell_automaton::action::BootstrapNewCurrentHeadAction;
 use shell_automaton::MioWaitForEventsAction;
 
 use shell_automaton::MioTimeoutEvent;
@@ -159,7 +160,7 @@ impl AllActionsTest {
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum StatsActionTest {
-    TestStatsCurrentHeadReceivedAction(stats_current_head_actions::StatsCurrentHeadReceivedAction),
+    //TestStatsCurrentHeadReceivedAction(stats_current_head_actions::StatsCurrentHeadReceivedAction),
     TestStatsCurrentHeadPrecheckSuccessAction(
         stats_current_head_actions::StatsCurrentHeadPrecheckSuccessAction,
     ),
@@ -171,27 +172,31 @@ enum StatsActionTest {
         stats_current_head_actions::StatsCurrentHeadSentErrorAction,
     ),
     //TestStatsCurrentHeadRpcGetAction(stats_current_head_actions::StatsCurrentHeadRpcGetAction),
-    TestStatsCurrentHeadPruneAction(stats_current_head_actions::StatsCurrentHeadPruneAction),
-    TestStatsCurrentHeadRpcGetPeersAction(
-        stats_current_head_actions::StatsCurrentHeadRpcGetPeersAction,
-    ),
-    TestStatsCurrentHeadRpcGetApplicationAction(
-        stats_current_head_actions::StatsCurrentHeadRpcGetApplicationAction,
+    //TestStatsCurrentHeadPruneAction(stats_current_head_actions::StatsCurrentHeadPruneAction),
+    //TestStatsCurrentHeadRpcGetPeersAction(
+    //    stats_current_head_actions::StatsCurrentHeadRpcGetPeersAction,
+    //),
+    //TestStatsCurrentHeadRpcGetApplicationAction(
+    //    stats_current_head_actions::StatsCurrentHeadRpcGetApplicationAction,
+    //),
+    TestStatsCurrentHeadPrecheckInitAction(
+        stats_current_head_actions::StatsCurrentHeadPrecheckInitAction,
     ),
 }
 
 impl StatsActionTest {
     fn to_action(&self) -> Action {
         match self.clone() {
-            Self::TestStatsCurrentHeadReceivedAction(a) => a.into(),
+            //Self::TestStatsCurrentHeadReceivedAction(a) => a.into(),
             Self::TestStatsCurrentHeadPrecheckSuccessAction(a) => a.into(),
             Self::TestStatsCurrentHeadPrepareSendAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentErrorAction(a) => a.into(),
             //Self::TestStatsCurrentHeadRpcGetAction(a) => a.into(),
-            Self::TestStatsCurrentHeadPruneAction(a) => a.into(),
-            Self::TestStatsCurrentHeadRpcGetPeersAction(a) => a.into(),
-            Self::TestStatsCurrentHeadRpcGetApplicationAction(a) => a.into(),
+            //Self::TestStatsCurrentHeadPruneAction(a) => a.into(),
+            //Self::TestStatsCurrentHeadRpcGetPeersAction(a) => a.into(),
+            //Self::TestStatsCurrentHeadRpcGetApplicationAction(a) => a.into(),
+            Self::TestStatsCurrentHeadPrecheckInitAction(a) => a.into(),
         }
     }
 }
@@ -645,6 +650,7 @@ enum MempoolActionTest {
     TestMempoolRpcEndorsementsStatusGetAction(
         mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     ),
+    TestMempoolBlockInjectAction(mempool_actions::BlockInjectAction),
 }
 
 impl MempoolActionTest {
@@ -671,6 +677,7 @@ impl MempoolActionTest {
             Self::TestMempoolFlushAction(a) => a.into(),
             Self::TestMempoolOperationDecodedAction(a) => a.into(),
             Self::TestMempoolRpcEndorsementsStatusGetAction(a) => a.into(),
+            Self::TestMempoolBlockInjectAction(a) => a.into(),
         }
     }
 }
@@ -837,6 +844,7 @@ enum ControlActionTest {
     TestPeerTryWriteLoopFinishAction(PeerTryWriteLoopFinishAction),
     TestPeerTryReadLoopStartAction(PeerTryReadLoopStartAction),
     TestPeerTryReadLoopFinishAction(PeerTryReadLoopFinishAction),
+    TestBootstrapNewCurrentHeadAction(BootstrapNewCurrentHeadAction),
 }
 
 impl ControlActionTest {
@@ -861,6 +869,7 @@ impl ControlActionTest {
             Self::TestPeerTryWriteLoopFinishAction(a) => a.into(),
             Self::TestPeerTryReadLoopStartAction(a) => a.into(),
             Self::TestPeerTryReadLoopFinishAction(a) => a.into(),
+            Self::TestBootstrapNewCurrentHeadAction(a) => a.into(),
         }
     }
 }
@@ -1334,6 +1343,7 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::MempoolFlush(a) => a.is_enabled(state),
         Action::MempoolOperationDecoded(a) => a.is_enabled(state),
         Action::MempoolRpcEndorsementsStatusGet(a) => a.is_enabled(state),
+        Action::BlockInject(a) => a.is_enabled(state),
         Action::PrecheckerPrecheckOperationRequest(a) => a.is_enabled(state),
         Action::PrecheckerPrecheckOperationResponse(a) => a.is_enabled(state),
         Action::PrecheckerCacheAppliedBlock(a) => a.is_enabled(state),
@@ -1390,15 +1400,19 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::CurrentHeadError(a) => a.is_enabled(state),
         Action::CurrentHeadApply(a) => a.is_enabled(state),
         Action::CurrentHeadPrecacheBakingRights(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadReceived(a) => a.is_enabled(state),
+        Action::StatsCurrentHeadPrecheckInit(a) => a.is_enabled(state),
+        //Action::StatsCurrentHeadReceived(a) => a.is_enabled(state),
         Action::StatsCurrentHeadPrecheckSuccess(a) => a.is_enabled(state),
         Action::StatsCurrentHeadPrepareSend(a) => a.is_enabled(state),
         Action::StatsCurrentHeadSent(a) => a.is_enabled(state),
         Action::StatsCurrentHeadSentError(a) => a.is_enabled(state),
         //Action::StatsCurrentHeadRpcGet(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadPrune(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadRpcGetPeers(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadRpcGetApplication(a) => a.is_enabled(state),
+        //Action::StatsCurrentHeadPrune(a) => a.is_enabled(state),
+        //Action::StatsCurrentHeadRpcGetPeers(a) => a.is_enabled(state),
+        //Action::StatsCurrentHeadRpcGetApplication(a) => a.is_enabled(state),
+        Action::RpcBootstrapped(a) => a.is_enabled(state),
+        Action::RpcBootstrappedNewBlock(a) => a.is_enabled(state),
+        Action::RpcBootstrappedDone(a) => a.is_enabled(state),
         Action::StorageBlockHeaderGet(a) => a.is_enabled(state),
         Action::StorageBlockHeaderOk(a) => a.is_enabled(state),
         Action::StorageBlockHeaderError(a) => a.is_enabled(state),
@@ -1459,6 +1473,7 @@ fn is_action_enabled(action: Action, state: &State) -> bool {
         Action::ProtocolRunnerShutdownInit(a) => a.is_enabled(state),
         Action::ProtocolRunnerShutdownPending(a) => a.is_enabled(state),
         Action::ProtocolRunnerShutdownSuccess(a) => a.is_enabled(state),
+        Action::BootstrapNewCurrentHead(a) => a.is_enabled(state),
     }
 }
 

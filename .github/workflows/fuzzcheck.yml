@@ -1,0 +1,27 @@
+name: fuzzcheck
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+
+jobs:
+  fuzzcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Rust (regular)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-21
+          default: true
+      - name: cargo rustc
+        uses: actions-rs/cargo@v1
+        env:
+          CARGO_BUILD_PIPELINING: false
+          RUSTFLAGS: -Ccodegen-units=1
+        with:
+          command: rustc
+          args: --manifest-path shell_automaton/Cargo.toml --test "action_fuzz" --release --all-features --target-dir "target/fuzzcheck" --features "fuzzing" -- -Zinstrument-coverage=except-unused-functions -Zno-profiler-runtime
+
+
