@@ -27,7 +27,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetEnqueueAct
             .get(&self.address)
             .and_then(|p| p.status.as_handshaked())
             .filter(|p| {
-                p.remote_requests
+                !p.remote_requests
                     .block_operations_get
                     .queue
                     .contains(&self.key)
