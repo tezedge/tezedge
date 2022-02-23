@@ -23,7 +23,7 @@ use crate::{Action, ActionWithMeta, State};
 
 use super::{
     BlockWithDownloadedHeader, BootstrapBlockOperationGetState, BootstrapState,
-    PeerBlockOperationsGetState, PeerIntervalCurrentState, PeerIntervalState,
+    PeerBlockOperationsGetState, PeerBranch, PeerIntervalCurrentState, PeerIntervalState,
 };
 pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
@@ -51,28 +51,21 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::BootstrapPeerCurrentBranchReceived(content) => {
             let peer = content.peer;
-            let branch = &content.current_branch;
-            let branch_level = branch.current_head().level();
-            let branch_hash = match branch.current_head().message_typed_hash::<BlockHash>() {
-                Ok(v) => v,
-                Err(_) => return,
-            };
+            let branch_header = &content.current_head.header;
+            let branch_level = branch_header.level();
+            let branch_hash = content.current_head.hash.clone();
             let branch_iter = match peer_branch_with_level_iter(
                 state,
                 peer,
                 branch_level,
                 branch_hash.clone(),
-                branch.history(),
+                &content.history,
             ) {
                 Some(v) => v,
                 None => return,
             };
 
-            let head = BlockHeaderWithHash {
-                hash: branch_hash.clone(),
-                header: branch.current_head().clone().into(),
-            };
-            if !state.can_accept_new_head(&head) {
+            if !state.can_accept_new_head(&content.current_head) {
                 return;
             }
 
@@ -82,14 +75,18 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     block_supporters,
                     ..
                 } => {
-                    peer_branches.insert(content.peer, content.current_branch.clone());
+                    peer_branches.insert(
+                        content.peer,
+                        PeerBranch {
+                            current_head: content.current_head.clone(),
+                            history: content.history.clone(),
+                        },
+                    );
                     IntoIterator::into_iter([
-                        (
-                            branch_level - 1,
-                            branch.current_head().predecessor().clone(),
-                        ),
+                        (branch_level - 1, branch_header.predecessor().clone()),
                         (branch_level, branch_hash.clone()),
                     ])
+                    .filter(|(level, _)| *level >= 0)
                     .for_each(|(level, block_hash)| {
                         block_supporters
                             .entry(block_hash)
@@ -291,22 +288,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 let peer_intervals = std::mem::take(peer_branches)
                     .into_iter()
                     .filter_map(|(peer, branch)| {
-                        let branch_level = branch.current_head().level();
-                        let branch_hash = if main_block.0 == branch.current_head().level() {
-                            main_block.1.clone()
-                        } else {
-                            match branch.current_head().message_typed_hash() {
-                                Ok(v) => v,
-                                Err(_) => return None,
-                            }
-                        };
+                        let branch_level = branch.current_head.header.level();
+                        let branch_hash = branch.current_head.hash;
                         Some(
                             peer_branch_with_level_iter(
                                 state,
                                 peer,
                                 branch_level,
                                 branch_hash,
-                                branch.history(),
+                                &branch.history,
                             )?
                             .collect::<Vec<_>>()
                             .into_iter()

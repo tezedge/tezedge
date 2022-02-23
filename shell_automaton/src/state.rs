@@ -264,8 +264,12 @@ impl State {
             None => return false,
         };
 
-        if current_head.header.level() >= head.header.level() {
+        if current_head.header.level() > head.header.level() {
             return false;
+        }
+
+        if self.is_same_head(head.header.level(), &head.hash) {
+            return true;
         }
 
         // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
@@ -274,6 +278,14 @@ impl State {
 
         // TODO(zura): other checks
         true
+    }
+
+    pub fn is_same_head(&self, level: Level, hash: &BlockHash) -> bool {
+        self.current_head
+            .get()
+            .filter(|current_head| current_head.header.level() == level)
+            .filter(|current_head| &current_head.hash == hash)
+            .is_some()
     }
 
     /// If shutdown was initiated and finished or not.
