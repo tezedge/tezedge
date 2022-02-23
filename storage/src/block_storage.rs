@@ -116,7 +116,10 @@ impl BlockStorage {
         }
     }
 
-    pub fn get_block_hash_by_level(&self, level: Level) -> Result<Option<BlockHash>, StorageError> {
+    pub fn get_block_by_level(
+        &self,
+        level: Level,
+    ) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         let location = match self
             .by_level_index
             .get_blocks(level, 1)
@@ -126,9 +129,13 @@ impl BlockStorage {
             None => return Ok(None),
         };
 
-        // TODO: optimize and don't get the whole header just to get hash.
         self.get_block_header_by_location(&location)
-            .map(|v| Some(v.hash))
+            .map(|v| Some(v))
+    }
+
+    pub fn get_block_hash_by_level(&self, level: Level) -> Result<Option<BlockHash>, StorageError> {
+        // TODO: optimize and don't get the whole header just to get hash.
+        self.get_block_by_level(level).map(|v| v.map(|b| b.hash))
     }
 
     /// Stores header in key-value store and commit_log.

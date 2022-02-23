@@ -96,7 +96,7 @@ pub enum StorageRequestPayload {
     CycleErasGet(ProtocolHash),
     CycleMetaGet(CycleKey),
 
-    CurrentHeadGet(ChainId),
+    CurrentHeadGet(ChainId, Option<Level>),
 
     BlockHeaderPut(ChainId, BlockHeaderWithHash),
     BlockOperationsPut(OperationsForBlocksMessage),
@@ -382,10 +382,16 @@ impl StorageServiceDefault {
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
 
-                CurrentHeadGet(chain_id) => {
-                    match storage::hydrate_current_head(&chain_id, &storage) {
-                        Ok(head) => Ok(CurrentHeadGetSuccess(head)),
-                        Err(err) => Err(CurrentHeadGetError(err.into())),
+                CurrentHeadGet(chain_id, level_override) => {
+                    if let Some(Ok(Some(head))) =
+                        level_override.map(|level| block_storage.get_block_by_level(level))
+                    {
+                        Ok(CurrentHeadGetSuccess(head))
+                    } else {
+                        match storage::hydrate_current_head(&chain_id, &storage) {
+                            Ok(head) => Ok(CurrentHeadGetSuccess(head)),
+                            Err(err) => Err(CurrentHeadGetError(err.into())),
+                        }
                     }
                 }
 
