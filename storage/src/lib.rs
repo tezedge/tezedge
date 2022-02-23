@@ -82,6 +82,10 @@ impl BlockHeaderWithHash {
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
         let hash = if let Some(hash) = block_header.hash().as_ref() {
             hash.as_slice().try_into()?
+        } else if block_header.level() == 0 {
+            // For genesis block, we don't get the genesis block hash by
+            // hashing the header. Instead we need to use predecessor.
+            block_header.predecessor().clone()
         } else {
             block_header.message_hash()?.try_into()?
         };
