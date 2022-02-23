@@ -20,6 +20,7 @@ use tezos_messages::{
     p2p::binary_message::BinaryRead,
     protocol::proto_012::operation::{
         Contents, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, Operation, InlinedPreendorsementContents,
+        PreendorsementOperation,
     },
 };
 
@@ -64,7 +65,7 @@ pub struct Prequorum {
     pub firsts_slot: Vec<u16>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct BlockPayload {
     pub votes_payload: Vec<Operation>,
     pub anonymous_payload: Vec<Operation>,
@@ -258,6 +259,16 @@ pub struct LevelState {
     pub delegate_slots: DelegateSlots,
     pub next_level_delegate_slots: DelegateSlots,
     pub next_level_proposed_round: Option<i32>,
+
+    pub mempool: Mempool,
+}
+
+#[derive(Debug, Default)]
+pub struct Mempool {
+    pub endorsements: Vec<InlinedEndorsementMempoolContentsEndorsementVariant>,
+    pub preendorsements: Vec<PreendorsementOperation>,
+    pub payload: BlockPayload,
+    // other ops
 }
 
 #[derive(Debug)]

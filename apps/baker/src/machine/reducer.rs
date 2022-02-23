@@ -13,7 +13,7 @@ use super::{
     super::types::{
         BlockInfo, EndorsablePayload, LevelState, Phase, Prequorum,
         Proposal, RoundState, PreendorsementUnsignedOperation, Timestamp, LockedRound,
-        EndorsementUnsignedOperation,
+        EndorsementUnsignedOperation, Mempool, ElectedBlock,
     },
     action::*,
     state::{Config, State},
@@ -73,6 +73,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             delegate_slots: delegate_slots.clone(),
                             next_level_delegate_slots: next_level_delegate_slots.clone(),
                             next_level_proposed_round: None,
+                            mempool: Mempool::default(),
                         },
                         round_state: {
                             let (current_round, next_timeout) = round_by_timestamp(
@@ -120,6 +121,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             delegate_slots: delegate_slots.clone(),
                             next_level_delegate_slots: next_level_delegate_slots.clone(),
                             next_level_proposed_round: None,
+                            mempool: Mempool::default(),
                         };
                         *round_state = {
                             let (current_round, next_timeout) = round_by_timestamp(
@@ -279,65 +281,76 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         endorsable_payload,
                         latest_proposal,
                         locked_round,
+                        elected_block,
+                        mempool,
                         ..
                     },
                     round_state,
                     endorsement,
                     ..
                 } => {
-                    if let Some(e) = endorsable_payload  {
-                        if e.prequorum.round > latest_proposal.block.round {
-                            return;
-                        }
-                    }
-                    let mut e = endorsable_payload
-                        .take()
-                        .unwrap_or_else(|| EndorsablePayload {
-                            proposal: latest_proposal.clone(),
-                            prequorum: Prequorum {
-                                level: latest_proposal.block.level,
-                                round: latest_proposal.block.round,
-                                payload_hash: latest_proposal.block.payload_hash.clone(),
-                                firsts_slot: vec![],
-                            },
-                        });
-                    for content in operations.iter().map(|op| &op.contents).flatten() {
-                        match content {
-                            Contents::Preendorsement(v) => {
-                                if v.level == latest_proposal.block.level &&
-                                    v.block_payload_hash == latest_proposal.block.payload_hash &&
-                                    v.round == latest_proposal.block.round &&
-                                    v.round == round_state.current_round
-                                {
-                                    e.prequorum.firsts_slot.push(v.slot);
+                    for op in operations {
+                        let mut consensus_operation = false;
+                        for content in &op.contents {
+                            match content {
+                                Contents::Preendorsement(v) => {
+                                    consensus_operation = true;
+                                    if v.level == latest_proposal.block.level &&
+                                        v.block_payload_hash == latest_proposal.block.payload_hash &&
+                                        v.round == latest_proposal.block.round &&
+                                        v.round == round_state.current_round
+                                    {
+                                        mempool.preendorsements.push(v.clone());
+                                    }
                                 }
+                                Contents::Endorsement(v) => {
+                                    consensus_operation = true;
+                                    if v.level == latest_proposal.block.level &&
+                                        v.block_payload_hash == latest_proposal.block.payload_hash &&
+                                        v.round == latest_proposal.block.round &&
+                                        v.round == round_state.current_round
+                                    {
+                                        mempool.endorsements.push(InlinedEndorsementMempoolContentsEndorsementVariant {
+                                            slot: v.slot,
+                                            level: v.level,
+                                            round: v.round,
+                                            block_payload_hash: v.block_payload_hash.clone(),
+                                        });
+                                    }
+                                }
+                                _ => (),
                             }
-                            Contents::Endorsement(v) => {
-                                // TODO: quorum
-                                let _ = v;
-                            }
-                            _ => (),
+                        }
+                        if !consensus_operation {
+                            // TODO: classify properly
+                            mempool.payload.anonymous_payload.push(op.clone());
                         }
                     }
-                    *endorsable_payload = Some(e);
-                    let power = if let Some(endorsable_payload) = &*endorsable_payload {
-                        endorsable_payload
-                            .prequorum
-                            .firsts_slot
-                            .iter()
-                            .map(|slot| {
-                                delegate_slots
-                                    .delegates
-                                    .values()
-                                    .find(|slots| slots.0.contains(slot))
-                                    .map(|slots| slots.0.len())
-                                    .unwrap_or(0)
-                            })
-                            .sum::<usize>()
-                    } else {
-                        0
-                    };
-                    if power >= config.quorum_size {
+                    let preendorsements_power = mempool
+                        .preendorsements
+                        .iter()
+                        .map(|op| {
+                            delegate_slots
+                                .delegates
+                                .values()
+                                .find(|slots| slots.0.contains(&op.slot))
+                                .map(|slots| slots.0.len())
+                                .unwrap_or(0)
+                        })
+                        .sum::<usize>();
+                    let endorsements_power = mempool
+                        .endorsements
+                        .iter()
+                        .map(|op| {
+                            delegate_slots
+                                .delegates
+                                .values()
+                                .find(|slots| slots.0.contains(&op.slot))
+                                .map(|slots| slots.0.len())
+                                .unwrap_or(0)
+                        })
+                        .sum::<usize>();
+                    if preendorsements_power >= config.quorum_size {
                         if let Some(slot) = delegate_slots.slot {
                             let is_locked = match &*locked_round {
                                 Some(l) => l.payload_hash == latest_proposal.block.payload_hash,
@@ -355,12 +368,35 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                     content: InlinedEndorsementMempoolContents::Endorsement(inlined),
                                 });
                                 round_state.current_phase = Phase::CollectingEndorsements;
-                                let l = locked_round.take().unwrap_or(LockedRound {
+                                *locked_round = Some(LockedRound {
                                     round: latest_proposal.block.round,
                                     payload_hash: latest_proposal.block.payload_hash.clone(),
                                 });
-                                *locked_round = Some(l);
                             }
+                        }
+                        let should_update_endorsable_payload = match endorsable_payload {
+                            Some(endorsable_payload) =>
+                                endorsable_payload.prequorum.round <= latest_proposal.block.round,
+                            None => true,
+                        };
+                        if should_update_endorsable_payload {
+                            *endorsable_payload = Some(EndorsablePayload {
+                                proposal: latest_proposal.clone(),
+                                prequorum: Prequorum {
+                                    level: latest_proposal.block.level,
+                                    round: latest_proposal.block.round,
+                                    payload_hash: latest_proposal.block.payload_hash.clone(),
+                                    firsts_slot: mempool.preendorsements.iter().map(|op| op.slot).collect(),
+                                },
+                            });
+                        }
+                    }
+                    if endorsements_power >= config.quorum_size {
+                        if elected_block.is_none() {
+                            *elected_block = Some(ElectedBlock {
+                                proposal: latest_proposal.clone(),
+                                quorum: mempool.endorsements.clone(),
+                            });
                         }
                     }
                 }
