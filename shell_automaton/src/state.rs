@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::SchemaError;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
@@ -252,10 +253,27 @@ impl State {
             .filter_map(|peer| peer.current_head.as_ref())
             .map(|head| head.header.level())
             .filter(|level| (level - current_head_level).abs() <= 1)
-            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
+    pub fn can_accept_new_head(&self, head: &BlockHeaderWithHash) -> bool {
+        let current_head = match self.current_head.get() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        if current_head.header.level() >= head.header.level() {
+            return false;
+        }
+
+        // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
+        //     return false;
+        // }
+
+        // TODO(zura): other checks
+        true
     }
 
     /// If shutdown was initiated and finished or not.

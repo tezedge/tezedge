@@ -24,7 +24,7 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapCheckTimeoutsInitAction, BootstrapFinishedAction,
+    BootstrapCheckTimeoutsInitAction, BootstrapFinishedAction, BootstrapFromPeerCurrentHeadAction,
     BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
     BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
     BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
@@ -265,7 +265,7 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapFinishedAction {});
         }
-        Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
+        Action::BootstrapPeerBlockHeaderGetTimeout(_) => {
             request_block_headers_from_available_peers(store);
         }
         Action::BootstrapPeerBlockOperationsGetTimeout(content) => {
@@ -274,7 +274,26 @@ where
         Action::BootstrapPeersBlockOperationsGetSuccess(_) => {
             store.dispatch(BootstrapFinishedAction {});
         }
+        Action::BootstrapFinished(_) => {
+            let state = store.state();
+            let (peer, current_head) = match state
+                .peers
+                .handshaked_iter()
+                .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
+                .find(|(_, current_head)| state.can_accept_new_head(current_head))
+            {
+                Some((addr, head)) => (addr, head.clone()),
+                None => return,
+            };
+            store.dispatch(BootstrapFromPeerCurrentHeadAction { peer, current_head });
+        }
         Action::PeerCurrentHeadUpdate(content) => {
+            store.dispatch(BootstrapFromPeerCurrentHeadAction {
+                peer: content.address,
+                current_head: content.current_head.clone(),
+            });
+        }
+        Action::BootstrapFromPeerCurrentHead(content) => {
             if store
                 .state
                 .get()
@@ -284,7 +303,7 @@ where
                 .filter(|p| {
                     p.current
                         .peer()
-                        .filter(|addr| *addr == content.address)
+                        .filter(|addr| *addr == content.peer)
                         .is_some()
                 })
                 .and_then(|p| p.current.block_hash())
@@ -300,7 +319,7 @@ where
                     requestor: StorageRequestor::Bootstrap,
                 });
                 store.dispatch(BootstrapPeerBlockHeaderGetSuccessAction {
-                    peer: content.address,
+                    peer: content.peer,
                     block: content.current_head.clone(),
                 });
             }
