@@ -22,7 +22,6 @@ use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
 use shell_automaton::stats::current_head::stats_current_head_actions;
 //use shell_automaton::storage::request::StorageRequestSuccessAction;
-use shell_automaton::action::BootstrapNewCurrentHeadAction;
 use shell_automaton::MioWaitForEventsAction;
 
 use shell_automaton::MioTimeoutEvent;
@@ -842,7 +841,6 @@ enum ControlActionTest {
     TestPeerTryWriteLoopFinishAction(PeerTryWriteLoopFinishAction),
     TestPeerTryReadLoopStartAction(PeerTryReadLoopStartAction),
     TestPeerTryReadLoopFinishAction(PeerTryReadLoopFinishAction),
-    TestBootstrapNewCurrentHeadAction(BootstrapNewCurrentHeadAction),
 }
 
 impl ControlActionTest {

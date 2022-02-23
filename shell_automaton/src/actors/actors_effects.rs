@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::action::BootstrapNewCurrentHeadAction;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::peers::init::PeersInitAction;
 use crate::service::actors_service::ActorsMessageFrom;
