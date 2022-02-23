@@ -236,7 +236,9 @@ pub fn spawn_server(
                                 let normalized_path = normalized_path.clone();
                                 let status = v.status();
 
-                                let data = v.map_data(move |data| {
+                                let (parts, data) = v.into_parts();
+
+                                let data = data.map_data(move |data| {
                                     slog::trace!(&log, "Rpc response";
                                         "remote_addr" => remote_addr,
                                         "method" => req_method.to_string(),
@@ -247,7 +249,7 @@ pub fn spawn_server(
                                         }));
                                     data
                                 });
-                                Ok(Response::new(data))
+                                Ok(Response::from_parts(parts, data))
                             }
                             Err(err) => {
                                 slog::trace!(&log, "Rpc response error";
