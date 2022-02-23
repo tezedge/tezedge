@@ -369,7 +369,7 @@ where
                 let result = expected_req_id
                     .and_then(|expected_id| req_id.map(|id| id == expected_id))
                     .unwrap_or(false);
-                if result {
+                if !result {
                     slog::debug!(&state.log, "Unexpected storage response for peer";
                         "address" => address.to_string(),
                         "response" => format!("{:?}", content.response));
