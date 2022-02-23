@@ -24,7 +24,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockHeaderGetEnqueueAction 
             .peers
             .get_handshaked(&self.address)
             .filter(|p| {
-                p.remote_requests
+                !p.remote_requests
                     .block_header_get
                     .queue
                     .contains(&self.block_hash)
