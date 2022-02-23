@@ -290,11 +290,9 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     ..
                 } => {
                     for op in operations {
-                        let mut consensus_operation = false;
                         for content in &op.contents {
                             match content {
                                 Contents::Preendorsement(v) => {
-                                    consensus_operation = true;
                                     if v.level == latest_proposal.block.level &&
                                         v.block_payload_hash == latest_proposal.block.payload_hash &&
                                         v.round == latest_proposal.block.round &&
@@ -304,7 +302,6 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                     }
                                 }
                                 Contents::Endorsement(v) => {
-                                    consensus_operation = true;
                                     if v.level == latest_proposal.block.level &&
                                         v.block_payload_hash == latest_proposal.block.payload_hash &&
                                         v.round == latest_proposal.block.round &&
@@ -318,12 +315,22 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                         });
                                     }
                                 }
-                                _ => (),
+                                Contents::FailingNoop(_) => break,
+                                Contents::Proposals(_) | Contents::Ballot(_) => {
+                                    mempool.payload.votes_payload.push(op.clone());
+                                    break;
+                                }
+                                Contents::SeedNonceRevelation(_) | Contents::DoublePreendorsementEvidence(_) |
+                                Contents::DoubleEndorsementEvidence(_) | Contents::DoubleBakingEvidence(_) |
+                                Contents::ActivateAccount(_) => {
+                                    mempool.payload.anonymous_payload.push(op.clone());
+                                    break;
+                                }
+                                _ => {
+                                    mempool.payload.managers_payload.push(op.clone());
+                                    break;
+                                },
                             }
-                        }
-                        if !consensus_operation {
-                            // TODO: classify properly
-                            mempool.payload.anonymous_payload.push(op.clone());
                         }
                     }
                     let preendorsements_power = mempool
