@@ -215,8 +215,13 @@ impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetSuccessAction {
             BootstrapState::PeersBlockHeadersGetPending {
                 main_chain,
                 main_chain_last_level,
+                peer_intervals,
                 ..
-            } => main_chain_last_level - main_chain.len() as Level <= current_head.header.level(),
+            } => {
+                peer_intervals.is_empty()
+                    && main_chain_last_level - main_chain.len() as Level
+                        <= current_head.header.level()
+            }
             _ => false,
         }
     }

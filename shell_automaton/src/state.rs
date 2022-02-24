@@ -260,8 +260,10 @@ impl State {
             return false;
         }
 
-        if self.is_same_head(head.header.level(), &head.hash) {
-            return true;
+        if current_head.header.level() == head.header.level()
+            && !self.is_same_head(head.header.level(), &head.hash)
+        {
+            return false;
         }
 
         // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
