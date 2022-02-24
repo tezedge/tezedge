@@ -200,9 +200,10 @@ impl State {
     /// Global bootstrap status is considered as bootstrapped, only if
     /// number of bootstrapped peers is above threshold.
     pub fn is_bootstrapped(&self) -> bool {
-        // TODO(zura): maybe use timestamps instead.
-        let current_head_level = match self.current_head_level() {
-            Some(v) => v,
+        const SYNC_LATENCY: i64 = 150;
+
+        let current_head_timestamp = match self.current_head.get() {
+            Some(v) => v.header.timestamp(),
             None => return false,
         };
 
@@ -210,8 +211,8 @@ impl State {
             .peers
             .handshaked_iter()
             .filter_map(|(_, peer)| peer.current_head.as_ref())
-            .map(|current_head| current_head.header.level())
-            .filter(|level| current_head_level + 1 >= *level)
+            .map(|current_head| current_head_timestamp - current_head.header.timestamp())
+            .filter(|latency| latency.abs() < SYNC_LATENCY)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
