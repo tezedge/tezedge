@@ -10,7 +10,6 @@ use crypto::{
     hash::BlockHash,
     seeded_step::{Seed, Step},
 };
-use storage::BlockHeaderWithHash;
 use tezos_messages::{
     base::fitness_comparator::FitnessWrapper,
     p2p::{

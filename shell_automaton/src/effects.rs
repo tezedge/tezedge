@@ -73,6 +73,11 @@ use crate::storage::{
 use crate::rpc::rpc_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
+    store
+        .service
+        .statistics()
+        .map(|stats| stats.action_new(action));
+
     if !store.state.get().config.record_actions {
         return;
     }
@@ -80,22 +85,6 @@ fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta
     let _ = store.service.storage().request_send(StorageRequest::new(
         None,
         StorageRequestPayload::ActionPut(Box::new(action.clone())),
-    ));
-
-    let prev_action = &store.state.get().prev_action;
-
-    if prev_action.id() == ActionId::ZERO {
-        return;
-    }
-
-    let _ = store.service.storage().request_send(StorageRequest::new(
-        None,
-        StorageRequestPayload::ActionMetaUpdate {
-            action_id: prev_action.id(),
-            action_kind: prev_action.kind(),
-
-            duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
-        },
     ));
 }
 

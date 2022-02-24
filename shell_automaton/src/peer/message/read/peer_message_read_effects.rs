@@ -7,7 +7,6 @@ use crypto::hash::BlockHash;
 use networking::network_channel::PeerMessageReceived;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
 
