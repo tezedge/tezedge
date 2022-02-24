@@ -283,7 +283,7 @@ where
                 .handshaked_iter()
                 .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
                 .filter(|(_, current_head)| {
-                    state.is_same_head(current_head.header.level(), &current_head.hash)
+                    !state.is_same_head(current_head.header.level(), &current_head.hash)
                 })
                 .find(|(_, current_head)| state.can_accept_new_head(current_head))
             {
