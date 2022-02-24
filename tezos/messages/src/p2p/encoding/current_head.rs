@@ -18,12 +18,13 @@ use super::mempool::Mempool;
     Serialize,
     Deserialize,
     Debug,
+    Eq,
+    PartialEq,
     Getters,
     Clone,
     HasEncoding,
     NomReader,
     BinWriter,
-    PartialEq,
     tezos_encoding::generator::Generated,
 )]
 pub struct CurrentHeadMessage {
@@ -55,6 +56,8 @@ impl CurrentHeadMessage {
     Serialize,
     Deserialize,
     Debug,
+    Eq,
+    PartialEq,
     Getters,
     Clone,
     HasEncoding,

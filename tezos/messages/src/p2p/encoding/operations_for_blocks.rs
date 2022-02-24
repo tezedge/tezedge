@@ -52,8 +52,9 @@ pub const MAX_PASS_MERKLE_DEPTH: usize = 3;
     Clone,
     Serialize,
     Deserialize,
-    PartialEq,
     Debug,
+    Eq,
+    PartialEq,
     CopyGetters,
     Getters,
     HasEncoding,
@@ -89,8 +90,9 @@ impl OperationsForBlock {
     Clone,
     Serialize,
     Deserialize,
-    PartialEq,
     Debug,
+    Eq,
+    PartialEq,
     Getters,
     HasEncoding,
     NomReader,
@@ -129,7 +131,7 @@ impl From<OperationsForBlocksMessage> for Vec<Operation> {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters)]
 pub struct PathRight {
     #[get = "pub"]
     left: Hash,
@@ -158,7 +160,7 @@ impl Generated for PathRight {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters)]
 pub struct PathLeft {
     #[get = "pub"]
     right: Hash,
@@ -187,7 +189,9 @@ impl Generated for PathLeft {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, tezos_encoding::generator::Generated)]
+#[derive(
+    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, tezos_encoding::generator::Generated,
+)]
 pub enum PathItem {
     Right(PathRight),
     Left(PathLeft),
@@ -203,7 +207,7 @@ impl PathItem {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, PartialEq, Debug, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Debug, Deserialize)]
 pub struct Path(pub Vec<PathItem>);
 
 #[cfg(feature = "fuzzing")]
@@ -406,6 +410,8 @@ impl tezos_encoding::generator::Generated for Path {
     Serialize,
     Deserialize,
     Debug,
+    Eq,
+    PartialEq,
     Getters,
     Clone,
     HasEncoding,

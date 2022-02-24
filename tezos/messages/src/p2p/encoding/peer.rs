@@ -39,7 +39,9 @@ pub const MESSAGE_TYPE_TEXTS: [&str; MESSAGE_TYPE_COUNT] = [
 ];
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Eq, PartialEq, Debug, Clone, HasEncoding, NomReader, BinWriter,
+)]
 #[encoding(tags = "u16")]
 pub enum PeerMessage {
     #[encoding(tag = 0x01)]

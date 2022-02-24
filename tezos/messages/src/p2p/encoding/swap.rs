@@ -15,6 +15,8 @@ use super::limits::P2P_POINT_MAX_SIZE;
 #[derive(
     Serialize,
     Deserialize,
+    Eq,
+    PartialEq,
     Debug,
     Getters,
     Clone,

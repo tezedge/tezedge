@@ -129,7 +129,11 @@ impl Cluster {
         Self {
             store: Store::new(
                 reducer,
-                effects,
+                |store, action| {
+                    eprintln!("[+] Action: {:#?}", &action);
+                    eprintln!("[+] State: {:#?}\n", store.state());
+                    effects(store, action)
+                },
                 ServiceMocked::new(),
                 initial_time,
                 initial_state,

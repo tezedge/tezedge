@@ -18,12 +18,13 @@ use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
     Clone,
     Serialize,
     Deserialize,
+    Eq,
+    PartialEq,
     Debug,
     Getters,
     HasEncoding,
     NomReader,
     BinWriter,
-    PartialEq,
     tezos_encoding::generator::Generated,
 )]
 pub struct CurrentBranchMessage {
@@ -48,12 +49,13 @@ impl CurrentBranchMessage {
     Clone,
     Serialize,
     Deserialize,
+    Eq,
+    PartialEq,
     Debug,
     Getters,
     HasEncoding,
     NomReader,
     BinWriter,
-    PartialEq,
     tezos_encoding::generator::Generated,
 )]
 pub struct CurrentBranch {
@@ -80,6 +82,8 @@ impl CurrentBranch {
 #[derive(
     Serialize,
     Deserialize,
+    Eq,
+    PartialEq,
     Debug,
     Clone,
     HasEncoding,

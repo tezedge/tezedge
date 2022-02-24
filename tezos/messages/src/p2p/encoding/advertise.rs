@@ -16,6 +16,8 @@ use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 #[derive(
     Serialize,
     Deserialize,
+    Eq,
+    PartialEq,
     Debug,
     Getters,
     Clone,

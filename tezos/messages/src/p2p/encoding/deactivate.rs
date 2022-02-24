@@ -10,7 +10,9 @@ use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Debug, Getters, Eq, PartialEq, Clone, HasEncoding, NomReader, BinWriter,
+)]
 pub struct DeactivateMessage {
     #[get = "pub"]
     deactivate: ChainId,
