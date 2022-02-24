@@ -315,14 +315,6 @@ where
                 .filter(|hash| *hash == &content.current_head.hash)
                 .is_some()
             {
-                let chain_id = store.state().config.chain_id.clone();
-                store.dispatch(StorageRequestCreateAction {
-                    payload: StorageRequestPayload::BlockHeaderPut(
-                        chain_id,
-                        content.current_head.clone(),
-                    ),
-                    requestor: StorageRequestor::Bootstrap,
-                });
                 store.dispatch(BootstrapPeerBlockHeaderGetSuccessAction {
                     peer: content.peer,
                     block: content.current_head.clone(),
