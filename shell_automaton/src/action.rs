@@ -205,7 +205,9 @@ impl EnablingCondition<State> for MioTimeoutEvent {
         strum_macros::Display,
         Serialize,
         Deserialize,
-        Hash
+        Hash,
+        Ord,
+        PartialOrd,
     )
 )]
 #[serde(tag = "kind", content = "content")]

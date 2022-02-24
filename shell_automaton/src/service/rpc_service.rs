@@ -9,6 +9,7 @@ use std::{
 };
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionsStats;
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
@@ -19,7 +20,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::State;
 
-use super::BlockApplyStats;
+use super::{statistics_service::ActionGraph, BlockApplyStats};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -48,6 +49,13 @@ pub enum RpcRequest {
     GetCurrentGlobalState {
         channel: oneshot::Sender<State>,
     },
+    GetActionKindStats {
+        channel: oneshot::Sender<ShellAutomatonActionsStats>,
+    },
+    GetActionGraph {
+        channel: oneshot::Sender<ActionGraph>,
+    },
+
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },

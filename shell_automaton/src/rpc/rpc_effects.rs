@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
@@ -49,6 +51,37 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::GetCurrentGlobalState { channel } => {
                         let _ = channel.send(store.state.get().clone());
                     }
+                    RpcRequest::GetActionKindStats { channel } => {
+                        let data = store
+                            .service
+                            .statistics()
+                            .map(|s| {
+                                s.action_kind_stats()
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.clone()))
+                                    .collect::<HashMap<_, _>>()
+                                    .into()
+                            })
+                            .unwrap_or_default();
+                        let _ = channel.send(dbg!(data));
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+                    RpcRequest::GetActionGraph { channel } => {
+                        let data = store
+                            .service
+                            .statistics()
+                            .map(|s| s.action_graph().clone())
+                            .unwrap_or_default();
+                        let _ = channel.send(dbg!(data));
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+
                     RpcRequest::GetMempoolOperationStats { channel } => {
                         let stats = store.state().mempool.operation_stats.clone();
                         let _ = channel.send(stats);
