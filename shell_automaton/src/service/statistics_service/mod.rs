@@ -25,7 +25,7 @@ pub struct BlockApplyStats {
 
     pub receive_timestamp: u64,
 
-    pub injected: bool,
+    pub injected: Option<u64>,
     pub baker: Option<SignaturePublicKey>,
     pub priority: Option<u16>,
 
@@ -176,6 +176,7 @@ impl StatisticsService {
         receive_timestamp: u64,
         peer: Option<SocketAddr>,
         node_id: Option<CryptoboxPublicKeyHash>,
+        injected_timestamp: Option<u64>,
     ) {
         let levels = &mut self.levels;
         let stats = self
@@ -188,7 +189,7 @@ impl StatisticsService {
                     block_timestamp,
                     validation_pass,
                     receive_timestamp,
-                    injected: peer.is_none(),
+                    injected: injected_timestamp,
                     ..BlockApplyStats::default()
                 }
             });
@@ -396,5 +397,11 @@ impl StatisticsService {
                 .ops_send_end
                 .push((time, validation_pass));
         });
+    }
+
+    pub fn block_injected(&mut self, block_hash: &BlockHash, time: u64) {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.injected = Some(time)
+        }
     }
 }

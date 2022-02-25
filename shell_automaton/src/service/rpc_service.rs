@@ -1,7 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, sync::Arc, thread};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    thread,
+    time::Instant,
+};
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use tezos_messages::p2p::encoding::{
@@ -46,6 +51,9 @@ pub enum RpcRequest {
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },
+    GetMempooEndrosementsStats {
+        channel: oneshot::Sender<BTreeMap<OperationHash, crate::mempool::OperationStats>>,
+    },
     GetBlockStats {
         channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksApplyStats>>,
     },
@@ -53,11 +61,13 @@ pub enum RpcRequest {
     InjectOperation {
         operation_hash: OperationHash,
         operation: Operation,
+        injected: Instant,
     },
     InjectBlock {
         chain_id: ChainId,
         block_header: Arc<BlockHeader>,
         block_hash: BlockHash,
+        injected: Instant,
     },
     RequestCurrentHeadFromConnectedPeers,
     RemoveOperations {

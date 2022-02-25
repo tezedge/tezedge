@@ -3102,7 +3102,7 @@ dependencies = [
 [[package]]
 name = "redux-rs"
 version = "0.1.0"
-source = "git+https://github.com/tezedge/redux-rs.git?rev=c2f6946#c2f6946687ddad0edea1008ae74f3b67a6c249bf"
+source = "git+https://github.com/tezedge/redux-rs.git?rev=56e116d#56e116d3e5d740a992a758b744c3705eebe01fd8"
 dependencies = [
  "enum_dispatch",
  "fuzzcheck",
