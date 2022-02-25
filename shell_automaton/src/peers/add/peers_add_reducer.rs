@@ -19,7 +19,6 @@ pub fn peers_add_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                         .into(),
                     ),
-                    quota: PeerQuota::new(action.id),
                     try_read_loop: PeerIOLoopState::Idle,
                     try_write_loop: PeerIOLoopState::Idle,
                 });

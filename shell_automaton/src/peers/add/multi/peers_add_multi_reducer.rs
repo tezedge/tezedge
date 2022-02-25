@@ -19,7 +19,6 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithMeta) {
                 if let Ok(entry) = state.peers.entry(*address) {
                     entry.or_insert_with(|| Peer {
                         status: PeerStatus::Potential,
-                        quota: PeerQuota::new(action.id),
                         try_read_loop: PeerIOLoopState::Idle,
                         try_write_loop: PeerIOLoopState::Idle,
                     });

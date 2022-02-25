@@ -8,9 +8,6 @@ pub use randomness_service::*;
 mod dns_service;
 pub use dns_service::*;
 
-mod quota_service;
-pub use quota_service::*;
-
 mod storage_service;
 pub use storage_service::*;
 

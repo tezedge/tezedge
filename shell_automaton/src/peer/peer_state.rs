@@ -71,7 +71,6 @@ impl PeerStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Peer {
     pub status: PeerStatus,
-    pub quota: PeerQuota,
     pub try_read_loop: PeerIOLoopState,
     pub try_write_loop: PeerIOLoopState,
 }

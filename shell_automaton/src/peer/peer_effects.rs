@@ -49,58 +49,6 @@ where
     S: Service,
 {
     match &action.action {
-        Action::WakeupEvent(_) => {
-            let quota_restore_duration_millis =
-                store.state.get().config.quota.restore_duration_millis as u128;
-            let read_addresses = store
-                .state
-                .get()
-                .peers
-                .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_read
-                        && action
-                            .id
-                            .duration_since(peer.quota.read_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
-                    {
-                        Some(address)
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            let write_addresses = store
-                .state
-                .get()
-                .peers
-                .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_write
-                        && action
-                            .id
-                            .duration_since(peer.quota.write_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
-                    {
-                        Some(address)
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            for address in read_addresses {
-                store.dispatch(PeerTryReadLoopStartAction { address });
-            }
-            for address in write_addresses {
-                store.dispatch(PeerTryWriteLoopStartAction { address });
-            }
-        }
         // Handle peer related mio event.
         Action::P2pPeerEvent(event) => {
             let address = event.address();
@@ -156,10 +104,6 @@ where
                     Some(v) => v,
                     None => return,
                 };
-
-                if peer.quota.reject_write {
-                    return finish(store, action.address, PeerIOLoopResult::ByteQuotaReached);
-                }
 
                 let peer_token = match &peer.status {
                     PeerStatus::Handshaking(s) => s.token,
@@ -255,10 +199,6 @@ where
                     Some(v) => v,
                     None => return,
                 };
-
-                if peer.quota.reject_read {
-                    return finish(store, action.address, PeerIOLoopResult::ByteQuotaReached);
-                }
 
                 let peer_token = match &peer.status {
                     PeerStatus::Handshaking(s) => s.token,
