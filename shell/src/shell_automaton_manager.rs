@@ -144,12 +144,6 @@ impl ShellAutomatonManager {
                 Self::SHELL_AUTOMATON_QUEUE_MAX_CAPACITY,
             );
 
-        let quota_service = shell_automaton::service::QuotaServiceDefault::new(
-            mio_service.waker(),
-            Duration::from_millis(100),
-            log.new(o!("service" => "quota")),
-        );
-
         let protocol_service =
             ProtocolServiceDefault::new(mio_service.waker(), Arc::new(protocol_runner_api.clone()));
         let protocol_runner_service = ProtocolRunnerServiceDefault::new(
@@ -168,7 +162,6 @@ impl ShellAutomatonManager {
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
-            quota: quota_service,
             statistics: Some(Default::default()),
         };
 
@@ -196,7 +189,7 @@ impl ShellAutomatonManager {
             peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
 
-            peer_max_io_syscalls: 64,
+            peer_max_io_syscalls: 32,
 
             peers_potential_max: p2p_config.peer_threshold.high * 5,
             peers_connected_max: p2p_config.peer_threshold.high,
