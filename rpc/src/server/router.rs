@@ -356,6 +356,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/dev/shell/automaton/stats/mempool/endorsements",
         dev_handler::dev_shell_automaton_endrosement_stats,
     );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/peers/best_remote_level",
+        dev_handler::best_remote_level,
+    );
 
     routes.handle(
         hash_set![Method::GET],

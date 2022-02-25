@@ -47,6 +47,8 @@ pub type RpcServiceEnvironmentRef = Arc<RpcServiceEnvironment>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Arc<BlockHeaderWithHash>,
+    #[get = "pub(crate)"]
+    best_remote_level: Option<i32>,
 
     // Wakers for open streams (monitors) that access the mempool state
     streams: StreamWakers,

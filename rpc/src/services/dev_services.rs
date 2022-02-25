@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
-use crypto::hash::{ContractKt1Hash, OperationHash};
+use crypto::hash::ContractKt1Hash;
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::storage_service::ActionGraph;
@@ -44,9 +44,7 @@ use crate::server::RpcServiceEnvironment;
 
 use crate::services::protocol::get_blocks_per_cycle;
 
-use super::base_services::{
-    get_additional_data_or_fail, get_raw_block_header_with_hash,
-};
+use super::base_services::{get_additional_data_or_fail, get_raw_block_header_with_hash};
 
 pub type ContractAddress = Vec<u8>;
 
@@ -1132,4 +1130,15 @@ pub(crate) async fn get_shell_automaton_endrosement_stats(
         })
         .collect();
     Ok(result)
+}
+
+// get_best_remote_level
+pub(crate) async fn get_best_remote_level(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<Option<i32>> {
+    if let Ok(rpc_state) = env.state().read() {
+        Ok(*rpc_state.best_remote_level())
+    } else {
+        Ok(None)
+    }
 }

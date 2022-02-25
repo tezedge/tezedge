@@ -177,6 +177,10 @@ impl RemoteBestKnownCurrentHead {
             ));
         }
     }
+
+    pub fn get_remote_level(&self) -> Option<i32> {
+        self.remote.as_ref().map(|head| *head.level())
+    }
 }
 
 pub fn has_any_higher_than(

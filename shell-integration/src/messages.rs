@@ -86,6 +86,7 @@ pub mod notifications {
         pub chain_id: Arc<ChainId>,
         pub block: Arc<BlockHeaderWithHash>,
         pub is_bootstrapped: bool,
+        pub best_remote_level: Option<i32>,
     }
 
     impl NewCurrentHeadNotification {
@@ -93,11 +94,13 @@ pub mod notifications {
             chain_id: Arc<ChainId>,
             block: Arc<BlockHeaderWithHash>,
             is_bootstrapped: bool,
+            best_remote_level: Option<i32>,
         ) -> Self {
             Self {
                 chain_id,
                 block,
                 is_bootstrapped,
+                best_remote_level,
             }
         }
     }
