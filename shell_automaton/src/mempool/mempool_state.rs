@@ -123,7 +123,7 @@ pub struct PeerState {
     pub(super) known_valid_to_send: Vec<OperationHash>,
 }
 
-pub type OperationsStats = HashMap<OperationHash, OperationStats>;
+pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationStats {
