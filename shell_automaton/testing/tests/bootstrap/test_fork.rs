@@ -25,7 +25,7 @@ use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::block_header::{
     BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, GetBlockHeadersMessage, Level,
 };
-use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
+use tezos_messages::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use tezos_messages::p2p::encoding::mempool::Mempool;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
     GetOperationsForBlocksMessage, OperationsForBlock, OperationsForBlocksMessage, Path,
@@ -138,7 +138,12 @@ fn test(chain_level: Level) {
     let peer = cluster.peer(peer_id);
     assert_eq!(peer.read_peer_message(), Some(PeerMessage::Bootstrap));
     // we shouldn't accept another block at same level.
-    assert_eq!(peer.read_peer_message(), None);
+    assert_eq!(
+        peer.read_peer_message(),
+        Some(PeerMessage::GetCurrentHead(GetCurrentHeadMessage::new(
+            chain_id.clone()
+        )))
+    );
     let peer = cluster.peer(peer_id);
     peer.send_peer_message(PeerMessage::CurrentHead(CurrentHeadMessage::new(
         chain_id.clone(),
