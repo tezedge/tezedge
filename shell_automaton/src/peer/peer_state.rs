@@ -21,6 +21,8 @@ use super::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshaked {
+    pub handshaked_since: u64,
+
     pub token: PeerToken,
     pub port: Port,
     pub version: NetworkVersion,
@@ -35,8 +37,9 @@ pub struct PeerHandshaked {
 
     pub remote_requests: PeerRemoteRequestsState,
 
-    /// Level of the current head received from peer.
+    /// Last current head received from peer.
     pub current_head: Option<BlockHeaderWithHash>,
+    pub current_head_last_update: Option<u64>,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
