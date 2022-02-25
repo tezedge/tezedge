@@ -493,8 +493,8 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
-        Action::PeerHandshakingFinish(action) => {
-            if let Some(peer) = state.peers.get_mut(&action.address) {
+        Action::PeerHandshakingFinish(content) => {
+            if let Some(peer) = state.peers.get_mut(&content.address) {
                 match &mut peer.status {
                     PeerStatus::Handshaking(PeerHandshaking {
                         status,
@@ -539,6 +539,8 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                                 let (read_crypto, write_crypto) = crypto.clone().split();
 
                                 peer.status = PeerStatus::Handshaked(PeerHandshaked {
+                                    handshaked_since: action.time_as_nanos(),
+
                                     token: token.clone(),
                                     port: remote_connection_message.port,
                                     version,
@@ -560,6 +562,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                                     },
                                     remote_requests: Default::default(),
                                     current_head: None,
+                                    current_head_last_update: None,
                                 });
                             }
                             _ => {}

@@ -26,6 +26,7 @@ pub type GraylistTimeouts = Vec<IpAddr>;
 pub enum PeerTimeout {
     Connecting(PeerConnectionStatePhase),
     Handshaking(PeerHandshakingPhase),
+    CurrentHeadUpdate,
 }
 
 #[cfg(feature = "fuzzing")]

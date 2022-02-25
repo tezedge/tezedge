@@ -96,6 +96,7 @@ pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::PeerCurrentHeadUpdate(content) => {
             if let Some(peer) = state.peers.get_handshaked_mut(&content.address) {
                 peer.current_head = Some(content.current_head.clone());
+                peer.current_head_last_update = Some(action.time_as_nanos());
             }
         }
         _ => {}
