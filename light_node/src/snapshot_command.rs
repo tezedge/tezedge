@@ -14,7 +14,7 @@
 //!     --tezos-data-dir /path/to/source \
 //!     snapshot \
 //!     --target-path /path/to/target \
-//!     --block 434223 # optional block hash, level of negative offset from head
+//!     --block 434223 # optional block hash, level or negative offset from head
 //! ```
 
 use std::{
@@ -276,11 +276,19 @@ pub fn snapshot_storage(
     let head = new_chain_meta_storage.get_current_head(&chain_id).unwrap();
     info!(log, "Stored current head = {:?}", head);
 
+    // NOTE: the curret implementation produces some gargbage when dumping
+    // the tezedge context, because of that we are explicit on what we keep here.
+    let useful_files = ["context", "bootstrap_db"];
+    let is_useful_file = |entry: &std::fs::DirEntry| {
+        useful_files.contains(&entry.file_name().to_string_lossy().as_ref())
+    };
+
     // Move temporary data to final target path
     for entry in target_path
         .read_dir()
         .expect("read_dir call failed")
         .flatten()
+        .filter(is_useful_file)
     {
         let source_name = entry.file_name();
         let to_path = final_path.join(&source_name);
@@ -289,6 +297,10 @@ pub fn snapshot_storage(
 
         std::fs::rename(entry.path(), to_path).expect("Failed to move storage into final location");
     }
+
+    // Necessary for now because of how we produce tezedge context snapshots
+    let tezedge_lock_file = final_path.join("context").join("lock");
+    std::fs::remove_file(tezedge_lock_file).ok();
 }
 
 async fn terminate_or_kill(process: &mut Child, reason: String) -> Result<(), ProtocolRunnerError> {
@@ -347,7 +359,7 @@ fn initialize_protocol_runner_and_snapshot_context(
             .await
             .expect("Failed to initialize protocol runner for write (source context");
 
-        info!(log, "Taking (irmin) context snapshot...");
+        info!(log, "Taking context snapshot...");
 
         let tmpdir = tempdir_in(target_path).expect("Could not create a temporary directory for the context dump");
         let context_dump_path = tmpdir

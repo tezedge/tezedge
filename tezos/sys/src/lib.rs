@@ -21,6 +21,8 @@ extern "C" {
         tezedge_context_get_tree: unsafe extern "C" fn(isize) -> isize,
         tezedge_context_set_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_empty: unsafe extern "C" fn(isize) -> isize,
+        tezedge_context_dump: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_context_restore: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
     );
 
     pub fn initialize_tezedge_tree_callbacks(
