@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
     path::PathBuf,
-    rc::Rc,
     sync::{Arc, RwLock},
 };
 
@@ -14,9 +12,9 @@ use crypto::hash::{ContextHash, HashTrait};
 use tezos_context::{
     kv_store::persistent::{FileSizes, PersistentConfiguration},
     persistent::file::{File, TAG_SIZES},
-    working_tree::{string_interner::StringId, Commit, ObjectReference},
-    ContextKeyValueStore, IndexApi, ObjectHash, Persistent, ShellContextApi, TezedgeContext,
-    TezedgeIndex,
+    snapshot,
+    working_tree::string_interner::StringId,
+    IndexApi, Persistent, TezedgeIndex,
 };
 
 #[macro_use]
@@ -83,17 +81,7 @@ fn reload_context_readonly(context_path: String) -> Persistent {
 
     let now = std::time::Instant::now();
 
-    let sizes_file = File::<{ TAG_SIZES }>::try_new(&context_path, true).unwrap();
-    let sizes = FileSizes::make_list_from_file(&sizes_file).unwrap_or_default();
-    assert!(!sizes.is_empty(), "sizes.db is invalid: {:?}", sizes);
-
-    let mut repo = Persistent::try_new(PersistentConfiguration {
-        db_path: Some(context_path),
-        startup_check: true,
-        read_mode: true,
-    })
-    .unwrap();
-    repo.reload_database().unwrap();
+    let repo = snapshot::reload_context_readonly(context_path).unwrap();
 
     log!(" Validating context ok {:?}", now.elapsed());
 
@@ -208,13 +196,11 @@ fn main() {
             output,
         } => {
             let start = std::time::Instant::now();
-
             let snapshot_path = create_snapshot_path(output);
 
             log!("Start creating snapshot at {:?}", snapshot_path,);
 
             let ctx = reload_context_readonly(context_path);
-
             let checkout_context_hash: ContextHash =
                 if let Some(context_hash) = context_hash.as_ref() {
                     ContextHash::from_b58check(context_hash).unwrap()
@@ -224,169 +210,44 @@ fn main() {
 
             log!("Using {:?}", checkout_context_hash);
 
-            let (mut tree, mut storage, string_interner, parent_hash, commit) = {
-                // This block reads the whole tree of the commit, to extract `Storage`, that's
-                // where all the objects (directories and blobs) are stored
+            let now = std::time::Instant::now();
+            log!("Loading context in memory...");
 
-                let now = std::time::Instant::now();
-                log!("Loading context in memory...");
+            let (tree, storage, string_interner, parent_hash, commit) =
+                snapshot::read_commit_tree(ctx, &checkout_context_hash).unwrap();
 
-                let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(ctx));
-                let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-                let context = index.checkout(&checkout_context_hash).unwrap().unwrap();
+            log!("Loading context in memory ok {:?}", now.elapsed());
 
-                // Take the commit from repository
-                let commit: Commit = index
-                    .fetch_commit_from_context_hash(&checkout_context_hash)
-                    .unwrap()
-                    .unwrap();
+            let now = std::time::Instant::now();
+            log!("Creating snapshot from context in memory...");
 
-                // If the commit has a parent, fetch it
-                // It is necessary for the snapshot to have it in its db
-                let parent_hash: Option<ObjectHash> = match commit.parent_commit_ref {
-                    Some(parent) => {
-                        let repo = read_repo.read().unwrap();
-                        Some(repo.get_hash(parent).unwrap().into_owned())
-                    }
-                    None => None,
-                };
+            snapshot::create_new_database(
+                tree,
+                storage,
+                string_interner,
+                parent_hash,
+                commit,
+                &snapshot_path,
+                &checkout_context_hash,
+                log_snapshot,
+            )
+            .unwrap();
 
-                // Traverse the tree, to store it in the `Storage`
-                context.tree.traverse_working_tree(false).unwrap();
+            log!(
+                "Creating snapshot from context in memory ok {:?}",
+                now.elapsed()
+            );
 
-                log!("Loading context in memory ok {:?}", now.elapsed());
+            let now = std::time::Instant::now();
+            log!("Loading snapshot & re-compute hashes...");
 
-                // Extract the `Storage`, `StringInterner` and `WorkingTree` from
-                // the index
-                (
-                    Rc::try_unwrap(context.tree).ok().unwrap(),
-                    context.index.storage.take(),
-                    context.index.string_interner.take().unwrap(),
-                    parent_hash,
-                    commit,
-                )
-            };
-
-            {
-                // This block creates the new database
-
-                let now = std::time::Instant::now();
-                log!("Creating snapshot from context in memory...");
-
-                // Remove all `HashId` and `AbsoluteOffset` from the `Storage`
-                // They will be recomputed
-                storage.forget_references();
-
-                // Create a new `StringInterner` that contains only the strings used
-                // for this commit
-                let string_interner = storage.strip_string_interner(string_interner);
-
-                let storage = Rc::new(RefCell::new(storage));
-                let string_interner = Rc::new(RefCell::new(Some(string_interner)));
-
-                // Create the new writable repository at `snapshot_path`
-                let mut write_repo = Persistent::try_new(PersistentConfiguration {
-                    db_path: Some(snapshot_path.clone()),
-                    startup_check: false,
-                    read_mode: false,
-                })
+            snapshot::recompute_hashes(&snapshot_path, &checkout_context_hash, log_snapshot)
                 .unwrap();
-                write_repo.enable_hash_dedup();
 
-                // Put the parent hash in the new repository
-                let parent_ref: Option<ObjectReference> =
-                    parent_hash.map(|parent_hash| write_repo.put_hash(parent_hash).unwrap().into());
-
-                let write_repo: Arc<RwLock<ContextKeyValueStore>> =
-                    Arc::new(RwLock::new(write_repo));
-
-                let index =
-                    TezedgeIndex::with_storage(write_repo.clone(), storage, string_interner);
-
-                // Make the `WorkingTree` use our new index
-                tree.index = index.clone();
-
-                {
-                    let now = std::time::Instant::now();
-                    log!(" Computing context hash...");
-
-                    // Compute the hashes of the whole tree and remove the duplicate ones
-                    let mut repo = write_repo.write().unwrap();
-                    tree.get_root_directory_hash(&mut *repo).unwrap();
-                    index
-                        .storage
-                        .borrow_mut()
-                        .deduplicate_hashes(&*repo)
-                        .unwrap();
-
-                    log!(" Computing context hash ok {:?}", now.elapsed());
-                }
-
-                let context = TezedgeContext::new(index, parent_ref, Some(Rc::new(tree)));
-
-                let commit_context_hash = context
-                    .commit(
-                        commit.author.clone(),
-                        commit.message.clone(),
-                        commit.time as i64,
-                    )
-                    .unwrap();
-
-                // Make sure our new context hash is the same
-                assert_eq!(checkout_context_hash, commit_context_hash);
-
-                log!(
-                    "Creating snapshot from context in memory ok {:?}",
-                    now.elapsed()
-                );
-            }
-
-            {
-                // Fully read the new snapshot and re-compute all the hashes, to
-                // be 100% sure that we have a valid snapshot
-
-                let start = std::time::Instant::now();
-                log!("Loading snapshot & re-compute hashes...");
-
-                let read_ctx = reload_context_readonly(snapshot_path.clone());
-                let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(read_ctx));
-
-                let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-                let mut context = index.checkout(&checkout_context_hash).unwrap().unwrap();
-
-                let commit: Commit = index
-                    .fetch_commit_from_context_hash(&checkout_context_hash)
-                    .unwrap()
-                    .unwrap();
-                context.parent_commit_ref = commit.parent_commit_ref;
-
-                let now = std::time::Instant::now();
-                log!(" Loading in memory...");
-
-                // Fetch all objects into `Storage`
-                context.tree.traverse_working_tree(false).unwrap();
-
-                log!(" Loading in memory ok {:?}", now.elapsed());
-
-                // Remove all `HashId` to re-compute them
-                context.index.storage.borrow_mut().forget_references();
-
-                let now = std::time::Instant::now();
-                log!(" Recomputing hashes...");
-
-                let context_hash = context
-                    .hash(commit.author, commit.message, commit.time as i64)
-                    .unwrap();
-
-                log!(" Recomputing hashes ok {:?}", now.elapsed());
-
-                assert_eq!(checkout_context_hash, context_hash);
-
-                log!(
-                    "Loading snapshot & re-compute hashes ok {:?}",
-                    start.elapsed()
-                );
-            }
+            log!(
+                "Loading snapshot & re-compute hashes ok {:?}",
+                now.elapsed()
+            );
 
             log!(
                 "Snapshot {:?} created in {:?}",
@@ -395,4 +256,8 @@ fn main() {
             );
         }
     }
+}
+
+fn log_snapshot(s: &str) {
+    log!("{}", s)
 }

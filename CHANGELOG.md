@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- `snapshot` subcommand to `light-node` to produce trimmed copies of the storage.
 
 ### Changed
 
