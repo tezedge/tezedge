@@ -420,7 +420,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"--tezos-data-
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network $${TEZEDGE_NETWORK} --identity-file "drone-cache/build_files/identities/identity_6.json" --protocol-runner /data/cache/protocol-runner --tezos-data-dir /data/cache/tezos-node-data --bootstrap-db-path /data/cache/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network $${TEZEDGE_NETWORK} --identity-file "./drone-cache/build_files/identities/identity_6.json" --protocol-runner /data/cache/protocol-runner --tezos-data-dir /data/cache/tezos-node-data --bootstrap-db-path /data/cache/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -2698,7 +2698,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -3281,7 +3281,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -3616,7 +3616,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --disable-endorsements-precheck=true
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --disable-endorsements-precheck=true
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -3931,7 +3931,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -4265,7 +4265,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -4497,7 +4497,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -4724,7 +4724,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -4952,7 +4952,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: tezos-client-bootstrapped-for-tezedge-node
   user: root
@@ -5218,7 +5218,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --log-level debug
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --log-level debug
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -6779,13 +6779,13 @@ steps:
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
       - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
       - >
-        drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
+        drone-cache/build_files/light-node --protocol-runner ./drone-cache/build_files/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+        --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
       - |
         time -o tezedge-new-1.time -f "%e" sh -c '
@@ -6822,13 +6822,13 @@ steps:
       - rm -rf ./tezos-node-data ./light-node-data
       - export LD_LIBRARY_PATH=drone-cache-old
       - >
-        drone-cache-old/light-node --protocol-runner drone-cache-old/protocol-runner
+        drone-cache-old/light-node --protocol-runner ./drone-cache-old/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file drone-cache-old/tezedge_drone.config
+        --config-file ./drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+        --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
       - |
         time -o tezedge-old-1.time -f "%e" sh -c '
@@ -7061,7 +7061,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
@@ -7081,7 +7081,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "./drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -7284,7 +7284,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
@@ -7304,7 +7304,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "./drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "./drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
