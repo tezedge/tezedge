@@ -9,6 +9,10 @@ use crate::peers::PeerBlacklistState;
 use crate::service::mio_service::PeerConnectionIncomingAcceptError;
 use crate::{EnablingCondition, State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerConnectionIncomingRejectedReason {
     PeersConnectedMaxBoundReached,
@@ -22,6 +26,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedReason {
 }
 
 /// Accept incoming peer connection.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptAction {}
 
@@ -31,6 +36,7 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptErrorAction {
     pub error: PeerConnectionIncomingAcceptError,
@@ -42,9 +48,12 @@ impl EnablingCondition<State> for PeerConnectionIncomingAcceptErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingRejectedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub reason: PeerConnectionIncomingRejectedReason,
 }
@@ -55,9 +64,12 @@ impl EnablingCondition<State> for PeerConnectionIncomingRejectedAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerConnectionIncomingAcceptSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 

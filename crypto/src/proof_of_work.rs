@@ -16,6 +16,7 @@ use super::{
 
 pub const POW_SIZE: usize = NONCE_SIZE;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Error, Debug, Clone)]
 pub enum PowError {
     #[error("Proof-of-work check failed")]

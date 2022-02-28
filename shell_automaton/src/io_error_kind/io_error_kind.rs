@@ -10,6 +10,7 @@ use std::io::ErrorKind;
 /// is not serializable. So this type is used instead, or this type
 /// is used as intermediary to serialize/deserialize io::ErrorKind.
 /// That is what [io_error_kind::serde] is for.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy)]
 pub enum IOErrorKind {
     NotFound,

@@ -5,7 +5,7 @@
 # stop on first error
 set -e
 
-export RUSTC_TOOLCHAIN_VERSION="1.57"
+export RUSTC_TOOLCHAIN_VERSION="1.58.1"
 
 warn_if_not_using_recommended_rust() {
   EXPECTED_RUSTC_VERSION=$RUSTC_TOOLCHAIN_VERSION

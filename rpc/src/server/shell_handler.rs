@@ -11,7 +11,6 @@ use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
 use crypto::hash::ProtocolHash;
 use shell_automaton::service::rpc_service::RpcRequestStream;
-use tezos_messages::ts_to_rfc3339;
 
 use crate::helpers::{
     create_rpc_request, parse_async, parse_block_hash, parse_chain_id, RpcServiceError,
@@ -20,13 +19,10 @@ use crate::helpers::{
 use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
 use crate::{
-    empty,
-    encoding::{base_types::*, monitor::BootstrapInfo},
-    error, helpers, make_json_response, make_json_stream_response, not_found,
-    parse_block_hash_or_fail, required_param, result_to_empty_json_response,
+    empty, encoding::base_types::*, error, helpers, make_json_response, make_json_stream_response,
+    not_found, parse_block_hash_or_fail, required_param, result_to_empty_json_response,
     result_to_json_response, services, ServiceResult,
 };
-use storage::BlockHeaderWithHash;
 
 pub async fn bootstrapped(
     _: Request<Body>,
@@ -34,21 +30,15 @@ pub async fn bootstrapped(
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let state_read = env
-        .state()
-        .read()
-        .map_err(|e| anyhow::format_err!("Failed to lock current state, reason: {}", e))?;
-
-    let bootstrap_info = {
-        let current_head: &BlockHeaderWithHash = state_read.current_head().as_ref();
-        let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
-        Ok(BootstrapInfo::new(
-            &current_head.hash,
-            TimeStamp::Rfc(timestamp),
-        ))
-    };
-
-    result_to_json_response(bootstrap_info, env.log())
+    let stream = env
+        .shell_automaton_sender()
+        .request_stream(RpcRequestStream::Bootstrapped)
+        .await
+        .ok()
+        .expect("state machine should be correct");
+    let stream =
+        UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
+    make_json_stream_response(stream)
 }
 
 pub async fn commit_hash(
@@ -139,45 +129,42 @@ pub async fn mempool_monitor_operations(
     make_json_stream_response(stream)
 }
 
-// TODO: TE-685
-// pub async fn blocks(
-//     _: Request<Body>,
-//     params: Params,
-//     query: Query,
-//     env: Arc<RpcServiceEnvironment>,
-// ) -> ServiceResult {
-//     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-//     let length = query.get_str("length").unwrap_or("0");
-//     let head_param = query.get_str("head").unwrap_or("head");
-//     // TODO: mutliparameter
-//     let head = parse_block_hash_or_fail!(&chain_id, head_param, &env);
-//     // TODO: implement min_date query arg
+pub async fn blocks(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let length = query.get_str("length").unwrap_or("0");
+    let head_param = query
+        .get("head")
+        .cloned()
+        .unwrap_or(vec!["head".to_string()]);
+    let head_param = if head_param.is_empty() {
+        vec!["head".to_string()]
+    } else {
+        head_param
+    };
+    let mut hashes = Vec::with_capacity(head_param.len());
+    for head_param in head_param {
+        hashes.push(parse_block_hash_or_fail!(&chain_id, &head_param, &env));
+    }
+    let min_date = query.get_str("min_date").unwrap_or("0");
 
-//     // Quick hack to handle the normal case that is not working right now (returns an empty array
-//     // instead of an array with the hash of the head)
-//     if head_param == "head" {
-//         return result_to_json_response(Ok(vec![vec![head.to_base58_check()]]), env.log());
-//     }
+    // TODO: This can be implemented in a more optimised and cleaner way
+    // Note: Need to investigate the "more heads per level" variant
 
-//     // TODO: This can be implemented in a more optimised and cleaner way
-//     // Note: Need to investigate the "more heads per level" variant
+    let block_hashes = base_services::get_blocks(
+        chain_id,
+        hashes,
+        length.parse::<usize>()?,
+        min_date.parse::<i64>()?,
+        env.persistent_storage(),
+    );
 
-//     let block_hashes = base_services::get_block_hashes(
-//         chain_id,
-//         head,
-//         None,
-//         length.parse::<usize>()?,
-//         env.persistent_storage(),
-//     )
-//     .map(|hashes| {
-//         hashes
-//             .iter()
-//             .map(|block| block.to_base58_check())
-//             .collect::<Vec<String>>()
-//     });
-
-//     result_to_json_response(block_hashes, env.log())
-// }
+    result_to_json_response(block_hashes, env.log())
+}
 
 pub async fn chains_block_id(
     _: Request<Body>,

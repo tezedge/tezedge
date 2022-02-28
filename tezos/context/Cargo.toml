@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2018"
 
@@ -18,7 +18,7 @@ libc = "0.2.65"
 modular-bitfield = "0.11"
 ocaml-interop = { version = "0.8.7", features = ["without-ocamlopt", "caml-state"] }
 serde = { version = "1.0", features = ["derive"] }
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 static_assertions = "1.1"
 rand = "0.8"
 strum = "0.20"

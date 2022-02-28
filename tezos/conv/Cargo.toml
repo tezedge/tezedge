@@ -1,6 +1,6 @@
 [package]
 name = "tezos_conv"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 
@@ -12,3 +12,4 @@ tezos_context_api = { path = "../context-api" }
 tezos_messages = { path = "../messages" }
 tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 crypto = { path = "../../crypto" }
+tezos-sys = { path = "../sys" }

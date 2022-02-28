@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::mempool::mempool_actions::BlockAppliedAction;
+use crate::action::BootstrapNewCurrentHeadAction;
+use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::init::PeersInitAction;
 use crate::service::actors_service::ActorsMessageFrom;
 use crate::service::{ActorsService, Service};
+use crate::shutdown::ShutdownInitAction;
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -14,7 +17,10 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             while let Ok(msg) = store.service.actors().try_recv() {
                 match msg {
                     ActorsMessageFrom::Shutdown => {
-                        // TODO
+                        store.dispatch(ShutdownInitAction {});
+                    }
+                    ActorsMessageFrom::P2pInit => {
+                        store.dispatch(PeersInitAction {});
                     }
                     ActorsMessageFrom::PeerStalled(peer_id) => {
                         store.dispatch(PeersGraylistAddressAction {
@@ -32,21 +38,29 @@ pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                             message,
                         });
                     }
-                    ActorsMessageFrom::BlockApplied(
+                    ActorsMessageFrom::NewCurrentHead {
                         chain_id,
                         block,
-                        hash,
-                        block_metadata_hash,
-                        ops_metadata_hash,
                         is_bootstrapped,
-                    ) => {
-                        store.dispatch(BlockAppliedAction {
+                    } => {
+                        store.dispatch(BootstrapNewCurrentHeadAction {
                             chain_id,
                             block,
-                            hash,
-                            block_metadata_hash,
-                            ops_metadata_hash,
                             is_bootstrapped,
+                        });
+                    }
+                    ActorsMessageFrom::ApplyBlock {
+                        chain_id,
+                        block_hash,
+                        callback,
+                    } => {
+                        store
+                            .service
+                            .actors()
+                            .register_apply_block_callback(block_hash.clone(), callback);
+                        store.dispatch(BlockApplierEnqueueBlockAction {
+                            chain_id,
+                            block_hash,
                         });
                     }
                 }

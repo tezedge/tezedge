@@ -1,16 +1,20 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+
+use crypto::hash::BlockHash;
 
 use crate::peer::{Peer, PeerStatus};
 
 use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerBlacklistState {
     /// Peer is temporarily graylisted.
@@ -27,12 +31,16 @@ impl PeerBlacklistState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersState {
-    list: BTreeMap<SocketAddr, Peer>,
+    pub list: BTreeMap<SocketAddr, Peer>,
     ip_blacklist: BTreeMap<IpAddr, PeerBlacklistState>,
 
     pub dns_lookup: Option<PeersDnsLookupState>,
 
     pub check_timeouts: PeersCheckTimeoutsState,
+
+    // TODO(zura): implement p2p peer requests to better track each request.
+    /// Maps BlockHash to time request was initiated.
+    pub pending_block_header_requests: BTreeMap<BlockHash, u64>,
 }
 
 impl PeersState {
@@ -44,6 +52,8 @@ impl PeersState {
             dns_lookup: None,
 
             check_timeouts: PeersCheckTimeoutsState::new(),
+
+            pending_block_header_requests: BTreeMap::new(),
         }
     }
 
@@ -101,6 +111,10 @@ impl PeersState {
         self.list.keys()
     }
 
+    pub fn iter_handshaked<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+        self.list.iter().filter(|(_, p)| p.is_handshaked())
+    }
+
     #[inline(always)]
     pub fn iter_mut<'a>(&'a mut self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a mut Peer)> {
         self.list.iter_mut()
@@ -118,9 +132,19 @@ impl PeersState {
         self.potential_iter().count()
     }
 
+    /// Iterator over `Connected` peers.
+    pub fn connected_iter<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+        self.list.iter().filter(|(_, peer)| peer.is_connected())
+    }
+
     /// Number of peers that we have established tcp connection with.
     pub fn connected_len(&self) -> usize {
-        self.iter().filter(|(_, peer)| peer.is_connected()).count()
+        self.connected_iter().count()
+    }
+
+    #[inline(always)]
+    pub fn is_blacklisted(&self, ip: &IpAddr) -> bool {
+        self.get_blacklisted_ip(ip).is_some()
     }
 
     #[inline(always)]

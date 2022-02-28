@@ -53,7 +53,7 @@ fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZ
 
     // convert to correct key size
     let mut arr = [0u8; CRYPTO_KEY_SIZE];
-    arr.copy_from_slice(&buf);
+    arr.copy_from_slice(buf);
     Ok(arr)
 }
 
@@ -135,6 +135,16 @@ pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash)
 /// Convenience wrapper around [`sodiumoxide::crypto::box_::PrecomputedKey`]
 pub struct PrecomputedKey(box_::PrecomputedKey);
 
+#[cfg(feature = "fuzzing")]
+impl fuzzcheck::DefaultMutator for PrecomputedKey {
+    type Mutator = fuzzcheck::mutators::unit::UnitMutator<PrecomputedKey>;
+    #[no_coverage]
+    fn default_mutator() -> Self::Mutator {
+        let pk = PrecomputedKey::from_bytes([0; box_::PRECOMPUTEDKEYBYTES]);
+        fuzzcheck::mutators::unit::UnitMutator::new(pk)
+    }
+}
+
 impl PrecomputedKey {
     /// Create `PrecomputedKey` from public key and secret key
     ///
@@ -192,6 +202,8 @@ impl From<FromHexError> for CryptoError {
 #[cfg(test)]
 mod tests {
 
+    use std::convert::TryInto;
+
     use super::*;
     use crate::nonce::NONCE_SIZE;
 
@@ -229,9 +241,11 @@ mod tests {
         )?;
         let pck = PrecomputedKey::precompute(&pk, &sk);
 
-        let nonce = Nonce::new(&hex::decode(
-            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
-        )?);
+        let nonce = Nonce::new(
+            &hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?
+                .try_into()
+                .unwrap(),
+        );
         let msg = hex::decode("00874d1b98317bd6efad8352a7144c9eb0b218c9130e0a875973908ddc894b764ffc0d7f176cf800b978af9e919bdc35122585168475096d0ebcaca1f2a1172412b91b363ff484d1c64c03417e0e755e696c386a0000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000")?;
 
         let encrypted_msg = pck.encrypt(&msg, &nonce)?;
@@ -251,9 +265,11 @@ mod tests {
         )?;
         let pck = PrecomputedKey::precompute(&pk, &sk);
 
-        let nonce = Nonce::new(&hex::decode(
-            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
-        )?);
+        let nonce = Nonce::new(
+            &hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?
+                .try_into()
+                .unwrap(),
+        );
         let enc = hex::decode("45d82d5c4067f5c32748596c1bbc93a9f87b5b1f2058ddd82b6f081ca484b672395c7473ab897c64c01c33878ac1ccb6919a75c9938d8bcf0e7917ddac13a787cfb5c9a5aea50d24502cf86b5c9b000358c039334ec077afe98936feec0dabfff35f14cafd2cd3173bbd56a7c6e5bf6f5f57c92b59b129918a5895e883e7d999b191aad078c4a5b164144c1beaed58b49ba9be094abf3a3bd9")?;
 
         let decrypted_msg = pck.decrypt(&enc, &nonce)?;
@@ -273,9 +289,11 @@ mod tests {
         )?;
         let pck = PrecomputedKey::precompute(&pk, &sk);
 
-        let nonce = Nonce::new(&hex::decode(
-            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
-        )?);
+        let nonce = Nonce::new(
+            &hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?
+                .try_into()
+                .unwrap(),
+        );
         let msg = "hello world";
 
         let enc = pck.encrypt(msg.as_bytes(), &nonce)?;

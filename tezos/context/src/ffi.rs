@@ -22,7 +22,7 @@ use crypto::hash::ContextHash;
 use crate::{
     from_ocaml::OCamlQueryKind,
     initializer::initialize_tezedge_index,
-    timings,
+    snapshot, timings,
     working_tree::{
         storage::DirectoryId,
         working_tree::{FoldDepth, TreeWalker, WorkingTree},
@@ -888,7 +888,61 @@ ocaml_export! {
         timings::init_timing(db_path);
         OCaml::unit()
     }
+
+    // Snapshots
+
+    fn tezedge_context_dump(
+        rt,
+        context_path: OCamlRef<String>,
+        context_hash: OCamlRef<OCamlContextHash>,
+        dump_path: OCamlRef<String>,
+    ) -> OCaml<Result<OCamlInt, String>> {
+        // TODO: remove unwraps
+        let context_path = context_path.to_rust(rt);
+        let ctx = snapshot::reload_context_readonly(context_path).unwrap();
+        let dump_path: String = dump_path.to_rust(rt);
+        let context_hash: ContextHash = context_hash.to_rust(rt);
+
+        let (tree, storage, string_interner, parent_hash, commit) =
+            snapshot::read_commit_tree(ctx, &context_hash).unwrap();
+
+        snapshot::create_new_database(
+            tree,
+            storage,
+            string_interner,
+            parent_hash,
+            commit,
+            &dump_path,
+            &context_hash,
+            log_null,
+        )
+        .unwrap();
+
+        snapshot::recompute_hashes(&dump_path, &context_hash, log_null)
+            .unwrap();
+
+        let result: Result<i32, String> = Ok(0);
+
+        result.to_ocaml(rt)
+    }
+
+    fn tezedge_context_restore(
+        rt,
+        target_path: OCamlRef<String>,
+        context_dump_path: OCamlRef<String>,
+        _expected_context_hash: OCamlRef<OCamlContextHash>,
+        _nb_context_elements: OCamlRef<OCamlInt>,
+    ) {
+        let target_path: String = target_path.to_rust(rt);
+        let context_dump_path: String = context_dump_path.to_rust(rt);
+        println!("restoring into {} -> {}", context_dump_path, target_path);
+        std::fs::rename(context_dump_path, target_path).unwrap();
+
+        OCaml::unit()
+    }
 }
+
+fn log_null(_: &str) {}
 
 unsafe impl ToOCaml<DynBox<WorkingTreeFFI>> for WorkingTreeFFI {
     fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<WorkingTreeFFI>> {
@@ -935,6 +989,8 @@ pub fn initialize_callbacks() {
             tezedge_context_get_tree,
             tezedge_context_set_tree,
             tezedge_context_empty,
+            tezedge_context_dump,
+            tezedge_context_restore,
         );
         initialize_tezedge_tree_callbacks(
             tezedge_tree_hash,

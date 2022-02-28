@@ -12,6 +12,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 use crate::peer::binary_message::read::PeerBinaryMessageReadState;
 use crate::peer::chunk::read::ReadCrypto;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum PeerMessageReadError {
     #[error("Error while decoding PeerMessage: {0}")]

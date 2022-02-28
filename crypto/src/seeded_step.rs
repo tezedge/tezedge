@@ -47,7 +47,7 @@ impl Step {
     }
 
     /// Returns new sequence number
-    pub fn next(&mut self) -> i32 {
+    pub fn next_step(&mut self) -> i32 {
         let random_gap = if self.step <= 1 {
             0
         } else {
@@ -79,7 +79,7 @@ impl Step {
             std::mem::replace(&mut self.step, new_step)
         } else {
             // just decrement counter
-            self.counter = self.counter - 1;
+            self.counter -= 1;
             self.step
         };
 
@@ -127,7 +127,7 @@ mod tests {
         )?;
 
         // this is fixed/deterministic algorithm
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -137,7 +137,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -147,7 +147,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -157,7 +157,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -167,7 +167,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -177,7 +177,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -187,7 +187,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -197,7 +197,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -207,7 +207,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -217,7 +217,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -227,7 +227,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -237,7 +237,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(2, step.next());
+        assert_eq!(2, step.next_step());
         assert_step_state(
             &step,
             (
@@ -247,7 +247,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(3, step.next());
+        assert_eq!(3, step.next_step());
         assert_step_state(
             &step,
             (
@@ -257,7 +257,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(2, step.next());
+        assert_eq!(2, step.next_step());
         assert_step_state(
             &step,
             (
@@ -267,7 +267,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -277,7 +277,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -287,7 +287,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -297,7 +297,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -307,7 +307,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(1, step.next());
+        assert_eq!(1, step.next_step());
         assert_step_state(
             &step,
             (
@@ -317,7 +317,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(2, step.next());
+        assert_eq!(2, step.next_step());
         assert_step_state(
             &step,
             (
@@ -327,7 +327,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(3, step.next());
+        assert_eq!(3, step.next_step());
         assert_step_state(
             &step,
             (
@@ -337,7 +337,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(5, step.next());
+        assert_eq!(5, step.next_step());
         assert_step_state(
             &step,
             (
@@ -347,7 +347,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(3, step.next());
+        assert_eq!(3, step.next_step());
         assert_step_state(
             &step,
             (
@@ -357,7 +357,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(6, step.next());
+        assert_eq!(6, step.next_step());
         assert_step_state(
             &step,
             (
@@ -367,7 +367,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(5, step.next());
+        assert_eq!(5, step.next_step());
         assert_step_state(
             &step,
             (
@@ -377,7 +377,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(2, step.next());
+        assert_eq!(2, step.next_step());
         assert_step_state(
             &step,
             (
@@ -387,7 +387,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(4, step.next());
+        assert_eq!(4, step.next_step());
         assert_step_state(
             &step,
             (
@@ -397,7 +397,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(2, step.next());
+        assert_eq!(2, step.next_step());
         assert_step_state(
             &step,
             (
@@ -407,7 +407,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(4, step.next());
+        assert_eq!(4, step.next_step());
         assert_step_state(
             &step,
             (

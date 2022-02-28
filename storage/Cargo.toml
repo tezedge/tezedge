@@ -1,6 +1,6 @@
 [package]
 name = "storage"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -17,12 +17,13 @@ num_cpus = "1.13"
 rocksdb = {version = "0.17", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 sled = "0.34.6"
 strum = "0.20"
 strum_macros = "0.20"
 zstd = "0.5.3+zstd.1.4.5"
 edgekv = { path = "../edgekv" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
 # local dependencies
 crypto = { path = "../crypto" }
@@ -51,3 +52,10 @@ commitlog = "0.1"
 maindb-backend-rocksdb = []
 maindb-backend-sled = []
 maindb-backend-edgekv = []
+fuzzing = [
+    "fuzzcheck",
+    "crypto/fuzzing",
+    "tezos_api/fuzzing",
+    "tezos_messages/fuzzing",
+    "tezos_context_api/fuzzing"
+    ]

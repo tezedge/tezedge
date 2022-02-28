@@ -8,7 +8,7 @@ use hex::FromHexError;
 use thiserror::Error;
 
 use crypto::base58::FromBase58CheckError;
-use crypto::hash::FromBytesError;
+use crypto::hash::{FromBytesError, TryFromPKError};
 
 pub mod fitness_comparator;
 pub mod rpc_support;
@@ -22,6 +22,7 @@ pub enum SignatureCurve {
     P256,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Error, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ConversionError {
     #[error("Conversion from invalid public key")]
@@ -71,6 +72,17 @@ impl From<<SignatureCurve as FromStr>::Err> for ConversionError {
     fn from(error: <SignatureCurve as FromStr>::Err) -> Self {
         Self::InvalidCurveTag {
             curve_tag: error.to_string(),
+        }
+    }
+}
+
+impl From<TryFromPKError> for ConversionError {
+    fn from(error: TryFromPKError) -> Self {
+        match error {
+            TryFromPKError::Digest(_) => Self::Blake2bError,
+            TryFromPKError::Size(e) => Self::InvalidHash {
+                hash: e.to_string(),
+            },
         }
     }
 }

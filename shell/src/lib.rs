@@ -6,7 +6,6 @@
 
 use thiserror::Error;
 
-pub mod chain_feeder;
 pub mod chain_manager;
 pub mod peer_branch_bootstrapper;
 pub mod shell_automaton_manager;

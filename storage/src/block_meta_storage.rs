@@ -81,6 +81,25 @@ impl BlockMetaStorage {
         chain_id: &ChainId,
         log: &Logger,
     ) -> Result<Meta, StorageError> {
+        self.put_block_header_impl(block_header, chain_id, false, log)
+    }
+
+    pub fn put_block_header_with_applied(
+        &self,
+        block_header: &BlockHeaderWithHash,
+        chain_id: &ChainId,
+        log: &Logger,
+    ) -> Result<Meta, StorageError> {
+        self.put_block_header_impl(block_header, chain_id, true, log)
+    }
+
+    fn put_block_header_impl(
+        &self,
+        block_header: &BlockHeaderWithHash,
+        chain_id: &ChainId,
+        is_applied: bool,
+        log: &Logger,
+    ) -> Result<Meta, StorageError> {
         // create/update record for block
         let block_metadata = match self.get(&block_header.hash)? {
             Some(mut meta) => {
@@ -111,7 +130,7 @@ impl BlockMetaStorage {
             }
             None => {
                 let meta = Meta {
-                    is_applied: false,
+                    is_applied,
                     predecessor: Some(block_header.header.predecessor().clone()),
                     successors: vec![],
                     level: block_header.header.level(),
@@ -160,7 +179,7 @@ impl BlockMetaStorage {
             }
             None => {
                 let meta = Meta {
-                    is_applied: false,
+                    is_applied,
                     predecessor: None,
                     successors: vec![block_header.hash.clone()],
                     level: block_header.header.level() - 1,
@@ -381,7 +400,8 @@ macro_rules! successors_count {
 }
 
 /// Meta information for the block
-#[derive(Clone, Getters, CopyGetters, Setters, PartialEq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Getters, CopyGetters, Setters, PartialEq, Debug, Clone)]
 pub struct Meta {
     #[get = "pub"]
     predecessor: Option<BlockHash>,
@@ -747,6 +767,7 @@ pub fn merge_meta_value_edgekv(
 
 /// Struct holds informations as a result from block apllication,
 /// These data are used for appling next successor block
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, CopyGetters, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockAdditionalData {
     #[get_copy = "pub"]

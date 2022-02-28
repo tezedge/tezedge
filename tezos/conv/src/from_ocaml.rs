@@ -30,12 +30,12 @@ use ocaml_interop::{
 use tezos_api::ffi::{
     Applied, ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse,
     BeginApplicationError, BeginApplicationResponse, BeginConstructionError, CommitGenesisResult,
-    ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot, Errored, FfiJsonEncoderError,
-    ForkingTestchainData, GetDataError, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
-    ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod,
-    TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
-    ValidateOperationResult,
+    ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot, DumpContextError, Errored,
+    FfiJsonEncoderError, ForkingTestchainData, GetDataError, HelpersPreapplyError,
+    HelpersPreapplyResponse, InitProtocolContextResult, OperationProtocolDataJsonWithErrorListJson,
+    PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse,
+    RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationResponse, ValidateOperationResult,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
@@ -391,6 +391,10 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::ContextGetKeyValuesByPrefixResult(result),
         //ContextGetTreeByPrefixResult(result: Result<OCamlStringTreeObject, String>) =>
         //    NodeMessage::ContextGetTreeByPrefixResult(result),
+        DumpContextResponse(result: Result<OCamlInt, OCamlTezosErrorTrace>) =>
+            NodeMessage::DumpContextResponse(result),
+        RestoreContextResponse(result: Result<(), OCamlTezosErrorTrace>) =>
+            NodeMessage::RestoreContextResponse(result),
 
         IpcResponseEncodingFailure(message: String) => NodeMessage::IpcResponseEncodingFailure(message),
 
@@ -428,3 +432,5 @@ from_ocaml_tezos_error_trace!(TezosStorageInitError);
 from_ocaml_tezos_error_trace!(GetDataError);
 from_ocaml_tezos_error_trace!(FfiJsonEncoderError);
 from_ocaml_tezos_error_trace!(ComputePathError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(DumpContextError);
+from_ocaml_tezos_error_trace!(RestoreContextError);

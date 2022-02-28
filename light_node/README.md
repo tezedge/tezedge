@@ -229,10 +229,34 @@ Path to the json file with key-values which will be added to the empty context o
 
 The following subcommands are supported.
 
+### Snapshot
+
+`snapshot` is used to take a snapshot of the current storage to produce a trimmed copy which contains all block headers and operations up until the specified target block, and also its associated context revision. It doesn't include results for older blocks, or older reversions of the context.
+
+The node can continue processing newer blocks when using this snapshot, but will not be able to serve RPC calls that depend on older data.
+
+In addition to the command-line arguments described above, it also supports the following arguments:
+
+- `--target-path <PATH>`: The directory on which to create the snapshot.
+- `--block <BLOCK-HASH>`: Target block (defaults to the hash of `HEAD~10`). Also accepts a level or a negative offset from the current HEAD (for example: `--block ~8096`). *(optional)*
+
+**Example:**
+
+The following command will create a snapshot for `HEAD~10` (the default) on `/tmp/tezedge-storage-snapshot`. The node can then be use this trimmed copy with `--tezos-data-dir=/tmp/tezedge-storage-snapshot`.
+
+```
+cargo run --bin \
+    light-node snapshot \
+        --config-file ./light_node/etc/tezedge/tezedge.config \
+        --tezos-data-dir=/tmp/original-data \
+        --target-path=/tmp/tezedge-storage-snapshot
+```
+
 ### Replay
 
-`replay` is used to replay the application of a range of blocks. In addition to the command-line arguments
-described above, it also supports the following arguments:
+`replay` is used to replay the application of a range of blocks.
+
+In addition to the command-line arguments described above, it also supports the following arguments:
 
 - `--from-block <BLOCK-HASH>`: Block from which we start the replay. *(optional)*
 - `--to-block <BLOCK-HASH>`: Replay until this block. After it is reached, the replayer stops.

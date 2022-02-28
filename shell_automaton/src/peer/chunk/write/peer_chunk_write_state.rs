@@ -16,6 +16,7 @@ pub enum PeerConnectionChunkWriteState {
     Error(PeerChunkWriteError),
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WriteCrypto {
     pub precomputed_key: PrecomputedKey,
@@ -32,6 +33,7 @@ impl WriteCrypto {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerChunkWriteError {
     IO(String),
@@ -57,12 +59,14 @@ impl From<BinaryChunkError> for PeerChunkWriteError {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerChunkWrite {
     pub crypto: WriteCrypto,
     pub state: PeerChunkWriteState,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerChunkWriteState {
     Init,

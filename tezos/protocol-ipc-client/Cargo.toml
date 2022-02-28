@@ -1,6 +1,6 @@
 [package]
 name = "tezos_protocol_ipc_client"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 
@@ -8,9 +8,12 @@ edition = "2018"
 
 [dependencies]
 thiserror = "1.0"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 tokio = { version = "1.12", features = ["full"] }
-nix = "0.19"
+nix = "0.23"
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
 # local dependencies
 async_ipc = { path = "../../async-ipc" }
 crypto = { path = "../../crypto" }
@@ -18,3 +21,16 @@ tezos_api = { path = "../api" }
 tezos_messages = { path = "../messages" }
 tezos_protocol_ipc_messages = { path = "../protocol-ipc-messages" }
 tezos_context_api = { path = "../context-api" }
+
+
+[features]
+fuzzing = [
+    "fuzzcheck",
+    "crypto/fuzzing",
+    "tezos_messages/fuzzing",
+    "tezos_api/fuzzing",
+    "tezos_context_api/fuzzing",
+    "tezos_protocol_ipc_messages/fuzzing",
+    "async_ipc/fuzzing"
+]
+

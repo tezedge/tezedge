@@ -9,6 +9,7 @@ use crate::Port;
 /// Different kinds of lookup errors that `getaddrinfo` and
 /// `getnameinfo` can return. These can be a little inconsitant
 /// between platforms, so it's recommended not to rely on them.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum DnsLookupError {
     /// Temporary failure in name resolution.

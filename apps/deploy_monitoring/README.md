@@ -1,5 +1,7 @@
 # Deploy Monitoring
 
+**Note: Deploy Monitoring is deprecated, please consider using [Node Monitoring](../node_monitoring)**
+
 **Note: for the time being this readme applies to the deploy_monitoring/optional-debugger branch, please checkout the branch accordingly. Once merged into develop and into master, this notice should be removed**
 
 Runs and monitors the whole or parts of the tezedge stack (node, debugger, explorer) inside docker contianers with optional alerts sent to a slack channel. The benefits of running the node with the deploy monitoring module is that it gathers resource consumption data, which are then displayed on the resource page and is capable of monitoring and changing the deployed docker imag. This means in case of a new image available, the deploy monitoring stops the containers and pulls the newer images.
@@ -14,8 +16,8 @@ Runs and monitors the whole or parts of the tezedge stack (node, debugger, explo
     # Run the following in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
 
-    rustup toolchain install 1.57
-    rustup default 1.57
+    rustup toolchain install 1.58.1
+    rustup default 1.58.1
 
     sudo apt install pkg-config libsodium-dev clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev libhidapi-dev libssl-dev
     ```

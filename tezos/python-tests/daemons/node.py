@@ -126,6 +126,9 @@ class Node:
         tezedge_node_run = [node, '--tezos-data-dir', node_dir, '--disable-bootstrap-lookup',
                             '--identity-expected-pow', '0', '--p2p-port', str(p2p_port),
                             '--rpc-port', str(rpc_port), '--identity-file', node_dir + '/identity.json']
+        if 'TEZEDGE_NODE_PARAMS' in os.environ:
+            tezedge_node_run.extend(os.environ['TEZEDGE_NODE_PARAMS'].split(' '))
+
         if params:
             tezedge_node_run.extend(params)
 

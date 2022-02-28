@@ -55,6 +55,7 @@ impl RpcServer {
     ) -> Self {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: hydrated_current_head_block,
+            best_remote_level: None,
             streams: HashMap::new(),
         }));
 
@@ -140,6 +141,7 @@ pub fn handle_notify_rpc_server_msg(
     match env.state().write() {
         Ok(mut current_head_ref) => {
             current_head_ref.current_head = notification.block.clone();
+            current_head_ref.best_remote_level = notification.best_remote_level.clone();
             current_head_ref.wake_up_all_streams();
         }
         Err(e) => {

@@ -20,7 +20,7 @@ use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
-use storage::Replay;
+use storage::{BlockReference, Replay, StorageSnapshot};
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
@@ -134,6 +134,7 @@ pub struct Environment {
     pub identity: Identity,
     pub ffi: Ffi,
     pub replay: Option<Replay>,
+    pub snapshot: Option<StorageSnapshot>,
 
     pub tezos_network: TezosEnvironment,
     pub tezos_network_config: TezosEnvironmentConfiguration,
@@ -378,6 +379,24 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("disable-mempool")
             .global(true)
             .help("Enable or disable mempool"))
+        .arg(Arg::with_name("disable-block-precheck")
+            .long("disable-block-precheck")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable blocks prechecking"))
+        .arg(Arg::with_name("disable-endorsements-precheck")
+            .long("disable-endorsements-precheck")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable prechecking of endorsements"))
+        .arg(Arg::with_name("disable-apply-retry")
+            .long("disable-apply-retry")
+            .global(true)
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable prechecking of endorsements"))
         .arg(Arg::with_name("disable-peer-graylist")
             .long("disable-peer-graylist")
             .global(true)
@@ -630,6 +649,47 @@ pub fn tezos_app() -> App<'static, 'static> {
                      .help("Panic if the block application took longer than this number of milliseconds")
                      .validator(parse_validator_fn!(u64, "Value must be a valid number"))
                 )
+        ).subcommand(
+            clap::SubCommand::with_name("snapshot")
+                .arg(Arg::with_name("block")
+                     .long("block")
+                     .takes_value(true)
+                     .value_name("HASH_OR_LEVEL_OR_OFFSET")
+                     .display_order(0)
+                     .required(false)
+                     .help("Block to snapshot (by hash, level or offset (~<NUM>) from head)")
+                     .validator(|value| {
+                         if value.parse::<BlockHash>().is_err() && value.parse::<u32>().is_err() && !(value.starts_with("~") && (&value[1..]).parse::<u32>().is_ok()) {
+                             Err("Block hash, level of offset  not valid".to_string())
+                         } else {
+                             Ok(())
+                         }
+                     })
+                )
+                .arg(Arg::with_name("target-path")
+                     .long("target-path")
+                     .takes_value(true)
+                     .value_name("PATH")
+                     .display_order(1)
+                     .required(true)
+                     .help("Directory where the snapshot will be created")
+                     .validator(|v| {
+                         let dir = Path::new(&v);
+                         if dir.exists() {
+                             if dir.is_dir() {
+                                 Ok(())
+                             } else {
+                                 Err(format!("Required snapshot data dir '{}' exists, but is not a directory!", v))
+                             }
+                         } else {
+                             // Tezos data dir does not exists, try to create it
+                             if let Err(e) = fs::create_dir_all(dir) {
+                                 Err(format!("Unable to create required snapshot data dir '{}': {} ", v, e))
+                             } else {
+                                 Ok(())
+                             }
+                         }
+                     }))
         );
     app
 }
@@ -852,6 +912,38 @@ impl Environment {
             }
         });
 
+        let snapshot = args.subcommand_matches("snapshot").map(|args| {
+            let target_path = args
+                .value_of("target-path")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path");
+
+            let block = args.value_of("block").map(|b| {
+                if let Ok(block_hash) = b.parse::<BlockHash>() {
+                    return BlockReference::BlockHash(block_hash);
+                }
+
+                // ~num is an offset from HEAD
+                if b.starts_with("~") {
+                    let maybe_num = &b[1..];
+                    if let Ok(offset) = maybe_num.parse::<u32>() {
+                        return BlockReference::OffsetFromHead(offset);
+                    }
+                }
+
+                if let Ok(level) = b.parse::<u32>() {
+                    return BlockReference::Level(level);
+                }
+
+                panic!(
+                    "Provided value cannot be converted to BlockHash, level of offset from head"
+                );
+            });
+
+            StorageSnapshot { block, target_path }
+        });
+
         let log_targets: HashSet<String> = match args.values_of("log") {
             Some(v) => v.map(String::from).collect(),
             None => std::iter::once("terminal".to_string()).collect(),
@@ -988,6 +1080,20 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
+                disable_block_precheck: args.value_of("disable-block-precheck").map_or(true, |s| {
+                    s.parse()
+                        .expect("Boolean value expected for disable-block-precheck")
+                }),
+                disable_endorsements_precheck: args
+                    .value_of("disable-endorsements-precheck")
+                    .map_or(false, |s| {
+                        s.parse()
+                            .expect("Boolean value expected for disable-endorsements-precheck")
+                    }),
+                disable_apply_retry: args.value_of("disable-apply-retry").map_or(true, |s| {
+                    s.parse()
+                        .expect("Boolean value expected for disable-apply-retry")
+                }),
                 randomness_seed: args.value_of("randomness-seed").map(|s| {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")
@@ -1179,7 +1285,7 @@ impl Environment {
                                         ) {
                                             panic!(
                                                 "Invalid json file: {}, reason: {}",
-                                                path.as_path().display().to_string(),
+                                                path.as_path().display(),
                                                 e
                                             );
                                         }
@@ -1241,6 +1347,7 @@ impl Environment {
                 },
             },
             replay,
+            snapshot,
             tokio_threads: args
                 .value_of("tokio-threads")
                 .unwrap_or("0")

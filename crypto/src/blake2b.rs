@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::generichash::State;
 use thiserror::Error;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Error, Debug, PartialEq, Clone, Copy)]
 pub enum Blake2bError {
     #[error("Output digest length must be between 16 and 64 bytes.")]
@@ -36,9 +37,27 @@ pub fn digest_128(data: &[u8]) -> Result<Vec<u8>, Blake2bError> {
 
 /// Arbitrary Blake2b digest generation from generic data.
 // Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
-fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
+pub fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
     let mut hasher = State::new(out_len, None).map_err(|_| Blake2bError::InvalidLenght)?;
     hasher.update(data)?;
+
+    let hash = hasher.finalize()?;
+    let mut result = Vec::with_capacity(out_len);
+    result.extend_from_slice(hash.as_ref());
+    Ok(result)
+}
+
+/// Arbitrary Blake2b digest generation from pieces of generic data.
+// Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
+pub fn digest_all<T, I>(data: T, out_len: usize) -> Result<Vec<u8>, Blake2bError>
+where
+    T: IntoIterator<Item = I>,
+    I: AsRef<[u8]>,
+{
+    let mut hasher = State::new(out_len, None).map_err(|_| Blake2bError::InvalidLenght)?;
+    for d in data.into_iter() {
+        hasher.update(d.as_ref())?;
+    }
 
     let hash = hasher.finalize()?;
     let mut result = Vec::with_capacity(out_len);
@@ -76,5 +95,25 @@ mod tests {
     fn blake2b_more_than_512() {
         // This should fail, as blake2b does not support hashes longer than 64 bytes.
         assert!(digest(b"hello world", 65).is_err())
+    }
+
+    #[test]
+    fn blake2b_digest() {
+        let hash = digest(b"hello world", 32).unwrap();
+        assert_eq!(
+            hash,
+            hex::decode("256c83b297114d201b30179f3f0ef0cace9783622da5974326b436178aeef610")
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn blake2b_digest_all() {
+        let hash = digest_all(&["hello", " ", "world"], 32).unwrap();
+        assert_eq!(
+            hash,
+            hex::decode("256c83b297114d201b30179f3f0ef0cace9783622da5974326b436178aeef610")
+                .unwrap()
+        );
     }
 }

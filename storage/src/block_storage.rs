@@ -24,7 +24,6 @@ use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, Sto
 pub struct BlockStorage {
     primary_index: BlockPrimaryIndex,
     by_level_index: BlockByLevelIndex,
-    by_context_hash_index: BlockByContextHashIndex,
     clog: Arc<BlockStorageCommitLog>,
 }
 
@@ -56,6 +55,8 @@ impl BlockJsonData {
 
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
+    fn get_by_level(&self, level: BlockLevel) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn get_location(
         &self,
@@ -95,13 +96,6 @@ pub trait BlockStorageReader: Sync + Send {
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
 
-    fn get_by_context_hash(
-        &self,
-        context_hash: &ContextHash,
-    ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
-
-    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
-
     fn iterator(&self) -> Result<Vec<BlockHash>, StorageError>;
 }
 
@@ -110,7 +104,6 @@ impl BlockStorage {
         Self {
             primary_index: BlockPrimaryIndex::new(persistent_storage.main_db()),
             by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
     }
@@ -171,19 +164,6 @@ impl BlockStorage {
                 self.by_level_index
                     .put(block_header.header.level(), &updated_column_location),
             )
-    }
-
-    pub fn assign_to_context(
-        &self,
-        block_hash: &BlockHash,
-        context_hash: &ContextHash,
-    ) -> Result<(), StorageError> {
-        match self.primary_index.get(block_hash)? {
-            Some(location) => self.by_context_hash_index.put(context_hash, &location),
-            None => Err(StorageError::MissingKey {
-                when: "assign_to_context".into(),
-            }),
-        }
     }
 
     #[inline]
@@ -252,6 +232,16 @@ impl BlockStorageReader for BlockStorage {
             .get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
+    }
+
+    fn get_by_level(&self, level: BlockLevel) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        let locations = self.by_level_index.get_blocks(level, 1)?;
+
+        if let Some(location) = locations.first() {
+            self.get_block_header_by_location(location).map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline]
@@ -360,22 +350,6 @@ impl BlockStorageReader for BlockStorage {
             .into_iter()
             .map(|location| self.get_block_header_by_location(&location))
             .collect()
-    }
-
-    #[inline]
-    fn get_by_context_hash(
-        &self,
-        context_hash: &ContextHash,
-    ) -> Result<Option<BlockHeaderWithHash>, StorageError> {
-        self.by_context_hash_index
-            .get(context_hash)?
-            .map(|location| self.get_block_header_by_location(&location))
-            .transpose()
-    }
-
-    #[inline]
-    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
-        self.by_context_hash_index.contains(context_hash)
     }
 
     #[inline]
@@ -588,10 +562,12 @@ pub type BlockByContextHashIndexKV =
     dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
+    #[allow(dead_code)]
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
         Self { kv }
     }
 
+    #[allow(dead_code)]
     fn put(
         &self,
         context_hash: &ContextHash,
@@ -602,6 +578,7 @@ impl BlockByContextHashIndex {
             .map_err(StorageError::from)
     }
 
+    #[allow(dead_code)]
     fn get(
         &self,
         context_hash: &ContextHash,
@@ -609,6 +586,7 @@ impl BlockByContextHashIndex {
         self.kv.get(context_hash).map_err(StorageError::from)
     }
 
+    #[allow(dead_code)]
     fn contains(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.kv.contains(context_hash).map_err(StorageError::from)
     }

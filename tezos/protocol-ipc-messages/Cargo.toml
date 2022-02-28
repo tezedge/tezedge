@@ -1,6 +1,6 @@
 [package]
 name = "tezos_protocol_ipc_messages"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 
@@ -9,8 +9,20 @@ edition = "2018"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 strum_macros = "0.20"
+enum-kinds = "0.5.1"
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_context_api = { path = "../context-api" }
 tezos_api = { path = "../api" }
 tezos_messages = { path = "../messages" }
+
+[features]
+fuzzing = [
+    "fuzzcheck",
+    "crypto/fuzzing",
+    "tezos_messages/fuzzing",
+    "tezos_api/fuzzing",
+    "tezos_context_api/fuzzing"
+]

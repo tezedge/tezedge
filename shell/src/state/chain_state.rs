@@ -23,7 +23,6 @@ use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBl
 use tezos_messages::Head;
 use tezos_protocol_ipc_client::{ProtocolRunnerConnection, ProtocolServiceError};
 
-use crate::chain_feeder::ChainFeederRef;
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperRef, StartBranchBootstraping, UpdateBlockState,
@@ -54,9 +53,6 @@ pub(crate) mod bootstrap_constants {
 
     /// We can validate just few branches/head from one peer, so we limit it by this constant
     pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
-
-    /// We tries to apply downloaded blocks in batch to speedup and save resources
-    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 1;
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
@@ -105,7 +101,6 @@ pub struct BlockchainState {
 impl BlockchainState {
     pub fn new(
         shell_automaton: ShellAutomatonSender,
-        block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
@@ -116,7 +111,6 @@ impl BlockchainState {
                 BlockMetaStorage::new(&persistent_storage),
                 OperationsMetaStorage::new(&persistent_storage),
                 shell_automaton,
-                block_applier,
             )),
             peer_branch_bootstrapper: None,
             block_storage: BlockStorage::new(persistent_storage),
@@ -451,7 +445,6 @@ impl BlockchainState {
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,
                             bootstrap_constants::MISSING_NEW_BRANCH_BOOTSTRAP_TIMEOUT,
                             bootstrap_constants::MAX_BOOTSTRAP_BRANCHES_PER_PEER,
-                            bootstrap_constants::MAX_BLOCK_APPLY_BATCH,
                         ),
                     )
                     .map_err(|e| StateError::ProcessingError {
@@ -690,7 +683,7 @@ impl BlockchainState {
 
         while counter > 0 {
             // evaluate next step, means we want predecessor at this distance
-            let distance = step.next();
+            let distance = step.next_step();
 
             // close history with caboose, if next step distance is negative (because of find_block_at_distance)
             let distance = if distance < 0 {

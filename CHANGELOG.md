@@ -8,11 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- New `snapshot` subcommand to `light-node` to produce trimmed copies of the storage.
+- Implemented shell-side prechecker for endorsement operations.
+- Implemented optional shell-side block prechecking.
+- Implemented statistics RPCs for tracking new blocks processing.
+- Option to enable retrying block application with cache reloaded.
+- Implemented block application logic in state machine.
+- Protocol-runner subprocess handling in the state machine.
 
 ### Changed
 
-- Nothing.
+- Rust upgraded to 1.58.1
 
 ### Deprecated
 
@@ -24,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Nothing.
+- Missed endorsement when alternative heads are encountered.
+- The `/monitor/bootstrapped` RPC now properly reports bootstrapping progress if the  node is not bootstrapped already.
 
 ### Security
 
@@ -33,6 +40,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 
 - Nothing.
+
+## [1.16.0] - 2022-02-28
+
+### Added
+
+- New `snapshot` subcommand to `light-node` to produce trimmed copies of the storage.
+- Option to enable retrying block application with cache reloaded.
+- Implemented shell-side prechecker for endorsement operations.
+- Implemented optional shell-side block prechecking.
+- Implemented statistics RPCs for tracking new blocks processing.
+- Re-implemented block application logic in state machine.
+- Re-implemented protocol-runner subprocess handling in the state machine.
+
+### Changed
+
+- Rust upgraded to 1.58.1
+
+### Fixed
+
+- Missed endorsement when alternative heads are encountered.
+- The `/monitor/bootstrapped` RPC now properly reports bootstrapping progress if the  node is not bootstrapped already.
 
 ## [1.15.1] - 2022-02-18
 
@@ -680,7 +708,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.15.1...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.0...develop
+[1.16.0]: https://github.com/tezedge/tezedge/releases/v1.16.0
 [1.15.1]: https://github.com/tezedge/tezedge/releases/v1.15.1
 [1.15.0]: https://github.com/tezedge/tezedge/releases/v1.15.0
 [1.14.0]: https://github.com/tezedge/tezedge/releases/v1.14.0

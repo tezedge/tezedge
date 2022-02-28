@@ -1,3 +1,4 @@
+
 ##############################################################################################################
 # The pipelines are divided  into two categories:
 #   corr - implying that the pipeline is testing the correctness of the node
@@ -59,7 +60,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -176,7 +177,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   user: root
   environment:
     RUST_BACKTRACE: 1
@@ -235,7 +236,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   user: root
   commands:
     - cd apps/node_monitoring && cargo build --release
@@ -313,7 +314,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: generate-artificial-load
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   privileged: true
   detach: true
   user: root
@@ -334,7 +335,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   privileged: true
   user: root
   commands:
@@ -404,7 +405,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: tezedge-updated-node-run-mainnet
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -419,7 +420,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"--tezos-data-
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network $${TEZEDGE_NETWORK} --identity-file "drone-cache/build_files/identities/identity_6.json" --protocol-runner /data/cache/protocol-runner --tezos-data-dir /data/cache/tezos-node-data --bootstrap-db-path /data/cache/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network $${TEZEDGE_NETWORK} --identity-file "./drone-cache/build_files/identities/identity_6.json" --protocol-runner /data/cache/protocol-runner --tezos-data-dir /data/cache/tezos-node-data --bootstrap-db-path /data/cache/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -503,7 +504,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -513,7 +514,7 @@ steps:
     - cargo test --release --workspace
 
 - name: run-unit-tests-multibackend-rockdb
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -524,7 +525,7 @@ steps:
     - cargo test --release --features maindb-backend-rocksdb
 
 - name: run-unit-tests-multibackend-sled
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -534,20 +535,20 @@ steps:
     - cd storage
     - cargo test --release --features maindb-backend-sled
 
-
-- name: run-unit-tests-multibackend-edgekv
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd storage
-    - cargo test --release --features maindb-backend-edgekv
+# NOTE: not used right now, and it is flakey, disabled for now
+# - name: run-unit-tests-multibackend-edgekv
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+#   pull: if-not-exists
+#   user: root
+#   environment:
+#     SODIUM_USE_PKG_CONFIG: 1
+#     RUST_BACKTRACE: 1
+#   commands:
+#     - cd storage
+#     - cargo test --release --features maindb-backend-edgekv
 
 - name: run-unit-tests-commit-log
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -558,7 +559,7 @@ steps:
     - cargo test --release --lib commit_log -- --nocapture
 
 - name: run-unit-tests-monitoring
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -617,7 +618,7 @@ steps:
 # GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and
 # all of then should initialize the context
 - name: protocol-runner-writable-and-readonly-context
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -633,7 +634,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
 # scenario accordingly
 - name: protocol-runner-acquisition-from-pool
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -649,7 +650,7 @@ steps:
 # GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to
 # the new head
 - name: shell-current-head
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -666,7 +667,7 @@ steps:
 # GIVEN we have one node with genesis and one node with level 3 WHEN we connect them a current branch is sent to the node with genesis
 # and THEN it bootstraps to level 3 then a new current_head is sent and applied by both nodes
 - name: shell-current-branch-then-current-head
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -682,7 +683,7 @@ steps:
 
 # GIVEN we run two nodes(1,2) with different branches WHEN we connect the two nodes THEN both branches are present in node 1
 - name: shell-simple-reorg
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -699,7 +700,7 @@ steps:
 # GIVEN we run two connected tezedge nodes WHEN one node sends CurrentHead with hacked protocol data THEN the node should blacklist
 # the node sending the hacked data
 - name: shell-multipass-blacklisting
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -716,7 +717,7 @@ steps:
 # GIVEN a mocke node on level 3 (level 7 is the current chain head) WHEN the node receives all CurrentHeadMessages THEN
 # the node is considered bootstrapped and mempool is activated
 - name: shell-bootstrapping-current-branch/heads
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -733,7 +734,7 @@ steps:
 # GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis
 # bootstraps to level 1324 and has its memool functional
 - name: shell-bootstrap-and-mempool
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -750,7 +751,7 @@ steps:
 # GIVEN we are running tezedge node WHEN accept connections from the network THEN we are not passing a the defined threshold with the
 # number of connected peers
 - name: p2p-comply-with-max-threshold
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -767,7 +768,7 @@ steps:
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
 # the connection should succeed
 - name: p2p-pow-success
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -784,7 +785,7 @@ steps:
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
 # the connection should fail
 - name: p2p-pow-fail
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -807,9 +808,10 @@ image_pull_secrets:
 ---
 ##############################################################################################################
 # This pipeline replays the application of the first 20k blocks from florencenet using the in-memory context
+# It also tests the snapshot functionality
 ##############################################################################################################
 kind: pipeline
-name: corr/replay-009-florence
+name: corr/replay-and-snapshot-009-florence
 
 trigger:
   branch:
@@ -858,7 +860,7 @@ steps:
     - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
 - name: tezedge-node-bootstrap
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   volumes:
@@ -873,12 +875,12 @@ steps:
     - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$$(rustc --print sysroot)"
     - >
-      drone-cache/build_files/light-node
-      --config-file=drone-cache/build_files/tezedge/tezedge_drone.config
-      --identity-file=drone-cache/build_files/identities/identity_2.json
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
@@ -899,7 +901,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: replay-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -910,20 +912,134 @@ steps:
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
     - >
-      drone-cache/build_files/light-node replay --target-path=./replay
-      --config-file "drone-cache/build_files/tezedge/tezedge_drone.config"
-      --identity-file "drone-cache/build_files/identities/identity_6.json"
-      --protocol-runner=drone-cache/build_files/protocol-runner
-      --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
-      --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
+      ./drone-cache/build_files/light-node replay --target-path=/cache/replay
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
       --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=tezedge
       --network=$${NETWORK}
 
+- name: take-irmin-context-snapshot-and-bootstrap-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
+    - >
+      drone-cache/build_files/light-node
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=irmin
+      --network=$${NETWORK}
+      snapshot --target-path=./irmin-snapshot --block "~100" # level=19900
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=./irmin-snapshot --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+      --log-level debug &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level 20000
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $block -lt 20000 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
+          exit 1
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+
+- name: take-tezedge-context-snapshot-and-bootstrap-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
+    - cp -R /cache/replay ./source-database
+    - rm ./source-database/context/lock
+    - >
+      drone-cache/build_files/light-node
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --tezos-data-dir=./source-database --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge
+      --network=$${NETWORK}
+      snapshot --target-path=./tezedge-snapshot --block "~100" # level=19900
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=./tezedge-snapshot --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+      --log-level debug &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level 20000
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $block -lt 20000 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
+          exit 1
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -1025,7 +1141,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1050,7 +1166,7 @@ steps:
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1063,7 +1179,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: client-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1076,7 +1192,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_client.py
 
 - name: accuser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1091,7 +1207,7 @@ steps:
   failure: ignore # TODO: Remove once fixed
 
 - name: block-times-ideal-scenario-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1105,7 +1221,7 @@ steps:
   failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
 
 - name: many-nodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1118,7 +1234,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1131,7 +1247,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1145,7 +1261,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1159,7 +1275,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: programs-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1172,7 +1288,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: many-bakers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1185,7 +1301,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: contract-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1198,7 +1314,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract.py
 
 - name: contract-baker-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1211,7 +1327,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: contract-annotations-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1224,7 +1340,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: contract-bls12-381-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1237,7 +1353,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_bls12_381.py
 
 - name: contract-macros-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1250,7 +1366,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_macros.py
 
 - name: contract-opcodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1263,7 +1379,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_opcodes.py
 
 - name: crypto-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1276,7 +1392,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_crypto.py
 
 - name: fa12-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1289,7 +1405,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fa12.py
 
 - name: mockup-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1302,7 +1418,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mockup.py
 
 - name: multiple-transfers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1315,7 +1431,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multiple_transfers.py
 
 - name: multisig-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1328,7 +1444,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multisig.py
 
 - name: per-block-votes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1341,7 +1457,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_per_block_votes.py
 
 - name: sapling-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1354,7 +1470,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_sapling.py
 
 - name: basic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1395,6 +1511,7 @@ steps:
 depends_on:
   - build-tezedge-binaries
 
+---
 ##############################################################################################################
 # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
 # version from protocol 011-hangzhou
@@ -1402,7 +1519,6 @@ depends_on:
 # GIVEN tezedge is compatible with the octez node and protocol 011-hangzhou WHEN we run the octez python tests with tezedge THEN all the
 # octez python tests should pass
 ##############################################################################################################
----
 kind: pipeline
 name: corr/octez-python-tests-applied-to-tezedge-011-hangzhou
 
@@ -1441,7 +1557,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1466,7 +1582,7 @@ steps:
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1479,7 +1595,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: client-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1492,7 +1608,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_client.py
 
 - name: accuser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1507,7 +1623,7 @@ steps:
   failure: ignore # TODO: Remove once fixed
 
 - name: block-times-ideal-scenario-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1521,7 +1637,7 @@ steps:
   failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
 
 - name: many-nodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1534,7 +1650,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1547,7 +1663,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1561,7 +1677,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1575,7 +1691,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: programs-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1588,7 +1704,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: many-bakers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1601,7 +1717,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: contract-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1614,7 +1730,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract.py
 
 - name: contract-baker-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1627,7 +1743,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: contract-annotations-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1640,7 +1756,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: contract-bls12-381-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1653,7 +1769,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_bls12_381.py
 
 - name: contract-macros-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1666,7 +1782,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_macros.py
 
 - name: contract-opcodes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1679,7 +1795,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_opcodes.py
 
 - name: crypto-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1692,7 +1808,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_crypto.py
 
 - name: fa12-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1705,7 +1821,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fa12.py
 
 - name: mockup-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1718,7 +1834,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mockup.py
 
 - name: multiple-transfers-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1731,7 +1847,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multiple_transfers.py
 
 - name: multisig-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1744,7 +1860,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multisig.py
 
 - name: per-block-votes-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1757,7 +1873,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_per_block_votes.py
 
 - name: sapling-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1770,7 +1886,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_sapling.py
 
 - name: basic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1816,6 +1932,428 @@ trigger:
 depends_on:
   - build-tezedge-binaries
 
+---
+##############################################################################################################
+# This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
+# version from protocol 011-hangzhou
+#
+# GIVEN tezedge is compatible with the octez node and protocol 011-hangzhou WHEN we run the octez python tests with tezedge THEN all the
+# octez python tests should pass
+##############################################################################################################
+kind: pipeline
+name: corr/octez-python-tests-applied-to-tezedge-011-hangzhou-no-endorsement-prechecking
+
+environment:
+  TEST_PROTO_DIR_SUFFIX: _011
+  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
+  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
+  TEZEDGE_NODE_PARAMS: "--disable-endorsements-precheck=true"
+
+steps:
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: prepare-python-tests
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    # copy the tezos src file from the image to a shared volume
+    - mkdir -p python-test-logs
+    - mkdir -p tezos-src
+    - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
+    # prepare modified python files for tests (compatibility with tezedge node)
+    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
+    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
+    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    # copy binaries to the test
+    - cp drone-cache/build_files/light-node tezos-src/tezos/
+    - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
+    - cp drone-cache/build_files/ffi/libtezos.so tezos-src/tezos/
+    # copy zcash-params init files - see constants.py light-node params
+    - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
+    - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
+
+- name: baker-endorser-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
+
+- name: client-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_client.py
+
+- name: accuser-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+    CONTEXT_MUST_SURVIVE_RESTARTS: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_accuser.py
+  failure: ignore # TODO: Remove once fixed
+
+- name: block-times-ideal-scenario-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_block_times_ideal_scenario.py
+  failure: ignore # TODO: Remove once fixed. Sometimes it takes too long, figure out why
+
+- name: many-nodes-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
+
+- name: mempool-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
+
+- name: fork-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+    CONTEXT_MUST_SURVIVE_RESTARTS: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
+
+- name: double-endorsement-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+    CONTEXT_MUST_SURVIVE_RESTARTS: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
+
+- name: programs-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
+
+- name: many-bakers-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
+
+- name: contract-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract.py
+
+- name: contract-baker-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
+
+- name: contract-annotations-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
+
+- name: contract-bls12-381-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_bls12_381.py
+
+- name: contract-macros-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_macros.py
+
+- name: contract-opcodes-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_opcodes.py
+
+- name: crypto-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_crypto.py
+
+- name: fa12-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fa12.py
+
+- name: mockup-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mockup.py
+
+- name: multiple-transfers-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multiple_transfers.py
+
+- name: multisig-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multisig.py
+
+- name: per-block-votes-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_per_block_votes.py
+
+- name: sapling-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_sapling.py
+
+- name: basic-test
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  # TODO: TE-275 remove failure: ignore
+  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+  failure: ignore
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd tezos-src/tezos/tests_python
+    - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
+    - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+
+- name: save-python-test-logs
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'python-test-011-logs-{{ .Build.Number }}'
+    mount:
+      - 'python-test-logs' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-tezedge-binaries
+
+---
 ##############################################################################################################
 # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
 # version from protocol alpha
@@ -1823,7 +2361,6 @@ depends_on:
 # GIVEN tezedge is compatible with the octez node and protocol alpha WHEN we run the octez python tests with tezedge THEN all the
 # octez python tests should pass
 ##############################################################################################################
----
 kind: pipeline
 name: corr/octez-python-tests-applied-to-tezedge-alpha
 
@@ -1866,7 +2403,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1891,7 +2428,7 @@ steps:
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1906,7 +2443,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1921,7 +2458,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1936,7 +2473,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1952,7 +2489,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1968,7 +2505,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1983,7 +2520,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -1998,7 +2535,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -2013,7 +2550,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO - TE-707 - Stop ignoring after implmeneting proto alpha handlers
   failure: ignore
@@ -2028,7 +2565,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
 
 - name: basic-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -2146,7 +2683,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -2161,7 +2698,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -2292,7 +2829,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -2363,7 +2900,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: tezedge-sandbox-run
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -2533,7 +3070,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -2654,6 +3191,7 @@ image_pull_secrets:
 depends_on:
   - build-tezedge-binaries
 
+---
 ##############################################################################################################
 # This pipeline runs tezedge node with sandbox configuration with 010 Granada protocol and does transfer
 # and integrates with baker/endorser
@@ -2661,7 +3199,6 @@ depends_on:
 # GIVEN that we run tezedge in sandbox mode with 010-granada protocol WHEN we run the octez baker and endorser
 # binaries THEN the tezedge node handles all the request from the baker and endorser
 ##############################################################################################################
----
 kind: pipeline
 name: corr/tezedge-with-octez-baker-endorser-010-granada
 
@@ -2729,7 +3266,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-granada-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -2744,7 +3281,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: tezedge/tezos-node-bootstrap:latest
@@ -2906,7 +3443,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -2922,7 +3459,7 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -2943,7 +3480,342 @@ steps:
 
 # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    FROM_BLOCK_HEADER: 0
+  commands:
+    - sleep 2
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+    - tezedge_current_head=$(curl "$NODE_RPC_CONTEXT_ROOT_2/chains/main/blocks/head/header" | jq -S .)
+    - echo "Tezedge current head - $tezedge_current_head"
+    - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
+    - echo "Tezedge current head level - $tezedge_current_head_level"
+    - export TO_BLOCK_HEADER=$tezedge_current_head_level
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
+
+- name: current-head-stats-rpc-tezedge
+  image: cfmanteiga/alpine-bash-curl-jq
+  command:
+    - sh
+    - -ex
+    - -c
+    - |
+      tezedge_current_head=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/chains/main/blocks/head/header" | jq -S .)
+      echo "Tezedge current head - $tezedge_current_head"
+      tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
+      echo "Tezedge current head level - $tezedge_current_head_level"
+      for level in $(seq 0 $tezedge_current_head_level); do
+        peers_stats=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/dev/shell/automaton/stats/current_head/peers?level=$level" | jq -S .)
+        block_stats=$(curl "$TEZEDGE_NODE_RPC_CONTEXT_ROOT/dev/shell/automaton/stats/current_head/application?level=$level" | jq -S .)
+        echo "========= block at level $level"
+        echo $block_stats
+        echo "========= peers at level $level"
+        echo $peers_stats
+      done
+
+volumes:
+  - name: sandbox-data
+    temp: {}
+
+depends_on:
+  - build-tezedge-binaries
+
+---
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 010 Granada protocol and does transfer
+# and integrates with baker/endorser
+#
+# GIVEN that we run tezedge in sandbox mode with 010-granada protocol WHEN we run the octez baker and endorser
+# binaries THEN the tezedge node handles all the request from the baker and endorser
+##############################################################################################################
+kind: pipeline
+name: corr/tezedge-with-octez-baker-endorser-010-granada-no-endorsements-prechecking
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCTEZ_NODE_RPC_CONTEXT_ROOT: http://octez-node-sandbox-granada-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-granada-run:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
+  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
+  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
+  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
+  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+  TEZOS_LOG: debug
+  LWT_LOG: debug
+
+steps:
+
+- name: prepare-cache-dir
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - mkdir -p /data/sandbox
+    - mkdir -p /data/sandbox/tezos-client
+    - echo /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/010-granada-protocol-parameters.json /data/sandbox
+
+# run empty tezedge node and wait for it
+- name: tezedge-node-sandbox-granada-run
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --disable-endorsements-precheck=true
+
+- name: wait-for-tezedge-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# run empty octez sandbox and wait for it
+- name: octez-node-sandbox-granada-run
+  user: root
+  image: tezos/tezos:v9-release
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez_ip.txt
+    - mkdir -p /home/tezos/data/
+    - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
+    - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+- name: wait-for-octez-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+
+# connect both nodes with tezos-admin-client
+- name: connect-octez-and-tezedge
+  user: root
+  image: tezos/tezos:v9-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
+    - sleep 3
+# TODO: instead of sleep 3, check status established
+# TODO: write rpc test for check network/peers
+
+# inject protocol to octez node, means it creates the first block with level 1
+- name: inject-first-block-with-tezos_client
+  user: root
+  image: tezos/tezos:v9-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV with fitness 1 and key activator and parameters /data/sandbox/010-granada-protocol-parameters.json
+
+# test checks if this block is synchronized to tezedge node through p2p
+- name: wait-for-sync-on-level-1
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: check-mempool-before-transfer
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    # get mempools
+    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - echo "Octez mempool - $octez_mempool"
+    - echo "Tezedge mempool - $tezedge_mempool"
+    # check if both are equals
+    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
+    # check if applied is 0
+    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+    - drone-cache/build_files/assert_equals.sh 0 $applied_count
+
+# transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+- name: do-transfer-with-tezos_client
+  user: root
+  image: tezos/tezos:v9-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
+    - sleep 1
+    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+    - sleep 2
+
+- name: check-mempool-after-transfer
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    # get mempools
+    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - echo "Octez mempool - $octez_mempool"
+    - echo "Tezedge mempool - $tezedge_mempool"
+    # check if both are equals
+    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
+    # check if applied is 1
+    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+    - drone-cache/build_files/assert_equals.sh 1 $applied_count
+
+- name: run-tezos-endorser-010-PtGRANAD
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - client_data_dir="/data/sandbox/tezos-client"
+    - tezos-endorser-010-PtGRANAD -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir -l run bootstrap1 --endorsement-delay 1 &
+    - sleep 3
+
+- name: check-endorsements-in-mempools
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  commands:
+    # get mempools
+    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+    - echo "Octez mempool - $octez_mempool"
+    - echo "Tezedge mempool - $tezedge_mempool"
+    # check if both are equals
+    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
+    # check if applied is 2 (transfer + endorsement)
+    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+    - drone-cache/build_files/assert_equals.sh 2 $applied_count
+    - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
+    - drone-cache/build_files/assert_equals.sh 1 $applied_endorsements_count
+
+- name: run-tezos-baker-010-PtGRANAD
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
+    - context_path="/data/sandbox/tezedge/tezos-node"
+    - client_data_dir="/data/sandbox/tezos-client"
+    - tezos-baker-010-PtGRANAD -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
+    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
+    - sleep 1
+
+# test checks if this block is synchronized to tezedge node through p2p
+- name: wait-for-sync-on-level-2
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# compare all rpc's from blocks 0 to 2 between defined nodes
+- name: rpc-test-for-levels-0-2
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    FROM_BLOCK_HEADER: 0
+    TO_BLOCK_HEADER: 2
+  commands:
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
+
+# compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
+- name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    FROM_BLOCK_HEADER: 0
+  commands:
+    - sleep 5
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
+    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+    - tezedge_current_head=$(curl "$NODE_RPC_CONTEXT_ROOT_2/chains/main/blocks/head/header" | jq -S .)
+    - echo "Tezedge current head - $tezedge_current_head"
+    - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
+    - echo "Tezedge current head level - $tezedge_current_head_level"
+    - export TO_BLOCK_HEADER=$tezedge_current_head_level
+    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
+
+# compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
+- name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -2969,6 +3841,275 @@ volumes:
 depends_on:
   - build-tezedge-binaries
 
+
+---
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 011 Hangzhou protocol
+# and ensures that endorsing works properly when two blocks are baked for the same level
+# close to each other.
+#
+# GIVEN that we run tezedge in sandbox mode with 011-hangzhou protocol WHEN it receives two different heads
+# THEN it successfully endorse the first one
+##############################################################################################################
+kind: pipeline
+name: corr/tezedge-alt-heads-011-hangzhou
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCTEZ_NODE_1_RPC_CONTEXT_ROOT: http://octez-node-1:8732
+  OCTEZ_NODE_2_RPC_CONTEXT_ROOT: http://octez-node-2:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_SECRET: unencrypted:edsk3JKD7xp7vfhVGeYLoS4SnJBzpnKs4CHpjPfzCditzaYvFh2XnK
+  BOOTSTRAP2_SECRET: unencrypted:edsk4X3Fhd1GceD3XtB6RQmkNVkdgov5zyCfSgYh9icE8DsVbP4dGM
+  BOOTSTRAP3_SECRET: unencrypted:edsk4KASiTWNfvfxUPK7d1mpNgu8dqGcPio9QsCMNVr9m7wXvhBjLF
+  TEZOS_LOG: debug
+  LWT_LOG: debug
+
+steps:
+
+- name: prepare-cache-dir
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - mkdir -p /data/sandbox
+    - mkdir -p /data/sandbox/tezos-client
+    - echo /data/sandbox
+    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+    - cp drone-cache/sandbox_files/011-hangzhou-protocol-parameters.json /data/sandbox
+
+# run empty tezedge node and wait for it
+- name: tezedge-node
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
+
+- name: wait-for-tezedge-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# run empty octez sandbox and wait for it
+- name: octez-node-1
+  user: root
+  image: tezos/tezos:v11-release
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez1_ip.txt
+    - export TEZOS_NODE_DIR=/data/sandbox/octez-1-data
+    - mkdir -p $$TEZOS_NODE_DIR
+    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate
+    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+# run empty octez sandbox and wait for it
+- name: octez-node-2
+  user: root
+  image: tezos/tezos:v11-release
+  detach: true
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez2_ip.txt
+    - export TEZOS_NODE_DIR=/data/sandbox/octez-2-data
+    - mkdir -p $$TEZOS_NODE_DIR
+    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate
+    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+
+- name: wait-for-octez-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT}  $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT}
+
+# inject protocol to octez node, means it creates the first block with level 1
+- name: inject-first-block-with-tezos_client
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-client -E http://tezedge-node:18732 import secret key activator $${ACTIVATOR_SECRET}
+    - tezos-client -E http://tezedge-node:18732 --block genesis activate protocol PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx  with fitness 1 and key activator and parameters /data/sandbox/011-hangzhou-protocol-parameters.json
+
+# connect both nodes with tezos-admin-client
+- name: connect-octez-and-tezedge
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - TEZEDGE_NODE_IP=$$(cat /data/sandbox/tezedge_ip.txt)
+    - tezos-admin-client -E http://octez-node-1:8732 connect address $$TEZEDGE_NODE_IP:9732
+    - tezos-admin-client -E http://octez-node-2:8732 connect address $$TEZEDGE_NODE_IP:9732
+    - sleep 3
+# TODO: instead of sleep 3, check status established
+# TODO: write rpc test for check network/peers
+
+# test checks if this block is synchronized to tezedge node through p2p
+- name: wait-for-sync-on-level-1
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT} $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: run-tezos-endorser-011-PtHANG
+  user: root
+  detach: true
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - tezos-client -E http://tezedge-node:18732 import secret key bootstrap3 $${BOOTSTRAP3_SECRET}
+    - tezos-endorser-011-PtHangz2 -E http://tezedge-node:18732 --log-requests run bootstrap3
+
+- name: check-endorsement-in-mempools
+  user: root
+  image: tezos/tezos:v11-release
+  volumes:
+    - name: sandbox-data
+      path: /data/sandbox
+  commands:
+    - |
+      set -xe
+      apk add jq curl
+      tezos-client -E http://tezedge-node:18732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+      tezos-client -E http://tezedge-node:18732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+      bake() {
+          node=$1
+          data_dir=$2
+          address=$3
+          tezos-client -E http://$node:8732 bake for $address --context $data_dir/context
+      }
+      bake_both() {
+          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+          bake octez-node-2 /data/sandbox/octez-2-data bootstrap2 &
+      }
+      bake_one() {
+          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+      }
+      check_heads() {
+          header1=$(curl -s http://octez-node-1:8732/chains/main/blocks/head/header)
+          header2=$(curl -s http://octez-node-2:8732/chains/main/blocks/head/header)
+          echo $header1 | jq
+          echo $header2 | jq
+          head1=$(echo $header1 | jq -r .hash)
+          head2=$(echo $header2 | jq -r .hash)
+          level1=$(echo $header1 | jq -r .level)
+          level2=$(echo $header1 | jq -r .level)
+          if [ "$level1" -ne "$level2" ]; then
+              echo "ERROR: Different levels"
+              exit 1
+          fi
+          test "$head1" = "$head2"
+      }
+      check_endorsement() {
+          operations=$(curl -s http://tezedge-node:18732/chains/main/mempool/pending_operations)
+          echo $operations | jq
+          applied=$(echo $operations | jq '.applied | length')
+          if [ "$applied" -ne 1 ]; then
+              echo "FAIL: endorsement not found"
+              exit 1
+          fi
+      }
+
+      attempts=0
+      tests=0
+      while true; do
+          bake_both
+          sleep 3
+          attempts=$((attempts+1))
+          if check_heads; then
+              echo "WARN: Same heads"
+              continue
+          fi
+          if [ "$attempts" -ge 15 ]; then
+              echo "ERROR: Cannot reproduce use case for $attempts attempts"
+              exit 1
+          fi
+          tests=$((tests+1))
+          check_endorsement
+          if [ "$tests" -ge 5 ]; then
+              exit
+          fi
+          bake_one
+          sleep 3
+          if check_heads; then
+              true
+          else
+              echo "ERROR: Different heads"
+              exit 1
+          fi
+      done
+
+volumes:
+  - name: sandbox-data
+    temp: {}
+
+depends_on:
+  - build-tezedge-binaries
+
+
+---
 ##############################################################################################################
 # This pipeline runs tezedge node and octez node,
 # which connects just to local octez nodes (does not connect to Internet to or any live node)
@@ -2980,7 +4121,6 @@ depends_on:
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
----
 kind: pipeline
 name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 # default build goes with: --network "delphinet"
@@ -3108,7 +4248,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3125,7 +4265,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -3174,7 +4314,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3340,7 +4480,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-edo2net-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3357,7 +4497,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -3405,7 +4545,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3567,7 +4707,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-florencenet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3584,7 +4724,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -3632,7 +4772,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3693,6 +4833,7 @@ environment:
   NETWORK: granadanet
   FROM_BLOCK_HEADER: 4050 # 4096-4097 is florence-granada proto switch
   TO_BLOCK_HEADER: 5000 # also check parameter --stop=
+  TO_BLOCK_HEADER_LATEST: 10000
   SODIUM_USE_PKG_CONFIG: 1
   OCTEZ_NODE_RPC_CONTEXT_ROOT_1: http://octez-node-granadanet-run-1:8732
   OCTEZ_NODE_RPC_CONTEXT_ROOT_2: http://octez-node-granadanet-run-2:8732
@@ -3794,7 +4935,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-granadanet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3811,7 +4952,24 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
+
+- name: tezos-client-bootstrapped-for-tezedge-node
+  user: root
+  image: tezos/tezos:v9-release
+  detach: true
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - |
+      for i in $(seq 1 12); do
+          if tezos-client -E $${TEZEDGE_NODE_RPC_CONTEXT_ROOT} bootstrapped > /data/cache/tezedge-node-bootstrapped.log; then
+              cp /dev/null /data/cache/tezedge-node-bootstrapped.done
+              break
+          fi
+          sleep 5
+      done
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -3859,7 +5017,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3877,8 +5035,25 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
-  # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
-  detach: true
+
+- name: bootstrapping-tezedge-latest
+  image: tezedge/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER_LATEST} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+
+- name: bootstrapped-rpc-check
+  user: root
+  image: tezos/tezos:v9-release
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - test -f /data/cache/tezedge-node-bootstrapped.done
+    - grep -F "Waiting for the node to be bootstrapped..." -q /data/cache/tezedge-node-bootstrapped.log
+    - >-
+      grep -F "Current head: BKyjtcb7VhJf" -q /data/cache/tezedge-node-bootstrapped.log
+    - grep -F "Node is bootstrapped." -q /data/cache/tezedge-node-bootstrapped.log
 
 volumes:
   - name: octez-node-granadanet-snapshot-data-1
@@ -4026,7 +5201,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-mainnet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4043,7 +5218,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --log-level debug
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --log-level debug
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -4091,7 +5266,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4268,7 +5443,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -4497,7 +5672,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -4740,7 +5915,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -4864,7 +6039,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -4875,7 +6050,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   commands:
     - sleep 10
 
@@ -4945,7 +6120,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -4956,7 +6131,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   commands:
     - sleep 10
 
@@ -5027,7 +6202,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5038,7 +6213,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   commands:
     - sleep 10
 
@@ -5113,7 +6288,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5189,7 +6364,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: run-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -5206,7 +6381,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -5239,7 +6414,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5281,7 +6456,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -5385,7 +6560,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -5435,7 +6610,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -5592,7 +6767,7 @@ steps:
         '
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     user: root
     volumes:
       - name: tools
@@ -5604,13 +6779,13 @@ steps:
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
       - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
       - >
-        drone-cache/build_files/light-node --protocol-runner drone-cache/build_files/protocol-runner
+        drone-cache/build_files/light-node --protocol-runner ./drone-cache/build_files/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+        --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
       - |
         time -o tezedge-new-1.time -f "%e" sh -c '
@@ -5635,7 +6810,7 @@ steps:
       - curl -s localhost:8732/stats/dbrw | jq .
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     user: root
     volumes:
       - name: tools
@@ -5647,13 +6822,13 @@ steps:
       - rm -rf ./tezos-node-data ./light-node-data
       - export LD_LIBRARY_PATH=drone-cache-old
       - >
-        drone-cache-old/light-node --protocol-runner drone-cache-old/protocol-runner
+        drone-cache-old/light-node --protocol-runner ./drone-cache-old/protocol-runner
         --network florencenet --peers $${OCTEZ_IP}:9732
-        --config-file drone-cache-old/tezedge_drone.config
+        --config-file ./drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
-        --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params &
+        --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
       - |
         time -o tezedge-old-1.time -f "%e" sh -c '
@@ -5870,7 +7045,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -5886,11 +7061,11 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -5906,7 +7081,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "./drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -6093,7 +7268,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6109,11 +7284,11 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file "drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "drone-cache/build_files/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6129,7 +7304,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="drone-cache-old:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache-old/light-node --config-file "drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
+    - drone-cache-old/light-node --config-file "./drone-cache-old/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "./drone-cache/build_files/identities/identity_5.json" --network "$${NETWORK}" --protocol-runner "drone-cache-old/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezos-node-data --bootstrap-db-path /tmp/light-node-data --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -6297,7 +7472,7 @@ steps:
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -6345,7 +7520,7 @@ steps:
       - ms_print new-node.massif.out > new-node.msp.out
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.57-v11.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true

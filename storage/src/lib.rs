@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 use std::path::Path;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ use crypto::{
 use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
-use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
@@ -68,6 +69,7 @@ mod shell_automaton;
 pub mod system_storage;
 
 /// Extension of block header with block hash
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct BlockHeaderWithHash {
     pub hash: BlockHash,
@@ -232,8 +234,21 @@ pub struct Replay {
     pub fail_above: std::time::Duration,
 }
 
+#[derive(Debug, Clone)]
+pub struct StorageSnapshot {
+    pub block: Option<BlockReference>,
+    pub target_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub enum BlockReference {
+    BlockHash(BlockHash),
+    Level(u32),
+    OffsetFromHead(u32),
+}
+
 /// Struct represent init information about storage on startup
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
@@ -275,6 +290,123 @@ pub fn resolve_storage_init_chain_data(
         },
     );
     Ok(init_data)
+}
+
+/// Collects complete data for applying block, if not complete, return None
+#[inline]
+pub fn prepare_block_apply_request(
+    block_hash: &BlockHash,
+    chain_id: ChainId,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    operations_storage: &OperationsStorage,
+    predecessor_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<
+    (
+        ApplyBlockRequest,
+        block_meta_storage::Meta,
+        Arc<BlockHeaderWithHash>,
+    ),
+    StorageError,
+> {
+    // get block header
+    let block = match block_storage.get(block_hash)? {
+        Some(block) => Arc::new(block),
+        None => {
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "prepare_apply_request (block header not found, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            });
+        }
+    };
+
+    // get block_metadata
+    let block_meta = match block_meta_storage.get(block_hash)? {
+        Some(meta) => meta,
+        None => {
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "prepare_apply_request (block header metadata not, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            });
+        }
+    };
+
+    // get operations
+    let operations = operations_storage.get_operations(block_hash)?;
+
+    // resolve predecessor data
+    let (
+        predecessor,
+        (
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+            predecessor_max_operations_ttl,
+        ),
+    ) = resolve_block_data(
+        block.header.predecessor(),
+        block_storage,
+        block_meta_storage,
+        predecessor_data_cache,
+    )
+    .map(|(block, additional_data)| (block, additional_data.into()))?;
+
+    Ok((
+        ApplyBlockRequest {
+            chain_id,
+            block_header: block.header.as_ref().clone(),
+            pred_header: predecessor.header.as_ref().clone(),
+            operations: ApplyBlockRequest::convert_operations(operations),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+        },
+        block_meta,
+        block,
+    ))
+}
+
+#[inline]
+fn resolve_block_data(
+    block_hash: &BlockHash,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    block_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<(Arc<BlockHeaderWithHash>, BlockAdditionalData), StorageError> {
+    // check cache at first
+    if let Some(cached) = block_data_cache {
+        // if cached data are the same as requested, then use it from cache
+        if block_hash.eq(&cached.0.hash) {
+            return Ok(cached);
+        }
+    }
+    // load data from database
+    let block = match block_storage.get(block_hash)? {
+        Some(header) => Arc::new(header),
+        None => {
+            return Err(StorageError::MissingKey {
+                when: format!(
+                    "resolve_block_data (block header not found, block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            });
+        }
+    };
+
+    // predecessor additional data
+    let additional_data = match block_meta_storage.get_additional_data(block_hash)? {
+        Some(additional_data) => additional_data,
+        None => {
+            return Err(StorageError::MissingKey {
+                    when: format!("resolve_block_data (block header metadata not found (block was not applied), block_hash: {}", block_hash.to_base58_check()),
+                });
+        }
+    };
+
+    Ok((block, additional_data))
 }
 
 /// Stores apply result to storage and mark block as applied, if everythnig is ok.
@@ -362,7 +494,7 @@ pub fn store_commit_genesis_result(
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
     init_storage_data: &StorageInitInfo,
-    bock_result: CommitGenesisResult,
+    block_result: CommitGenesisResult,
 ) -> Result<(), StorageError> {
     // store data for genesis
     let genesis_block_hash = &init_storage_data.genesis_block_header_hash;
@@ -381,9 +513,9 @@ pub fn store_commit_genesis_result(
 
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
-        bock_result.block_header_proto_json,
-        bock_result.block_header_proto_metadata_bytes,
-        bock_result.operations_proto_metadata_bytes,
+        block_result.block_header_proto_json,
+        block_result.block_header_proto_metadata_bytes,
+        block_result.operations_proto_metadata_bytes,
     );
     block_storage.put_block_json_data(genesis_block_hash, block_json_data)?;
 
@@ -451,10 +583,6 @@ pub fn initialize_storage_with_genesis_block(
     );
     block_meta_storage
         .put_block_additional_data(&genesis_with_hash.hash, &block_additional_data)?;
-
-    // TODO: TE-238 - remove assign_to_context
-    // context assign
-    block_storage.assign_to_context(&genesis_with_hash.hash, context_hash)?;
 
     info!(log,
         "Storage initialized with genesis block";

@@ -7,6 +7,7 @@ pub use storage_state::*;
 
 pub mod request;
 
+pub mod blocks;
 pub mod state_snapshot;
 
 macro_rules! kv_state {
@@ -34,6 +35,7 @@ macro_rules! kv_state {
 
 macro_rules! kv_actions {
     ($key:path, $value:path, $get_action:ident, $ok_action:ident, $err_action:ident) => {
+        //#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $get_action {
             pub key: $key,
@@ -55,6 +57,7 @@ macro_rules! kv_actions {
             }
         }
 
+        //#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $ok_action {
             pub key: $key,
@@ -68,6 +71,7 @@ macro_rules! kv_actions {
             }
         }
 
+        //#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub struct $err_action {
             pub key: $key,
@@ -81,9 +85,14 @@ macro_rules! kv_actions {
             }
         }
 
-        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From)]
+        #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+        #[derive(
+            Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From, thiserror::Error,
+        )]
         pub enum Error {
+            #[error("Storage error: `{0}`")]
             Storage(crate::service::storage_service::StorageError),
+            #[error("Value not found")]
             NotFound,
         }
     };
@@ -188,7 +197,7 @@ macro_rules! kv_state_machine {
 }
 
 pub mod kv_block_meta {
-    use crypto::hash::{BlockHash, HashBase58};
+    use crypto::hash::BlockHash;
     use storage::block_meta_storage::Meta;
 
     kv_state_machine!(
@@ -196,7 +205,7 @@ pub mod kv_block_meta {
         BlockMetaGet,
         BlockMetaGetSuccess,
         BlockMetaGetError,
-        HashBase58<BlockHash>,
+        BlockHash,
         Meta,
         |_hash, _meta| true,
         StorageBlockMetaGet,
@@ -209,7 +218,7 @@ pub mod kv_block_meta {
 }
 
 pub mod kv_block_additional_data {
-    use crypto::hash::{BlockHash, HashBase58};
+    use crypto::hash::BlockHash;
     use storage::block_meta_storage::BlockAdditionalData;
 
     kv_state_machine!(
@@ -217,7 +226,7 @@ pub mod kv_block_additional_data {
         BlockAdditionalDataGet,
         BlockAdditionalDataGetSuccess,
         BlockAdditionalDataGetError,
-        HashBase58<BlockHash>,
+        BlockHash,
         BlockAdditionalData,
         |_hash, _additinal_data| false,
         StorageBlockAdditionalDataGet,
@@ -230,7 +239,7 @@ pub mod kv_block_additional_data {
 }
 
 pub mod kv_block_header {
-    use crypto::hash::{BlockHash, HashBase58};
+    use crypto::hash::BlockHash;
     use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
     kv_state_machine!(
@@ -238,7 +247,7 @@ pub mod kv_block_header {
         BlockHeaderGet,
         BlockHeaderGetSuccess,
         BlockHeaderGetError,
-        HashBase58<BlockHash>,
+        BlockHash,
         BlockHeader,
         |_hash, _header| false,
         StorageBlockHeaderGet,
@@ -251,14 +260,14 @@ pub mod kv_block_header {
 }
 
 pub mod kv_constants {
-    use crypto::hash::{HashBase58, ProtocolHash};
+    use crypto::hash::ProtocolHash;
 
     kv_state_machine!(
         constants,
         ConstantsGet,
         ConstantsGetSuccess,
         ConstantsGetError,
-        HashBase58<ProtocolHash>,
+        ProtocolHash,
         String,
         |_key, _value| false,
         StorageConstantsGet,
@@ -277,6 +286,7 @@ pub mod kv_cycle_meta {
 
     pub type Cycle = i32;
 
+    #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
     #[serde(into = "String", try_from = "String")]
     pub struct CycleKey(pub Cycle);
@@ -325,7 +335,7 @@ pub mod kv_cycle_meta {
 }
 
 pub mod kv_cycle_eras {
-    use crypto::hash::{HashBase58, ProtocolHash};
+    use crypto::hash::ProtocolHash;
     use storage::cycle_eras_storage::CycleErasData;
 
     kv_state_machine!(
@@ -333,7 +343,7 @@ pub mod kv_cycle_eras {
         CycleErasGet,
         CycleErasGetSuccess,
         CycleErasGetError,
-        HashBase58<ProtocolHash>,
+        ProtocolHash,
         CycleErasData,
         |_proto, _eras| false,
         StorageCycleErasGet,
@@ -346,7 +356,7 @@ pub mod kv_cycle_eras {
 }
 
 pub mod kv_operations {
-    use crypto::hash::{BlockHash, HashBase58};
+    use crypto::hash::BlockHash;
     use tezos_messages::p2p::encoding::operation::Operation;
 
     kv_state_machine!(
@@ -354,7 +364,7 @@ pub mod kv_operations {
         OperationsGet,
         OperationsGetSuccess,
         OperationsGetError,
-        HashBase58<BlockHash>,
+        BlockHash,
         Vec<Operation>,
         |_hash, _ops| false,
         StorageOperationsGet,

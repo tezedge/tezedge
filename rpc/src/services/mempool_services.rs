@@ -71,6 +71,7 @@ pub async fn inject_operation(
     let msg = RpcShellAutomatonMsg::InjectOperation {
         operation: operation.clone(),
         operation_hash: operation_hash.clone(),
+        injected: start_request,
     };
     let receiver: tokio::sync::oneshot::Receiver<serde_json::Value> =
         env.shell_automaton_sender().send(msg).await.map_err(|_| {
@@ -200,6 +201,19 @@ pub async fn inject_block(
         let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
         (Some(result_callback_sender), Some(result_callback_receiver))
     };
+
+    if let Err(err) = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::InjectBlock {
+            chain_id: chain_id.as_ref().clone(),
+            block_hash: header.hash.clone(),
+            block_header: header.header.clone(),
+            injected: start_request,
+        })
+        .await
+    {
+        warn!(env.log(), "state machine failed to remove ops: {}", err);
+    }
 
     let start_async = Instant::now();
 

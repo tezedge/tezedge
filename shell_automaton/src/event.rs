@@ -8,6 +8,9 @@ use std::net::SocketAddr;
 use crate::peer::PeerToken;
 use crate::{EnablingCondition, State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::{PeerTokenMutator, SocketAddrMutator};
+
 /// Event coming from `Manager`.
 ///
 /// Each event updates internal logical clock and also triggers some actions.
@@ -41,6 +44,7 @@ impl EnablingCondition<State> for Event {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WakeupEvent;
 
@@ -50,6 +54,7 @@ impl EnablingCondition<State> for WakeupEvent {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pServerEvent;
 
@@ -59,10 +64,12 @@ impl EnablingCondition<State> for P2pServerEvent {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pPeerEvent {
+    #[cfg_attr(feature = "fuzzing", field_mutator(PeerTokenMutator))]
     pub token: PeerToken,
-
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 
     /// Peer's stream is ready for reading.

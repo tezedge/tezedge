@@ -2,26 +2,33 @@
 // SPDX-License-Identifier: MIT
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, OperationHash, OperationMetadataListListHash,
-};
-use tezos_messages::p2p::encoding::{
-    block_header::BlockHeader, mempool::Mempool, operation::Operation,
-};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
+use crate::prechecker::OperationDecodedContents;
 use crate::service::rpc_service::RpcId;
 
 use crate::{action::EnablingCondition, state::State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
 /// Process the mempool received from the peer
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRecvDoneAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    pub block_hash: BlockHash,
     pub message: Mempool,
-    pub level: i32,
+    pub level: Level,
+    pub timestamp: i64,
+    pub proto: u8,
 }
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {
@@ -32,8 +39,10 @@ impl EnablingCondition<State> for MempoolRecvDoneAction {
 }
 
 /// Query operations from the peer
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolGetOperationsAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -44,8 +53,10 @@ impl EnablingCondition<State> for MempoolGetOperationsAction {
 }
 
 /// Mark operations requested from the peer as pending
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolMarkOperationsAsPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -56,6 +67,7 @@ impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
 }
 
 /// Take the operation received from the peer
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
     pub operation: Operation,
@@ -68,11 +80,13 @@ impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationInjectAction {
     pub operation: Operation,
     pub operation_hash: OperationHash,
     pub rpc_id: RpcId,
+    pub injected_timestamp: u64,
 }
 
 impl EnablingCondition<State> for MempoolOperationInjectAction {
@@ -83,6 +97,22 @@ impl EnablingCondition<State> for MempoolOperationInjectAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BlockInjectAction {
+    pub chain_id: ChainId,
+    pub block_hash: BlockHash,
+    pub block_header: Arc<BlockHeader>,
+    pub injected_timestamp: u64,
+}
+
+impl EnablingCondition<State> for BlockInjectAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolValidateStartAction {
     pub operation: Operation,
@@ -96,6 +126,7 @@ impl EnablingCondition<State> for MempoolValidateStartAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolValidateWaitPrevalidatorAction {
     pub operation: Operation,
@@ -109,6 +140,7 @@ impl EnablingCondition<State> for MempoolValidateWaitPrevalidatorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolCleanupWaitPrevalidatorAction {}
 
@@ -120,6 +152,7 @@ impl EnablingCondition<State> for MempoolCleanupWaitPrevalidatorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRegisterOperationsStreamAction {
     pub rpc_id: RpcId,
@@ -137,6 +170,7 @@ impl EnablingCondition<State> for MempoolRegisterOperationsStreamAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolUnregisterOperationsStreamsAction {}
 
@@ -148,11 +182,14 @@ impl EnablingCondition<State> for MempoolUnregisterOperationsStreamsAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolSendAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub send_operations: bool,
     pub requested_explicitly: bool,
+    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {
@@ -163,8 +200,10 @@ impl EnablingCondition<State> for MempoolSendAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolSendValidatedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -176,6 +215,7 @@ impl EnablingCondition<State> for MempoolSendValidatedAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolAskCurrentHeadAction {}
 
@@ -187,9 +227,11 @@ impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {
     pub send_operations: bool,
+    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastAction {
@@ -200,6 +242,7 @@ impl EnablingCondition<State> for MempoolBroadcastAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRpcRespondAction {}
 
@@ -211,8 +254,10 @@ impl EnablingCondition<State> for MempoolRpcRespondAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastDoneAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub known_valid: Vec<OperationHash>,
     pub pending: Vec<OperationHash>,
@@ -227,6 +272,7 @@ impl EnablingCondition<State> for MempoolBroadcastDoneAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRemoveAppliedOperationsAction {
     pub operation_hashes: Vec<OperationHash>,
@@ -240,6 +286,7 @@ impl EnablingCondition<State> for MempoolRemoveAppliedOperationsAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolGetPendingOperationsAction {
     pub rpc_id: RpcId,
@@ -253,6 +300,20 @@ impl EnablingCondition<State> for MempoolGetPendingOperationsAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolOperationDecodedAction {
+    pub operation: OperationHash,
+    pub operation_decoded_contents: OperationDecodedContents,
+}
+
+impl EnablingCondition<State> for MempoolOperationDecodedAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolFlushAction {}
 
@@ -266,21 +327,16 @@ impl EnablingCondition<State> for MempoolFlushAction {
     }
 }
 
-/// NOTE: this action is not specific to mempool, may be handled elsewhere
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BlockAppliedAction {
-    pub chain_id: ChainId,
-    pub block: BlockHeader,
-    pub hash: BlockHash,
-    pub block_metadata_hash: Option<BlockMetadataHash>,
-    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
-    pub is_bootstrapped: bool,
+// RPC
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolRpcEndorsementsStatusGetAction {
+    pub rpc_id: RpcId,
+    pub block_hash: Option<BlockHash>,
 }
 
-impl EnablingCondition<State> for BlockAppliedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
+impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }

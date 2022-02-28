@@ -70,7 +70,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
         Action::PeersCheckTimeoutsSuccess(content) => {
             if !content.peer_timeouts.is_empty() {
                 slog::warn!(log, "Peers timed out";
-                    "timeouts" => format!("{:#?}", content.peer_timeouts));
+                    "timeouts" => format!("{:?}", content.peer_timeouts));
             }
         }
 
@@ -81,6 +81,41 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                     "error" => format!("{:?}", err));
             }
         },
+        Action::StorageBlocksGenesisInitCommitResultGetError(content) => {
+            slog::error!(log, "Error when getting genesis commit result from protocol";
+                "error" => &content.error);
+        }
+        Action::BlockApplierApplyProtocolRunnerApplyRetry(content) => {
+            slog::warn!(log, "Block application failed! Retrying...";
+                "error" => format!("{:?}", content.reason));
+        }
+        Action::BlockApplierApplyError(content) => {
+            slog::error!(log, "Block application failed";
+                "error" => format!("{:?}", content.error));
+        }
+        Action::ProtocolRunnerReady(_) => {
+            slog::info!(log, "Protocol Runner initialized";
+                // TODO(zura): TMP
+                "state" => format!("{:#?}", store.state()));
+        }
+        Action::ProtocolRunnerNotifyStatus(_) => {
+            slog::info!(
+                log,
+                "Notified Protocol Runner status to the rest of the system"
+            );
+        }
+        Action::ProtocolRunnerInitRuntimeError(content) => {
+            slog::error!(log, "Protocol Runner runtime initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
+        Action::ProtocolRunnerInitContextError(content) => {
+            slog::error!(log, "Protocol Runner context initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
+        Action::ProtocolRunnerInitContextIpcServerError(content) => {
+            slog::error!(log, "Protocol Runner context ipc server initialization failed";
+                "error" => format!("{:?}", content.error));
+        }
         _ => {}
     }
 }

@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 use std::path::PathBuf;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 use strum_macros::IntoStaticStr;
 // TODO: move some (or all) of these to this crate?
@@ -11,9 +13,10 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper,
-    ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+    ComputePathResponse, DumpContextError, FfiJsonEncoderError, GetDataError,
+    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
+    ProtocolRpcRequest, ProtocolRpcResponse, RestoreContextError, RustBytes,
     TezosRuntimeConfiguration, TezosStorageInitError, ValidateOperationError,
     ValidateOperationRequest, ValidateOperationResponse,
 };
@@ -46,29 +49,44 @@ pub enum ProtocolMessage {
     ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest),
     ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest),
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
+    DumpContext(DumpContextRequest),
+    RestoreContext(RestoreContextRequest),
     ShutdownCall,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetKeyFromHistoryRequest {
     pub context_hash: ContextHash,
     pub key: ContextKeyOwned,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetKeyValuesByPrefixRequest {
     pub context_hash: ContextHash,
     pub prefix: ContextKeyOwned,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextGetTreeByPrefixRequest {
     pub context_hash: ContextHash,
     pub prefix: ContextKeyOwned,
     pub depth: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DumpContextRequest {
+    pub context_hash: ContextHash,
+    pub dump_into_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RestoreContextRequest {
+    pub expected_context_hash: ContextHash,
+    pub restore_from_path: String,
+    pub nb_context_elements: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct InitProtocolContextParams {
     pub storage: TezosContextStorageConfiguration,
     pub genesis: GenesisChain,
@@ -82,7 +100,7 @@ pub struct InitProtocolContextParams {
     pub context_stats_db_path: Option<PathBuf>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GenesisResultDataParams {
     pub genesis_context_hash: ContextHash,
     pub chain_id: ChainId,
@@ -90,7 +108,7 @@ pub struct GenesisResultDataParams {
     pub genesis_max_operations_ttl: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonEncodeApplyBlockResultMetadataParams {
     pub context_hash: ContextHash,
     pub metadata_bytes: RustBytes,
@@ -99,7 +117,7 @@ pub struct JsonEncodeApplyBlockResultMetadataParams {
     pub next_protocol_hash: ProtocolHash,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonEncodeApplyBlockOperationsMetadataParams {
     pub chain_id: ChainId,
     pub operations: Vec<Vec<Operation>>,
@@ -109,7 +127,13 @@ pub struct JsonEncodeApplyBlockOperationsMetadataParams {
 }
 
 /// This event message is generated as a response to the `ProtocolMessage` command.
-#[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
+#[enum_kind(
+    NodeMessageKind,
+    derive(Serialize, Deserialize),
+    cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))
+)]
 pub enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),
@@ -128,6 +152,8 @@ pub enum NodeMessage {
     ContextGetKeyFromHistoryResult(Result<Option<ContextValue>, String>),
     ContextGetKeyValuesByPrefixResult(Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, String>),
     ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
+    DumpContextResponse(Result<i64, DumpContextError>),
+    RestoreContextResponse(Result<(), RestoreContextError>),
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),
@@ -136,5 +162,5 @@ pub enum NodeMessage {
 }
 
 /// Empty message
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NoopMessage;

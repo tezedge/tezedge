@@ -91,6 +91,10 @@ pub struct OCamlContextGetKeyFromHistoryRequest {}
 pub struct OCamlContextGetKeyValuesByPrefixRequest {}
 pub struct OCamlContextGetTreeByPrefixRequest {}
 
+// Dumps
+pub struct OCamlDumpContextRequest {}
+pub struct OCamlRestoreContextRequest {}
+
 // Requests
 
 pub struct OCamlApplyBlockRequest {}
@@ -140,3 +144,7 @@ pub struct OCamlNodeMessage {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
+
+pub fn force_libtezos_linking() {
+    tezos_sys::force_libtezos_linking();
+}

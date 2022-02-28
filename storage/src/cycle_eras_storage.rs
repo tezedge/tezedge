@@ -13,7 +13,7 @@ use crypto::hash::ProtocolHash;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
-use crate::{PersistentStorage, StorageError};
+use crate::{IteratorMode, PersistentStorage, StorageError};
 
 pub type CycleErasStorageKV = dyn TezedgeDatabaseWithIterator<CycleErasStorage> + Sync + Send;
 
@@ -27,6 +27,7 @@ pub struct CycleErasStorage {
 
 pub type CycleErasData = Vec<CycleEra>;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Getters)]
 pub struct CycleEra {
     #[get = "pub"]
@@ -63,12 +64,27 @@ impl CycleErasStorage {
     }
 
     #[inline]
-    fn put(&self, key: &CycleErasKey, data: CycleErasData) -> Result<(), StorageError> {
+    pub fn put(&self, key: &CycleErasKey, data: CycleErasData) -> Result<(), StorageError> {
         self.kv.put(key, &data).map_err(StorageError::from)
     }
 
     pub fn get(&self, key: &CycleErasKey) -> Result<Option<CycleErasData>, StorageError> {
         self.kv.get(key).map_err(StorageError::from)
+    }
+
+    pub fn iterator(&self) -> Result<Vec<(CycleErasKey, CycleErasData)>, StorageError> {
+        self.kv
+            .find(IteratorMode::Start)?
+            .map(|result| {
+                let result = result?;
+                let k = {
+                    use crate::persistent::codec::Decoder;
+                    <Self as KeyValueSchema>::Key::decode(&result.0)?
+                };
+                let v = <Self as KeyValueSchema>::Value::decode(&result.1)?;
+                Ok((k, v))
+            })
+            .collect()
     }
 }
 

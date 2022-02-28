@@ -22,9 +22,7 @@ use itertools::{Itertools, MinMaxResult};
 use slog::{debug, info, trace, warn, Logger};
 use tezedge_actor_system::actors::*;
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, CryptoboxPublicKeyHash, OperationMetadataListListHash,
-};
+use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash};
 use crypto::seeded_step::Seed;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::PeerId;
@@ -46,7 +44,6 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConnection};
 
-use crate::chain_feeder::ChainFeederRef;
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
 use crate::shell_automaton_manager::{ShellAutomatonMsg, ShellAutomatonSender};
 use crate::shell_channel::{
@@ -103,8 +100,6 @@ pub struct AskPeersAboutCurrentHead {
 pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
-    block_metadata_hash: Option<BlockMetadataHash>,
-    ops_metadata_hash: Option<OperationMetadataListListHash>,
     result_roundtrip_timer: Arc<Instant>,
 }
 
@@ -112,15 +107,11 @@ impl ProcessValidatedBlock {
     pub fn new(
         block: Arc<BlockHeaderWithHash>,
         chain_id: Arc<ChainId>,
-        block_metadata_hash: Option<BlockMetadataHash>,
-        ops_metadata_hash: Option<OperationMetadataListListHash>,
         result_roundtrip_timer: Instant,
     ) -> Self {
         Self {
             block,
             chain_id,
-            block_metadata_hash,
-            ops_metadata_hash,
             result_roundtrip_timer: Arc::new(result_roundtrip_timer),
         }
     }
@@ -229,7 +220,6 @@ impl ChainManager {
     /// Create new actor instance.
     pub fn actor(
         sys: &ActorSystem,
-        block_applier: ChainFeederRef,
         network_channel: NetworkChannelRef,
         shell_automaton: ShellAutomatonSender,
         shell_channel: ShellChannelRef,
@@ -256,7 +246,6 @@ impl ChainManager {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
             Props::new_args((
-                block_applier,
                 network_channel,
                 shell_automaton,
                 shell_channel,
@@ -329,6 +318,14 @@ impl ChainManager {
                             .log()
                             .new(slog::o!("peer" => peer.peer_id.address.to_string()));
 
+                        if matches!(
+                            received.message.message(),
+                            PeerMessage::GetCurrentHead(_)
+                                | PeerMessage::Operation(_)
+                                | PeerMessage::GetOperations(_)
+                        ) {
+                            return Ok(());
+                        }
                         match received.message.message() {
                             PeerMessage::CurrentBranch(message) => {
                                 info!(
@@ -614,14 +611,16 @@ impl ChainManager {
 
                                     // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
                                     if was_updated {
+                                        let message_current_head = BlockHeaderWithHash::new(
+                                            message.current_block_header().clone(),
+                                        )?;
+
+                                        remote_current_head_state
+                                            .update_remote_head(&message_current_head);
+
                                         match chain_state.peer_branch_bootstrapper() {
                                             Some(peer_branch_bootstrapper) => {
                                                 // check if we started branch bootstrapper, try to update current_head to peer's pipelines
-                                                let message_current_head =
-                                                    BlockHeaderWithHash::new(
-                                                        message.current_block_header().clone(),
-                                                    )?;
-
                                                 peer_branch_bootstrapper.tell(
                                                     UpdateBranchBootstraping::new(
                                                         peer.peer_id.clone(),
@@ -646,10 +645,8 @@ impl ChainManager {
                                     }
                                 }
                             }
-                            PeerMessage::GetOperations(_) => {
-                                return Ok(());
-                            }
-                            PeerMessage::Operation(_) => {
+                            // Processed inside shell_automaton.
+                            PeerMessage::GetOperations(_) | PeerMessage::Operation(_) => {
                                 return Ok(());
                             }
                             ignored_message => {
@@ -1006,9 +1003,8 @@ impl ChainManager {
         let ProcessValidatedBlock {
             block,
             chain_id,
-            block_metadata_hash,
-            ops_metadata_hash,
             result_roundtrip_timer,
+            ..
         } = validated_block;
         let result_roundtrip_timer = result_roundtrip_timer.elapsed();
         let log = ctx.system.log();
@@ -1019,18 +1015,6 @@ impl ChainManager {
             .try_update_new_current_head(&block)?
         {
             let mut is_bootstrapped = self.current_bootstrap_state.is_bootstrapped();
-
-            let shell_automaton_msg = ShellAutomatonMsg::BlockApplied(
-                ChainId::clone(&chain_id),
-                BlockHeader::clone(&block.header),
-                BlockHash::clone(&block.hash),
-                block_metadata_hash,
-                ops_metadata_hash,
-                is_bootstrapped,
-            );
-            if let Err(err) = self.shell_automaton.send(shell_automaton_msg) {
-                warn!(ctx.system.log(), "Failed to send message to shell_automaton"; "reason" => format!("{:?}", err));
-            }
 
             if is_bootstrapped {
                 info!(log, "New current head";
@@ -1048,6 +1032,17 @@ impl ChainManager {
                 );
             }
 
+            if let Err(err) = self
+                .shell_automaton
+                .send(ShellAutomatonMsg::NewCurrentHead {
+                    chain_id: chain_id.clone(),
+                    block: block.clone(),
+                    is_bootstrapped,
+                })
+            {
+                warn!(log, "Failed to send message to shell_automaton (chain_manager)"; "reason" => format!("{:?}", err));
+            }
+
             // notify other actors that new current head was changed
             self.shell_channel.tell(
                 Publish {
@@ -1056,6 +1051,7 @@ impl ChainManager {
                             chain_id.clone(),
                             block.clone(),
                             is_bootstrapped,
+                            self.remote_current_head_state.get_remote_level(),
                         ),
                     )),
                     topic: ShellChannelTopic::ShellNewCurrentHead.into(),
@@ -1148,7 +1144,6 @@ impl ChainManager {
 
 impl
     ActorFactoryArgs<(
-        ChainFeederRef,
         NetworkChannelRef,
         ShellAutomatonSender,
         ShellChannelRef,
@@ -1164,7 +1159,6 @@ impl
 {
     fn create_args(
         (
-            block_applier,
             network_channel,
             shell_automaton,
             shell_channel,
@@ -1177,7 +1171,6 @@ impl
             num_of_peers_for_bootstrap_threshold,
             first_initialization_done_result_callback,
         ): (
-            ChainFeederRef,
             NetworkChannelRef,
             ShellAutomatonSender,
             ShellChannelRef,
@@ -1200,7 +1193,6 @@ impl
             p2p_reader_sender,
             chain_state: BlockchainState::new(
                 shell_automaton,
-                block_applier,
                 &persistent_storage,
                 Arc::new(init_storage_data.chain_id.clone()),
                 Arc::new(init_storage_data.genesis_block_header_hash.clone()),

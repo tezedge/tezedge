@@ -7,11 +7,11 @@
 // to reproduce the same functionality.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
-use crypto::hash::ContractKt1Hash;
+use crypto::hash::{ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::storage_service::ActionGraph;
@@ -37,6 +37,7 @@ use storage::{
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
@@ -701,7 +702,7 @@ pub(crate) async fn get_shell_automaton_actions_graph(
         .collect())
 }
 
-pub type OperationsStats = HashMap<String, OperationStats>;
+pub type OperationsStats = BTreeMap<String, OperationStats>;
 
 #[derive(Serialize)]
 pub struct OperationStats {
@@ -714,11 +715,12 @@ pub struct OperationStats {
     validation_result: Option<(
         i128,
         shell_automaton::mempool::OperationValidationResult,
-        i128,
-        i128,
+        Option<i128>,
+        Option<i128>,
     )>,
     validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
+    injected_timestamp: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -761,9 +763,154 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .send(RpcShellAutomatonMsg::GetMempoolOperationStats { channel: tx })
         .await;
 
-    let result = rx
-        .await?
+    let result = rx.await?;
+
+    Ok(map_operations_stats(result))
+}
+
+pub type BlocksStats = Vec<BlockStats>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockStats {
+    /// First time(ns) we saw a block in current head.
+    block_first_seen: u64,
+
+    block_level: Level,
+
+    /// Time(ns) since block_first_seen in current head.
+    data_ready: Option<u64>,
+
+    /// Time(ns) it took to load data from storage.
+    load_data: Option<u64>,
+
+    /// Time(ns) it took for protocol runner to apply block.
+    apply_block: Option<u64>,
+
+    /// Time(ns) it took to store the result.
+    store_result: Option<u64>,
+
+    /// Injection time
+    injected: Option<u64>,
+}
+
+pub(crate) async fn get_shell_automaton_block_stats_graph(
+    env: &RpcServiceEnvironment,
+    limit: Option<usize>,
+) -> Result<Option<BlocksStats>, tokio::sync::oneshot::error::RecvError> {
+    let limit = limit.unwrap_or(2000);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBlockStats { channel: tx })
+        .await;
+
+    let stats = match rx.await? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a - b));
+
+    let mut result = stats
         .into_iter()
+        .map(|(_, stats)| {
+            let block_first_seen = stats.receive_timestamp;
+            let data_ready_start = stats.receive_timestamp;
+
+            BlockStats {
+                block_first_seen,
+                block_level: stats.level,
+                data_ready: times_sub(stats.load_data_start, Some(data_ready_start)),
+                load_data: times_sub(stats.load_data_end, stats.load_data_start),
+                apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
+                store_result: times_sub(stats.store_result_end, stats.store_result_start),
+                injected: stats.injected,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    result.sort_by_key(|v| v.block_level);
+    // take last/newest `limit` block stats.
+    result = result.into_iter().rev().take(limit).rev().collect();
+
+    Ok(Some(result))
+}
+
+pub(crate) async fn get_shell_automaton_baking_rights(
+    block_hash: BlockHash,
+    level: Option<Level>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBakingRights { block_hash, level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_endorsing_rights(
+    block_hash: BlockHash,
+    level: Option<Level>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetEndorsingRights { block_hash, level })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_endorsements_status(
+    block_hash: Option<BlockHash>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetEndorsementsStatus { block_hash })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_stats_current_head(
+    level: i32,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<Vec<(BlockHash, shell_automaton::service::BlockApplyStats)>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats { channel: tx, level })
+        .await?;
+    let response = rx.await?;
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_endrosement_stats(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<BTreeMap<String, OperationStats>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetMempooEndrosementsStats { channel: tx })
+        .await?;
+
+    // TODO: this is a duplicate, move it to a function
+    let raw_result = rx.await?;
+
+    Ok(map_operations_stats(raw_result))
+}
+
+fn map_operations_stats(
+    raw: BTreeMap<OperationHash, shell_automaton::mempool::OperationStats>,
+) -> BTreeMap<String, OperationStats> {
+    raw.into_iter()
         .map(|(op_hash, op_stats)| {
             let start_time = op_stats
                 .first_block_timestamp
@@ -772,6 +919,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                 .unwrap_or(0) as i128;
 
             let op_stats = OperationStats {
+                injected_timestamp: op_stats.injected_timestamp,
                 kind: op_stats.kind,
                 min_time: op_stats.min_time,
                 first_block_timestamp: op_stats.first_block_timestamp,
@@ -783,12 +931,16 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
                         (
                             (t as i128).checked_sub(start_time).unwrap_or(0),
                             result,
-                            (preapply_started as i128)
-                                .checked_sub(start_time)
-                                .unwrap_or(0),
-                            (preapply_ended as i128)
-                                .checked_sub(start_time)
-                                .unwrap_or(0),
+                            preapply_started.map(|preapply_started| {
+                                (preapply_started as i128)
+                                    .checked_sub(start_time)
+                                    .unwrap_or(0)
+                            }),
+                            preapply_ended.map(|preapply_ended| {
+                                (preapply_ended as i128)
+                                    .checked_sub(start_time)
+                                    .unwrap_or(0)
+                            }),
                         )
                     },
                 ),
@@ -869,7 +1021,16 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
 
             (op_hash.to_base58_check(), op_stats)
         })
-        .collect();
+        .collect()
+}
 
-    Ok(result)
+// get_best_remote_level
+pub(crate) async fn get_best_remote_level(
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<Option<i32>> {
+    if let Ok(rpc_state) = env.state().read() {
+        Ok(*rpc_state.best_remote_level())
+    } else {
+        Ok(None)
+    }
 }

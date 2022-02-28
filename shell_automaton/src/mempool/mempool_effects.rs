@@ -1,10 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::Store;
-use std::sync::Arc;
-
 use crypto::hash::OperationHash;
+use redux_rs::Store;
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use tezos_messages::p2p::{
     binary_message::MessageHash,
@@ -18,15 +20,30 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction};
 use crate::protocol::ProtocolAction;
 use crate::storage::kv_operations;
+use crate::{block_applier::BlockApplierApplyState, current_head::CurrentHeadState};
+use crate::{
+    current_head::current_head_actions::CurrentHeadPrecheckSuccessAction,
+    peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
+    prechecker::prechecker_actions::{PrecheckerApplied, PrecheckerErrored},
+};
+use crate::{
+    mempool::mempool_state::OperationState,
+    prechecker::prechecker_actions::{
+        PrecheckerPrecacheEndorsingRightsAction, PrecheckerPrecheckOperationRequestAction,
+        PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
+        PrecheckerSetNextBlockProtocolAction,
+    },
+    rights::Slot,
+};
 use crate::{
     service::{ProtocolService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
 use super::{
+    mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
 };
@@ -66,7 +83,7 @@ where
                 .mempool
                 .local_head_state
                 .as_ref()
-                .map(|h| h.hash.eq(&key.0))
+                .map(|h| h.hash.eq(key))
                 .unwrap_or(false)
             {
                 let operation_hashes = value
@@ -169,6 +186,7 @@ where
                         address: *address,
                         send_operations: true,
                         requested_explicitly: true,
+                        prechecked_head: None,
                     });
                 }
                 PeerMessage::CurrentHead(ref current_head) => {
@@ -179,11 +197,19 @@ where
                         return;
                     }
 
+                    let block_hash = match current_head.current_block_header().message_typed_hash()
+                    {
+                        Ok(hash) => hash,
+                        Err(_) => return,
+                    };
                     let message = current_head.current_mempool().clone();
                     store.dispatch(MempoolRecvDoneAction {
                         address: *address,
+                        block_hash,
                         message,
                         level: current_head.current_block_header().level(),
+                        timestamp: current_head.current_block_header().timestamp(),
+                        proto: current_head.current_block_header().proto(),
                     });
                 }
                 PeerMessage::Operation(ref op) => {
@@ -210,32 +236,54 @@ where
                 _ => (),
             }
         }
-        Action::BlockApplied(BlockAppliedAction {
-            chain_id,
-            block,
-            block_metadata_hash,
-            ops_metadata_hash,
-            hash,
-            ..
-        }) => {
+        Action::BlockApplierApplySuccess(_) => {
+            let (chain_id, block, apply_result) = match &store.state().block_applier.current {
+                BlockApplierApplyState::Success {
+                    chain_id,
+                    block,
+                    apply_result,
+                    ..
+                } => (chain_id, block, apply_result),
+                _ => return,
+            };
+
+            if let Some(local_head_state) = store.state().mempool.local_head_state.as_ref() {
+                if local_head_state.hash != block.hash {
+                    let req = BeginConstructionRequest {
+                        chain_id: (**chain_id).clone(),
+                        predecessor: local_head_state.header.clone(),
+                        protocol_data: None,
+                        predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
+                        predecessor_ops_metadata_hash: local_head_state.ops_metadata_hash.clone(),
+                    };
+                    store
+                        .service()
+                        .protocol()
+                        .begin_construction_for_prevalidation(req);
+                    return;
+                }
+            }
+
             if store.state().mempool.running_since.is_some() {
                 let req = BeginConstructionRequest {
-                    chain_id: chain_id.clone(),
-                    predecessor: block.clone(),
+                    chain_id: (**chain_id).clone(),
+                    predecessor: (*block.header).clone(),
                     protocol_data: None,
-                    predecessor_block_metadata_hash: block_metadata_hash.clone(),
-                    predecessor_ops_metadata_hash: ops_metadata_hash.clone(),
+                    predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
+                    predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),
                 };
+                let block_hash = block.hash.clone();
                 store
                     .service()
                     .protocol()
                     .begin_construction_for_prevalidation(req);
                 store.dispatch(kv_operations::StorageOperationsGetAction {
-                    key: hash.clone().into(),
+                    key: block_hash.into(),
                 });
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         send_operations: false,
+                        prechecked_head: None,
                     });
                 }
             }
@@ -312,7 +360,8 @@ where
                     &prot,
                 ))
                 .collect::<Vec<_>>();
-            if let Ok(json) = serde_json::to_value(resp) {
+            if let Ok(json) = serde_json::to_value(&resp) {
+                slog::trace!(&store.state().log, "============\n{:#?}", resp);
                 store.service().rpc().respond_stream(act.rpc_id, Some(json));
             }
         }
@@ -325,26 +374,40 @@ where
                     return;
                 }
             };
-            let current_branch = match &store.state().mempool.local_head_state {
-                Some(v) => &v.hash,
-                None => {
-                    store.service().rpc().respond(*rpc_id, empty);
-                    return;
-                }
-            };
             let v_ops = &store.state().mempool.validated_operations;
             let v = MempoolOperations::collect(
                 &v_ops.applied,
                 &v_ops.refused,
                 &v_ops.branch_delayed,
                 &v_ops.branch_refused,
-                &store.state().mempool.validated_operations.ops,
-                current_branch,
+                &v_ops.ops,
                 &prevalidator.protocol,
             );
             store.service().rpc().respond(*rpc_id, v);
         }
-        Action::MempoolRecvDone(MempoolRecvDoneAction { address, .. }) => {
+        Action::MempoolRecvDone(MempoolRecvDoneAction {
+            address,
+            proto,
+            level,
+            ..
+        }) => {
+            // Ask prechecker to precache endorsing rights for new level, using latest applied block
+            if store.state().mempool.first_current_head {
+                if let Some(current_head) = store
+                    .state
+                    .get()
+                    .mempool
+                    .local_head_state
+                    .as_ref()
+                    .map(|lhs| lhs.hash.clone())
+                {
+                    store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
+                        current_head,
+                        level: *level,
+                    });
+                }
+                store.dispatch(PrecheckerSetNextBlockProtocolAction { proto: *proto });
+            }
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(MempoolGetOperationsAction { address: *address });
@@ -366,13 +429,131 @@ where
             });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
+            if store.state().mempool.is_old_endorsement(operation) =>
+        {
+            // TODO store rejected endorsement for diagnosis?
+        }
+        Action::MempoolOperationInject(MempoolOperationInjectAction {
+            operation, rpc_id, ..
+        }) if store.state().mempool.is_old_endorsement(operation) => {
+            let current_head = match &store.state.get().block_applier.current {
+                BlockApplierApplyState::Success { block, .. } => Some(&block.hash),
+                _ => None,
+            };
+            store.service.rpc().respond(
+                *rpc_id,
+                serde_json::json!({
+                    "error": "Endorsement branch is too old",
+                    "endorsement_branch": operation.branch(),
+                    "current_head": current_head,
+                }),
+            );
+        }
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            if store.state().mempool.is_old_endorsement(operation) {
-                return;
-            }
-            store.dispatch(MempoolValidateStartAction {
+            store.dispatch(PrecheckerPrecheckOperationRequestAction {
                 operation: operation.clone(),
             });
+        }
+        Action::PrecheckerPrecheckOperationResponse(
+            PrecheckerPrecheckOperationResponseAction { response },
+        ) => {
+            match response {
+                PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
+                    operation_decoded_contents,
+                    hash,
+                    ..
+                })
+                | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
+                    operation_decoded_contents,
+                    hash,
+                    ..
+                }) => {
+                    store.dispatch(MempoolBroadcastAction {
+                        send_operations: true,
+                        prechecked_head: Some(operation_decoded_contents.branch().clone()),
+                    });
+
+                    // respond to injection RPC
+                    let resp = if store.state().mempool.local_head_state.is_some() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String("head is not ready".to_string())
+                    };
+                    let to_respond = store.state().mempool.injected_rpc_ids.clone();
+                    for rpc_id in to_respond {
+                        store.service().rpc().respond(rpc_id, resp.clone());
+                    }
+                    store.dispatch(MempoolRpcRespondAction {});
+
+                    // respond to mempool_operations
+                    let streams = store.state().mempool.operation_streams.clone();
+                    if streams.is_empty() {
+                        return;
+                    }
+
+                    if let Some(prevalidator) = store.state().mempool.prevalidator.as_ref() {
+                        let (protocol_data, protocol_data_parse_error) = if let Some(json_object) =
+                            operation_decoded_contents.as_json().as_object()
+                        {
+                            (
+                                json_object
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect::<HashMap<_, _>>(),
+                                Option::<String>::None,
+                            )
+                        } else {
+                            (
+                                HashMap::new(),
+                                Some("Cannot interpred protocol data as object".to_string()),
+                            )
+                        };
+                        let error = if let PrecheckerPrecheckOperationResponse::Refused(
+                            PrecheckerErrored { error, .. },
+                        ) = response
+                        {
+                            vec![error.clone()]
+                        } else {
+                            Vec::new()
+                        };
+
+                        let protocol = prevalidator.protocol.to_base58_check();
+                        let monitored_operation = MonitoredOperation::new(
+                            operation_decoded_contents.branch(),
+                            protocol_data,
+                            &protocol,
+                            hash,
+                            error,
+                            protocol_data_parse_error,
+                        );
+
+                        if let Ok(json) = serde_json::to_value(vec![monitored_operation]) {
+                            for stream in streams {
+                                store
+                                    .service()
+                                    .rpc()
+                                    .respond_stream(stream.rpc_id, Some(json.clone()));
+                            }
+                        }
+                    }
+                }
+                PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
+                    if let Some(operation) = store
+                        .state
+                        .get()
+                        .mempool
+                        .pending_operations
+                        .get(&prevalidate.hash)
+                        .cloned()
+                    {
+                        store.dispatch(MempoolValidateStartAction { operation });
+                    } else {
+                        // TODO
+                    }
+                }
+                _ => (),
+            }
         }
         Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
             let mempool_state = &store.state().mempool;
@@ -391,13 +572,22 @@ where
                 });
             }
         }
-        Action::MempoolBroadcast(MempoolBroadcastAction { send_operations }) => {
-            let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+        Action::MempoolBroadcast(MempoolBroadcastAction {
+            send_operations,
+            prechecked_head,
+        }) => {
+            let addresses = store
+                .state()
+                .peers
+                .iter_handshaked()
+                .map(|(a, _)| a.clone())
+                .collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
                     address,
                     send_operations: *send_operations,
                     requested_explicitly: false,
+                    prechecked_head: prechecked_head.clone(),
                 });
             }
         }
@@ -427,10 +617,14 @@ where
             };
 
             let known_valid = peer.known_valid_to_send.clone();
+            let current_mempool = Mempool::new(known_valid.clone(), vec![]);
+            if current_mempool.is_empty() {
+                return;
+            }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
                 head_state.header.clone(),
-                Mempool::new(known_valid.clone(), vec![]),
+                current_mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
 
@@ -449,14 +643,27 @@ where
             address,
             send_operations,
             requested_explicitly,
+            prechecked_head,
         }) => {
-            let head_state = match store.state().mempool.local_head_state.clone() {
+            let applied_block = match &store.state().mempool.local_head_state {
                 Some(v) => v,
                 None => {
                     // should always have current head here
                     // TODO(vlad): should be forbidden by enabling condition
                     return;
                 }
+            };
+            let (block_is_applied, header, head_hash) = match prechecked_head.as_ref() {
+                Some(prechecked_head) if prechecked_head != &applied_block.hash => {
+                    if let Some(CurrentHeadState::Prechecked { block_header, .. }) =
+                        store.state().current_heads.candidates.get(prechecked_head)
+                    {
+                        (false, block_header, prechecked_head)
+                    } else {
+                        return;
+                    }
+                }
+                _ => (true, &applied_block.header, &applied_block.hash),
             };
             let peer = match store.state().mempool.peer_state.get(&address) {
                 Some(v) => v,
@@ -505,15 +712,19 @@ where
                     .validated_operations
                     .ops
                     .iter()
-                    .filter_map(|(hash, _)| {
-                        if !peer.seen_operations.contains(&hash.0) {
-                            Some(hash.0.clone())
+                    .filter_map(|(hash, op)| {
+                        if !peer.seen_operations.contains(hash)
+                            // when broadcasting prechecked head, only include operations for that head
+                            && (block_is_applied || head_hash == op.branch())
+                        {
+                            Some(hash.clone())
                         } else {
                             None
                         }
                     })
                     .collect::<Vec<_>>()
             };
+
             // TODO(vlad):
             let pending = if *requested_explicitly && !debug {
                 store
@@ -521,10 +732,13 @@ where
                     .mempool
                     .pending_operations
                     .iter()
-                    .filter(|(hash, op)| {
-                        !peer.seen_operations.contains(&hash.0) && head_state.hash.eq(op.branch())
+                    .filter_map(|(hash, op)| {
+                        if !peer.seen_operations.contains(hash) && head_hash.eq(op.branch()) {
+                            Some(hash.clone())
+                        } else {
+                            None
+                        }
                     })
-                    .map(|(hash, _)| hash.0.clone())
                     .collect::<Vec<_>>()
             } else {
                 vec![]
@@ -540,11 +754,10 @@ where
             };
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                head_state.header.clone(),
+                header.clone(),
                 mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
-
             store.dispatch(PeerMessageWriteInitAction {
                 address: address.clone(),
                 message,
@@ -555,6 +768,56 @@ where
                 known_valid,
                 cleanup_known_valid: false,
             });
+        }
+        Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
+            block_hash,
+            injected,
+            ..
+        }) if !injected && !store.state().config.disable_block_precheck => {
+            store.dispatch(MempoolBroadcastAction {
+                send_operations: false,
+                prechecked_head: Some(block_hash.clone()),
+            });
+        }
+
+        Action::MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction {
+            rpc_id,
+            block_hash: _,
+        }) => {
+            #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+            struct OpStatus {
+                state: OperationState,
+                broadcast: bool,
+                slot: Slot,
+                #[serde(flatten)]
+                times: HashMap<String, i64>,
+            }
+
+            let status = store
+                .state
+                .get()
+                .mempool
+                .operations_state
+                .iter()
+                .filter_map(|(op, state)| {
+                    if let Some(slot) = state.endorsement_slot() {
+                        let mut times = state.times.clone();
+                        if let Some(t) = times.get("received_contents_time").cloned() {
+                            times.insert("received_time".to_string(), t);
+                        }
+                        let status = OpStatus {
+                            state: state.state,
+                            broadcast: state.broadcast,
+                            slot,
+                            times: state.times.clone(),
+                        };
+                        Some((op.clone(), status))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeMap<_, _>>();
+            store.service.rpc().respond(*rpc_id, status);
         }
         _ => (),
     }

@@ -13,13 +13,7 @@ use crate::server::{HResult, MethodHandler, Params, Query, RpcServiceEnvironment
 
 macro_rules! hash_set {
     ( $( $x:expr ),* ) => {
-        {
-            let mut temp_set = HashSet::new();
-            $(
-                temp_set.insert($x);
-            )*
-            temp_set
-        }
+        HashSet::from([$($x),*])
     };
 }
 
@@ -67,12 +61,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/chains/:chain_id/chain_id",
         shell_handler::get_chain_id,
     );
-    // TODO: TE-685
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks",
-    //     shell_handler::blocks,
-    // );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks",
+        shell_handler::blocks,
+    );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id",
@@ -299,6 +292,12 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/state_raw",
+        dev_handler::dev_shell_automaton_state_raw_get,
+    );
+
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/shell/automaton/actions",
         dev_handler::dev_shell_automaton_actions_get,
     );
@@ -317,6 +316,52 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/dev/shell/automaton/mempool/operation_stats",
         dev_handler::dev_shell_automaton_mempool_operation_stats_get,
     );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/block_stats/graph",
+        dev_handler::dev_shell_automaton_block_stats_graph_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/endorsing_rights",
+        dev_handler::dev_shell_automaton_endorsing_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/baking_rights",
+        dev_handler::dev_shell_automaton_baking_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/endorsements_status",
+        dev_handler::dev_shell_automaton_endorsements_status,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/current_head",
+        dev_handler::dev_shell_automaton_stats_current_head_peers,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/current_head/peers",
+        dev_handler::dev_shell_automaton_stats_current_head_peers,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/current_head/application",
+        dev_handler::dev_shell_automaton_stats_current_head_application,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/stats/mempool/endorsements",
+        dev_handler::dev_shell_automaton_endrosement_stats,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/peers/best_remote_level",
+        dev_handler::best_remote_level,
+    );
+
     routes.handle(
         hash_set![Method::GET],
         "/stats/memory",

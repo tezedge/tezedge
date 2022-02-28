@@ -1,6 +1,6 @@
 [package]
 name = "light-node"
-version = "1.15.1"
+version = "1.16.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 default-run = "light-node"
@@ -14,10 +14,12 @@ jemallocator = "0.3.2"
 tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.git", tag = "v0.5.0" }
 rlimit = "0.5"
 serde_json = "1.0"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 strum = "0.20"
 tokio = { version = "1.12", features = ["rt-multi-thread", "signal"] }
+nix = "0.23"
 num_cpus = "1.13"
+tempfile = "3"
 # Local dependencies
 crypto = { path = "../crypto" }
 logging = { path = "../logging" }

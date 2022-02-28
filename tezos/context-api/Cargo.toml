@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context_api"
-version = "1.15.1"
+version = "1.16.0"
 edition = "2018"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 
@@ -17,3 +17,8 @@ nom = "6.1"
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
+[features]
+fuzzing = ["fuzzcheck", "crypto/fuzzing", "tezos_encoding/fuzzing", "tezos_messages/fuzzing"]
+

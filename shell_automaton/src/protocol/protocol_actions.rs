@@ -7,6 +7,7 @@ use tezos_api::ffi::{InitProtocolContextResult, PrevalidatorWrapper, ValidateOpe
 
 use crate::{EnablingCondition, State};
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolAction {
     Error(String),
