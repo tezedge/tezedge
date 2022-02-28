@@ -42,6 +42,7 @@ Follow this checklist when creating a new release for the tezedge node.
 
 - [ ] [README.md](README.md)
 - [ ] [baking/010-granadanet/README.md](baking/010-granadanet/README.md)
+- [ ] [baking/011-PtHangz2/README.md](baking/011-PtHangz2/README.md)
 - [ ] [baking/mainnet/README.md](baking/mainnet/README.md)
 
 ### Mergin to develop

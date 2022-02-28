@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.15.1
+    image: tezedge/tezedge:v1.16.0
     environment:
       - TEZOS_CONTEXT=index-log-size=5_000_000
     command: [
@@ -32,7 +32,7 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.15.1
+    image: tezedge/tezedge-explorer:v1.16.0
     environment:
       API: >
         [
