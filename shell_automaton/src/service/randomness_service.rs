@@ -3,7 +3,7 @@
 
 use std::{fmt::Debug, net::SocketAddr};
 
-use crypto::nonce::Nonce;
+use crypto::nonce::{Nonce, NONCE_SIZE};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
@@ -25,7 +25,7 @@ where
     R: Rng + Debug,
 {
     fn get_nonce(&mut self, _: SocketAddr) -> Nonce {
-        let mut b = [0; 24];
+        let mut b: [u8; NONCE_SIZE] = [0; NONCE_SIZE];
         self.fill(&mut b);
         Nonce::new(&b)
     }

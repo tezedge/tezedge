@@ -3,7 +3,7 @@
 
 use std::net::SocketAddr;
 
-use crypto::nonce::Nonce;
+use crypto::nonce::{Nonce, NONCE_SIZE};
 use shell_automaton::service::RandomnessService;
 
 #[derive(Debug, Clone)]
@@ -14,7 +14,7 @@ pub enum RandomnessServiceMocked {
 impl RandomnessService for RandomnessServiceMocked {
     fn get_nonce(&mut self, _: SocketAddr) -> Nonce {
         match self {
-            Self::Dummy => Nonce::new(&[0; 24]),
+            Self::Dummy => Nonce::new(&[0; NONCE_SIZE]),
         }
     }
 

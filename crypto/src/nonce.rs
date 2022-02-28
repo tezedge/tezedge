@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -34,8 +36,7 @@ pub struct Nonce {
 
 impl Nonce {
     /// Create new nonce from raw bytes
-    pub fn new(bytes: &[u8]) -> Self {
-        assert!(bytes.len() <= NONCE_SIZE);
+    pub fn new(bytes: &[u8; NONCE_SIZE]) -> Self {
         let mut _bytes: [u8; NONCE_SIZE] = [0; NONCE_SIZE];
         _bytes.copy_from_slice(bytes);
         let mut value: [u16; NONCE_WORDS] = [0; NONCE_WORDS];
@@ -107,12 +108,23 @@ pub fn generate_nonces(
         (sent_msg, recv_msg)
     };
 
-    let nonce_init_to_resp =
-        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))?[0..NONCE_SIZE]
-            .to_vec();
-    let nonce_resp_to_init =
-        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))?[0..NONCE_SIZE]
-            .to_vec();
+    let nonce_init_to_resp: [u8; NONCE_SIZE] =
+        match blake2b::digest_256(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))?
+            [0..NONCE_SIZE]
+            .try_into()
+        {
+            Ok(value) => value,
+            Err(_) => return Err(Blake2bError::InvalidLenght),
+        };
+
+    let nonce_resp_to_init: [u8; NONCE_SIZE] =
+        match blake2b::digest_256(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))?
+            [0..NONCE_SIZE]
+            .try_into()
+        {
+            Ok(value) => value,
+            Err(_) => return Err(Blake2bError::InvalidLenght),
+        };
 
     Ok(if incoming {
         NoncePair {
@@ -133,7 +145,11 @@ mod tests {
 
     #[test]
     fn nonce_increment_produces_correct_byte_slice() -> Result<(), anyhow::Error> {
-        let bytes_0 = hex::decode("0000000000cff52f4be9352787d333e616a67853640d72c5").unwrap();
+        let bytes_0: [u8; NONCE_SIZE] =
+            hex::decode("0000000000cff52f4be9352787d333e616a67853640d72c5")
+                .unwrap()
+                .try_into()
+                .unwrap();
         let nonce_0 = Nonce::new(&bytes_0);
         let nonce_1 = nonce_0.increment();
         let bytes_1 = nonce_1.get_bytes()?;
@@ -186,7 +202,11 @@ mod tests {
 
     #[test]
     fn too_big_value_wraps() -> Result<(), anyhow::Error> {
-        let bytes_0 = hex::decode("ffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+        let bytes_0: [u8; NONCE_SIZE] =
+            hex::decode("ffffffffffffffffffffffffffffffffffffffffffffffff")
+                .unwrap()
+                .try_into()
+                .unwrap();
         let nonce_0 = Nonce::new(&bytes_0);
         let nonce_1 = nonce_0.increment();
         let bytes_1 = nonce_1.get_bytes()?;
