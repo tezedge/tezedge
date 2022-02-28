@@ -402,20 +402,10 @@ impl EnablingCondition<State> for BootstrapScheduleBlocksForApplyAction {
     fn is_enabled(&self, state: &State) -> bool {
         !state.block_applier.current.is_pending()
             && match &state.bootstrap {
-                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                    let next_block_level = match next_block_apply_level(state) {
-                        Some(v) => v,
-                        None => return false,
-                    };
-                    pending
-                        .iter()
-                        .filter(|(_, b)| {
-                            b.block_level <= next_block_level
-                                && b.block_level >= next_block_level - 2
-                        })
-                        .take(1)
-                        .any(|(_, b)| b.is_success())
-                }
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => pending
+                    .iter()
+                    .min_by_key(|(_, b)| b.block_level)
+                    .map_or(false, |(_, b)| b.is_success()),
                 _ => false,
             }
     }
