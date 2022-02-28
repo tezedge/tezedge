@@ -584,6 +584,7 @@ mod tests {
     use serial_test::serial;
     use std::sync::Arc;
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_store() {
@@ -594,6 +595,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_reopens() {
@@ -624,6 +626,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_reopens_prefix() {
@@ -650,6 +653,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_gets_reopens() {
@@ -672,6 +676,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_iterator() {
@@ -692,6 +697,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_multi_thread_reads() {
@@ -733,6 +739,7 @@ mod tests {
         clean_up()
     }
 
+    #[ignore] // TODO: re-enable again if we start using this crate
     #[test]
     #[serial]
     fn test_data_merge_store() {
