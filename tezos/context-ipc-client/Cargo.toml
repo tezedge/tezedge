@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context_ipc_client"
-version = "1.16.0"
+version = "1.17.0"
 edition = "2018"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 

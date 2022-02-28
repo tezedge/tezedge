@@ -1,6 +1,6 @@
 [package]
 name = "sandbox"
-version = "1.16.0"
+version = "1.17.0"
 authors = ["Adrian Nagy <adrian.nagy@simplestaking.com>"]
 edition = "2018"
 default-run = "sandbox"

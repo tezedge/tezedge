@@ -1,6 +1,6 @@
 [package]
 name = "tezos_lib_storage_ffi"
-version = "1.16.0"
+version = "1.17.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2018"
 
