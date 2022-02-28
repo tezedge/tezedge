@@ -106,7 +106,7 @@ steps:
         - latest-release
       dockerfile: apps/node_monitoring/Dockerfile
       build_args:
-        - SOURCE_BRANCH=develop
+        - SOURCE_BRANCH=${DRONE_TAG}
       username:
         from_secret: docker_hub_username
       password:
