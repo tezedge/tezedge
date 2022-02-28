@@ -625,10 +625,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 pending
                     .get_mut(content.message.operations_for_block().block_hash())
                     .and_then(|b| b.peers.get_mut(&content.peer))
-                    .and_then(|p| match p {
-                        PeerBlockOperationsGetState::Pending { operations, .. } => Some(operations),
-                        _ => None,
-                    })
+                    .and_then(|p| p.pending_operations_mut())
                     .and_then(|operations| {
                         operations.get_mut(
                             content.message.operations_for_block().validation_pass() as usize
@@ -643,15 +640,14 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 pending
                     .get_mut(&content.block_hash)
                     .and_then(|b| b.peers.iter_mut().find(|(_, p)| p.is_complete()))
-                    .map(|(_, p)| match p {
-                        PeerBlockOperationsGetState::Pending { operations, .. } => {
-                            let operations = operations.drain(..).filter_map(|v| v).collect();
+                    .map(|(_, p)| {
+                        if let Some(ops) = p.pending_operations_mut() {
+                            let operations = ops.drain(..).filter_map(|v| v).collect();
                             *p = PeerBlockOperationsGetState::Success {
                                 time: action.time_as_nanos(),
                                 operations,
                             };
                         }
-                        _ => {}
                     });
             }
             _ => {}
