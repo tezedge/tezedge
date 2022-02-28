@@ -2,7 +2,7 @@
 name = "rpc"
 version = "1.17.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 build = "build.rs"
 
 [dependencies]

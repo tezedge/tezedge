@@ -1,7 +1,7 @@
 [package]
 name = "shell_automaton"
 version = "1.17.0"
-edition = "2018"
+edition = "2021"
 
 [dev-dependencies]
 assert-json-diff = { git = "https://github.com/tezedge/assert-json-diff.git", tag = "v2.0.1-public-diff-module" }
