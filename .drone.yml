@@ -41,11 +41,91 @@
 ##############################################################################################################
 
 ##############################################################################################################
+# This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
+##############################################################################################################
+kind: pipeline
+name: deployment/publish-docker-image-latest-release
+
+steps:
+  - name: build-light-node-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/tezedge
+      target: light-node
+      tags:
+        - ${DRONE_TAG}
+        - latest-release
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-light-node-debug-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/tezedge
+      target: light-node
+      tags:
+        - ${DRONE_TAG}-frame-pointers-enabled
+        - latest-frame-pointers-enabled-release
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+        - BASE_IMAGE=tezedge/tezedge-libs:latest-profile
+        - RUSTFLAGS=-Cforce-frame-pointers=yes
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-sandbox-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/tezedge
+      target: sandbox
+      tags:
+        - sandbox-${DRONE_TAG}
+        - sandbox-latest-release
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-monitoring-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/node-monitoring
+      tags:
+        - ${DRONE_TAG}
+        - latest-release
+      dockerfile: apps/node_monitoring/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=develop
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+image_pull_secrets:
+  - docker_pull_secret
+
+trigger:
+  ref: refs/tags/**
+  event: tag
+
+##############################################################################################################
 # This pipeline:
 # - only one which checkouts git
 # - runs just run tests, and build artifacts to 'build' volume,
 # - aslo copies files needed from git for other pipelines
 ##############################################################################################################
+---
 kind: pipeline
 name: build-tezedge-binaries
 
@@ -7676,109 +7756,6 @@ image_pull_secrets:
 trigger:
   branch: develop
   event: push
-
-depends_on:
-  - corr/tezedge-unit-tests
-  - perf/tezedge-all-benchmarks
-  - corr/tezedge-integration-tests
-  - corr/tezedge-sandbox-transfer-and-baking-007-carthage
-  - corr/sandbox-launcher-rpc-server-010-granada
-  - corr/sandbox-launcher-rpc-server-011-hangzhou
-  - corr/tezedge-with-octez-baker-endorser-010-granada
-  - corr/octez-python-tests-applied-to-tezedge-010-granada
-  - corr/octez-python-tests-applied-to-tezedge-011-hangzhou
-  - corr/octez-tezedge-connection-with-different-networks-each
-  - corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
-  - corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
-  - corr/tezedge-octez-rpcs-and-indexers-compatibility-009-florencenet
-  - corr/tezedge-octez-rpcs-and-indexers-compatibility-010-granadanet
-  - corr/tezedge-octez-rpcs-and-indexers-compatibility-mainnet
-  - corr/indexer-conseil-octez-009-florence
-  - corr/indexer-conseil-tezedge-009-florence
-  - corr/indexer-tzkt-octez-009-florence
-  - corr/indexer-tzkt-tezedge-009-florence
-  - perf/memory-allocation-bootstrap-009-florence
-  - perf/bootstrap-time-009-florence
-
-##############################################################################################################
-# This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
-##############################################################################################################
----
-kind: pipeline
-name: deployment/publish-docker-image-latest-release
-
-steps:
-  - name: build-light-node-image
-    image: plugins/docker
-    settings:
-      repo: tezedge/tezedge
-      target: light-node
-      tags:
-        - ${DRONE_TAG}
-        - latest-release
-      dockerfile: docker/distroless/Dockerfile
-      build_args:
-        - SOURCE_BRANCH=${DRONE_TAG}
-      username:
-        from_secret: docker_hub_username
-      password:
-        from_secret: docker_hub_pswd
-
-  - name: build-light-node-debug-image
-    image: plugins/docker
-    settings:
-      repo: tezedge/tezedge
-      target: light-node
-      tags:
-        - ${DRONE_TAG}-frame-pointers-enabled
-        - latest-frame-pointers-enabled-release
-      dockerfile: docker/distroless/Dockerfile
-      build_args:
-        - SOURCE_BRANCH=${DRONE_TAG}
-        - BASE_IMAGE=tezedge/tezedge-libs:latest-profile
-        - RUSTFLAGS=-Cforce-frame-pointers=yes
-      username:
-        from_secret: docker_hub_username
-      password:
-        from_secret: docker_hub_pswd
-
-  - name: build-sandbox-image
-    image: plugins/docker
-    settings:
-      repo: tezedge/tezedge
-      target: sandbox
-      tags:
-        - sandbox-${DRONE_TAG}
-        - sandbox-latest-release
-      dockerfile: docker/distroless/Dockerfile
-      build_args:
-        - SOURCE_BRANCH=${DRONE_TAG}
-      username:
-        from_secret: docker_hub_username
-      password:
-        from_secret: docker_hub_pswd
-
-  - name: build-monitoring-image
-    image: plugins/docker
-    settings:
-      repo: tezedge/node-monitoring
-      tags:
-        - ${DRONE_TAG}
-        - latest-release
-      dockerfile: apps/node_monitoring/Dockerfile
-      build_args:
-        - SOURCE_BRANCH=develop
-      username:
-        from_secret: docker_hub_username
-      password:
-        from_secret: docker_hub_pswd
-
-image_pull_secrets:
-  - docker_pull_secret
-
-trigger:
-  ref: refs/tags/**
-  event: tag
 
 depends_on:
   - corr/tezedge-unit-tests
