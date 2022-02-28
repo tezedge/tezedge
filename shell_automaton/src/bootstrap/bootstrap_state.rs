@@ -342,7 +342,9 @@ pub enum PeerBlockOperationsGetState {
 impl PeerBlockOperationsGetState {
     pub fn is_complete(&self) -> bool {
         match self {
-            Self::Pending { operations, .. } => operations.iter().all(|v| v.is_some()),
+            Self::Pending { operations, .. } | Self::TimedOut { operations, .. } => {
+                operations.iter().all(|v| v.is_some())
+            }
             _ => false,
         }
     }
@@ -368,13 +370,9 @@ impl PeerBlockOperationsGetState {
     }
 
     pub fn is_validation_pass_pending(&self, validation_pass: u8) -> bool {
-        match self {
-            Self::Pending { operations, .. } => operations
-                .get(validation_pass.max(0) as usize)
-                .map(|v| v.is_none())
-                .unwrap_or(false),
-            _ => false,
-        }
+        self.pending_operations()
+            .and_then(|ops| ops.get(validation_pass.max(0) as usize))
+            .map_or(false, |v| v.is_none())
     }
 
     pub fn to_timed_out(&mut self, time: u64) {
@@ -383,6 +381,26 @@ impl PeerBlockOperationsGetState {
             _ => return,
         };
         *self = Self::TimedOut { time, operations };
+    }
+
+    pub fn pending_operations(&self) -> Option<&Vec<Option<OperationsForBlocksMessage>>> {
+        match self {
+            Self::Pending { operations, .. } | Self::TimedOut { operations, .. } => {
+                Some(operations)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn pending_operations_mut(
+        &mut self,
+    ) -> Option<&mut Vec<Option<OperationsForBlocksMessage>>> {
+        match self {
+            Self::Pending { operations, .. } | Self::TimedOut { operations, .. } => {
+                Some(operations)
+            }
+            _ => None,
+        }
     }
 }
 

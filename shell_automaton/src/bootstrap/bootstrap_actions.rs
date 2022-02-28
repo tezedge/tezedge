@@ -163,8 +163,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetTimeoutAction {
             .peer_interval(self.peer, |p| {
                 p.current.is_pending_block_hash_eq(&self.block_hash)
             })
-            .filter(|(_, p)| p.current.is_pending_timed_out(timeout, current_time))
-            .is_some()
+            .map_or(false, |(_, p)| {
+                p.current.is_pending_timed_out(timeout, current_time)
+            })
     }
 }
 
@@ -290,8 +291,7 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetPendingAction {
                     && pending.get(&self.block_hash).is_none()
                     && queue
                         .front()
-                        .filter(|v| v.block_hash == self.block_hash)
-                        .is_some()
+                        .map_or(false, |v| v.block_hash == self.block_hash)
             }
             _ => false,
         }
@@ -316,8 +316,7 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetTimeoutAction {
                 pending
                     .get(&self.block_hash)
                     .and_then(|p| p.peers.get(&self.peer))
-                    .filter(|p| p.is_pending_timed_out(timeout, current_time))
-                    .is_some()
+                    .map_or(false, |p| p.is_pending_timed_out(timeout, current_time))
             }
             _ => false,
         }
@@ -335,8 +334,7 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetRetryAction {
         match &state.bootstrap {
             BootstrapState::PeersBlockOperationsGetPending { pending, .. } => pending
                 .get(&self.block_hash)
-                .map(|b| !b.peers.iter().any(|(_, p)| p.is_pending()))
-                .unwrap_or(false),
+                .map_or(false, |b| !b.peers.iter().any(|(_, p)| p.is_pending())),
             _ => false,
         }
     }
@@ -354,12 +352,11 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsReceivedAction {
             BootstrapState::PeersBlockOperationsGetPending { pending, .. } => pending
                 .get(self.message.operations_for_block().block_hash())
                 .and_then(|v| v.peers.get(&self.peer))
-                .map(|peer_state| {
+                .map_or(false, |peer_state| {
                     peer_state.is_validation_pass_pending(
                         self.message.operations_for_block().validation_pass() as u8,
                     )
-                })
-                .unwrap_or(false),
+                }),
             _ => false,
         }
     }
@@ -425,14 +422,11 @@ impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
                         Some(v) => v,
                         None => return false,
                     };
-                    pending
-                        .get(&self.block_hash)
-                        .filter(|b| {
-                            b.block_level <= next_block_level
-                                && b.block_level >= next_block_level - 2
-                                && b.is_success()
-                        })
-                        .is_some()
+                    pending.get(&self.block_hash).map_or(false, |b| {
+                        b.block_level <= next_block_level
+                            && b.block_level >= next_block_level - 2
+                            && b.is_success()
+                    })
                 }
                 _ => false,
             }
