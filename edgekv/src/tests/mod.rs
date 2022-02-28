@@ -4,24 +4,21 @@
 mod common;
 
 use crate::edgekv::EdgeKV;
-use log::{debug, warn};
-
-use std::sync::Arc;
 
 use serial_test::serial;
-const N_THREADS: usize = 4;
+//const N_THREADS: usize = 4;
 const N_PER_THREAD: usize = 10;
-const N: usize = N_THREADS * N_PER_THREAD;
+//const N: usize = N_THREADS * N_PER_THREAD;
 // NB N should be multiple of N_THREADS
-const SPACE: usize = N;
+//const SPACE: usize = N;
 #[allow(dead_code)]
 const INTENSITY: usize = 10;
 
-fn kv(i: usize) -> Vec<u8> {
-    let i = i % SPACE;
-    let k = [(i >> 16) as u8, (i >> 8) as u8, i as u8];
-    k.to_vec()
-}
+//fn kv(i: usize) -> Vec<u8> {
+//    let i = i % SPACE;
+//    let k = [(i >> 16) as u8, (i >> 8) as u8, i as u8];
+//    k.to_vec()
+//}
 
 fn clean_up(dir: &str) {
     fs_extra::dir::remove(format!("./testdir/{}", dir)).ok();
@@ -91,6 +88,7 @@ fn get_set() {
         println!("{:?}", db.get(&vec![12, 3, 42]));
     }
 }
+
 #[test]
 #[serial]
 fn prefix_test() {
