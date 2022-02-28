@@ -472,7 +472,7 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
         "download_block_header_start": as_delta_or(stats.download_block_header_start),
         "download_block_header_end": as_delta_or(stats.download_block_header_end),
         "download_block_operations_start": as_delta_or(stats.download_block_operations_start),
-        "download_block_operations_end": as_delta_or(stats.download_block_operations_end),
+        "download_block_operations_end": as_delta_or(stats.load_data_start.and(stats.download_block_operations_end)),
 
         "load_data_start": as_delta_or(stats.load_data_start),
         "load_data_end": as_delta_or(stats.load_data_end),

@@ -291,7 +291,7 @@ impl StatisticsService {
         self.blocks_apply
             .get_mut(block_hash)
             .filter(|v| v.load_data_start.is_none())
-            .map(|v| v.download_block_operations_end.get_or_insert(time));
+            .map(|v| v.download_block_operations_end = Some(time));
     }
 
     /// Started loading block data from storage for block application.
