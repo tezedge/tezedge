@@ -606,41 +606,8 @@ fn main() {
     );
     check_deprecated_network(&env, &log);
 
-    // Validate zcash-params
-    info!(log, "Checking zcash-params for sapling... (1/8)");
-    if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
-        let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
-        error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
-        panic!(
-            "Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
-            e, description
-        );
-    }
-
-    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    info!(log, "Loading identity... (2/8)");
-    let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
-        Ok(identity) => {
-            info!(log, "Identity loaded from file";
-                       "file" => env.identity.identity_json_file_path.as_path().display().to_string(),
-                       "peer_id" => identity.peer_id.to_base58_check());
-            if env.validate_cfg_identity_and_stop {
-                info!(log, "Configuration and identity is ok!");
-                return;
-            }
-            identity
-        }
-        Err(e) => {
-            error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
-            panic!(
-                "Failed to load identity: {}",
-                env.identity.identity_json_file_path.as_path().display()
-            );
-        }
-    };
-
     // create/initialize databases
-    info!(log, "Loading databases... (3/7)");
+    info!(log, "Loading databases... (1/7)");
     let instant = Instant::now();
 
     {
@@ -679,6 +646,37 @@ fn main() {
                         log,
                     )
                 } else {
+                    // Validate zcash-params
+                    info!(log, "Checking zcash-params for sapling... (2/7)");
+                    if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
+                        let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
+                        error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
+                        panic!("Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
+                               e, description);
+                    }
+
+                    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
+                    info!(log, "Loading identity... (3/7)");
+                    let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
+                        Ok(identity) => {
+                            info!(log, "Identity loaded from file";
+                       "file" => env.identity.identity_json_file_path.as_path().display().to_string(),
+                       "peer_id" => identity.peer_id.to_base58_check());
+                            if env.validate_cfg_identity_and_stop {
+                                info!(log, "Configuration and identity is ok!");
+                                return;
+                            }
+                            identity
+                        }
+                        Err(e) => {
+                            error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
+                            panic!(
+                                "Failed to load identity: {}",
+                                env.identity.identity_json_file_path.as_path().display()
+                            );
+                        }
+                    };
+
                     block_on_actors(
                         env,
                         init_storage_data,
