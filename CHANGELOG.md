@@ -8,17 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New `snapshot` subcommand to `light-node` to produce trimmed copies of the storage.
-- Implemented shell-side prechecker for endorsement operations.
-- Implemented optional shell-side block prechecking.
-- Implemented statistics RPCs for tracking new blocks processing.
-- Option to enable retrying block application with cache reloaded.
-- Implemented block application logic in state machine.
-- Protocol-runner subprocess handling in the state machine.
+- Nothing.
 
 ### Changed
 
-- Rust upgraded to 1.58.1
+- Nothing.
 
 ### Deprecated
 
@@ -30,8 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Missed endorsement when alternative heads are encountered.
-- The `/monitor/bootstrapped` RPC now properly reports bootstrapping progress if the  node is not bootstrapped already.
+- Nothing.
 
 ### Security
 
