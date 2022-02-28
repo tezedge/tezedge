@@ -33,8 +33,11 @@ At first you need to [build TezEdge from sources](../../README.md#build-from-sou
 E.g. for Hangzhounet to support baking/endorsing:
 
 _Note: This cmd runs from the main git sources directory_
+
+_Note: The option `--disable-apply-retry=true` is indended for a Tezege node running within the network where the majority of nodes are subjects to failing with block application because of the cache issue (v11.x.x)._
+
 ```
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
+$ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --network "hangzhounet" \
  --identity-file "$HOME/data-dir-011-PtHangz2/identity.json" \
  --identity-expected-pow 26.0 \
@@ -50,11 +53,8 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --tezos-context-storage=irmin \
  --log terminal \
  --log-level info \
- --log-format simple
-```
-
-*You should see output:*
-```
+ --log-format simple \
+ --disable-apply-retry=true
 Jun 10 12:29:34.855 INFO Configured network ["granadanet", "granada"] -> TEZOS_GRANADANET_2021-05-21T15:00:00Z
 Jun 10 12:29:34.855 INFO Checking zcash-params for sapling... (1/5)
 Jun 10 12:29:34.855 INFO Found existing zcash-params files, output_path: "/home/dev/.zcash-params/sapling-output.params", spend_path: "/home/dev/.zcash-params/sapling-spend.params", candidate_dir: "/home/dev/.zcash-params"
@@ -120,6 +120,8 @@ _Note that the delegate needs to have at least ꜩ8,000 (own or delegated funds)
 
 _Also it takes several cycles to get baking/endorsing rights (2 + num of preserved cycles)_
 
+_Note. For Tezos baker executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
+
 ```
 $ tezos-baker-011-PtHangz2 \
    --endpoint "http://localhost:12535" \
@@ -139,6 +141,8 @@ Feb 25 10:01:16.978 - 011-PtHangz2.delegate.baking_forge: no slot found at level
 _Note that the delegate needs to have at least ꜩ8,000 (own or delegated funds) to get baking/endorsing rights._
 
 _Also it takes several cycles to get baking/endorsing rights (2 + num of preserved cycles)_
+
+_Note. For Tezos endorser executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
 $ tezos-endorser-011-PtHangz2 \
@@ -290,7 +294,7 @@ Endorser started.
 
 ## Set up the ledger for baking
 
-Usually you need to interact with ledger to confirm a signing operation. For baking/endorsing Tezos Baker application offers automated signing, limited to blocks and endorsements only.
+Usually you need to interact with ledger to confirm a signing operation. For baking/endorsing Tezos Baking application offers automated signing, limited to blocks and endorsements only.
 
 To enable non-interactive singing of blocks and endorsements use the following command:
 
@@ -325,7 +329,7 @@ Feb 25 18:09:09.074 - signer.http: accepting HTTP requests on port 12536
 Feb 25 18:09:09.074 - signer.http: listening on address: ::ffff:0.0.0.0
 ```
 
-_Note that the Ledger Nano S should be running Tezos Baker application so `tezos-signer` can use the baker account stored there_
+_Note that the Ledger Nano S should be running Tezos Baking application so `tezos-signer` can use the baker account stored there_
 
 ## Run Tezedge Node and Tezos Baker with Remote Signer
 

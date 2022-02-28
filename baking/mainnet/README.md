@@ -71,6 +71,9 @@ First, you need to:
 Once everything works, you can continue with launching the node.
 
 _Note: This cmd runs from the main TezEdge git sources directory - see the relative './' paths_
+
+_Note: The option `--disable-apply-retry=true` is indended for a Tezege node running within the network where the majority of nodes are subjects to failing with block application because of the cache issue (v11.x.x)._
+
 ```
 $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --network "mainnet" \
@@ -87,7 +90,8 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --ocaml-log-enabled false \
     --log terminal \
     --log-level info \
-    --log-format simple
+    --log-format simple \
+    --disable-apply-retry=true
 
 Jun 16 13:01:24.804 INFO Configured network ["mainnet"] -> TEZOS_MAINNET
 Jun 16 13:01:24.804 INFO Checking zcash-params for sapling... (1/5)
@@ -118,7 +122,8 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts nohup ./target/release/light-n
     --ocaml-log-enabled false \
     --log terminal \
     --log-level info \
-    --log-format simple &> $HOME/data-mainnet/nohup-node.out &
+    --log-format simple \
+    --disable-apply-retry=true &> $HOME/data-mainnet/nohup-node.out &
 ```
 
 You can check the logs by typing this command:
@@ -220,7 +225,7 @@ $ tezos-client \
 
 ## Run baker
 
-_Note. For tezos baker executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
+_Note. For Tezos baker executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
 $ tezos-baker-011-PtHangz2 \
@@ -239,7 +244,7 @@ Feb 23 13:11:53.782 - 011-PtHangz2.delegate.baking_forge: no slot found at level
 
 ## Run endorser
 
-_Note. For tezos endorser executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
+_Note. For Tezos endorser executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
 $ tezos-endorser-011-PtHangz2 \
@@ -317,7 +322,7 @@ my_delegate: tzXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (ledger sk known)
 
 ## Use Ledger Key for Baking
 
-Usually you need to interact with ledger to confirm a signing operation. For baking/endorsing Tezos Baker application offers automated signing, limited to blocks and endorsements only.
+Usually you need to interact with ledger to confirm a signing operation. For baking/endorsing Tezos Baking application offers automated signing, limited to blocks and endorsements only.
 
 To enable non-interactive singing of blocks and endorsements use the following command:
 
@@ -330,7 +335,7 @@ $ tezos-client \
 
 Make sure you confirm this operation with your ledger.
 
-To make ledger sign blocks and endorsements non-interactively, you need to make _Tezos Baker_ application active on it.
+To make ledger sign blocks and endorsements non-interactively, you need to make _Tezos Baking_ application active on it.
 
 ## Use Remote Signing
 

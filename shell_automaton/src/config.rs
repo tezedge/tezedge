@@ -110,6 +110,8 @@ pub struct Config {
 
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
+
+    pub disable_apply_retry: bool,
 }
 
 impl Config {
@@ -208,6 +210,7 @@ pub fn default_test_config() -> Config {
         },
 
         disable_endorsements_precheck: false,
-        disable_block_precheck: false,
+        disable_block_precheck: true,
+        disable_apply_retry: false,
     }
 }
