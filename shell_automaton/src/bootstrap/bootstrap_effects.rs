@@ -60,19 +60,11 @@ where
             BootstrapState::PeersConnectPending { .. } => {
                 store.dispatch(BootstrapPeersConnectSuccessAction {});
             }
-            BootstrapState::PeersMainBranchFindPending { .. }
-            | BootstrapState::PeersBlockHeadersGetPending { .. } => {
+            _ => {
                 let message = GetCurrentBranchMessage::new(store.state().config.chain_id.clone());
                 store.dispatch(PeerMessageWriteInitAction {
                     address: content.address,
                     message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
-                });
-            }
-            _ => {
-                let message = GetCurrentHeadMessage::new(store.state().config.chain_id.clone());
-                store.dispatch(PeerMessageWriteInitAction {
-                    address: content.address,
-                    message: Arc::new(PeerMessage::GetCurrentHead(message).into()),
                 });
             }
         },
