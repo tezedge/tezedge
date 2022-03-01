@@ -12,6 +12,7 @@ where
 {
     match &action.action {
         Action::ShutdownInit(_) => {
+            dbg!(store.state());
             store.dispatch(ProtocolRunnerShutdownInitAction {});
             store.dispatch(ShutdownPendingAction {});
         }
