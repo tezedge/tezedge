@@ -11,7 +11,7 @@ use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
-use crate::service::{ProtocolRunnerService, RpcService};
+use crate::service::{ActorsService, ProtocolRunnerService, RpcService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -204,6 +204,11 @@ where
                     injector_rpc_id,
                     ..
                 } => {
+                    let chain_id = store.state().config.chain_id.clone();
+                    store.service.actors().call_apply_block_callback(
+                        &block.hash,
+                        Ok((chain_id.into(), block.clone())),
+                    );
                     if let Some(rpc_id) = injector_rpc_id.clone() {
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
