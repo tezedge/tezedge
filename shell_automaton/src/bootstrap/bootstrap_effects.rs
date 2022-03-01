@@ -56,18 +56,31 @@ where
         Action::BootstrapPeersConnectSuccess(_) => {
             store.dispatch(BootstrapPeersMainBranchFindInitAction {});
         }
-        Action::PeerHandshakingFinish(content) => match &store.state().bootstrap {
-            BootstrapState::PeersConnectPending { .. } => {
+        Action::PeerHandshakingFinish(content) => {
+            if let BootstrapState::PeersConnectPending { .. } = &store.state().bootstrap {
                 store.dispatch(BootstrapPeersConnectSuccessAction {});
+                return;
             }
-            _ => {
-                let message = GetCurrentBranchMessage::new(store.state().config.chain_id.clone());
-                store.dispatch(PeerMessageWriteInitAction {
-                    address: content.address,
-                    message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
-                });
+            let message = GetCurrentBranchMessage::new(store.state().config.chain_id.clone());
+            store.dispatch(PeerMessageWriteInitAction {
+                address: content.address,
+                message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
+            });
+
+            match &store.state().bootstrap {
+                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+                    let blocks = pending
+                        .iter()
+                        .filter(|(_, b)| b.peers.iter().find(|(_, p)| p.is_pending()).is_none())
+                        .map(|(block_hash, _)| block_hash.clone())
+                        .collect::<Vec<_>>();
+                    for block_hash in blocks {
+                        retry_block_operations_request(store, block_hash);
+                    }
+                }
+                _ => {}
             }
-        },
+        }
         Action::BootstrapPeersMainBranchFindInit(_) => {
             let state = store.state.get();
 
