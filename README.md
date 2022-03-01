@@ -22,6 +22,7 @@ In addition to implementing a new node, the project seeks to maintain and improv
     * [Graceful shutdown](#shutdown-running-node-gracefully)
 * [How to use](#how-to-use)
     * [Call RPC](#example-of-how-to-call-the-rpc)
+    * [Baking](#baking)
     * [Prearranged-docker-compose-files](#prearranged-docker-compose-files)
         * [Mainnet - node + explorer](#mainnet---light-node--tezedge-explorer)
         * [Mainnet - node + explorer + debugger (eBPF)](#mainnet---light-node--tezedge-explorer--tezedge-debugger)
@@ -338,6 +339,11 @@ curl localhost:18732/chains/main/blocks/head
 ```
 
 For a more detailed description of the RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
+
+### Baking
+
+- [Baking in the Hangzhou testnet](baking/011-PtHangz2/README.md)
+- [Baking in the mainnet](baking/mainnet/README.md)
 
 ### Prearranged docker-compose files
 
