@@ -2,7 +2,7 @@
 name = "tezos_lib_storage_ffi"
 version = "1.17.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

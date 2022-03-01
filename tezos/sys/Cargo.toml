@@ -2,7 +2,7 @@
 name = "tezos-sys"
 version = "1.17.0"
 authors = ["Bruno Deferrari <bruno.deferrari@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 links = "tezos"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

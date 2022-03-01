@@ -2,7 +2,7 @@
 name = "tezos_conv"
 version = "1.17.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
