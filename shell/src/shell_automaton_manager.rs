@@ -26,8 +26,8 @@ pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBloc
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
-    ProtocolServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, PrevalidatorServiceDefault,
+    ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::ShellAutomaton;
@@ -147,8 +147,10 @@ impl ShellAutomatonManager {
             log.new(o!("service" => "quota")),
         );
 
-        let protocol_service =
-            ProtocolServiceDefault::new(mio_service.waker(), Arc::new(protocol_runner_api.clone()));
+        let prevalidator_service = PrevalidatorServiceDefault::new(
+            mio_service.waker(),
+            Arc::new(protocol_runner_api.clone()),
+        );
         let protocol_runner_service = ProtocolRunnerServiceDefault::new(
             protocol_runner_api,
             mio_service.waker(),
@@ -160,7 +162,7 @@ impl ShellAutomatonManager {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
             mio: mio_service,
-            protocol: protocol_service,
+            prevalidator: prevalidator_service,
             protocol_runner: protocol_runner_service,
             storage: storage_service,
             rpc: rpc_service,
