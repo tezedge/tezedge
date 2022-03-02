@@ -93,6 +93,7 @@ where
         Action::ProtocolRunnerResponse(content) => {
             let result = match &content.result {
                 ProtocolRunnerResult::ApplyBlock((_, res)) => res,
+                // TODO: this should not fail silently, it would be a serious bug if this happens
                 _ => return,
             };
             match result {

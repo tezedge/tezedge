@@ -156,6 +156,7 @@ impl ShellAutomatonManager {
             mio_service.waker(),
             64,
             context_init_status_sender,
+            log.new(o!("service" => "protocol_runner")),
         );
 
         let service = ServiceDefault {
