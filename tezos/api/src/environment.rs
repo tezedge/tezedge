@@ -12,8 +12,6 @@ use std::{
     fs,
 };
 
-use chrono::prelude::*;
-use chrono::ParseError;
 use serde::{Deserialize, Serialize};
 use slog::{debug, info, Logger};
 use strum::IntoEnumIterator;
@@ -25,6 +23,8 @@ use crypto::hash::{
 };
 use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 use crate::octez_config::OctezConfig;
 use tezos_context_api::{GenesisChain, PatchContext, ProtocolOverrides};
@@ -550,7 +550,10 @@ pub enum TezosEnvironmentError {
         error: FromBase58CheckError,
     },
     #[error("Invalid time: {time}, reason: {error:?}")]
-    InvalidTime { time: String, error: ParseError },
+    InvalidTime {
+        time: String,
+        error: time::error::Parse,
+    },
     #[error("Blake2b digest error")]
     Blake2bError,
 }
@@ -690,12 +693,12 @@ impl TezosEnvironmentConfiguration {
 }
 
 fn parse_from_rfc3339(time: &str) -> Result<i64, TezosEnvironmentError> {
-    DateTime::parse_from_rfc3339(time)
-        .map_err(|e| TezosEnvironmentError::InvalidTime {
-            time: time.to_string(),
-            error: e,
+    OffsetDateTime::parse(time, &Rfc3339)
+        .map(OffsetDateTime::unix_timestamp)
+        .map_err(|error| TezosEnvironmentError::InvalidTime {
+            time: String::from(time),
+            error,
         })
-        .map(|dt| dt.timestamp())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

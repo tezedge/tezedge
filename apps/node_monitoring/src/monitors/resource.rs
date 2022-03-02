@@ -9,7 +9,6 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use chrono::Utc;
 use thiserror::Error;
 use getset::Getters;
 use merge::Merge;
@@ -17,6 +16,7 @@ use netinfo::Netinfo;
 use serde::Serialize;
 use slog::{error, warn, Logger};
 use sysinfo::{System, SystemExt};
+use time::OffsetDateTime;
 
 use crate::display_info::{NodeInfo, OcamlDiskData, TezedgeDiskData};
 use crate::monitors::alerts::Alerts;
@@ -441,13 +441,13 @@ impl ResourceMonitor {
                     };
 
                     ResourceUtilization {
-                        timestamp: chrono::Local::now().timestamp(),
+                        timestamp: OffsetDateTime::now_utc().unix_timestamp(),
                         memory: MemoryStats {
                             node: node_memory,
                             validators: validators_memory,
                         },
-                        tezedge_disk: Some(node_disk.try_into()?),
                         ocaml_disk: None,
+                        tezedge_disk: Some(node_disk.try_into()?),
                         cpu: CpuStats {
                             node: node_cpu,
                             validators: validators_cpu,
@@ -456,8 +456,8 @@ impl ResourceMonitor {
                             node: node_io,
                             validators: validators_io,
                         },
-                        head_info: current_head_info,
                         network: network_stats,
+                        head_info: current_head_info,
                         total_disk_space,
                         free_disk_space,
                     }
@@ -492,7 +492,7 @@ impl ResourceMonitor {
                     };
 
                     ResourceUtilization {
-                        timestamp: chrono::Local::now().timestamp(),
+                        timestamp: OffsetDateTime::now_utc().unix_timestamp(),
                         memory: MemoryStats {
                             node: node_memory,
                             validators: validators_memory,
@@ -596,7 +596,7 @@ async fn handle_alerts(
     };
 
     // current time timestamp
-    let current_time = Utc::now().timestamp();
+    let current_time = OffsetDateTime::now_utc().unix_timestamp();
 
     let last_head = last_checked_head_level.get(node_tag).copied();
     let current_head_info = last_measurement.head_info.clone();

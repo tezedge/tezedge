@@ -8,7 +8,7 @@ default-run = "node-monitoring"
 [dependencies]
 cfg-if = "1.0"
 clap = "2.33"
-chrono = "0.4"
+time = "0.3"
 thiserror = "1"
 fs2 = "0.4"
 fs_extra = "1.2"
@@ -22,7 +22,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = { version = "2.7", features = ["nested-values", "max_level_trace", "release_max_level_trace"] }
 slog-async = "2.6"
-slog-term = "2.8"
+slog-term = "2.9"
 sysinfo = { git = "https://github.com/tezedge/sysinfo.git", tag = "tezedge-v0.19.2-1" }
 tokio = { version = "1.12", features = ["full"] }
 wait-timeout = "0.2"

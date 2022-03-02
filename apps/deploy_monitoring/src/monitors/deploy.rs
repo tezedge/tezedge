@@ -8,7 +8,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::bail;
-use chrono::Utc;
 use shiplift::Docker;
 use slog::{info, warn, Logger};
 use zip::write::ZipWriter;
@@ -66,7 +65,7 @@ impl DeployMonitor {
         if !Path::new("/tmp/tezedge-monitoring-logs").exists() {
             std::fs::create_dir("/tmp/tezedge-monitoring-logs")?;
         }
-        let timestamp = Utc::now().time().to_string();
+        let timestamp = OffsetDateTime::now_utc().time().to_string();
         let file_name = format!("{}_crash.log", &timestamp);
         let zip_name = format!("{}_crash.zip", &timestamp);
         let file_path = format!("/tmp/tezedge-monitoring-logs/{}", &zip_name);
