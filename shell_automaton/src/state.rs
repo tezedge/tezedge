@@ -335,3 +335,9 @@ impl SafetyCondition for State {
         Ok(())
     }
 }
+
+impl Drop for State {
+    fn drop(&mut self) {
+        eprintln!("[+] State: {:#?}\n", self);
+    }
+}
