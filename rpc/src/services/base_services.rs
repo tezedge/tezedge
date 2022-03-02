@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{BlockAdditionalData, BlockHeaderWithHash, PersistentStorage};
+use storage::{BlockAdditionalData, BlockHeaderWithHash, Direction, PersistentStorage};
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
@@ -47,10 +47,10 @@ pub(crate) fn get_blocks(
     min_date: i64,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<Vec<String>>, RpcServiceError> {
-    let mut response = Vec::with_capacity(block_hashes.len());
+    let mut response = Vec::with_capacity(block_hashes.len() * usize::min(1, limit));
     for hash in block_hashes {
         let r = BlockStorage::new(persistent_storage)
-            .get_multiple_without_json(&hash, limit)?
+            .get_multiple_with_direction(&hash, limit, Direction::Reverse)?
             .into_iter()
             .filter(|b| b.header.timestamp() >= min_date)
             .map(|b| b.hash.to_base58_check())

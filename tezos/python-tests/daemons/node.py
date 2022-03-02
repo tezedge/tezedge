@@ -121,6 +121,11 @@ class Node:
             '--no-bootstrap-peers',
         ] + singleprocess_opt
         if params:
+            try:
+                i = params.index('--history-mode')
+                params[i:i+2] = []
+            except:
+                pass
             node_run.extend(params)
 
         tezedge_node_run = [node, '--tezos-data-dir', node_dir, '--disable-bootstrap-lookup',
