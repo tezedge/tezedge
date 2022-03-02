@@ -1,24 +1,31 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{io, str, sync::mpsc, thread, time::Duration};
+use std::{io, str, sync::mpsc, thread, time::Duration, convert::TryInto};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use derive_more::From;
 use reqwest::{
     blocking::{Client, Response},
     Url,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tezos_encoding::types::SizedBytes;
 use thiserror::Error;
 
-use crypto::hash::{ChainId, ContractTz1Hash, OperationHash};
-use tezos_messages::protocol::proto_012::operation::Operation;
+use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, OperationHash, Signature};
+use tezos_messages::{
+    p2p::encoding::operation::DecodedOperation,
+    protocol::proto_012::operation::{FullHeader, Operation},
+};
 
 use super::types::ShellBlockHeader;
 use crate::{
     machine::action::*,
-    types::{BlockInfo, DelegateSlots, FullHeader, Proposal, Slots, Timestamp},
+    types::{
+        BlockInfo, DelegateSlots, FullHeader as FullHeaderJson, Mempool, Proposal,
+        ProtocolBlockHeader, ShellBlockShortHeader, Slots, Timestamp,
+    },
 };
 
 #[derive(Clone)]
@@ -154,7 +161,7 @@ impl RpcClient {
                 let url = this.endpoint.join(&s).expect("valid url");
                 let timeout = Self::deadline_to_duration(deadline)?;
                 let shell_header =
-                    this.single_response_blocking::<FullHeader>(url, Some(timeout))?;
+                    this.single_response_blocking::<FullHeaderJson>(url, Some(timeout))?;
                 let s = format!("chains/main/blocks/{}/protocols", predecessor_hash);
                 let url = this.endpoint.join(&s).expect("valid url");
                 let timeout = Self::deadline_to_duration(deadline)?;
@@ -249,13 +256,186 @@ impl RpcClient {
         url.query_pairs_mut()
             .append_pair("chain", &chain_id.to_base58_check());
         let body = format!("{:?}", op_hex);
-        self.single_response::<OperationHash, _, _>(
+        self.single_response(
             url,
             Some(body),
             deadline,
             deadline_wrapper,
             move |operation_hash| wrapper(operation_hash),
         )
+    }
+
+    pub fn preapply_block<F, G>(
+        &self,
+        protocol_block_header: ProtocolBlockHeader,
+        mempool: Mempool,
+        timestamp: i64,
+        deadline: i64,
+        deadline_wrapper: G,
+        wrapper: F,
+    ) -> Result<thread::JoinHandle<()>, RpcError>
+    where
+        F: Fn(FullHeader, Vec<Vec<DecodedOperation>>) -> Action + Sync + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
+    {
+        #[derive(Serialize)]
+        struct BlockData {
+            protocol_data: serde_json::Value,
+            operations: [Vec<serde_json::Value>; 4],
+        }
+
+        #[derive(Serialize, Deserialize)]
+        struct PreapplyResponse {
+            shell_header: ShellBlockShortHeader,
+            operations: Vec<serde_json::Value>,
+        }
+
+        let mut protocol_data = serde_json::to_value(&protocol_block_header)?;
+        let protocol_block_header_obj = protocol_data
+            .as_object_mut()
+            .expect("`ProtocolBlockHeader` is a structure");
+        let proof_of_work_str = hex::encode(&protocol_block_header.proof_of_work_nonce);
+        protocol_block_header_obj.insert(
+            "proof_of_work_nonce".to_string(),
+            serde_json::Value::String(proof_of_work_str),
+        );
+        protocol_block_header_obj.insert(
+            "protocol".to_string(),
+            serde_json::Value::String(Self::PROTOCOL.to_string()),
+        );
+
+        let c = &mempool.consensus_payload;
+        let p = &mempool.payload;
+        let mut operations = [
+            c.iter()
+                .map(|op| serde_json::to_value(op).unwrap())
+                .collect::<Vec<_>>(),
+            p.votes_payload
+                .iter()
+                .map(|op| serde_json::to_value(op).unwrap())
+                .collect(),
+            p.anonymous_payload
+                .iter()
+                .map(|op| serde_json::to_value(op).unwrap())
+                .collect(),
+            p.managers_payload
+                .iter()
+                .map(|op| serde_json::to_value(op).unwrap())
+                .collect(),
+        ];
+        for i in 0..4 {
+            for op in &mut operations[i] {
+                if let Some(op_obj) = op.as_object_mut() {
+                    op_obj.remove("hash");
+                }
+            }
+        }
+        let block_data = BlockData {
+            protocol_data,
+            operations,
+        };
+
+        let mut url = self
+            .endpoint
+            .join("chains/main/blocks/head/helpers/preapply/block")
+            .expect("valid constant url");
+        url.query_pairs_mut()
+            .append_pair("timestamp", &timestamp.to_string());
+        let body = serde_json::to_string(&block_data)?;
+        // TODO: remove temporal
+        println!("{}", body);
+        self.single_response(url, Some(body), deadline, deadline_wrapper, move |v| {
+            let PreapplyResponse {
+                shell_header,
+                operations,
+            } = v;
+            println!("{}", serde_json::to_string(&operations).unwrap());
+            let ShellBlockShortHeader {
+                level,
+                proto,
+                predecessor,
+                timestamp,
+                validation_pass,
+                operations_hash,
+                fitness,
+                context,
+            } = shell_header;
+            let ProtocolBlockHeader {
+                payload_hash,
+                payload_round,
+                proof_of_work_nonce,
+                seed_nonce_hash,
+                liquidity_baking_escape_vote,
+                ..
+            } = protocol_block_header;
+            let full_block_header = FullHeader {
+                level,
+                proto,
+                predecessor,
+                timestamp: timestamp.parse::<DateTime<Utc>>().unwrap().timestamp().into(),
+                validation_pass,
+                operations_hash,
+                fitness: fitness
+                    .into_iter()
+                    .map(|v| hex::decode(v).unwrap())
+                    .collect::<Vec<_>>()
+                    .into(),
+                context,
+                payload_hash,
+                payload_round,
+                proof_of_work_nonce: SizedBytes(proof_of_work_nonce.try_into().unwrap()),
+                seed_nonce_hash,
+                liquidity_baking_escape_vote,
+                signature: Signature(vec![0; 64]),
+            };
+
+            wrapper(
+                full_block_header,
+                operations
+                    .into_iter()
+                    .map(|mut v| {
+                        let applied = v.as_object_mut().unwrap().remove("applied").unwrap();
+                        serde_json::from_value(applied).unwrap()
+                    })
+                    .collect(),
+            )
+        })
+        .map_err(Into::into)
+    }
+
+    pub fn inject_block<F, G>(
+        &self,
+        header: Vec<u8>, // serialized
+        operations: Vec<Vec<DecodedOperation>>,
+        deadline: i64,
+        deadline_wrapper: G,
+        wrapper: F,
+    ) -> Result<thread::JoinHandle<()>, RpcError>
+    where
+        F: Fn(BlockHash) -> Action + Sync + Send + 'static,
+        G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
+    {
+        #[derive(Serialize)]
+        struct BlockData {
+            data: String,
+            operations: Vec<Vec<DecodedOperation>>,
+        }
+
+        let block_data = BlockData {
+            data: hex::encode(header),
+            operations,
+        };
+
+        let url = self
+            .endpoint
+            .join("injection/block")
+            .expect("valid constant url");
+        let body = serde_json::to_string(&block_data)?;
+
+        self.single_response(url, Some(body), deadline, deadline_wrapper, move |hash| {
+            wrapper(hash)
+        })
+        .map_err(Into::into)
     }
 
     fn get(&self, url: Url, timeout: Option<Duration>) -> reqwest::Result<Response> {

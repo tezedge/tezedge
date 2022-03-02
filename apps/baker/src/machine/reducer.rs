@@ -3,6 +3,10 @@
 
 use std::time::Duration;
 
+use crypto::{
+    blake2b,
+    hash::{BlockPayloadHash, NonceHash, OperationListHash, Signature},
+};
 use redux_rs::ActionWithMeta;
 use tezos_messages::protocol::proto_012::operation::{
     InlinedPreendorsementContents, InlinedPreendorsementVariant, Contents,
@@ -13,7 +17,7 @@ use super::{
     super::types::{
         BlockInfo, EndorsablePayload, LevelState, Phase, Prequorum,
         Proposal, RoundState, PreendorsementUnsignedOperation, Timestamp, LockedRound,
-        EndorsementUnsignedOperation, Mempool, ElectedBlock,
+        EndorsementUnsignedOperation, Mempool, ElectedBlock, ProtocolBlockHeader,
     },
     action::*,
     state::{Config, State},
@@ -64,6 +68,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         config: config.clone(),
                         preendorsement: None,
                         endorsement: None,
+                        block: None,
                         level_state: LevelState {
                             current_level: new_proposal.block.level,
                             latest_proposal: new_proposal.clone(),
@@ -299,6 +304,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                         v.round == round_state.current_round
                                     {
                                         mempool.preendorsements.push(v.clone());
+                                        // mempool.consensus_payload.push(op.clone());
                                     }
                                 }
                                 Contents::Endorsement(v) => {
@@ -313,6 +319,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                             round: v.round,
                                             block_payload_hash: v.block_payload_hash.clone(),
                                         });
+                                        mempool.consensus_payload.push(op.clone());
                                     }
                                 }
                                 Contents::FailingNoop(_) => break,
@@ -411,15 +418,46 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             }
         }
         Action::Timeout(TimeoutAction { now_timestamp }) => match state {
-            State::Ready { round_state, .. } => {
+            State::Ready { round_state, level_state, block, .. } => {
                 let _ = now_timestamp;
                 round_state.next_timeout = None;
                 round_state.current_round += 1;
+                round_state.current_phase = Phase::NonProposer;
 
-                let proposer_of_next_level = false;
-                let proposer_of_next_round = false;
+                let proposer_of_next_level = level_state.next_level_delegate_slots.slot == Some(0);
+                let proposer_of_next_round =
+                    level_state.delegate_slots.slot == Some(round_state.current_round as u16);
                 if !proposer_of_next_level && !proposer_of_next_round {
-                    round_state.current_phase = Phase::NonProposer;
+                    // nothing to do
+                } else if proposer_of_next_round && !proposer_of_next_level {
+                    // TODO: propose next round
+                } else {
+                    // propose next level
+                    let elected = match &level_state.elected_block {
+                        Some(v) => v,
+                        None => return,
+                    };
+                    let votes_ops = level_state.mempool.payload.votes_payload.iter();
+                    let anonymous_ops = level_state.mempool.payload.anonymous_payload.iter();
+                    let managers_ops = level_state.mempool.payload.managers_payload.iter();
+                    let ops = votes_ops.chain(anonymous_ops).chain(managers_ops);
+                    let hashes = ops.map(|op| op.hash.as_ref().cloned().unwrap()).collect::<Vec<_>>();
+                    let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+                    let round = round_state.current_round - elected.proposal.block.round - 1;
+                    // assert_eq!(round, 0);
+                    let payload_hash =
+                        BlockPayloadHash::calculate(&elected.proposal.block.hash, round as u32, &operation_list_hash)
+                            .unwrap();
+                    // TODO: proper seed_nonce
+                    let seed_nonce_hash = NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap());
+                    *block = Some(ProtocolBlockHeader {
+                        payload_hash,
+                        payload_round: round,
+                        seed_nonce_hash: Some(seed_nonce_hash),
+                        proof_of_work_nonce: hex::decode("7985fafe1fb70300").unwrap(),
+                        liquidity_baking_escape_vote: false,
+                        signature: Signature(vec![0; 64]),
+                    });
                 }
             }
             _ => (),
@@ -434,6 +472,10 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             State::Ready { endorsement, .. } => *endorsement = None,
             _ => (),
         },
+        Action::InjectBlockSuccess(InjectBlockSuccessAction { .. }) => match state {
+            State::Ready { block, .. } => *block = None,
+            _ => (),
+        }
         _ => {}
     }
 }

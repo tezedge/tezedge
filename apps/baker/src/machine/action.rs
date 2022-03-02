@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use redux_rs::EnablingCondition;
 
-use crypto::hash::{ChainId, OperationHash};
-use tezos_messages::protocol::proto_012::operation::{Operation, InlinedEndorsementMempoolContents};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_messages::{
+    p2p::encoding::operation::DecodedOperation,
+    protocol::proto_012::operation::{FullHeader, InlinedEndorsementMempoolContents, Operation},
+};
 
 use crate::{
     machine::state::State,
@@ -202,6 +205,54 @@ impl EnablingCondition<State> for InjectEndorsementSuccessAction {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PreapplyBlockInitAction {
+    pub timestamp: i64,
+}
+
+impl EnablingCondition<State> for PreapplyBlockInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(state, State::Ready { block: Some(_), .. })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PreapplyBlockSuccessAction {
+    pub header: FullHeader,
+    pub operations: Vec<Vec<DecodedOperation>>,
+}
+
+impl EnablingCondition<State> for PreapplyBlockSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InjectBlockInitAction {
+    pub header: FullHeader,
+    pub operations: Vec<Vec<DecodedOperation>>,
+}
+
+impl EnablingCondition<State> for InjectBlockInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(state, State::Ready { block: Some(_), .. })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InjectBlockSuccessAction {
+    pub hash: BlockHash,
+}
+
+impl EnablingCondition<State> for InjectBlockSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
+        true
+    }
+}
+
 #[derive(Debug)]
 pub struct RecoverableErrorAction {
     pub description: String,
@@ -242,6 +293,10 @@ pub enum Action {
     NewOperationSeen(NewOperationSeenAction),
     InjectEndorsementInit(InjectEndorsementInitAction),
     InjectEndorsementSuccess(InjectEndorsementSuccessAction),
+    PreapplyBlockInit(PreapplyBlockInitAction),
+    PreapplyBlockSuccess(PreapplyBlockSuccessAction),
+    InjectBlockInit(InjectBlockInitAction),
+    InjectBlockSuccess(InjectBlockSuccessAction),
 
     RecoverableError(RecoverableErrorAction),
     UnrecoverableError(UnrecoverableErrorAction),
@@ -264,6 +319,10 @@ impl fmt::Debug for Action {
             Action::NewOperationSeen(v) => fmt::Debug::fmt(v, f),
             Action::InjectEndorsementInit(v) => fmt::Debug::fmt(v, f),
             Action::InjectEndorsementSuccess(v) => fmt::Debug::fmt(v, f),
+            Action::PreapplyBlockInit(v) => fmt::Debug::fmt(v, f),
+            Action::PreapplyBlockSuccess(v) => fmt::Debug::fmt(v, f),
+            Action::InjectBlockInit(v) => fmt::Debug::fmt(v, f),
+            Action::InjectBlockSuccess(v) => fmt::Debug::fmt(v, f),
 
             Action::RecoverableError(v) => fmt::Debug::fmt(v, f),
             Action::UnrecoverableError(v) => fmt::Debug::fmt(v, f),
@@ -288,6 +347,10 @@ impl EnablingCondition<State> for Action {
             Action::NewOperationSeen(v) => v.is_enabled(state),
             Action::InjectEndorsementInit(v) => v.is_enabled(state),
             Action::InjectEndorsementSuccess(v) => v.is_enabled(state),
+            Action::PreapplyBlockInit(v) => v.is_enabled(state),
+            Action::PreapplyBlockSuccess(v) => v.is_enabled(state),
+            Action::InjectBlockInit(v) => v.is_enabled(state),
+            Action::InjectBlockSuccess(v) => v.is_enabled(state),
 
             Action::RecoverableError(v) => v.is_enabled(state),
             Action::UnrecoverableError(v) => v.is_enabled(state),

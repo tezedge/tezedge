@@ -3,7 +3,7 @@
 
 use redux_rs::{ActionWithMeta, Store};
 
-use crate::types::RoundState;
+use crate::types::{LevelState, RoundState};
 
 use super::{
     action::*,
@@ -79,7 +79,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 } => (chain_id, preendorsement),
                 _ => return,
             };
-            slog::info!(service.logger, "{:?}", preendorsement);
+            slog::info!(service.logger, "{:#?}", preendorsement);
             let (data, _) = service.crypto.sign(0x12, chain_id, preendorsement).unwrap();
             let op = &hex::encode(data);
             service
@@ -110,6 +110,11 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 _ => (),
             }
         }
+        Action::Timeout(TimeoutAction { now_timestamp }) => {
+            store.dispatch(PreapplyBlockInitAction {
+                timestamp: *now_timestamp,
+            });
+        }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {}
         Action::InjectEndorsementInit(InjectEndorsementInitAction {}) => {
             let Store { state, service, .. } = store;
@@ -121,7 +126,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 } => (chain_id, endorsement),
                 _ => return,
             };
-            slog::info!(service.logger, "{:?}", endorsement);
+            slog::info!(service.logger, "{:#?}", endorsement);
             let (data, _) = service.crypto.sign(0x13, chain_id, endorsement).unwrap();
             let op = &hex::encode(data);
             service
@@ -132,272 +137,69 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .unwrap();
         }
         Action::InjectEndorsementSuccess(InjectEndorsementSuccessAction { .. }) => {}
-
-        /*Action::WaitBootstrappedPending(WaitBootstrappedPendingAction {
-            base_dir,
-            node_dir,
-            baker,
-        }) => {
-            let ServiceDefault {
-                main_logger,
-                client,
-                ..
-            } = &store.service();
-
-            let _ = node_dir;
-            let (public_key, secret_key) = key::read_key(&base_dir, baker).unwrap();
-            let public_key_hash = ContractTz1Hash::try_from(public_key.clone()).unwrap();
-            slog::info!(main_logger, "run baker: {public_key_hash}");
-
-            let chain_id = client.chain_id().unwrap();
-
-            client.wait_bootstrapped().unwrap();
-            slog::info!(main_logger, "bootstrapped");
-
-            let constants = client.constants().unwrap();
-            let quorum_size = 2 * constants.consensus_committee_size / 3 + 1;
-            let minimal_block_delay = constants.minimal_block_delay.parse::<i64>().unwrap();
-            let delay_increment_per_round =
-                constants.delay_increment_per_round.parse::<i64>().unwrap();
-
-            // avoid double endorsement
-            let mut endorsed_level = 0;
-            let mut endorsed_payload_hash = None::<BlockPayloadHash>;
-
-            // iterating over current heads
-            loop {
-                let heads = client.monitor_main_head().unwrap();
-                for head in heads {
-                    let level = head.level;
-
-                    let timestamp = head.timestamp.parse::<DateTime<Utc>>().unwrap();
-
-                    // TODO: cache it, we don't need to ask it for all rounds
-                    let rights = client.validators(level).unwrap();
-                    let slots = rights.iter().find_map(|v| {
-                        if v.delegate == public_key_hash {
-                            Some(&v.slots)
-                        } else {
-                            None
-                        }
-                    });
-                    let slot = match slots.and_then(|v| v.first()) {
-                        Some(slot) => *slot,
-                        // have no rights, skip the block
-                        None => {
-                            slog::info!(main_logger, "have no slot at level: {}", level,);
-                            continue;
-                        }
-                    };
-
-                    let next_baking_rights =
-                        client.baking_rights(level + 1, &public_key_hash).unwrap();
-
-                    let branch = head.predecessor;
-                    let payload_hash =
-                        BlockPayloadHash(hex::decode(&head.protocol_data[..64]).unwrap());
-                    let round_bytes = hex::decode(&head.protocol_data[64..72]).unwrap();
-                    let round = u32::from_be_bytes(round_bytes.try_into().unwrap());
-
-                    if Utc::now().signed_duration_since(timestamp).num_seconds() >= minimal_block_delay + (round as i64) * delay_increment_per_round {
-                        slog::error!(main_logger, "too late");
-                        continue;
-                    }
-
-                    slog::info!(
-                        main_logger,
-                        "inject preendorsement, level: {}, slot: {}, round: {}",
-                        level,
-                        slot,
-                        round,
-                    );
-
-                    // already endorsed another payload on this level
-                    if let Some(endorsed_payload_hash) = &endorsed_payload_hash {
-                        if endorsed_level == level && payload_hash.ne(endorsed_payload_hash) {
-                            slog::warn!(
-                                main_logger,
-                                "level: {}, already endorsed: {}, skip: {}",
-                                level,
-                                endorsed_payload_hash,
-                                payload_hash,
-                            );
-                            continue;
-                        }
-                    }
-                    endorsed_level = level;
-                    endorsed_payload_hash = Some(payload_hash.clone());
-
-                    #[derive(BinWriter)]
-                    struct PreendorsementUnsignedOperation {
-                        branch: BlockHash,
-                        content: InlinedPreendorsementContents,
-                    }
-
-                    #[derive(BinWriter)]
-                    struct EndorsementUnsignedOperation {
-                        branch: BlockHash,
-                        content: InlinedEndorsementMempoolContents,
-                    }
-
-                    let inlined = InlinedPreendorsementVariant {
-                        slot,
-                        level,
-                        round: round as i32,
-                        block_payload_hash: payload_hash.clone(),
-                    };
-                    let op = PreendorsementUnsignedOperation {
-                        branch: branch.clone(),
-                        content: InlinedPreendorsementContents::Preendorsement(inlined),
-                    };
-                    let (op, _) = sign_any(&secret_key, 0x12, &chain_id, &op).unwrap();
-                    if let Err(err) = client.inject_operation(&chain_id, &hex::encode(&op)) {
-                        slog::error!(log, "{}", err);
-                    }
-
-                    // have baking rights for next round of this level
-                    // let will_bake_this_level = current_baking_rights
-                    //     .iter()
-                    //     .find(|v| v.round == round + 1)
-                    //     .is_some();
-                    // have baking rights for next level
-                    let will_bake_next_level =
-                        next_baking_rights.iter().find(|v| v.round == 0).is_some();
-
-                    let mut collected_operations = [vec![], vec![], vec![], vec![]];
-                    let mut collected_hashes = Vec::new();
-
-                    // timestamp of this block
-                    let timestamp = head.timestamp.parse::<DateTime<Utc>>().unwrap();
-                    let (_timeout, new_timestamp) = if will_bake_next_level {
-                        let pause =
-                            minimal_block_delay + (round as i64) * delay_increment_per_round;
-                        let new = timestamp
-                            .checked_add_signed(Duration::seconds(pause))
-                            .unwrap();
-                        (
-                            new.signed_duration_since(Utc::now()).to_std().ok(),
-                            Some(new),
-                        )
-                    } else {
-                        (None, None)
-                    };
-
-                    let mut num_preendorsement = 0;
-                    let mut num_endorsement = 0;
-                    let operations = client.monitor_operations(None).unwrap().flatten();
-                    for operation in operations {
-                        let operation_obj = operation.as_object().unwrap();
-                        let this_branch = operation_obj.get("branch").unwrap().as_str().unwrap();
-                        if this_branch != branch.to_base58_check() {
-                            continue;
-                        }
-                        let contents = operation_obj.get("contents").unwrap().as_array().unwrap();
-                        for content in contents {
-                            let content_obj = content.as_object().unwrap();
-                            let kind = content_obj.get("kind").unwrap().as_str().unwrap();
-                            if kind == "endorsement" || kind == "preendorsement" {
-                                collected_operations[0].push(operation.clone());
-                            } else {
-                                if let Some(hash) = operation_obj.get("hash") {
-                                    if let Some(hash_str) = hash.as_str() {
-                                        let hash =
-                                            OperationHash::from_base58_check(hash_str).unwrap();
-                                        collected_hashes.push(hash);
-                                    }
-                                }
-                                collected_operations[3].push(operation.clone());
-                            }
-                            if kind != "preendorsement" && kind != "endorsement" {
-                                continue;
-                            }
-                            let payload_hash_str = content_obj
-                                .get("block_payload_hash")
-                                .unwrap()
-                                .as_str()
-                                .unwrap();
-                            if payload_hash.to_base58_check() != payload_hash_str {
-                                continue;
-                            }
-
-                            let this_slot =
-                                content_obj.get("slot").unwrap().as_u64().unwrap() as u16;
-
-                            for rights_entry in &rights {
-                                if rights_entry.slots.contains(&this_slot) {
-                                    if kind == "preendorsement" {
-                                        num_preendorsement += rights_entry.slots.len() as u32;
-                                    } else if kind == "endorsement" {
-                                        num_endorsement += rights_entry.slots.len() as u32;
-                                    }
-                                }
-                            }
-                        }
-                        if num_preendorsement >= quorum_size {
-                            slog::info!(main_logger, "inject endorsement");
-                            let inlined = InlinedEndorsementMempoolContentsEndorsementVariant {
-                                slot,
-                                level,
-                                round: round as i32,
-                                block_payload_hash: payload_hash.clone(),
-                            };
-                            let op = EndorsementUnsignedOperation {
-                                branch: branch.clone(),
-                                content: InlinedEndorsementMempoolContents::Endorsement(inlined),
-                            };
-                            let (op, _) = sign_any(&secret_key, 0x13, &chain_id, &op).unwrap();
-                            client
-                                .inject_operation(&chain_id, &hex::encode(&op))
-                                .unwrap();
-
-                            if new_timestamp.is_none() {
-                                break;
-                            }
-                        }
-                        if num_endorsement >= quorum_size {
-                            if let Some(new_timestamp) = new_timestamp {
-                                let operation_list_hash =
-                                    OperationListHash::calculate(&collected_hashes).unwrap();
-                                let payload_hash =
-                                    BlockPayloadHash::calculate(&head.hash, 0, &operation_list_hash)
-                                        .unwrap();
-                                let seed_nonce_hash = NonceHash(blake2b::digest_256(&[1, 2, 3])
-                                    .unwrap());
-                                let protocol_block_header = ProtocolBlockHeader {
-                                    protocol: ProtocolHash::from_base58_check(TezosClient::PROTOCOL)
-                                        .expect("valid protocol name"),
-                                    payload_hash,
-                                    payload_round: 0,
-                                    seed_nonce_hash: Some(seed_nonce_hash),
-                                    proof_of_work_nonce: hex::decode("7985fafe1fb70300").unwrap(),
-                                    liquidity_baking_escape_vote: false,
-                                };
-                                let (shell_block_header, operations) = client
-                                    .preapply_block(
-                                        &secret_key,
-                                        &chain_id,
-                                        protocol_block_header.clone(),
-                                        collected_operations.clone(),
-                                        new_timestamp.timestamp().to_string(),
-                                    )
-                                    .unwrap();
-                                let block_hash = client
-                                    .inject_block(
-                                        &secret_key,
-                                        &chain_id,
-                                        shell_block_header,
-                                        protocol_block_header,
-                                        operations,
-                                    )
-                                    .unwrap();
-                                slog::info!(main_logger, "inject block: {}", block_hash);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }*/
+        Action::PreapplyBlockInit(PreapplyBlockInitAction { timestamp }) => {
+            let Store { state, service, .. } = store;
+            let (chain_id, protocol_block_header, mempool) = match state.get() {
+                State::Ready {
+                    config: Config { chain_id, .. },
+                    block: Some(v),
+                    level_state: LevelState { mempool, .. },
+                    ..
+                } => (chain_id, v, mempool),
+                _ => return,
+            };
+            slog::info!(service.logger, "{:#?}", protocol_block_header);
+            let mut protocol_block_header = protocol_block_header.clone();
+            protocol_block_header.signature.0.clear();
+            let (_, signature) = service
+                .crypto
+                .sign(0x11, chain_id, &protocol_block_header)
+                .unwrap();
+            let mut protocol_block_header = protocol_block_header.clone();
+            protocol_block_header.signature = signature;
+            service
+                .client
+                .preapply_block(
+                    protocol_block_header,
+                    mempool.clone(),
+                    *timestamp,
+                    i64::MAX,
+                    Action::Timeout,
+                    |header, operations| PreapplyBlockSuccessAction { header, operations }.into(),
+                )
+                .unwrap();
+        }
+        Action::PreapplyBlockSuccess(PreapplyBlockSuccessAction { header, operations }) => {
+            store.dispatch(InjectBlockInitAction {
+                header: header.clone(),
+                operations: operations.clone(),
+            });
+        }
+        Action::InjectBlockInit(InjectBlockInitAction { header, operations }) => {
+            let Store { state, service, .. } = store;
+            let chain_id = match state.get() {
+                State::Ready {
+                    config: Config { chain_id, .. },
+                    ..
+                } => chain_id,
+                _ => return,
+            };
+            slog::info!(service.logger, "{:#?}", header);
+            let mut header = header.clone();
+            header.signature.0.clear();
+            let (data, _) = service.crypto.sign(0x11, chain_id, &header).unwrap();
+            service
+                .client
+                .inject_block(
+                    data,
+                    operations.clone(),
+                    i64::MAX,
+                    Action::Timeout,
+                    |hash| InjectBlockSuccessAction { hash }.into(),
+                )
+                .unwrap();
+        }
+        Action::InjectBlockSuccess(InjectBlockSuccessAction { .. }) => {}
         _ => {}
     }
 }

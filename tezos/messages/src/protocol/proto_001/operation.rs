@@ -296,7 +296,7 @@ pub struct TransactionOperation {
     pub storage_limit: Mutez,
     pub amount: Mutez,
     pub destination: ContractId,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub parameters: Option<X0>,
 }
 

@@ -263,12 +263,12 @@ pub struct LevelState {
     pub mempool: Mempool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Mempool {
     pub endorsements: Vec<InlinedEndorsementMempoolContentsEndorsementVariant>,
     pub preendorsements: Vec<PreendorsementOperation>,
+    pub consensus_payload: Vec<Operation>,
     pub payload: BlockPayload,
-    // other ops
 }
 
 #[derive(Debug)]
@@ -306,6 +306,18 @@ pub struct ShellBlockHeader {
     pub fitness: Vec<String>,
     pub context: ContextHash,
     pub protocol_data: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ShellBlockShortHeader {
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: BlockHash,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: OperationListListHash,
+    pub fitness: Vec<String>,
+    pub context: ContextHash,
 }
 
 #[derive(Deserialize)]
