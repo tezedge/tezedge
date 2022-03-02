@@ -69,6 +69,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
         apply_result: Arc<ApplyBlockResponse>,
+        /// Is retry or not and if yes, what is the reason.
+        retry: Option<ApplyBlockError>,
     },
 
     StoreApplyResultPending {
@@ -80,6 +82,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
         apply_result: Arc<ApplyBlockResponse>,
+        /// Is retry or not and if yes, what is the reason.
+        retry: Option<ApplyBlockError>,
     },
     StoreApplyResultSuccess {
         time: u64,
@@ -90,6 +94,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
         apply_result: Arc<ApplyBlockResponse>,
+        /// Is retry or not and if yes, what is the reason.
+        retry: Option<ApplyBlockError>,
     },
 
     Error {
@@ -106,6 +112,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
         apply_result: Arc<ApplyBlockResponse>,
+        /// Is retry or not and if yes, what is the reason.
+        retry: Option<ApplyBlockError>,
     },
 }
 

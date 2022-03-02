@@ -1090,7 +1090,7 @@ impl Environment {
                         s.parse()
                             .expect("Boolean value expected for disable-endorsements-precheck")
                     }),
-                disable_apply_retry: args.value_of("disable-apply-retry").map_or(true, |s| {
+                disable_apply_retry: args.value_of("disable-apply-retry").map_or(false, |s| {
                     s.parse()
                         .expect("Boolean value expected for disable-apply-retry")
                 }),

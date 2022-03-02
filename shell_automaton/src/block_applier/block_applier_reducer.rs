@@ -100,6 +100,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     chain_id,
                     block,
                     block_meta,
+                    retry,
                     ..
                 } => {
                     state.block_applier.current =
@@ -111,6 +112,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                             block: block.clone(),
                             block_meta: block_meta.clone(),
                             apply_result: content.apply_result.clone(),
+                            retry: retry.clone(),
                         };
                 }
                 _ => return,
@@ -125,6 +127,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     block,
                     block_meta,
                     apply_result,
+                    retry,
                     ..
                 } => {
                     state.block_applier.current = BlockApplierApplyState::StoreApplyResultPending {
@@ -136,6 +139,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         block: block.clone(),
                         block_meta: block_meta.clone(),
                         apply_result: apply_result.clone(),
+                        retry: retry.clone(),
                     };
                 }
                 _ => return,
@@ -150,6 +154,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     chain_id,
                     block,
                     apply_result,
+                    retry,
                     ..
                 } => {
                     state.block_applier.current = BlockApplierApplyState::StoreApplyResultSuccess {
@@ -161,6 +166,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         block: block.clone(),
                         block_additional_data: content.block_additional_data.clone(),
                         apply_result: apply_result.clone(),
+                        retry: retry.clone(),
                     };
                 }
                 _ => return,
@@ -193,6 +199,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     block,
                     block_additional_data,
                     apply_result,
+                    retry,
                 } => {
                     state.block_applier.last_applied = block.hash.clone().into();
                     state.block_applier.current = BlockApplierApplyState::Success {
@@ -204,6 +211,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         block: block.clone(),
                         block_additional_data: block_additional_data.clone(),
                         apply_result: apply_result.clone(),
+                        retry: retry.clone(),
                     };
                 }
                 _ => return,
