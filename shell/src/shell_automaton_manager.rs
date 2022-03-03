@@ -71,7 +71,7 @@ impl P2p {
 
 enum ShellAutomatonThreadHandle {
     Running(std::thread::JoinHandle<()>),
-    NotRunning(ShellAutomaton<ServiceDefault, MioInternalEventsContainer>),
+    NotRunning(Box<ShellAutomaton<ServiceDefault, MioInternalEventsContainer>>),
 }
 
 pub struct ShellAutomatonManager {
@@ -233,9 +233,9 @@ impl ShellAutomatonManager {
         let this = Self {
             log,
             shell_automaton_sender: automaton_sender,
-            shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(
+            shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(Box::new(
                 shell_automaton,
-            )),
+            ))),
         };
 
         (this, rpc_channel)
