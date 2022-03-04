@@ -1,6 +1,6 @@
 [package]
 name = "tezos_protocol_ipc_messages"
-version = "1.6.1"
+version = "1.16.1"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2021"
 

@@ -1,6 +1,6 @@
 [package]
 name = "tezos_encoding"
-version = "1.6.1"
+version = "1.16.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 
