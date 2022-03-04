@@ -45,7 +45,7 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] [baking/011-PtHangz2/README.md](baking/011-PtHangz2/README.md)
 - [ ] [baking/mainnet/README.md](baking/mainnet/README.md)
 
-### Mergin to develop
+### Merging to develop
 
 - [ ] Merge the above changes included in the PR to develop
 
