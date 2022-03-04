@@ -1,6 +1,6 @@
 [package]
 name = "shell_automaton"
-version = "1.16.1"
+version = "1.17.0"
 edition = "2021"
 
 [dev-dependencies]

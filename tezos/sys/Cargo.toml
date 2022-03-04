@@ -1,6 +1,6 @@
 [package]
 name = "tezos-sys"
-version = "1.16.1"
+version = "1.17.0"
 authors = ["Bruno Deferrari <bruno.deferrari@simplestaking.com>"]
 edition = "2021"
 links = "tezos"
