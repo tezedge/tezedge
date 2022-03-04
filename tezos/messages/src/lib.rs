@@ -5,10 +5,9 @@
 
 //! This crate provides definitions of tezos messages.
 
-use chrono::prelude::*;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use time::{error::ComponentRange, format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crypto::hash::BlockHash;
 
@@ -18,25 +17,21 @@ pub mod base;
 pub mod p2p;
 pub mod protocol;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid or out-of-range datetime")]
 pub struct TimestampOutOfRangeError;
 
-impl fmt::Display for TimestampOutOfRangeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid or out-of-range datetime")
+impl From<ComponentRange> for TimestampOutOfRangeError {
+    fn from(_error: ComponentRange) -> Self {
+        Self
     }
 }
 
-impl std::error::Error for TimestampOutOfRangeError {}
-
 /// Helper function to format UNIX (integral) timestamp to RFC3339 string timestamp
 pub fn ts_to_rfc3339(ts: i64) -> Result<String, TimestampOutOfRangeError> {
-    NaiveDateTime::from_timestamp_opt(ts, 0)
-        .ok_or(TimestampOutOfRangeError)
-        .map(|datetime| {
-            Utc.from_utc_datetime(&datetime)
-                .to_rfc3339_opts(SecondsFormat::Secs, true)
-        })
+    Ok(OffsetDateTime::from_unix_timestamp(ts)?
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| String::from("invalid timestamp")))
 }
 
 /// This common struct holds info (hash, level, fitness) about block used as head,

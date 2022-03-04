@@ -5,6 +5,8 @@ use std::io;
 
 use slog::*;
 use slog::{FnValue, Level, Record};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 /// Get hostname for current machine
 fn get_hostname() -> String {
@@ -60,5 +62,11 @@ pub fn default<W>(io: W) -> slog_json::Json<W>
 where
     W: io::Write,
 {
-    new_with_ts_fn(io, |_: &Record| chrono::Local::now().to_rfc3339()).build()
+    const INVALID_TIME: &str = "invalid timestamp";
+    new_with_ts_fn(io, |_: &Record| {
+        OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| String::from(INVALID_TIME))
+    })
+    .build()
 }

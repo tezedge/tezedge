@@ -21,7 +21,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trac
 sled = "0.34.6"
 strum = "0.20"
 strum_macros = "0.20"
-zstd = "0.5.3+zstd.1.4.5"
+zstd = "0.10.0"
 edgekv = { path = "../edgekv" }
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
@@ -33,7 +33,7 @@ tezos_context_api = { path = "../tezos/context-api" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
-slog-term = "2.8"
+slog-term = "2.9"
 slog-async = "2.6"
 
 [[bench]]
