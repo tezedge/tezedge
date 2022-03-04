@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed `/chains/:chain-id:/blocks` RPC that prevented seed nonces to be revealed.
 - Fixed potential node stucking when using `--disable-apply-retry=true`.
+- Fixed issue that caused the snapshot command to sometimes timeout on slower computers.
 
 ### Security
 

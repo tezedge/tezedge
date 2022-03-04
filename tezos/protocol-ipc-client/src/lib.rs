@@ -850,7 +850,7 @@ impl ProtocolRunnerConnection {
             DumpContext(request),
             DumpContextResponse(result),
             DumpContextError,
-            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
+            None,
         )
     }
 
@@ -871,7 +871,7 @@ impl ProtocolRunnerConnection {
             RestoreContext(request),
             RestoreContextResponse(result),
             RestoreContextError,
-            Some(Self::DEFAULT_TIMEOUT_VERY_LONG),
+            None,
         )
     }
 }
