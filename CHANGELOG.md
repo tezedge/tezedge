@@ -34,6 +34,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.16.1] - 2022-03-04
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- Rust 2021 edition is used.
+- The option `--disable-apply-retry` now is `false` by default.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Fixed `/monitoring/live_blocks` RPC that prevented seed nonces to be revealed.
+- Fixed potential node stucking when using `--disable-apply-retry=true`.
+
+### Security
+
+- RUSTSEC-2020-0071 is fixed by using newer `time` crate version.
+- RUSTSEC-2020-0159 is fixed by using `time` crate instead of `chrono`.
+
+### Performance
+
+- Nothing.
+
 ## [1.16.0] - 2022-02-28
 
 ### Added
@@ -701,7 +734,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.1...develop
+[1.16.1]: https://github.com/tezedge/tezedge/releases/v1.16.1
 [1.16.0]: https://github.com/tezedge/tezedge/releases/v1.16.0
 [1.15.1]: https://github.com/tezedge/tezedge/releases/v1.15.1
 [1.15.0]: https://github.com/tezedge/tezedge/releases/v1.15.0
