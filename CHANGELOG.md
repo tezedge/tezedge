@@ -36,22 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.16.1] - 2022-03-04
 
-### Added
-
-- Nothing.
-
 ### Changed
 
 - Rust 2021 edition is used.
 - The option `--disable-apply-retry` now is `false` by default.
-
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
 
 ### Fixed
 
@@ -63,10 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RUSTSEC-2020-0071 is fixed by using newer `time` crate version.
 - RUSTSEC-2020-0159 is fixed by using `time` crate instead of `chrono`.
-
-### Performance
-
-- Nothing.
 
 ## [1.16.0] - 2022-02-28
 
