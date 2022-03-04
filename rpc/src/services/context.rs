@@ -1,9 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::TryInto, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::{named_params, Connection, OptionalExtension};
 use serde::Serialize;
 
@@ -12,6 +11,7 @@ use tezos_timing::{
     hash_to_string, Protocol, QueryData, QueryStats, QueryStatsWithRange, RangeStats, FILENAME_DB,
     STATS_ALL_PROTOCOL,
 };
+use time::OffsetDateTime;
 
 use crate::helpers::RpcServiceError;
 
@@ -19,7 +19,7 @@ use crate::helpers::RpcServiceError;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockStats {
     queries_count: usize,
-    date: Option<DateTime<Utc>>,
+    date: Option<OffsetDateTime>,
     duration_millis: Option<u64>,
     tezedge_checkout_context_time: Option<f64>,
     tezedge_commit_context_time: Option<f64>,
@@ -383,11 +383,10 @@ fn make_block_stats_impl(
     let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
     operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
-    let mut date: Option<DateTime<Utc>> = None;
+    let mut date: Option<OffsetDateTime> = None;
     if let (Some(secs), Some(nanos)) = (timestamp_secs, timestamp_nanos) {
-        let secs = secs.try_into().unwrap_or(i64::MAX);
-        let naive_date = NaiveDateTime::from_timestamp(secs, nanos);
-        date = Some(DateTime::from_utc(naive_date, Utc));
+        let timestamp_nanos = i128::from(secs) * 1_000_000_000 + i128::from(nanos);
+        date = OffsetDateTime::from_unix_timestamp_nanos(timestamp_nanos).ok();
     };
 
     Ok(Some(BlockStats {

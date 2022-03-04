@@ -205,13 +205,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO: get from protocol
             const TTL: i32 = 120;
 
-            let (chain_id, block, apply_result) = match &state.block_applier.current {
+            let (chain_id, block, apply_result, retry) = match &state.block_applier.current {
                 BlockApplierApplyState::Success {
                     chain_id,
                     block,
                     apply_result,
+                    retry,
                     ..
-                } => (chain_id, block, apply_result),
+                } => (chain_id, block, apply_result, retry),
                 _ => return,
             };
 
@@ -225,13 +226,30 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 if local_header.level() == new_header.level()
                     && local_header.predecessor() == new_header.predecessor()
                 {
-                    slog::debug!(
+                    slog::info!(
                         &state.log,
                         "Block `{new_block}` applied on the same level, ignoring it",
                         new_block = block.hash.to_base58_check();
                         "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
                     );
                     return;
+                }
+            }
+
+            if retry.is_some() {
+                if config.disable_apply_retry {
+                    slog::info!(
+                        &state.log,
+                        "Block `{new_block}` applied after retry, not using it as current head",
+                        new_block = block.hash.to_base58_check();
+                    );
+                    return;
+                } else {
+                    slog::info!(
+                        &state.log,
+                        "Block `{new_block}` applied after retry",
+                        new_block = block.hash.to_base58_check();
+                    );
                 }
             }
 

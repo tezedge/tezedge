@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use chrono::Utc;
 use crc::{Crc, CRC_32_CKSUM};
 use std::io::Read;
+use time::OffsetDateTime;
 pub const CRC_CKSUM: Crc<u32> = Crc::<u32>::new(&CRC_32_CKSUM);
 use crate::Result;
 
@@ -82,7 +82,7 @@ impl Decoder for DataEntry {
 
 impl DataEntry {
     pub fn new(key: Vec<u8>, value: Vec<u8>) -> Self {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = OffsetDateTime::now_utc().unix_timestamp();
         let key_size = key.len() as u64;
         let value_size = value.len() as u64;
 

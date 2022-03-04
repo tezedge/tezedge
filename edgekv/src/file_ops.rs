@@ -5,7 +5,6 @@ use crate::datastore::{KeyDirEntry, KeysDir};
 use crate::errors::EdgeKVError;
 use crate::schema::{DataEntry, Decoder, Encoder, HintEntry};
 use crate::Result;
-use chrono::Utc;
 use fs2::FileExt;
 use fs_extra::dir::DirOptions;
 use std::collections::BTreeMap;
@@ -13,6 +12,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use time::OffsetDateTime;
 
 const DATA_FILE_EXTENSION: &str = "data";
 const HINT_FILE_EXTENSION: &str = "hint";
@@ -255,7 +255,7 @@ impl ActiveFilePair {
 pub fn create_new_file_pair<P: AsRef<Path>>(dir: P) -> Result<FilePair> {
     fs_extra::dir::create_all(dir.as_ref(), false)?;
 
-    let file_name = Utc::now().timestamp_nanos().to_string();
+    let file_name = OffsetDateTime::now_utc().unix_timestamp_nanos().to_string();
     let mut data_file_path = PathBuf::new();
     data_file_path.push(dir.as_ref());
     data_file_path.push(format!("{}.{}", file_name, DATA_FILE_EXTENSION));

@@ -1,13 +1,13 @@
 [package]
 name = "tezos_messages"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
 bytes = "1"
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["formatting"] }
 derive_builder = "0.9"
 thiserror = "1.0"
 getset = "0.1"

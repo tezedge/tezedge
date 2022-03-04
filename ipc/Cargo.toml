@@ -1,8 +1,8 @@
 [package]
 name = "ipc"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
@@ -14,7 +14,7 @@ serde = { version = "1.0", features = ["derive"] }
 [dev-dependencies]
 serial_test = "0.5"
 libc = "0.2.65"
-ipmpsc = "0.4"
+ipmpsc = { git = "https://github.com/tezedge/ipmpsc" }
 bencher = "0.1.5"
 
 [[bench]]

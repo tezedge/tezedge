@@ -115,11 +115,10 @@ pub struct BlockApplierApplyProtocolRunnerApplyRetryAction {
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyRetryAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let first_attempt = match &state.block_applier.current {
+        match &state.block_applier.current {
             BlockApplierApplyState::ProtocolRunnerApplyPending { retry, .. } => retry.is_none(),
             _ => false,
-        };
-        first_attempt && (!state.is_bootstrapped_strict() || !state.config.disable_apply_retry)
+        }
     }
 }
 

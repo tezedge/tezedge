@@ -1,13 +1,13 @@
 [package]
 name = "shell"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
 async_ipc = { path = "../async-ipc" }
-chrono = "0.4"
+time = "0.3"
 dns-lookup = "1.0.1"
 thiserror = "1.0"
 futures = "0.3"
@@ -38,9 +38,9 @@ tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 [dev-dependencies]
 serial_test = "0.5"
 slog-async = "2.6"
-slog-term = "2.8"
+slog-term = "2.9"
 fs_extra = "1.2.0"
-zip = "0.5.5"
+zip = { git = "https://github.com/zip-rs/zip.git", rev = "2009d162fbaf162190e6495e211cebfe6cd98a96" }
 tokio = { version = "1.12", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }

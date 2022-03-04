@@ -1,14 +1,14 @@
 [package]
 name = "edgekv"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Mambisi Zempare <mambisi.zempare@viablesystems.io>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 crc = "2.0.0-rc.1"
-chrono = "0.4"
+time = "0.3"
 fs_extra = "1.2.0"
 fs2 = "0.4.3"
 thiserror = "1.0"

@@ -82,6 +82,13 @@ pub trait BlockStorageReader: Sync + Send {
         limit: usize,
     ) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
 
+    fn get_multiple_with_direction(
+        &self,
+        block_hash: &BlockHash,
+        limit: usize,
+        direction: Direction,
+    ) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
+
     fn get_every_nth_with_json_data(
         &self,
         every_nth: BlockLevel,
@@ -345,6 +352,26 @@ impl BlockStorageReader for BlockStorage {
                         limit,
                         Direction::Forward,
                     )
+                },
+            )?
+            .into_iter()
+            .map(|location| self.get_block_header_by_location(&location))
+            .collect()
+    }
+
+    #[inline]
+    fn get_multiple_with_direction(
+        &self,
+        block_hash: &BlockHash,
+        limit: usize,
+        direction: Direction,
+    ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
+        self.get(block_hash)?
+            .map_or_else(
+                || Ok(Vec::new()),
+                |block| {
+                    self.by_level_index
+                        .get_blocks_directed(block.header.level(), limit, direction)
                 },
             )?
             .into_iter()

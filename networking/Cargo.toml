@@ -1,8 +1,8 @@
 [package]
 name = "networking"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
@@ -27,7 +27,7 @@ tezos_messages = { path = "../tezos/messages" }
 [dev-dependencies]
 tokio-test = { version = "0.4" }
 async-std = { version = "1.9", features = ["attributes"] }
-slog-term = "2.8"
+slog-term = "2.9"
 slog-async = "2.6"
 slog-envlogger = "2.2"
 criterion = { version = "0.3", features = ["html_reports"] }

@@ -36,7 +36,6 @@ impl SystemStorage {
 
     #[inline]
     pub fn get_chain_id(&self) -> Result<Option<ChainId>, StorageError> {
-        use std::convert::TryFrom;
         match self
             .kv
             .get(&Self::CHAIN_ID.to_string())

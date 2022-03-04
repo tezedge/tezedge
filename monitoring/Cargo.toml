@@ -1,8 +1,8 @@
 [package]
 name = "monitoring"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 erased-serde = "0.3"

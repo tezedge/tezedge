@@ -1,8 +1,8 @@
 [package]
 name = "tezos_spsc"
-version = "1.16.0"
+version = "1.16.1"
 authors = ["Sebastien Chapuis <sebastien@chapu.is>"]
-edition = "2018"
+edition = "2021"
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.5"

@@ -7,7 +7,6 @@ use std::{convert::TryInto, ops::Neg};
 
 use anyhow::bail;
 use async_ipc::IpcError;
-use chrono::{SecondsFormat, Utc};
 use hex::FromHexError;
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
@@ -27,6 +26,8 @@ use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
@@ -751,7 +752,9 @@ pub(crate) async fn get_prevalidators(
             status: WorkerStatus {
                 phase: WorkerStatusPhase::Running,
                 // TODO: proper time
-                since: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                since: OffsetDateTime::now_utc()
+                    .format(&Rfc3339)
+                    .unwrap_or_else(|_| String::from("invalid timestamp")),
             },
         }])
     }

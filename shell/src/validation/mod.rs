@@ -8,7 +8,6 @@
 
 use std::time::Duration;
 
-use chrono::TimeZone;
 use tezos_protocol_ipc_client::{ProtocolRunnerConnection, ProtocolServiceError};
 use thiserror::Error;
 
@@ -21,6 +20,7 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::{Head, TimestampOutOfRangeError};
+use time::OffsetDateTime;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
 pub fn can_update_current_head(
@@ -60,12 +60,9 @@ pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, 
 
 /// Returns only true, if timestamp of header is not in the far future
 pub fn is_future_block(block_header: &BlockHeader) -> Result<bool, anyhow::Error> {
-    let future_margin =
-        chrono::offset::Utc::now() + chrono::Duration::from_std(Duration::from_secs(15))?;
-    let block_timestamp = chrono::Utc.from_utc_datetime(
-        &chrono::NaiveDateTime::from_timestamp_opt(block_header.timestamp(), 0)
-            .ok_or(TimestampOutOfRangeError)?,
-    );
+    let future_margin = OffsetDateTime::now_utc() + Duration::from_secs(15);
+    let block_timestamp = OffsetDateTime::from_unix_timestamp(block_header.timestamp())
+        .map_err(|_| TimestampOutOfRangeError)?;
     Ok(block_timestamp > future_margin)
 }
 
