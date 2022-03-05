@@ -194,7 +194,19 @@ fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStre
 
 fn generate_struct_field_nom_read(field: &FieldEncoding) -> TokenStream {
     match field.kind {
-        FieldKind::Encoded(ref encoding) => generate_nom_read(encoding),
+        FieldKind::Encoded(ref field_enc) => {
+            let encoding = generate_nom_read(&field_enc.encoding);
+            if let Some(ref reserve) = field_enc.reserve {
+                quote! {
+                    tezos_encoding::nom::reserve(
+                        #reserve,
+                        #encoding
+                    )
+                }
+            } else {
+                encoding
+            }
+        }
         FieldKind::Skip => quote!(|input| Ok((input, Default::default()))),
         FieldKind::Hash => unreachable!(),
     }

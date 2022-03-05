@@ -1,0 +1,37 @@
+{
+  "branch": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
+  "contents": [{
+    "kind": "double_baking_evidence",
+    "bh1": {
+      "level": 1331,
+      "proto": 1,
+      "predecessor": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
+      "timestamp": "2020-04-20T16:20:00Z",
+      "validation_pass": 4,
+      "operations_hash": "LLoZqBDX1E2ADRXbmwYo8VtMNeHG6Ygzmm4Zqv97i91UPBQHy9Vq3",
+      "fitness": ["01", "000000000000000a"],
+      "context": "CoVDyf9y9gHfAkPWofBJffo4X4bWjmehH2LeVonDcCKKzyQYwqdk",
+      "proof_of_work_nonce": "101895ca00000000",
+      "liquidity_baking_escape_vote": false,
+        "signature": "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ",
+        "payload_hash": "vh1g87ZG6scSYxKhspAUzprQVuLAyoa5qMBKcUfjgnQGnFb3dJcG",
+        "payload_round":0
+    },
+    "bh2": {
+      "level": 1331,
+      "proto": 1,
+      "predecessor": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
+      "timestamp": "2020-04-20T16:20:00Z",
+      "validation_pass": 4,
+      "operations_hash": "LLoZqBDX1E2ADRXbmwYo8VtMNeHG6Ygzmm4Zqv97i91UPBQHy9Vq3",
+      "fitness": ["01", "000000000000000a"],
+      "context": "CoVDyf9y9gHfAkPWofBJffo4X4bWjmehH2LeVonDcCKKzyQYwqdk",
+      "proof_of_work_nonce": "101895ca00000000",
+      "liquidity_baking_escape_vote": false,
+        "signature": "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ",
+        "payload_hash": "vh1g87ZG6scSYxKhspAUzprQVuLAyoa5qMBKcUfjgnQGnFb3dJcG",
+        "payload_round":0
+    }
+  }],
+  "signature": "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ"
+}

@@ -342,7 +342,7 @@ impl HashType {
             HashType::ChainId => &CHAIN_ID,
             HashType::BlockHash => &BLOCK_HASH,
             HashType::BlockMetadataHash => &BLOCK_METADATA_HASH,
-            &HashType::BlockPayloadHash => &BLOCK_PAYLOAD_HASH,
+            HashType::BlockPayloadHash => &BLOCK_PAYLOAD_HASH,
             HashType::ContextHash => &CONTEXT_HASH,
             HashType::ProtocolHash => &PROTOCOL_HASH,
             HashType::OperationHash => &OPERATION_HASH,

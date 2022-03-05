@@ -186,7 +186,7 @@ fn test_block_header_conv() {
         let timestamp = block_header.timestamp().to_boxroot(rt);
         let predecessor = block_header.predecessor().to_boxroot(rt);
         let operations_hash = block_header.operations_hash().to_boxroot(rt);
-        let fitness = block_header.fitness().to_boxroot(rt);
+        let fitness = block_header.fitness().as_ref().to_boxroot(rt);
         let context = block_header.context().to_boxroot(rt);
         let protocol_data = block_header.protocol_data().to_boxroot(rt);
         let block_header = FfiBlockHeader::from(&block_header).to_boxroot(rt);

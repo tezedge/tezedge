@@ -8,20 +8,11 @@ use syn::spanned::Spanned;
 
 pub fn generate_encoding_for_data(data: &DataWithEncoding) -> TokenStream {
     let name = data.name;
-    let name_str = name.to_string();
-    let encoding_static_name = syn::Ident::new(
-        &format!("__TEZOS_ENCODING_{}", name_str.to_uppercase()),
-        name.span(),
-    );
     let encoding = generate_encoding(&data.encoding);
     quote_spanned! {data.name.span()=>
-        lazy_static::lazy_static! {
-            static ref #encoding_static_name: tezos_encoding::encoding::Encoding = #encoding;
-        }
-
         impl tezos_encoding::encoding::HasEncoding for #name {
-            fn encoding() -> &'static tezos_encoding::encoding::Encoding {
-                &#encoding_static_name
+            fn encoding() -> tezos_encoding::encoding::Encoding {
+                #encoding
             }
         }
     }
@@ -32,7 +23,9 @@ pub(crate) fn generate_encoding(encoding: &Encoding) -> TokenStream {
         Encoding::Unit => quote!(tezos_encoding::encoding::Encoding::Unit),
         Encoding::Primitive(primitive, span) => generage_primitive_encoding(*primitive, *span),
         Encoding::Bytes(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Bytes),
-        Encoding::Path(path) => quote_spanned!(path.span()=> #path::encoding().clone()),
+        Encoding::Path(path) => {
+            quote_spanned!(path.span()=> <#path as tezos_encoding::encoding::HasEncoding>::encoding().clone())
+        }
         Encoding::String(size, span) => generate_string_encoding(size, *span),
         Encoding::Struct(encoding) => generate_struct_encoding(encoding),
         Encoding::Enum(encoding) => generate_enum_encoding(encoding),
@@ -65,7 +58,7 @@ fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
 fn generate_field_encoding(field: &FieldEncoding) -> Option<TokenStream> {
     if let FieldKind::Encoded(encoding) = &field.kind {
         let name = field.name.to_string();
-        let encoding = generate_encoding(encoding);
+        let encoding = generate_encoding(&encoding.encoding);
         Some(
             quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding)),
         )

@@ -225,17 +225,17 @@ pub type NomResult<'a, T> = nom::IResult<NomInput<'a>, T, NomError<'a>>;
 
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
-    fn nom_read(bytes: &[u8]) -> NomResult<Self>;
+    fn nom_read(input: &[u8]) -> NomResult<Self>;
 }
 
 macro_rules! hash_nom_reader {
     ($hash_name:ident) => {
         impl NomReader for crypto::hash::$hash_name {
             #[inline(always)]
-            fn nom_read(bytes: &[u8]) -> NomResult<Self> {
+            fn nom_read(input: &[u8]) -> NomResult<Self> {
                 map(take(Self::hash_size()), |bytes| {
                     Self::try_from_bytes(bytes).unwrap()
-                })(bytes)
+                })(input)
             }
         }
     };

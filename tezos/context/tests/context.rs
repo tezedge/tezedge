@@ -13,6 +13,7 @@ use tezos_context::{IndexApi, ProtocolContextApi, ShellContextApi};
 use tezos_context_api::{
     ContextKey, TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 #[test]
@@ -556,7 +557,7 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, anyh
                 .operations_hash(
                     "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
                 )
-                .fitness(vec![])
+                .fitness(Fitness::default())
                 .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
                 .protocol_data(vec![])
                 .build()

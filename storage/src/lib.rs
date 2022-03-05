@@ -1033,6 +1033,8 @@ pub mod tests_common {
 
     #[cfg(test)]
     mod tests {
+        use tezos_messages::p2p::encoding::fitness::Fitness;
+
         use super::TmpStorage;
         use crate::{ChainId, ChainMetaStorage, Head};
         use std::{
@@ -1064,7 +1066,7 @@ pub mod tests_common {
                                     .try_into()
                                     .unwrap(),
                                 level * 2,
-                                vec![],
+                                Fitness::default(),
                             )
                         };
 

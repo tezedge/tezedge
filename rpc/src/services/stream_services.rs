@@ -43,12 +43,7 @@ impl TryFrom<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
             timestamp: ts_to_rfc3339(block.header.timestamp())?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
-            fitness: block
-                .header
-                .fitness()
-                .iter()
-                .map(|x| hex::encode(&x))
-                .collect(),
+            fitness: block.header.fitness().as_hex_vec(),
             context: block.header.context().to_base58_check(),
             protocol_data: hex::encode(block.header.protocol_data()),
         })

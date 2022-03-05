@@ -319,7 +319,7 @@ fn peer_message_response(infos: &mut HashMap<String, Rc<MessageInfo>>) -> Messag
     let mut pre_size = Limit::default();
     if let BoundedDynamic(total_size, obj_encoding) = PeerMessageResponse::encoding() {
         pre_size += 4; // Dynamic encoding size, 4 bytes
-        if let Obj(_, ref fields) = **obj_encoding {
+        if let Obj(_, ref fields) = *obj_encoding {
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].get_name(), &"message".to_string());
             if let Tags(tag_size, tag_map) = fields[0].get_encoding() {
@@ -358,7 +358,7 @@ fn peer_message_response(infos: &mut HashMap<String, Rc<MessageInfo>>) -> Messag
                 }
 
                 if let Limit::UpTo(limit) = pre_size + max {
-                    assert!(limit <= *total_size, "PeerMessageResponse is limited to {} and cannot contain message of size {}", total_size, limit);
+                    assert!(limit <= total_size, "PeerMessageResponse is limited to {} and cannot contain message of size {}", total_size, limit);
                 }
 
                 return res;

@@ -7,59 +7,28 @@
 use std::convert::TryFrom;
 
 use crypto::hash::{
-    BlockHash, ContextHash, ContractTz1Hash, HashTrait, OperationListListHash, ProtocolHash,
-    Signature,
+    BlockHash, ContextHash, ContractKt1Hash, ContractTz1Hash, HashTrait, OperationListListHash,
+    ProtocolHash, Signature,
 };
 use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::types::Mutez;
+use tezos_encoding::types::{Mutez, SizedBytes};
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
 use crate::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
+use crate::Timestamp;
 
 use crate::p2p::encoding::{
-    block_header::{Fitness, Level},
-    limits::BLOCK_HEADER_FITNESS_MAX_SIZE,
-    operation::Operation as P2POperation,
+    block_header::Level, fitness::Fitness, operation::Operation as P2POperation,
 };
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct Operation {
     pub branch: BlockHash,
+    #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
     pub signature: Signature,
-}
-
-impl tezos_encoding::nom::NomReader for Operation {
-    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
-        nom::combinator::map(
-            nom::sequence::tuple((
-                tezos_encoding::nom::field(
-                    "Operation::branch",
-                    <BlockHash as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-                tezos_encoding::nom::field(
-                    "Operation::contents",
-                    tezos_encoding::nom::reserve(
-                        Signature::hash_size(),
-                        tezos_encoding::nom::list(
-                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
-                        ),
-                    ),
-                ),
-                tezos_encoding::nom::field(
-                    "Operation::signature",
-                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-            )),
-            |(branch, contents, signature)| Operation {
-                branch,
-                contents,
-                signature,
-            },
-        )(bytes)
-    }
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -82,36 +51,11 @@ impl TryFrom<P2POperation> for Operation {
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct OperationContents {
+    #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
     pub signature: Signature,
-}
-
-impl tezos_encoding::nom::NomReader for OperationContents {
-    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
-        nom::combinator::map(
-            nom::sequence::tuple((
-                tezos_encoding::nom::field(
-                    "OperationContents::contents",
-                    tezos_encoding::nom::reserve(
-                        Signature::hash_size(),
-                        tezos_encoding::nom::list(
-                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
-                        ),
-                    ),
-                ),
-                tezos_encoding::nom::field(
-                    "OperationContents::signature",
-                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-            )),
-            |(contents, signature)| OperationContents {
-                contents,
-                signature,
-            },
-        )(bytes)
-    }
 }
 
 impl TryFrom<P2POperation> for OperationContents {
@@ -154,7 +98,7 @@ pub enum InlinedEndorsementContents {
 /// Inlined endorsement.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-inlined-endorsement].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsement {
     pub branch: BlockHash,
     pub operations: InlinedEndorsementContents,
@@ -165,30 +109,21 @@ pub struct InlinedEndorsement {
 
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]
     pub level: Level,
     pub proto: u8,
     pub predecessor: BlockHash,
-    #[encoding(timestamp)]
-    pub timestamp: i64,
+    pub timestamp: Timestamp,
     pub validation_pass: u8,
     pub operations_hash: OperationListListHash,
-    #[encoding(composite(
-        dynamic = "BLOCK_HEADER_FITNESS_MAX_SIZE",
-        list,
-        dynamic,
-        list,
-        builtin = "Uint8"
-    ))]
     pub fitness: Fitness,
     pub context: ContextHash,
     pub priority: u16,
-    #[encoding(sized = "8", bytes)]
-    pub proof_of_work_nonce: Vec<u8>,
-    #[encoding(option, sized = "32", bytes)]
-    pub seed_nonce_hash: Option<Vec<u8>>,
+    pub proof_of_work_nonce: SizedBytes<8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_nonce_hash: Option<SizedBytes<32>>,
     pub signature: Signature,
 }
 
@@ -196,7 +131,7 @@ pub struct FullHeader {
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[encoding(tags = "u8")]
 pub enum Contents {
     /// Endorsmnent (tag 0).
@@ -248,7 +183,7 @@ pub enum Contents {
 /// Endorsmnent (tag 0).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#id5].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct EndorsementOperation {
     #[encoding(builtin = "Int32")]
     pub level: Level,
@@ -257,16 +192,15 @@ pub struct EndorsementOperation {
 /// Seed_nonce_revelation (tag 1).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#seed-nonce-revelation-tag-1].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct SeedNonceRevelationOperation {
     pub level: i32,
-    #[encoding(sized = "32", bytes)]
-    pub nonce: Vec<u8>,
+    pub nonce: SizedBytes<32>,
 }
 
 /// Double_endorsement_evidence (tag 2).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-endorsement-evidence-tag-2].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct DoubleEndorsementEvidenceOperation {
     #[encoding(dynamic)]
     pub op1: InlinedEndorsement,
@@ -276,7 +210,7 @@ pub struct DoubleEndorsementEvidenceOperation {
 
 /// Double_baking_evidence (tag 3).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct DoubleBakingEvidenceOperation {
     #[encoding(dynamic)]
     pub bh1: FullHeader,
@@ -287,17 +221,16 @@ pub struct DoubleBakingEvidenceOperation {
 /// Activate_account (tag 4).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#activate-account-tag-4].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct ActivateAccountOperation {
     pub pkh: ContractTz1Hash,
-    #[encoding(sized = "20", bytes)]
-    pub secret: Vec<u8>,
+    pub secret: SizedBytes<20>,
 }
 
 /// Proposals (tag 5).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#proposals-tag-5].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct ProposalsOperation {
     pub source: SignaturePublicKeyHash,
     pub period: i32,
@@ -308,18 +241,27 @@ pub struct ProposalsOperation {
 /// Ballot (tag 6).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#ballot-tag-6].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct BallotOperation {
     pub source: SignaturePublicKeyHash,
     pub period: i32,
     pub proposal: ProtocolHash,
-    pub ballot: i8,
+    pub ballot: Ballot,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
+#[serde(rename_all = "snake_case")]
+pub enum Ballot {
+    Nay,
+    Pass,
+    Yay,
 }
 
 /// Reveal (tag 107).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#reveal-tag-107].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct RevealOperation {
     pub source: SignaturePublicKeyHash,
     pub fee: Mutez,
@@ -332,7 +274,7 @@ pub struct RevealOperation {
 /// Transaction (tag 108).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#transaction-tag-108].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct TransactionOperation {
     pub source: SignaturePublicKeyHash,
     pub fee: Mutez,
@@ -341,13 +283,14 @@ pub struct TransactionOperation {
     pub storage_limit: Mutez,
     pub amount: Mutez,
     pub destination: ContractId,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<X0>,
 }
 
 /// Origination (tag 109).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#origination-tag-109].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct OriginationOperation {
     pub source: SignaturePublicKeyHash,
     pub fee: Mutez,
@@ -355,6 +298,7 @@ pub struct OriginationOperation {
     pub gas_limit: Mutez,
     pub storage_limit: Mutez,
     pub balance: Mutez,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delegate: Option<SignaturePublicKeyHash>,
     pub script: ScriptedContract,
 }
@@ -362,13 +306,14 @@ pub struct OriginationOperation {
 /// Delegation (tag 110).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#delegation-tag-110].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct DelegationOperation {
     pub source: SignaturePublicKeyHash,
     pub fee: Mutez,
     pub counter: Mutez,
     pub gas_limit: Mutez,
     pub storage_limit: Mutez,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delegate: Option<SignaturePublicKeyHash>,
 }
 
@@ -377,7 +322,7 @@ pub struct DelegationOperation {
 /// X_0.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#x-0.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct X0 {
     pub entrypoint: Entrypoint,
     #[encoding(dynamic, bytes)]
@@ -387,7 +332,7 @@ pub struct X0 {
 /// alpha.entrypoint.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-entrypoint-determined-from-data-8-bit-tag.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub enum Entrypoint {
     /// default (tag 0).
     /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#default-tag-0.
@@ -418,7 +363,7 @@ pub enum Entrypoint {
 /// .
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#named-tag-255.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct ShortDynamicData {
     #[encoding(short_dynamic, bytes)]
     pub data: Vec<u8>,
@@ -427,7 +372,7 @@ pub struct ShortDynamicData {
 /// alpha.scripted.contracts.
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-scripted-contracts.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct ScriptedContract {
     #[encoding(dynamic, bytes)]
     pub code: Vec<u8>,
@@ -438,7 +383,8 @@ pub struct ScriptedContract {
 /// alpha.contract_id (22 bytes, 8-bit tag).
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-contract-id-22-bytes-8-bit-tag.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
+#[serde(untagged)]
 pub enum ContractId {
     /// Implicit (tag 0).
     /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#implicit-tag-0.
@@ -452,11 +398,26 @@ pub enum ContractId {
 /// Originated (tag 1).
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#originated-tag-1.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
+#[serde(from = "ContractKt1Hash", into = "ContractKt1Hash")]
 pub struct OriginatedContractId {
-    #[encoding(sized = "20", bytes)]
-    pub contract_hash: Vec<u8>,
+    pub contract_hash: ContractKt1Hash,
     pub padding: u8,
+}
+
+impl From<OriginatedContractId> for ContractKt1Hash {
+    fn from(source: OriginatedContractId) -> Self {
+        source.contract_hash
+    }
+}
+
+impl From<ContractKt1Hash> for OriginatedContractId {
+    fn from(contract_hash: ContractKt1Hash) -> Self {
+        Self {
+            contract_hash,
+            padding: 0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -556,7 +517,7 @@ mod tests {
         match &contents[0] {
             Contents::SeedNonceRevelation(SeedNonceRevelationOperation { level, nonce }) => {
                 assert_eq!(*level, 1331);
-                assert_eq!(nonce, &[0; 32]);
+                assert_eq!(nonce, &[0; 32].into());
             }
             _ => assert!(false, "seed nonce revelation expected"),
         }
@@ -703,7 +664,7 @@ mod tests {
                     proposal.to_base58_check(),
                     "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp"
                 );
-                assert_eq!(*ballot, 0);
+                assert!(matches!(*ballot, Ballot::Nay));
             }
             _ => assert!(false, "ballot expected"),
         }

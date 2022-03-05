@@ -242,7 +242,7 @@ impl<'de> serde::Deserialize<'de> for SignaturePublicKey {
 
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, HasEncoding, NomReader)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, HasEncoding, NomReader, BinWriter)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),

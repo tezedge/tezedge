@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash};
-use tezos_messages::p2p::encoding::block_header::{Fitness, Level};
+use tezos_messages::p2p::encoding::{block_header::Level, fitness::Fitness};
 
 // FFI Wrappers:
 // Defined to be able to implement ToOCaml/FromOCaml traits for

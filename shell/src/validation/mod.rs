@@ -17,7 +17,7 @@ use storage::{BlockHeaderWithHash, StorageError};
 use tezos_api::ffi::BeginApplicationRequest;
 use tezos_messages::base::fitness_comparator::*;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::block_header::Fitness;
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::{Head, TimestampOutOfRangeError};
 use time::OffsetDateTime;
@@ -28,9 +28,9 @@ pub fn can_update_current_head(
     current_head: &Head,
     current_context_fitness: &Fitness,
 ) -> bool {
-    let new_head_fitness = FitnessWrapper::new(new_head.header.fitness());
-    let current_head_fitness = FitnessWrapper::new(current_head.fitness());
-    let context_fitness = FitnessWrapper::new(current_context_fitness);
+    let new_head_fitness = new_head.header.fitness();
+    let current_head_fitness = current_head.fitness();
+    let context_fitness = current_context_fitness;
 
     // according to chain_validator.ml
     if context_fitness.eq(&current_head_fitness) {
@@ -185,19 +185,18 @@ pub async fn check_multipass_validation(
 mod tests {
     use std::{convert::TryInto, sync::Arc};
 
-    use tezos_messages::p2p::encoding::block_header::Fitness;
+    use tezos_messages::p2p::encoding::fitness::Fitness;
     use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
     use super::*;
 
     macro_rules! fitness {
         ( $($x:expr),* ) => {{
-            let fitness: Fitness = vec![
+            Fitness::from(vec![
                 $(
                     $x.to_vec(),
                 )*
-            ];
-            fitness
+            ])
         }}
     }
 
