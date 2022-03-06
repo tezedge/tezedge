@@ -95,7 +95,7 @@ pub struct CurrentHeadUpdateAction {
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
         match &state.current_head {
-            CurrentHeadState::Rehydrated { head } => true,
+            CurrentHeadState::Rehydrated { .. } => true,
             _ => false,
         }
     }

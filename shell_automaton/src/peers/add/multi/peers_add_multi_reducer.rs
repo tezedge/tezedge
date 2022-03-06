@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::peer::{Peer, PeerIOLoopState, PeerQuota, PeerStatus};
+use crate::peer::{Peer, PeerIOLoopState, PeerStatus};
 use crate::{Action, ActionWithMeta, State};
 
 use super::PeersAddMultiAction;

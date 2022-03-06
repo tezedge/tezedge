@@ -14,7 +14,7 @@ use crate::shutdown::shutdown_effects;
 use crate::stats::current_head::stats_current_head_effects;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_effects;
 use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_effects;
-use crate::{Action, ActionId, ActionWithMeta, Store};
+use crate::{Action, ActionWithMeta, Store};
 
 use crate::logger::logger_effects;
 use crate::paused_loops::paused_loops_effects;

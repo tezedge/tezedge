@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use slog::{info, o, warn, Logger};
+use slog::{info, warn, Logger};
 use storage::{PersistentStorage, StorageInitInfo};
 
 use networking::network_channel::NetworkChannelRef;

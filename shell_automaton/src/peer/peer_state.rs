@@ -9,7 +9,7 @@ use crypto::hash::CryptoboxPublicKeyHash;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::{ActionId, Port};
+use crate::Port;
 
 use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnecting;
@@ -115,29 +115,6 @@ pub enum PeerIOLoopResult {
 
     /// We reached the limit on max io syscalls for this iteration/loop.
     MaxIOSyscallBoundReached,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PeerQuota {
-    pub bytes_read: usize,
-    pub bytes_written: usize,
-    pub read_timestamp: ActionId,
-    pub write_timestamp: ActionId,
-    pub reject_read: bool,
-    pub reject_write: bool,
-}
-
-impl PeerQuota {
-    pub fn new(timestamp: ActionId) -> Self {
-        Self {
-            bytes_read: 0,
-            bytes_written: 0,
-            read_timestamp: timestamp,
-            write_timestamp: timestamp,
-            reject_read: false,
-            reject_write: false,
-        }
-    }
 }
 
 impl Peer {

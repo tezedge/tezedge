@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use shell::shell_automaton_manager::ShellAutomatonMsg;
 use shell::validation::CanApplyStatus;
 use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use slog::{info, warn};
@@ -30,7 +29,7 @@ use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use crate::helpers::RpcServiceError;
 use crate::server::RpcServiceEnvironment;
 
-const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
+// const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const INJECT_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

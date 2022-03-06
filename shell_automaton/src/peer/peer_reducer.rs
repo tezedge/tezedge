@@ -3,8 +3,6 @@
 
 use crate::{Action, ActionWithMeta, State};
 
-use super::chunk::read::PeerChunkReadPartAction;
-use super::chunk::write::PeerChunkWritePartAction;
 use super::{
     PeerIOLoopState, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
     PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,

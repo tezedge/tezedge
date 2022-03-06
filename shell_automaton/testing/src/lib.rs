@@ -17,7 +17,7 @@ pub fn generate_chain(
     genesis_block: BlockHeaderWithHash,
     target_level: Level,
 ) -> Vec<BlockHeaderWithHash> {
-    (1..=target_level).fold(vec![genesis_block.clone()], |mut chain, level| {
+    (1..=target_level).fold(vec![genesis_block.clone()], |mut chain, _| {
         let pred = chain.last().unwrap_or(&genesis_block);
         let block = generate_next_block(pred, 0);
         chain.push(block);

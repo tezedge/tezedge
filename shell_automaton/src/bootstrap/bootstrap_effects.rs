@@ -8,7 +8,6 @@ use std::sync::Arc;
 use crypto::hash::BlockHash;
 use networking::network_channel::{AllBlockOperationsReceived, BlockReceived};
 use tezos_messages::p2p::encoding::block_header::GetBlockHeadersMessage;
-use tezos_messages::p2p::encoding::current_head::GetCurrentHeadMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
     GetOperationsForBlocksMessage, OperationsForBlock,
 };

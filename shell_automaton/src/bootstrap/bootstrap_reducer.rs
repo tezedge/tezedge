@@ -10,13 +10,7 @@ use crypto::{
     hash::BlockHash,
     seeded_step::{Seed, Step},
 };
-use tezos_messages::{
-    base::fitness_comparator::FitnessWrapper,
-    p2p::{
-        binary_message::MessageHash,
-        encoding::block_header::{BlockHeader, Fitness, Level},
-    },
-};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{Action, ActionWithMeta, State};
 
@@ -780,7 +774,3 @@ fn peer_branch_with_level_iter<'a>(
         .take_while(|(level, _)| *level >= 0);
     Some(std::iter::once((branch_current_head_level, branch_current_head_hash)).chain(iter))
 }
-
-// fn fitness_gt(left_fitness: &Fitness, right_fitness: &Fitness) -> bool {
-//     FitnessWrapper::new(right_fitness).gt(&FitnessWrapper::new(left_fitness))
-// }
