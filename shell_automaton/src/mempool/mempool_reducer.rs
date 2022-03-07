@@ -264,7 +264,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             if retry.is_some() {
-                if config.disable_apply_retry {
+                if state.config.disable_apply_retry {
                     slog::info!(
                         &state.log,
                         "Block `{new_block}` applied after retry, not using it as current head",
