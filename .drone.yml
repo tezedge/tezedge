@@ -5713,6 +5713,10 @@ depends_on:
 kind: pipeline
 name: corr/monitoring-memory-measurement-test
 
+environment:
+  RPC_PORT: 18733
+  MONITORING_RPC_PORT: 38733
+
 trigger:
   branch:
     - master
@@ -5766,7 +5770,7 @@ steps:
     - name: proc
       path: /proc
   commands:
-    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:$${RPC_PORT}:/tmp/tezedge --wait-for-nodes --rpc-port $${MONITORING_RPC_PORT}
 
 - name: wait-for-measurements
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
@@ -5794,6 +5798,10 @@ depends_on:
 ---
 kind: pipeline
 name: corr/monitoring-io-and-network-measurement-test
+
+environment:
+  RPC_PORT: 18734
+  MONITORING_RPC_PORT: 38734
 
 trigger:
   branch:
@@ -5848,7 +5856,7 @@ steps:
     - name: proc
       path: /proc
   commands:
-    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18734:/tmp/tezedge --wait-for-nodes --rpc-port $${MONITORING_RPC_PORT}
 
 - name: wait-for-measurements
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v11.0-octez
@@ -5875,6 +5883,10 @@ depends_on:
 ---
 kind: pipeline
 name: corr/monitoring-disk-size-measurement-test
+
+environment:
+  RPC_PORT: 18735
+  MONITORING_RPC_PORT: 38735
 
 trigger:
   branch:
@@ -5934,7 +5946,7 @@ steps:
     - name: proc
       path: /proc
   commands:
-    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge/data --wait-for-nodes
+    - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18735:/tmp/tezedge/data --wait-for-nodes --rpc-port $${MONITORING_RPC_PORT}
 
 - name: wait-for-measurements
   image: alpine/git
