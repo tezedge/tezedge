@@ -4,8 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crypto::hash::{ChainId, CryptoboxPublicKeyHash};
-use crypto::seeded_step::{Seed, Step};
+use crypto::hash::ChainId;
 use shell_automaton::config::default_test_config;
 use shell_automaton::service::storage_service::{StorageError, StorageResponseError};
 use shell_automaton::{
@@ -20,7 +19,7 @@ use shell_automaton_testing::{build_expected_history, generate_chain};
 use shell_automaton_testing::{one_real_node_cluster::Cluster, service::StorageResponse};
 use storage::BlockHeaderWithHash;
 use tezos_identity::Identity;
-use tezos_messages::p2p::encoding::block_header::{BlockHeaderBuilder, Level};
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentBranch, GetCurrentBranchMessage};
 
