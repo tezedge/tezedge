@@ -12,7 +12,7 @@ use crate::service::storage_service::{
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestStatus {
     Idle,
-    Pending,
+    Pending { time: u64 },
     Error(StorageResponseError),
     Success(StorageResponseSuccess),
 }

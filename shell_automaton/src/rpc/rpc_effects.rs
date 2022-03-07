@@ -13,6 +13,7 @@ use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
+use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
 
 use super::rpc_actions::{
@@ -56,15 +57,23 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .respond(rpc_id, serde_json::Value::Null);
                     }
                     RpcRequest::GetStorageRequests { channel } => {
-                        let req_iter = store.state.get().storage.requests.iter();
+                        let state = store.state.get();
+                        let now = state.time_as_nanos();
+                        let req_iter = state.storage.requests.iter();
                         let requests = req_iter
-                            .map(
-                                |(req_id, req)| crate::service::rpc_service::StorageRequest {
+                            .filter_map(|(req_id, req)| {
+                                let time = match &req.status {
+                                    StorageRequestStatus::Pending { time, .. } => *time,
+                                    _ => return None,
+                                };
+                                Some(crate::service::rpc_service::StorageRequest {
                                     req_id,
+                                    pending_since: time,
+                                    pending_for: now - time,
                                     kind: req.payload.kind(),
                                     requestor: req.requestor.clone(),
-                                },
-                            )
+                                })
+                            })
                             .collect();
                         let _ = channel.send(requests);
                         store

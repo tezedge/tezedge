@@ -49,6 +49,9 @@ pub trait RpcService {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StorageRequest {
     pub req_id: RequestId,
+    pub pending_since: u64,
+    /// How long request has been pending for. `now - pending_since`.
+    pub pending_for: u64,
     pub kind: StorageRequestPayloadKind,
     pub requestor: StorageRequestor,
 }

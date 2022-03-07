@@ -14,11 +14,13 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                 requestor: action.requestor.clone(),
             });
         }
-        Action::StorageRequestPending(action) => {
-            if let Some(req) = state.storage.requests.get_mut(action.req_id) {
+        Action::StorageRequestPending(content) => {
+            if let Some(req) = state.storage.requests.get_mut(content.req_id) {
                 match &req.status {
                     StorageRequestStatus::Idle => {
-                        req.status = StorageRequestStatus::Pending;
+                        req.status = StorageRequestStatus::Pending {
+                            time: action.time_as_nanos(),
+                        };
                     }
                     _ => return,
                 }
@@ -27,7 +29,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::StorageRequestError(action) => {
             if let Some(req) = state.storage.requests.get_mut(action.req_id) {
                 match &req.status {
-                    StorageRequestStatus::Idle | StorageRequestStatus::Pending => {
+                    StorageRequestStatus::Idle | StorageRequestStatus::Pending { .. } => {
                         req.status = StorageRequestStatus::Error(action.error.clone());
                     }
                     _ => return,
@@ -37,7 +39,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::StorageRequestSuccess(action) => {
             if let Some(req) = state.storage.requests.get_mut(action.req_id) {
                 match &req.status {
-                    StorageRequestStatus::Pending => {
+                    StorageRequestStatus::Pending { .. } => {
                         req.status = StorageRequestStatus::Success(action.result.clone());
                     }
                     _ => return,
