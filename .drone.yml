@@ -5665,7 +5665,7 @@ steps:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
 - name: node-simulator
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5693,7 +5693,7 @@ steps:
     - sleep 10
 
 - name: test-cpu-measurements
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5750,7 +5750,7 @@ steps:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
 - name: node-simulator
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5779,7 +5779,7 @@ steps:
 
 - name: test-memory-measurements
   # TODO: move to tezedge repo
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5836,7 +5836,7 @@ steps:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
 - name: node-simulator
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5864,7 +5864,7 @@ steps:
     - sleep 10
 
 - name: test-io-and-network-measurements
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5921,7 +5921,7 @@ steps:
       - 'apps/node_monitoring/drone-cache-monitoring' # <- builds a cache from this directory
 
 - name: node-simulator
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
@@ -5954,7 +5954,7 @@ steps:
     - sleep 10
 
 - name: test-disk-size-measurements
-  image: tezedge/monitoring-test:latest
+  image: tezedge/monitoring-test:test
   pid: host
   network_mode: host
   user: root
