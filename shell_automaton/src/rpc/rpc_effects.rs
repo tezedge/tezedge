@@ -50,6 +50,27 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                 match msg {
                     RpcRequest::GetCurrentGlobalState { channel } => {
                         let _ = channel.send(store.state.get().clone());
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+                    RpcRequest::GetStorageRequests { channel } => {
+                        let req_iter = store.state.get().storage.requests.iter();
+                        let requests = req_iter
+                            .map(
+                                |(req_id, req)| crate::service::rpc_service::StorageRequest {
+                                    req_id,
+                                    kind: req.payload.kind(),
+                                    requestor: req.requestor.clone(),
+                                },
+                            )
+                            .collect();
+                        let _ = channel.send(requests);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
                     RpcRequest::GetActionKindStats { channel } => {
                         let data = store
@@ -63,7 +84,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                                     .into()
                             })
                             .unwrap_or_default();
-                        let _ = channel.send(dbg!(data));
+                        let _ = channel.send(data);
                         store
                             .service()
                             .rpc()
@@ -75,7 +96,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .statistics()
                             .map(|s| s.action_graph().clone())
                             .unwrap_or_default();
-                        let _ = channel.send(dbg!(data));
+                        let _ = channel.send(data);
                         store
                             .service()
                             .rpc()

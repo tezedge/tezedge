@@ -18,9 +18,11 @@ use tezos_messages::p2p::encoding::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::State;
+use crate::{request::RequestId, storage::request::StorageRequestor, State};
 
-use super::{statistics_service::ActionGraph, BlockApplyStats};
+use super::{
+    statistics_service::ActionGraph, storage_service::StorageRequestPayloadKind, BlockApplyStats,
+};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,10 +46,20 @@ pub trait RpcService {
     fn respond_stream(&mut self, call_id: RpcId, json: Option<serde_json::Value>);
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StorageRequest {
+    pub req_id: RequestId,
+    pub kind: StorageRequestPayloadKind,
+    pub requestor: StorageRequestor,
+}
+
 #[derive(Debug)]
 pub enum RpcRequest {
     GetCurrentGlobalState {
         channel: oneshot::Sender<State>,
+    },
+    GetStorageRequests {
+        channel: oneshot::Sender<Vec<StorageRequest>>,
     },
     GetActionKindStats {
         channel: oneshot::Sender<ShellAutomatonActionsStats>,

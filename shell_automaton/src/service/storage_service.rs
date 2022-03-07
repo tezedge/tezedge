@@ -4,6 +4,7 @@
 use std::sync::Arc;
 use std::{fmt, thread};
 
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
@@ -66,7 +67,11 @@ impl From<storage::StorageError> for StorageError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
+#[enum_kind(
+    StorageRequestPayloadKind,
+    derive(strum_macros::Display, Serialize, Deserialize,)
+)]
 pub enum StorageRequestPayload {
     StateSnapshotPut(Box<State>),
     ActionPut(Box<ActionWithMeta>),
@@ -97,6 +102,13 @@ pub enum StorageRequestPayload {
         block_result: Arc<ApplyBlockResponse>,
         block_metadata: Arc<Meta>,
     },
+}
+
+impl StorageRequestPayload {
+    #[inline(always)]
+    pub fn kind(&self) -> StorageRequestPayloadKind {
+        StorageRequestPayloadKind::from(self)
+    }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
