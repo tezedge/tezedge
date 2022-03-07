@@ -17,6 +17,7 @@ use tezos_messages::p2p::encoding::prelude::GetCurrentBranchMessage;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
+use crate::peers::graylist::PeersGraylistAddressAction;
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::storage_service::StorageRequestPayload;
 use crate::service::{ActorsService, RandomnessService};
@@ -24,7 +25,8 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapCheckTimeoutsInitAction, BootstrapFinishedAction, BootstrapFromPeerCurrentHeadAction,
+    BootstrapCheckTimeoutsInitAction, BootstrapError, BootstrapErrorAction,
+    BootstrapFinishedAction, BootstrapFromPeerCurrentHeadAction,
     BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
     BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
     BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
@@ -37,7 +39,7 @@ use super::{
     BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
     BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
     BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
-    PeerIntervalCurrentState,
+    PeerIntervalCurrentState, PeerIntervalError,
 };
 
 pub fn bootstrap_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -155,6 +157,41 @@ where
             store.dispatch(BootstrapPeerBlockHeaderGetFinishAction { peer: content.peer });
         }
         Action::BootstrapPeerBlockHeaderGetFinish(content) => {
+            let peer_intervals = match store.state().bootstrap.peer_intervals() {
+                Some(v) => v,
+                None => return, // Impossible!
+            };
+            if !peer_intervals.is_empty() {
+                for interval in peer_intervals {
+                    let (error, block) = match &interval.current {
+                        PeerIntervalCurrentState::Error { error, block, .. } => (error, block),
+                        _ => continue,
+                    };
+                    match error {
+                        PeerIntervalError::CementedBlockReorg => {
+                            let current_head = match store.state().current_head.get() {
+                                Some(v) => v.clone(),
+                                None => break,
+                            };
+                            let block = block.clone();
+                            store.dispatch(BootstrapErrorAction {
+                                error: BootstrapError::CementedBlockReorg {
+                                    current_head,
+                                    block,
+                                },
+                            });
+                            break;
+                        }
+                        PeerIntervalError::NextIntervalsPredecessorHashMismatch => {
+                            let peers = interval.peers.iter().cloned().collect::<Vec<_>>();
+                            for address in peers {
+                                store.dispatch(PeersGraylistAddressAction { address });
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
             store.dispatch(BootstrapPeerBlockHeaderGetInitAction { peer: content.peer });
             store.dispatch(BootstrapPeersBlockHeadersGetSuccessAction {});
         }
@@ -285,6 +322,9 @@ where
             retry_block_operations_request(store, content.block_hash.clone());
         }
         Action::BootstrapPeersBlockOperationsGetSuccess(_) => {
+            store.dispatch(BootstrapFinishedAction {});
+        }
+        Action::BootstrapError(_) => {
             store.dispatch(BootstrapFinishedAction {});
         }
         Action::BootstrapFinished(_) => {

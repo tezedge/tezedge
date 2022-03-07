@@ -467,6 +467,7 @@ pub enum Action {
 
     BootstrapCheckTimeoutsInit(BootstrapCheckTimeoutsInitAction),
 
+    BootstrapError(BootstrapErrorAction),
     BootstrapFinished(BootstrapFinishedAction),
     BootstrapFromPeerCurrentHead(BootstrapFromPeerCurrentHeadAction),
 

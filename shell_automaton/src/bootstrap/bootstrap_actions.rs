@@ -14,6 +14,8 @@ use crate::current_head::CurrentHeadState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::{EnablingCondition, State};
 
+use super::BootstrapError;
+
 pub const MAX_PENDING_GET_OPERATIONS: usize = 128;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -448,6 +450,24 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetSuccessAction 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BootstrapErrorAction {
+    pub error: BootstrapError,
+}
+
+impl EnablingCondition<State> for BootstrapErrorAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.bootstrap {
+            BootstrapState::PeersMainBranchFindSuccess { .. } => false,
+            BootstrapState::PeersBlockHeadersGetSuccess { .. } => false,
+            BootstrapState::PeersBlockOperationsGetSuccess { .. } => false,
+            BootstrapState::Error { .. } => false,
+            BootstrapState::Finished { .. } => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BootstrapFinishedAction {}
 
 impl EnablingCondition<State> for BootstrapFinishedAction {
@@ -458,6 +478,7 @@ impl EnablingCondition<State> for BootstrapFinishedAction {
                     state.is_same_head(main_block.0, &main_block.1)
                 }
                 BootstrapState::PeersBlockOperationsGetSuccess { .. } => true,
+                BootstrapState::Error { .. } => true,
                 _ => false,
             }
     }

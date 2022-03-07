@@ -12,7 +12,7 @@ use crypto::{
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::{Action, ActionWithMeta, State};
+use crate::{bootstrap::PeerIntervalError, Action, ActionWithMeta, State};
 
 use super::{
     BlockWithDownloadedHeader, BootstrapBlockOperationGetState, BootstrapState,
@@ -410,13 +410,18 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 .current
                                 .to_finished(action.time_as_nanos(), content.peer);
                         } else {
-                            dbg!(&state.bootstrap);
-                            todo!("Reorg bigger than 1 level detected. Clear whole block header chain.");
+                            peer_intervals[index].current = PeerIntervalCurrentState::Error {
+                                time: action.time_as_nanos(),
+                                peer: content.peer,
+                                block,
+                                error: PeerIntervalError::CementedBlockReorg,
+                            };
                         }
                     }
                 } else {
                     let pred_index = index - 1;
                     let pred = &peer_intervals[pred_index];
+
                     match pred
                         .downloaded
                         .first()
@@ -424,19 +429,26 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .or(pred.current.block_level_with_hash().map(|(l, h)| (l, h)))
                     {
                         Some((pred_level, pred_hash)) => {
-                            // TODO(zura): check if pred_level > block.header.level()
-                            if pred_level + 1 > block.header.level() {
-                                dbg!(&state.bootstrap);
-                                todo!();
-                            }
-                            if pred_level + 1 == block.header.level() {
+                            if pred.current.is_error() {
+                                peer_intervals.remove(pred_index);
+                                index -= 1;
+                            } else if pred_level + 1 > block.header.level() {
+                                // TODO(zura): log. Impossible state.
+                                peer_intervals.remove(pred_index);
+                                index -= 1;
+                            } else if pred_level + 1 == block.header.level() {
                                 if block.header.predecessor() != pred_hash {
                                     slog::warn!(&log, "Predecessor hash mismatch!";
                                                 "block_header" => format!("{:?}", block),
                                                 "pred_interval" => format!("{:?}", peer_intervals.get(pred_index - 1)),
                                                 "interval" => format!("{:?}", pred),
                                                 "next_interval" => format!("{:?}", peer_intervals[index]));
-                                    todo!("log and remove pred interval, update `index -= 1`, somehow trigger blacklisting a peer.");
+                                    peer_intervals[pred_index].current = PeerIntervalCurrentState::Error {
+                                        time: action.time_as_nanos(),
+                                        peer: content.peer,
+                                        block,
+                                        error: PeerIntervalError::NextIntervalsPredecessorHashMismatch,
+                                    };
                                 } else {
                                     peer_intervals[index]
                                         .current
@@ -493,7 +505,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .drain(..)
                         .scan(main_chain_next_level, |main_chain_next_level, v| {
                             if *main_chain_next_level != v.0 {
-                                slog::error!(log, "Downloaded BlockHeader level doesn't match next block in the chain";
+                                slog::error!(log, "Downloaded BlockHeader level doesn't match next block in the chain. Impossible!";
                                     "expected_level" => *main_chain_next_level,
                                     "found_level" => v.0,
                                     "found_hash" => format!("{:?}", v.1));
@@ -712,10 +724,21 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 .bootstrap
                 .set_timeouts_last_check(action.time_as_nanos());
         }
+        Action::BootstrapError(content) => {
+            state.bootstrap = BootstrapState::Error {
+                time: action.time_as_nanos(),
+                error: content.error.clone(),
+            }
+        }
         Action::BootstrapFinished(_) => {
+            let error = match &state.bootstrap {
+                BootstrapState::Error { error, .. } => Some(error.clone()),
+                _ => None,
+            };
             state.bootstrap = BootstrapState::Finished {
                 time: action.time_as_nanos(),
-            }
+                error,
+            };
         }
         _ => {}
     }

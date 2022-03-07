@@ -12,9 +12,6 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum BootstrapError {}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerIntervalState {
     pub peers: BTreeSet<SocketAddr>,
     pub downloaded: Vec<(Level, BlockHash, u8, OperationListListHash)>,
@@ -39,6 +36,17 @@ impl PeerIntervalState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerIntervalError {
+    /// We can't accept interval as interval requires to change cemented
+    /// block in the chain.
+    CementedBlockReorg,
+
+    /// Current interval's first block hash isn't equal to next interval's
+    /// last block's predecessor hash.
+    NextIntervalsPredecessorHashMismatch,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerIntervalCurrentState {
     Idle {
         time: u64,
@@ -50,6 +58,12 @@ pub enum PeerIntervalCurrentState {
         peer: SocketAddr,
         block_level: Level,
         block_hash: BlockHash,
+    },
+    Error {
+        time: u64,
+        peer: SocketAddr,
+        block: BlockHeaderWithHash,
+        error: PeerIntervalError,
     },
     Success {
         time: u64,
@@ -116,6 +130,7 @@ impl PeerIntervalCurrentState {
                 block_hash,
                 ..
             } => Some((*block_level, block_hash)),
+            Self::Error { .. } => None,
             Self::Success { block, .. } => Some((block.header.level(), &block.hash)),
             Self::Finished { .. } => None,
         }
@@ -143,6 +158,10 @@ impl PeerIntervalCurrentState {
 
     pub fn is_pending(&self) -> bool {
         matches!(self, Self::Pending { .. } | Self::TimedOut { .. })
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error { .. })
     }
 
     pub fn is_success(&self) -> bool {
@@ -411,6 +430,14 @@ pub struct PeerBranch {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum BootstrapError {
+    CementedBlockReorg {
+        current_head: BlockHeaderWithHash,
+        block: BlockHeaderWithHash,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BootstrapState {
     Idle {},
 
@@ -494,12 +521,16 @@ pub enum BootstrapState {
         time: u64,
     },
 
-    /// We are in sync with the network (with other peers).
-    Finished {
+    Error {
         time: u64,
+        error: BootstrapError,
     },
 
-    Error(BootstrapError),
+    /// We finished bootstrap pipeline.
+    Finished {
+        time: u64,
+        error: Option<BootstrapError>,
+    },
 }
 
 impl BootstrapState {
