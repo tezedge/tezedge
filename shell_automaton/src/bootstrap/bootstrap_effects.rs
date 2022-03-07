@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::operations_for_blocks::{
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use tezos_messages::p2p::encoding::prelude::GetCurrentBranchMessage;
 
-use crate::block_applier::BlockApplierEnqueueBlockAction;
+use crate::block_applier::{BlockApplierApplyState, BlockApplierEnqueueBlockAction};
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
@@ -314,6 +314,21 @@ where
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapFinishedAction {});
+        }
+        Action::BlockApplierApplyError(_) => {
+            match &store.state().block_applier.current {
+                BlockApplierApplyState::Error {
+                    injector_rpc_id, ..
+                } => {
+                    if injector_rpc_id.is_some() {
+                        return;
+                    }
+                }
+                _ => return,
+            }
+            store.dispatch(BootstrapErrorAction {
+                error: BootstrapError::BlockApplicationFailed,
+            });
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(_) => {
             request_block_headers_from_available_peers(store);

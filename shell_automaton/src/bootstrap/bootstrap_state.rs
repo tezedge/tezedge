@@ -435,6 +435,7 @@ pub enum BootstrapError {
         current_head: BlockHeaderWithHash,
         block: BlockHeaderWithHash,
     },
+    BlockApplicationFailed,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

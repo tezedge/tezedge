@@ -456,13 +456,18 @@ pub struct BootstrapErrorAction {
 
 impl EnablingCondition<State> for BootstrapErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.bootstrap {
-            BootstrapState::PeersMainBranchFindSuccess { .. } => false,
-            BootstrapState::PeersBlockHeadersGetSuccess { .. } => false,
-            BootstrapState::PeersBlockOperationsGetSuccess { .. } => false,
-            BootstrapState::Error { .. } => false,
-            BootstrapState::Finished { .. } => false,
-            _ => true,
+        match &self.error {
+            BootstrapError::CementedBlockReorg { .. } => {
+                matches!(
+                    state.bootstrap,
+                    BootstrapState::PeersBlockHeadersGetPending { .. }
+                )
+            }
+            BootstrapError::BlockApplicationFailed => match &state.bootstrap {
+                BootstrapState::PeersBlockOperationsGetPending { .. }
+                | BootstrapState::PeersBlockOperationsGetSuccess { .. } => true,
+                _ => false,
+            },
         }
     }
 }
