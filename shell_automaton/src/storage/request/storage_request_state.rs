@@ -11,10 +11,33 @@ use crate::service::storage_service::{
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestStatus {
-    Idle,
-    Pending { time: u64 },
-    Error(StorageResponseError),
-    Success(StorageResponseSuccess),
+    Idle {
+        time: u64,
+    },
+    Pending {
+        time: u64,
+    },
+    Error {
+        time: u64,
+        pending_since: u64,
+        error: StorageResponseError,
+    },
+    Success {
+        time: u64,
+        pending_since: u64,
+        result: StorageResponseSuccess,
+    },
+}
+
+impl StorageRequestStatus {
+    pub fn pending_since(&self) -> Option<u64> {
+        Some(match self {
+            Self::Pending { time, .. } => *time,
+            Self::Error { pending_since, .. } => *pending_since,
+            Self::Success { pending_since, .. } => *pending_since,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

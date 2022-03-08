@@ -30,7 +30,7 @@ pub use actors_service::{ActorsService, ActorsServiceDefault};
 mod prevalidator_service;
 pub use prevalidator_service::{PrevalidatorService, PrevalidatorServiceDefault};
 
-mod statistics_service;
+pub mod statistics_service;
 pub use statistics_service::{BlockApplyStats, BlockPeerStats, StatisticsService};
 
 pub trait Service: TimeService {

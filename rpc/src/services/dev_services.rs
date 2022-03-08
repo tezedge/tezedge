@@ -397,7 +397,7 @@ pub(crate) async fn get_shell_automaton_state_current(
 pub(crate) async fn get_shell_automaton_storage_requests(
     env: &RpcServiceEnvironment,
 ) -> Result<
-    Vec<shell_automaton::service::rpc_service::StorageRequest>,
+    shell_automaton::service::rpc_service::StorageRequests,
     tokio::sync::oneshot::error::RecvError,
 > {
     let (tx, rx) = tokio::sync::oneshot::channel();

@@ -16,6 +16,8 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
+const STORAGE_REQUESTS_FINISHED_LEN: usize = 1024;
+
 fn ocaml_time_normalize(ocaml_time: f64) -> u64 {
     (ocaml_time * 1_000_000_000.0) as u64
 }
@@ -175,6 +177,19 @@ pub struct ActionGraphNode {
     pub next_actions: BTreeSet<usize>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StorageRequestFinished {
+    #[serde(flatten)]
+    pub request: crate::service::rpc_service::StorageRequest,
+    pub status: StorageRequestFinishedStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum StorageRequestFinishedStatus {
+    Error { error: String },
+    Success,
+}
+
 #[derive(Debug)]
 pub struct StatisticsService {
     last_action_id: Option<ActionId>,
@@ -184,6 +199,8 @@ pub struct StatisticsService {
 
     blocks_apply: BlocksApplyStats,
     levels: VecDeque<(Level, Vec<BlockHash>)>,
+
+    storage_requests_finished: VecDeque<StorageRequestFinished>,
 }
 
 impl Default for StatisticsService {
@@ -195,6 +212,7 @@ impl Default for StatisticsService {
             action_graph: Default::default(),
             blocks_apply: Default::default(),
             levels: Default::default(),
+            storage_requests_finished: VecDeque::with_capacity(STORAGE_REQUESTS_FINISHED_LEN),
         }
     }
 }
@@ -509,5 +527,18 @@ impl StatisticsService {
         if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.injected = Some(time)
         }
+    }
+
+    pub fn storage_request_finished(&mut self, req: StorageRequestFinished) {
+        let len_to_remove = self
+            .storage_requests_finished
+            .len()
+            .saturating_sub(STORAGE_REQUESTS_FINISHED_LEN);
+        self.storage_requests_finished.drain(0..len_to_remove);
+        self.storage_requests_finished.push_back(req);
+    }
+
+    pub fn storage_requests_finished_all(&self) -> &VecDeque<StorageRequestFinished> {
+        &self.storage_requests_finished
     }
 }

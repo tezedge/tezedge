@@ -60,7 +60,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let state = store.state.get();
                         let now = state.time_as_nanos();
                         let req_iter = state.storage.requests.iter();
-                        let requests = req_iter
+                        let pending_requests = req_iter
                             .filter_map(|(req_id, req)| {
                                 let time = match &req.status {
                                     StorageRequestStatus::Pending { time, .. } => *time,
@@ -75,6 +75,20 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                                 })
                             })
                             .collect();
+                        let requests = crate::service::rpc_service::StorageRequests {
+                            pending: pending_requests,
+                            finished: store.service().statistics().map_or(
+                                Default::default(),
+                                |stats| {
+                                    stats
+                                        .storage_requests_finished_all()
+                                        .iter()
+                                        .rev()
+                                        .cloned()
+                                        .collect()
+                                },
+                            ),
+                        };
                         let _ = channel.send(requests);
                         store
                             .service()

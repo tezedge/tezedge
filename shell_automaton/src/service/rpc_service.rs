@@ -46,7 +46,7 @@ pub trait RpcService {
     fn respond_stream(&mut self, call_id: RpcId, json: Option<serde_json::Value>);
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StorageRequest {
     pub req_id: RequestId,
     pub pending_since: u64,
@@ -56,13 +56,19 @@ pub struct StorageRequest {
     pub requestor: StorageRequestor,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StorageRequests {
+    pub pending: Vec<StorageRequest>,
+    pub finished: Vec<crate::service::statistics_service::StorageRequestFinished>,
+}
+
 #[derive(Debug)]
 pub enum RpcRequest {
     GetCurrentGlobalState {
         channel: oneshot::Sender<State>,
     },
     GetStorageRequests {
-        channel: oneshot::Sender<Vec<StorageRequest>>,
+        channel: oneshot::Sender<StorageRequests>,
     },
     GetActionKindStats {
         channel: oneshot::Sender<ShellAutomatonActionsStats>,
