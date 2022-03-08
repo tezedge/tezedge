@@ -127,7 +127,8 @@ pub enum StorageResponseSuccess {
     CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
-    CurrentHeadGetSuccess(BlockHeaderWithHash),
+    /// Returns: `(CurrentHead, CurrentHeadPredecessor)`.
+    CurrentHeadGetSuccess(BlockHeaderWithHash, Option<BlockHeaderWithHash>),
 
     BlockHeaderPutSuccess(bool),
     BlockOperationsPutSuccess(bool),
@@ -303,15 +304,25 @@ impl StorageServiceDefault {
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
 
                 CurrentHeadGet(chain_id, level_override) => {
-                    if let Some(Ok(Some(head))) =
-                        level_override.map(|level| block_storage.get_block_by_level(level))
-                    {
-                        Ok(CurrentHeadGetSuccess(head))
-                    } else {
-                        match storage::hydrate_current_head(&chain_id, &storage) {
-                            Ok(head) => Ok(CurrentHeadGetSuccess(head)),
-                            Err(err) => Err(CurrentHeadGetError(err.into())),
-                        }
+                    let result = level_override
+                        .and_then(|level| {
+                            Some(match block_storage.get_block_by_level(level) {
+                                Ok(head) => Ok(head?),
+                                Err(err) => Err(err),
+                            })
+                        })
+                        .unwrap_or_else(|| storage::hydrate_current_head(&chain_id, &storage))
+                        .and_then(|head| {
+                            let pred = if head.header.level() > 0 {
+                                block_storage.get(head.header.predecessor())?
+                            } else {
+                                None
+                            };
+                            Ok((head, pred))
+                        });
+                    match result {
+                        Ok((head, pred)) => Ok(CurrentHeadGetSuccess(head, pred)),
+                        Err(err) => Err(CurrentHeadGetError(err.into())),
                     }
                 }
 

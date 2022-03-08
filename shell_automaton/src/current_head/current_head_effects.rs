@@ -46,8 +46,11 @@ where
             }
 
             match &content.response.result {
-                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head)) => {
-                    store.dispatch(CurrentHeadRehydrateSuccessAction { head: head.clone() });
+                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred)) => {
+                    store.dispatch(CurrentHeadRehydrateSuccessAction {
+                        head: head.clone(),
+                        head_pred: pred.clone(),
+                    });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {
                     store.dispatch(CurrentHeadRehydrateErrorAction {

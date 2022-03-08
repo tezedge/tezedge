@@ -73,6 +73,7 @@ fn data(chain_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     let chain = generate_chain(genesis_block, chain_level);
     state.current_head = CurrentHeadState::Rehydrated {
         head: chain.last().unwrap().clone(),
+        head_pred: chain.iter().rev().nth(1).cloned(),
     };
     state.bootstrap = BootstrapState::Finished {
         time: 0,

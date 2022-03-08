@@ -64,6 +64,7 @@ impl EnablingCondition<State> for CurrentHeadRehydrateErrorAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydrateSuccessAction {
     pub head: BlockHeaderWithHash,
+    pub head_pred: Option<BlockHeaderWithHash>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {

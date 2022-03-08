@@ -26,10 +26,12 @@ pub enum CurrentHeadState {
     RehydrateSuccess {
         time: u64,
         head: BlockHeaderWithHash,
+        head_pred: Option<BlockHeaderWithHash>,
     },
 
     Rehydrated {
         head: BlockHeaderWithHash,
+        head_pred: Option<BlockHeaderWithHash>,
     },
 }
 
@@ -42,6 +44,13 @@ impl CurrentHeadState {
     pub fn get(&self) -> Option<&BlockHeaderWithHash> {
         match self {
             Self::Rehydrated { head, .. } => Some(head),
+            _ => None,
+        }
+    }
+
+    pub fn get_pred(&self) -> Option<&BlockHeaderWithHash> {
+        match self {
+            Self::Rehydrated { head_pred, .. } => head_pred.as_ref(),
             _ => None,
         }
     }
