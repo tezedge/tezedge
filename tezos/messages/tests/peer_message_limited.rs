@@ -68,6 +68,7 @@ fn get_contents(
             HashType::ChainId => "ChainId",
             HashType::BlockHash => "BlockHash",
             HashType::BlockMetadataHash => "BlockMetadataHash",
+            HashType::BlockPayloadHash => "BlockPayloadHash",
             HashType::ProtocolHash => "ProtocolHash",
             HashType::ContextHash => "ContextHash",
             HashType::OperationHash => "OperationHash",

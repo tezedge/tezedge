@@ -223,6 +223,28 @@ pub async fn chains_block_id_header_shell(
     }
 }
 
+pub async fn chains_block_id_header_protocol_data_raw(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
+
+    let block_header = base_services::get_block_raw_header_or_fail(
+        &chain_id,
+        block_hash,
+        env.persistent_storage(),
+    );
+
+    result_to_json_response(
+        block_header.map(|header| hex::encode(header.header.protocol_data())),
+        env.log(),
+    )
+}
+
 pub async fn chains_block_id_metadata(
     _: Request<Body>,
     params: Params,
@@ -666,6 +688,42 @@ pub async fn preapply_block(
     )
 }
 
+// TODO: properly implement this handler
+
+#[derive(serde::Serialize)]
+struct P2pStats {
+    total_sent: String,
+    total_recv: String,
+    current_inflow: i64,
+    current_outflow: i64,
+}
+
+pub async fn network_stat(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let dummy = P2pStats {
+        total_sent: "100".into(),
+        total_recv: "100".into(),
+        current_inflow: 10,
+        current_outflow: 10,
+    };
+
+    result_to_json_response(Ok(dummy), env.log())
+}
+
+pub async fn network_connections(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let connections: Vec<()> = vec![];
+    result_to_json_response(Ok(connections), env.log())
+}
+
 pub async fn node_version(
     _: Request<Body>,
     _: Params,
@@ -732,7 +790,10 @@ pub async fn describe(
         // TODO: same reasoning as above
         if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()) {
             &Method::POST
-        } else if path.contains(&"storage".to_string()) {
+        } else if path.contains(&"storage".to_string())
+            || path.contains(&"round".to_string())
+            || path.contains(&"delegates".to_string())
+        {
             &Method::GET
         } else {
             allowed_methods.iter().next().unwrap()

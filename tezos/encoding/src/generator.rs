@@ -577,6 +577,7 @@ use crypto::hash::*;
 generated_hash!(ChainId);
 generated_hash!(BlockHash);
 generated_hash!(BlockMetadataHash);
+generated_hash!(BlockPayloadHash);
 generated_hash!(OperationHash);
 generated_hash!(OperationListListHash);
 generated_hash!(OperationMetadataHash);

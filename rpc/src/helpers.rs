@@ -206,6 +206,10 @@ pub struct BlockHeaderInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_round: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_of_work_nonce: Option<String>,
@@ -269,6 +273,12 @@ impl BlockHeaderInfo {
             .get("signature")
             .map(|val| val.as_str().unwrap().to_string());
         let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
+        let payload_hash = header_data
+            .get("payload_hash")
+            .map(|val| val.as_str().unwrap().to_owned());
+        let payload_round = header_data
+            .get("payload_round")
+            .map(|val| val.as_i64().unwrap() as i32);
         let proof_of_work_nonce = header_data
             .get("proof_of_work_nonce")
             .map(|val| val.as_str().unwrap().to_string());
@@ -298,6 +308,8 @@ impl BlockHeaderInfo {
             protocol: block_additional_data.protocol_hash().to_base58_check(),
             signature,
             priority,
+            payload_hash,
+            payload_round,
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
@@ -689,15 +701,13 @@ pub(crate) fn parse_block_hash(
 
     // find requested header, if no offset we return header
     let block_hash = if let Some(offset) = offset {
+        // If we go further back enough that a block cannot be found, then
+        // the genesis block will be reached
         match BlockMetaStorage::new(env.persistent_storage())
             .find_block_at_distance(block_hash, offset)?
         {
             Some(block_hash) => block_hash,
-            None => {
-                return Err(RpcServiceError::NoDataFoundError {
-                    reason: format!("Unknown block for block_id_param: {}", block_id_param),
-                });
-            }
+            None => genesis_block_hash()?,
         }
     } else {
         block_hash

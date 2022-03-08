@@ -54,8 +54,8 @@ class Sandbox:
         self,
         binaries_path: str,
         identities: Dict[str, Dict[str, str]],
-        rpc: int = 28730,
-        p2p: int = 29730,
+        rpc: int = 18730,
+        p2p: int = 19730,
         num_peers: int = 45,
         log_dir: str = None,
         singleprocess: bool = False,
@@ -389,9 +389,10 @@ class Sandbox:
     def add_baker(
         self,
         node_id: int,
-        account: str,
+        accounts: List[str],
         proto: str,
         params: List[str] = None,
+        log_levels: Dict[str, str] = None,
         branch: str = "",
         run_params: List[str] = None,
     ) -> None:
@@ -404,6 +405,7 @@ class Sandbox:
             proto (str): name of protocol, used to determine the binary to
                          use. E.g. 'alpha` for `tezos-baker-alpha`.
             params (list): additional parameters
+            log_levels (dict): log levels. e.g. {"p2p.connection-pool":"debug"}
             branch (str): see branch parameter for `add_node()`
         """
         assert node_id in self.nodes, f'No node running with id={node_id}'
@@ -430,8 +432,9 @@ class Sandbox:
             rpc_node,
             client.base_dir,
             node.node_dir,
-            account,
+            accounts,
             params=params,
+            log_levels=log_levels,
             log_file=log_file,
             run_params=run_params,
         )
@@ -683,14 +686,18 @@ class SandboxMultiBranch(Sandbox):
     def add_baker(
         self,
         node_id: int,
-        account: str,
+        accounts: List[str],
         proto: str,
         params: List[str] = None,
+        log_levels: Dict[str, str] = None,
         branch: str = "",
+        run_params: List[str] = None,
     ) -> None:
         """branch is overridden by branch_map"""
         branch = self._branch_map[node_id]
-        super().add_baker(node_id, account, proto, params, branch)
+        super().add_baker(
+            node_id, accounts, proto, params, log_levels, branch, run_params
+        )
 
     def add_endorser(
         self,

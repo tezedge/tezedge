@@ -4,13 +4,14 @@ import os.path
 from tools import paths
 
 
-def get_parameters(folder: str) -> dict:
-    """Takes a protocol folder ('proto_alpha', 'proto_005_PsBabyM1'...) and
+def get_parameters(folder: str, network='test') -> dict:
+    """Takes a protocol suffix ('alpha', '005_PsBabyM1'...) and
     retrieve json test parameters for that protocol. Assertion failure
     if parameters can't be found."""
 
     params_file = (
-        f'{paths.TEZOS_HOME}src/{folder}/parameters/' 'test-parameters.json'
+        f'{paths.TEZOS_HOME}/src/{folder}/parameters/'
+        f'{network}-parameters.json'
     )
     assert os.path.isfile(params_file), (
         f'{params_file}'
@@ -84,22 +85,15 @@ ALPHA_DAEMON = "alpha"  # tezos-baker-alpha
 ALPHA_FOLDER = "proto_alpha"
 ALPHA_PARAMETERS = get_parameters(ALPHA_FOLDER)
 
-BABYLON = "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"
-BABYLON_DAEMON = "005-PsBabyM1"
-BABYLON_FOLDER = "proto_005_PsBabyM1"
-
-CARTHAGE = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
-CARTHAGE_FOLDER = "proto_006_PsCARTHA"
-
-GRANADA = "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV"
-GRANADA_DAEMON = "010-PtGRANAD"
-GRANADA_FOLDER = "proto_010_PtGRANAD"
-GRANADA_PARAMETERS = get_parameters(GRANADA_FOLDER)
-
 HANGZHOU = "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx"
 HANGZHOU_DAEMON = "011-PtHangz2"
 HANGZHOU_FOLDER = "proto_011_PtHangz2"
 HANGZHOU_PARAMETERS = get_parameters(HANGZHOU_FOLDER)
+
+ITHACA = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A"
+ITHACA_DAEMON = "012-Psithaca"
+ITHACA_FOLDER = "proto_012_Psithaca"
+ITHACA_PARAMETERS = get_parameters(ITHACA_FOLDER)
 
 TEZOS_CRT = """
 Certificate:
@@ -268,3 +262,13 @@ NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-
                # zcash-params files used for init, if zcash-params is not correctly setup it in OS
                '--init-sapling-spend-params-file', paths.TEZOS_HOME + 'sapling-spend.params',
                '--init-sapling-output-params-file', paths.TEZOS_HOME + 'sapling-output.params']
+
+TENDERBAKE_BAKER_LOG_LEVELS = {"alpha.baker.*": "debug"}
+
+TENDERBAKE_NODE_LOG_LEVELS = {
+    "node.chain_validator": "debug",
+    "node.validator.block": "debug",
+    "node_prevalidator": "debug",
+    "validator.block": "debug",
+    "validator.chain": "debug",
+}

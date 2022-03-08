@@ -184,6 +184,12 @@ pub enum FoldDepth {
     Ge(i64), // folds over nodes and contents of depth more than or equal to [d].
 }
 
+#[derive(Clone, Copy)]
+pub enum FoldOrder {
+    Sorted,
+    Undefined,
+}
+
 impl FoldDepth {
     /// `true` if for this depth the fold function should be applied
     fn should_apply(self, depth: i64) -> bool {
@@ -214,6 +220,7 @@ struct TreeWalkerLevel {
     current_depth: i64,
     yield_self: bool,
     children_iter: Option<IntoIter<(String, DirEntryId)>>,
+    order: FoldOrder,
 }
 
 impl TreeWalkerLevel {
@@ -222,6 +229,7 @@ impl TreeWalkerLevel {
         root: WorkingTree,
         current_depth: i64,
         depth: &Option<FoldDepth>,
+        order: FoldOrder,
     ) -> Self {
         let should_continue = depth
             .map(|d| d.should_continue(current_depth))
@@ -244,6 +252,7 @@ impl TreeWalkerLevel {
             current_depth,
             yield_self: depth.map(|d| d.should_apply(current_depth)).unwrap_or(true),
             children_iter,
+            order,
         }
     }
 
@@ -268,6 +277,7 @@ impl TreeWalkerLevel {
             }
         };
 
+        // TODO: use `sorted/unsorted` depending on specified order
         let dir = match storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository) {
             Ok(dir) => dir,
             Err(e) => {
@@ -294,13 +304,20 @@ impl TreeWalkerLevel {
 pub struct TreeWalker {
     depth: Option<FoldDepth>,
     stack: Vec<TreeWalkerLevel>,
+    order: FoldOrder,
 }
 
 impl TreeWalker {
-    fn new(key: ContextKeyOwned, root: WorkingTree, depth: Option<FoldDepth>) -> Self {
+    fn new(
+        key: ContextKeyOwned,
+        root: WorkingTree,
+        depth: Option<FoldDepth>,
+        order: FoldOrder,
+    ) -> Self {
         Self {
             depth,
-            stack: vec![TreeWalkerLevel::new(key, root, 0, &depth)],
+            stack: vec![TreeWalkerLevel::new(key, root, 0, &depth, order)],
+            order,
         }
     }
 
@@ -308,6 +325,7 @@ impl TreeWalker {
         Self {
             depth: None,
             stack: vec![],
+            order: FoldOrder::Undefined,
         }
     }
 }
@@ -338,6 +356,7 @@ impl Iterator for TreeWalker {
                                     root,
                                     current_depth,
                                     &self.depth,
+                                    self.order,
                                 ));
                             }
                             Err(e) => {
@@ -773,7 +792,7 @@ impl WorkingTree {
 
     // From OCaml:
     /*
-      [fold ?depth t root ~init ~f] recursively folds over the trees
+      [fold ?depth t root ~order ~init ~f] recursively folds over the trees
       and values of [t]. The [f] callbacks are called with a key relative
       to [root]. [f] is never called with an empty key for values; i.e.,
       folding over a value is a no-op.
@@ -788,17 +807,23 @@ impl WorkingTree {
       - [Le d] folds over nodes and contents of depth less than or equal to [d].
       - [Gt d] folds over nodes and contents of depth strictly more than [d].
       - [Ge d] folds over nodes and contents of depth more than or equal to [d].
+
+      If [order] is [`Sorted] (the default), the elements are traversed in
+      lexicographic order of their keys. For large nodes, it is memory-consuming,
+      use [`Undefined] for a more memory efficient [fold].
     */
     pub fn fold_iter(
         &self,
         depth: Option<FoldDepth>,
         key: &ContextKey,
+        order: FoldOrder,
     ) -> Result<TreeWalker, MerkleError> {
         if let Some(root) = self.find_tree(key)? {
             Ok(TreeWalker::new(
                 vec![], // Key is relative to the root
                 root,
                 depth,
+                order,
             ))
         } else {
             Ok(TreeWalker::empty())

@@ -64,6 +64,7 @@ pub struct OCamlBlockHash {}
 pub struct OCamlContextHash {}
 pub struct OCamlProtocolHash {}
 pub struct OCamlBlockMetadataHash {}
+pub struct OCamlBlockPayloadHash {}
 pub struct OCamlOperationMetadataHash {}
 pub struct OCamlOperationMetadataListListHash {}
 pub struct OCamlChainId {}

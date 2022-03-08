@@ -195,6 +195,22 @@ pub(crate) fn get_block_shell_header_or_fail(
         .map(Arc::new)
 }
 
+/// Get the raw block  header
+#[cached(
+    name = "BLOCK_RAW_HEADER_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockHeaderWithHash>>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(chain_id.clone(), block_hash.clone())}",
+    result = true
+)]
+pub(crate) fn get_block_raw_header_or_fail(
+    chain_id: &ChainId,
+    block_hash: BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<Arc<BlockHeaderWithHash>, RpcServiceError> {
+    get_raw_block_header_with_hash(chain_id, &block_hash, persistent_storage)
+}
+
 #[cached(
     name = "LIVE_BLOCKS_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash), Vec<String>>",

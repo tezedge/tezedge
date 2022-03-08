@@ -35,7 +35,7 @@ extern "C" {
         tezedge_tree_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_mem: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_list: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
-        tezedge_tree_walker_make: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_tree_walker_make: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_tree_walker_next: unsafe extern "C" fn(isize) -> isize,
         tezedge_tree_empty: unsafe extern "C" fn(isize) -> isize,
         tezedge_tree_to_value: unsafe extern "C" fn(isize) -> isize,

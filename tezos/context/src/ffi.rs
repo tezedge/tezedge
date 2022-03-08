@@ -25,7 +25,7 @@ use crate::{
     snapshot, timings,
     working_tree::{
         storage::DirectoryId,
-        working_tree::{FoldDepth, TreeWalker, WorkingTree},
+        working_tree::{FoldDepth, FoldOrder, TreeWalker, WorkingTree},
         DirEntryKind,
     },
     ContextKeyValueStore, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
@@ -799,12 +799,14 @@ ocaml_export! {
         tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         depth: OCamlRef<Option<FoldDepth>>,
         key: OCamlRef<OCamlList<String>>,
+        order: OCamlRef<FoldOrder>,
     ) -> OCaml<Result<DynBox<TreeWalkerFFI>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key = make_key(rt, key);
         let depth: Option<FoldDepth> = depth.to_rust(rt);
-        let result = tree.fold_iter(depth, &key)
+        let order: FoldOrder = order.to_rust(rt);
+        let result = tree.fold_iter(depth, &key, order)
             .map_err(|err| format!("{:?}", err))
             .map(TreeWalkerFFI::new);
 

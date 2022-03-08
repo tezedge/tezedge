@@ -18,6 +18,7 @@ pub struct MempoolOperations {
     branch_delayed: Vec<Value>,
     // TODO: unprocessed - we don't have protocol data, because we can get it just from ffi now
     unprocessed: Vec<Value>,
+    outdated: Vec<Value>,
 }
 
 fn convert_applied(
@@ -116,6 +117,7 @@ impl MempoolOperations {
             branch_delayed: convert_errored(branch_delayed, operations, protocol),
             branch_refused: convert_errored(branch_refused, operations, protocol),
             unprocessed: vec![],
+            outdated: vec![], // TODO - for I: nothing here?
         }
     }
 }

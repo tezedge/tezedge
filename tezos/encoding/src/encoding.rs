@@ -321,6 +321,7 @@ macro_rules! hash_has_encoding {
 hash_has_encoding!(ChainId, CHAIN_ID);
 hash_has_encoding!(BlockHash, BLOCK_HASH);
 hash_has_encoding!(BlockMetadataHash, BLOCK_METADATA_HASH);
+hash_has_encoding!(BlockPayloadHash, BLOCK_PAYLOAD_HASH);
 hash_has_encoding!(OperationHash, OPERATION_HASH);
 hash_has_encoding!(OperationListListHash, OPERATION_LIST_LIST_HASH);
 hash_has_encoding!(OperationMetadataHash, OPERATION_METADATA_HASH);

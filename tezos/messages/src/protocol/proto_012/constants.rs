@@ -13,6 +13,10 @@ use tezos_encoding::{
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
+use crate::base::signature_public_key::SignaturePublicKeyHash;
+
+const STAKE_DISTRIBUTION_SIZE: i64 = 500 /* delegates */ * 15 /* words */ * 4 /* bytes */;
+const SAMPLER_STATE_SIZE: i64 = 80 /* words */ * 4 /* bytes */;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -23,7 +27,11 @@ pub const FIXED: FixedConstants = FixedConstants {
     max_micheline_node_count: 50_000,
     max_micheline_bytes_limit: 50_000,
     max_allowed_global_constants_depth: 10_000,
-    cache_layout: [100_000_000],
+    cache_layout: [
+        100_000_000,
+        8 /* cycles */ * STAKE_DISTRIBUTION_SIZE,
+        8 /* cycles */ * SAMPLER_STATE_SIZE,
+    ],
     michelson_maximum_type_size: 2001,
 };
 
@@ -38,7 +46,7 @@ pub struct FixedConstants {
     max_micheline_node_count: i32,
     max_micheline_bytes_limit: i32,
     max_allowed_global_constants_depth: i32,
-    cache_layout: [i64; 1],
+    cache_layout: [i64; 3],
     michelson_maximum_type_size: u16,
 }
 
@@ -86,6 +94,24 @@ impl ToRpcJsonMap for FixedConstants {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+pub struct RoundRobinOverDelegatesVariant {
+    #[encoding(dynamic, list, dynamic, list)]
+    delegates: Vec<Vec<SignaturePublicKeyHash>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+pub enum DelegateSelection {
+    RandomDelegateSelection,
+    RoundRobinOverDelegates(RoundRobinOverDelegatesVariant),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+pub struct Ratio {
+    pub numerator: u16,
+    pub denominator: u16,
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone, Getters, CopyGetters, HasEncoding, NomReader)]
 pub struct ParametricConstants {
@@ -125,6 +151,17 @@ pub struct ParametricConstants {
     liquidity_baking_subsidy: Mutez,
     liquidity_baking_sunset_level: i32,
     liquidity_baking_escape_ema_threshold: i32,
+    max_operations_time_to_live: i16,
+    minimal_block_delay: i64,
+    delay_increment_per_round: i64,
+    minimal_participation_ratio: Ratio,
+    consensus_committee_size: i32,
+    consensus_threshold: i32,
+    max_slashing_period: i32,
+    frozen_deposits_percentage: i32,
+    double_baking_punishment: Mutez,
+    ratio_of_frozen_deposits_slashed_per_double_endorsement: Ratio,
+    delegate_selection: DelegateSelection,
 }
 
 impl ToRpcJsonMap for ParametricConstants {

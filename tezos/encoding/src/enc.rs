@@ -245,6 +245,7 @@ macro_rules! encode_hash {
 encode_hash!(crypto::hash::ChainId);
 encode_hash!(crypto::hash::BlockHash);
 encode_hash!(crypto::hash::BlockMetadataHash);
+encode_hash!(crypto::hash::BlockPayloadHash);
 encode_hash!(crypto::hash::OperationHash);
 encode_hash!(crypto::hash::OperationListListHash);
 encode_hash!(crypto::hash::OperationMetadataHash);

@@ -74,6 +74,7 @@ macro_rules! hash_codec {
 hash_codec!(ChainId);
 hash_codec!(BlockHash);
 hash_codec!(BlockMetadataHash);
+hash_codec!(BlockPayloadHash);
 hash_codec!(OperationHash);
 hash_codec!(OperationListListHash);
 hash_codec!(OperationMetadataHash);
