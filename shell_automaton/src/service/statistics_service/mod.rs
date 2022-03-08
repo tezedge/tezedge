@@ -152,6 +152,7 @@ impl StatisticsService {
 
     fn add_block_level(
         levels: &mut VecDeque<(Level, Vec<BlockHash>)>,
+        blocks_apply: &mut BlocksApplyStats,
         block_hash: BlockHash,
         level: Level,
     ) {
@@ -164,7 +165,12 @@ impl StatisticsService {
                 Err(idx) => levels.insert(idx, (level, vec![block_hash.clone()])),
             },
         }
-        levels.drain(0..(levels.len().saturating_sub(120)));
+        levels
+            .drain(0..(levels.len().saturating_sub(120)))
+            .flat_map(|(_, v)| v.into_iter())
+            .for_each(|hash| {
+                blocks_apply.remove(&hash);
+            });
     }
 
     pub fn block_new(
@@ -179,20 +185,17 @@ impl StatisticsService {
         injected_timestamp: Option<u64>,
     ) {
         let levels = &mut self.levels;
-        let stats = self
-            .blocks_apply
-            .entry(block_hash.clone())
-            .or_insert_with(|| {
-                Self::add_block_level(levels, block_hash.clone(), level);
-                BlockApplyStats {
-                    level,
-                    block_timestamp,
-                    validation_pass,
-                    receive_timestamp,
-                    injected: injected_timestamp,
-                    ..BlockApplyStats::default()
-                }
-            });
+        let blocks_apply = &mut self.blocks_apply;
+        let stats = blocks_apply.entry(block_hash.clone());
+        let is_new = matches!(stats, std::collections::hash_map::Entry::Vacant(_));
+        let stats = stats.or_insert_with(|| BlockApplyStats {
+            level,
+            block_timestamp,
+            validation_pass,
+            receive_timestamp,
+            injected: injected_timestamp,
+            ..Default::default()
+        });
         if let Some(peer) = peer {
             stats
                 .peers
@@ -203,6 +206,9 @@ impl StatisticsService {
                 })
                 .head_recv
                 .push(receive_timestamp);
+        }
+        if is_new {
+            Self::add_block_level(levels, blocks_apply, block_hash.clone(), level);
         }
     }
 
