@@ -210,14 +210,15 @@ fn test(chain_level: Level, fork_depth: usize, should_accept: bool) {
 
 #[test]
 fn test_bootstrap_allowed_fork() {
-    for i in 1..10 {
+    for i in 3..10 {
         test(i, 1, true);
+        test(i, 2, true);
     }
 }
 
 #[test]
 fn test_bootstrap_cemented_block_fork_should_be_rejected() {
-    for i in 2..10 {
+    for i in 3..10 {
         test(20, i, false);
     }
 }

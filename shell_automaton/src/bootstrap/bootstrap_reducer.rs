@@ -392,9 +392,6 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     block.header.operations_hash().clone(),
                 ));
 
-                // check if we have finished downloading interval or
-                // if this interval reached predecessor. So that
-                // pred_interval_level == current_interval_next_level.
                 if index == 0 {
                     let pred_level = block.header.level() - 1;
                     let pred_hash = block.header.predecessor();
@@ -405,7 +402,17 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             .to_finished(action.time_as_nanos(), content.peer);
                     } else if current_level - 1 == pred_level {
                         if pred_hash == current_head.header.predecessor() {
-                            // allow 1 level reorg
+                            // allow current head(1 level) reorg
+                            peer_intervals[index]
+                                .current
+                                .to_finished(action.time_as_nanos(), content.peer);
+                        }
+                    } else if current_level - 2 == pred_level {
+                        let head_pred = state.current_head.get_pred();
+                        if head_pred.map_or(false, |head_pred| {
+                            pred_hash == head_pred.header.predecessor()
+                        }) {
+                            // allow current head predecessor(2 level) reorg (MAX)
                             peer_intervals[index]
                                 .current
                                 .to_finished(action.time_as_nanos(), content.peer);
