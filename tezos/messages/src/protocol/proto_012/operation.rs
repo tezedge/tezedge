@@ -3,8 +3,17 @@
 
 //! Operation contents. This is the contents of the opaque field [super::operation::Operation::data].
 //!
-//! Comparing to the previous protocol, new operation [`RegisterGlobalConstant`] has been added.
-//! See http://tezos.gitlab.io/protocols/011_hangzhou.html#global-constants.
+//! Changes comparing to the [`proto_011::operation::Operation`](crate::proto_011::operation::Operation):
+//!
+//!
+//! - Removed `Operation::Endorsement`
+//! - Removed `Operation::EndorsementWithSlot`
+//! - Added `Operation::Preendorsement`
+//! - Added `operation::Operation::Endorsement`
+//! - Added `Operation::DoublePreendorsementEvidence`
+//! - Modified `Operation::DoubleBakingEvidence`
+//! - Modified `Operation::DoubleEndorsementEvidence`
+//! - Added `Operation::SetDepositsLimit`
 
 pub use super::super::proto_011::operation::{
     ActivateAccountOperation, BallotOperation, ContractId, DelegationOperation,
