@@ -1058,6 +1058,8 @@ steps:
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
   user: root
   pull: if-not-exists
+  environment:
+    RUST_BACKTRACE: 1
   volumes:
     - name: cache
       path: /cache

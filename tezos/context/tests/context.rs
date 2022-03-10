@@ -29,7 +29,10 @@ pub fn test_context_set_get_commit_persistent() -> Result<(), anyhow::Error> {
 #[test]
 pub fn test_context_set_get_commit() -> Result<(), anyhow::Error> {
     context_set_get_commit(
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_set_get_commit",
     )
 }
@@ -100,7 +103,10 @@ pub fn test_context_hash_from_working_tree_persistent() -> Result<(), anyhow::Er
 #[test]
 pub fn test_context_hash_from_working_tree_memory() -> Result<(), anyhow::Error> {
     context_hash_from_working_tree(
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_hash_from_working_tree_memory",
     )
 }
@@ -172,7 +178,10 @@ pub fn test_context_delete_and_remove_persistent() -> Result<(), anyhow::Error> 
 #[test]
 pub fn test_context_delete_and_remove() -> Result<(), anyhow::Error> {
     context_delete_and_remove(
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_delete_and_remove",
     )
 }
@@ -355,7 +364,10 @@ pub fn test_context_copy_persistent() -> Result<(), anyhow::Error> {
 #[test]
 pub fn test_context_copy() -> Result<(), anyhow::Error> {
     context_copy(
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+            base_path: "".to_string(),
+            startup_check: false,
+        }),
         "__context:test_context_copy",
     )
 }

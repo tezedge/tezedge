@@ -202,12 +202,14 @@ pub struct StorageMemoryUsage {
 pub struct StringsMemoryUsage {
     pub all_strings_map_cap: usize,
     pub all_strings_map_len: usize,
+    pub all_strings_to_serialize_cap: usize,
     pub all_strings_cap: usize,
     pub all_strings_len: usize,
     pub big_strings_cap: usize,
     pub big_strings_len: usize,
     pub big_strings_map_cap: usize,
     pub big_strings_map_len: usize,
+    pub big_strings_hashes_bytes: usize,
     pub total_bytes: usize,
 }
 
@@ -238,6 +240,8 @@ pub struct RepositoryMemoryUsage {
     pub shapes_total_bytes: usize,
     /// Bytes occupied by commit index in the repository
     pub commit_index_total_bytes: usize,
+    /// Capacity of `HashValueStore::new_ids`
+    pub new_ids_cap: usize,
 }
 
 #[derive(Debug)]

@@ -14,6 +14,7 @@ use tezos_api::ffi::{
 use tezos_context_api::{
     PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_interop::apply_encoded_message;
 use tezos_protocol_ipc_messages::{InitProtocolContextParams, NodeMessage, ProtocolMessage};
@@ -82,7 +83,12 @@ fn test_init_empty_context_for_all_enviroment_expect_custom_nets() {
                     data_dir: common::prepare_empty_dir(storage_data_dir),
                 },
                 TezosContextTezEdgeStorageConfiguration {
-                    backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+                    backend: tezos_context_api::ContextKvStoreConfiguration::InMem(
+                        TezosContextTezedgeOnDiskBackendOptions {
+                            base_path: storage_data_dir.to_string(),
+                            startup_check: false,
+                        },
+                    ),
                     ipc_socket_path: None,
                 },
             );
@@ -159,7 +165,12 @@ fn test_init_empty_context_for_custom_network() {
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem(
+                TezosContextTezedgeOnDiskBackendOptions {
+                    base_path: storage_data_dir.to_string(),
+                    startup_check: false,
+                },
+            ),
             ipc_socket_path: None,
         },
     );
@@ -220,7 +231,12 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), anyhow::E
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem(
+                TezosContextTezedgeOnDiskBackendOptions {
+                    base_path: storage_data_dir.to_string(),
+                    startup_check: false,
+                },
+            ),
             ipc_socket_path: None,
         },
     );
@@ -275,7 +291,12 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), anyhow
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem(
+                TezosContextTezedgeOnDiskBackendOptions {
+                    base_path: storage_data_dir.to_string(),
+                    startup_check: false,
+                },
+            ),
             ipc_socket_path: None,
         },
     );

@@ -11,7 +11,7 @@ pub use tezos_context_api::ContextKvStoreConfiguration;
 use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
 use thiserror::Error;
 
-use crate::kv_store::in_memory::InMemory;
+use crate::kv_store::in_memory::{InMemory, InMemoryConfiguration};
 use crate::kv_store::persistent::{Persistent, PersistentConfiguration};
 use crate::kv_store::readonly_ipc::ReadonlyIpcBackend;
 use crate::persistent::file::OpenFileError;
@@ -57,14 +57,40 @@ pub enum IndexInitializationError {
     ThreadJoinError { reason: String },
 }
 
+#[cfg(not(target_env = "msvc"))]
+fn configure_jemalloc() -> tikv_jemalloc_ctl::Result<()> {
+    use tikv_jemalloc_ctl::background_thread;
+
+    // Enable `background_thread`, the jemalloc devs recommend to disable
+    // them only on "esoteric situations"
+    //
+    // https://github.com/jemalloc/jemalloc/issues/956
+    background_thread::write(true)?;
+    let bg = background_thread::mib()?;
+    log!("background_threads enabled: {}", bg.read()?);
+
+    Ok(())
+}
+
+#[cfg(target_env = "msvc")]
+fn configure_jemalloc() -> tikv_jemalloc_ctl::Result<()> {
+    Ok(())
+}
+
 fn spawn_reload_database(
     repository: Arc<RwLock<ContextKeyValueStore>>,
 ) -> std::io::Result<JoinHandle<()>> {
+    if let Err(e) = configure_jemalloc() {
+        eprintln!("Failed to configure jemalloc: {:?}", e);
+    };
+
     let thread = std::thread::Builder::new().name("db-reload".to_string());
     let (sender, recv) = std::sync::mpsc::channel();
 
     let result = thread.spawn(move || {
+        let start_time = std::time::Instant::now();
         log!("Reloading context");
+
         let mut repository = match repository.write() {
             Ok(repository) => repository,
             Err(e) => {
@@ -81,7 +107,7 @@ fn spawn_reload_database(
         if let Err(e) = repository.reload_database() {
             elog!("Failed to reload repository: {:?}", e);
         }
-        log!("Context reloaded");
+        log!("Context reloaded in {:?}", start_time.elapsed());
     });
 
     // Wait for the spawned thread to lock the repository.
@@ -106,7 +132,12 @@ pub fn initialize_tezedge_index(
                 ipc_socket_path,
             )?)),
         },
-        ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
+        ContextKvStoreConfiguration::InMem(ref options) => {
+            Arc::new(RwLock::new(InMemory::try_new(InMemoryConfiguration {
+                db_path: Some(options.base_path.clone()),
+                startup_check: options.startup_check,
+            })?))
+        }
         ContextKvStoreConfiguration::OnDisk(ref options) => {
             Arc::new(RwLock::new(Persistent::try_new(PersistentConfiguration {
                 db_path: Some(options.base_path.clone()),

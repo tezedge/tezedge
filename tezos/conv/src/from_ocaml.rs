@@ -62,7 +62,7 @@ macro_rules! from_ocaml_typed_hash {
                     let vec: Vec<u8> = v.field::<OCamlBytes>(0).to_rust();
                     use std::convert::TryFrom;
                     $rust_name::try_from(vec).unwrap_or_else(|e| {
-                        unreachable!(format!("Wrong bytes received from OCaml: {:?}", e))
+                        unreachable!("Wrong bytes received from OCaml: {:?}", e)
                     })
                 }
             }
@@ -107,7 +107,7 @@ impl_from_ocaml_record! {
 impl_from_ocaml_variant! {
     OCamlContextKvStoreConfiguration => ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
         ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
