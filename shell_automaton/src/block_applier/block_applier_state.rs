@@ -20,7 +20,10 @@ use crate::Config;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BlockApplierApplyError {
     PrepareData(StorageError),
-    ProtocolRunnerApply(ProtocolServiceError),
+    ProtocolRunnerApply {
+        service_error: ProtocolServiceError,
+        block_hash: Option<Arc<BlockHash>>,
+    },
     StoreApplyResult(StorageError),
 }
 

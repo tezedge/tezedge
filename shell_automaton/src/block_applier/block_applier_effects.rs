@@ -100,20 +100,32 @@ where
                     apply_result: result.clone().into(),
                 }),
                 Err(err) => {
+                    let block_hash = match &store.state.get().block_applier.current {
+                        BlockApplierApplyState::ProtocolRunnerApplyPending { block, .. } => {
+                            Some(Arc::new(block.hash.clone()))
+                        }
+                        _ => None,
+                    };
+
                     if let ProtocolServiceError::ProtocolError {
                         reason: ProtocolError::ApplyBlockError { reason },
                     } = err
                     {
                         if store.dispatch(BlockApplierApplyProtocolRunnerApplyRetryAction {
                             reason: reason.clone(),
+                            block_hash: block_hash.clone(),
                         }) {
                             // if retrying is enabled, return, otherwise
                             // dispatch error action.
                             return;
                         }
                     }
+
                     store.dispatch(BlockApplierApplyErrorAction {
-                        error: BlockApplierApplyError::ProtocolRunnerApply(err.clone()),
+                        error: BlockApplierApplyError::ProtocolRunnerApply {
+                            service_error: err.clone(),
+                            block_hash,
+                        },
                     })
                 }
             };
