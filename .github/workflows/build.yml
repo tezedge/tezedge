@@ -60,5 +60,8 @@ jobs:
           command: check
       - name: cargo test
         uses: actions-rs/cargo@v1
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/tezos/sys/lib_tezos/artifacts/
+          DYLD_LIBRARY_PATH: ${{ github.workspace }}/tezos/sys/lib_tezos/artifacts/
         with:
           command: test

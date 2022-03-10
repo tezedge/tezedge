@@ -3,7 +3,7 @@
 
 use std::{
     array::TryFromSliceError, convert::TryInto, io::Write, num::TryFromIntError, str::Utf8Error,
-    string::FromUtf8Error, sync::Arc,
+    string::FromUtf8Error,
 };
 
 use modular_bitfield::prelude::*;
@@ -11,8 +11,9 @@ use tezos_timing::SerializeStats;
 use thiserror::Error;
 
 use crate::{
+    chunks::ChunkedVec,
     hash::HashingError,
-    kv_store::HashId,
+    kv_store::{in_memory::BATCH_CHUNK_CAPACITY, inline_boxed_slice::InlinedBoxedSlice, HashId},
     persistent::DBError,
     working_tree::{
         shape::DirectoryShapeError,
@@ -34,16 +35,15 @@ const FULL_47_BITS: u64 = 0x7FFFFFFFFFFF;
 const FULL_31_BITS: u64 = 0x7FFFFFFF;
 
 pub type SerializeObjectSignature = fn(
-    &Object,                       // object
-    HashId,                        // object_hash_id
-    &mut Vec<u8>,                  // output
-    &Storage,                      // storage
-    &StringInterner,               // strings
-    &mut SerializeStats,           // statistics
-    &mut Vec<(HashId, Arc<[u8]>)>, // batch
-    &mut Vec<HashId>,              // referenced_older_objects
-    &mut ContextKeyValueStore,     // repository
-    Option<AbsoluteOffset>,        // offset
+    &Object,                                                                // object
+    HashId,                                                                 // object_hash_id
+    &mut Vec<u8>,                                                           // output
+    &Storage,                                                               // storage
+    &StringInterner,                                                        // strings
+    &mut SerializeStats,                                                    // statistics
+    &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>, // batch
+    &mut ContextKeyValueStore,                                              // repository
+    Option<AbsoluteOffset>,                                                 // offset
 ) -> Result<Option<AbsoluteOffset>, SerializationError>;
 
 #[derive(BitfieldSpecifier)]

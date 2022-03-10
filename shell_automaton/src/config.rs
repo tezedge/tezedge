@@ -12,7 +12,7 @@ use storage::StorageInitInfo;
 use tezos_api::{environment::TezosEnvironmentConfiguration, ffi::TezosRuntimeConfiguration};
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
@@ -154,7 +154,12 @@ pub fn default_test_config() -> Config {
             enable_testchain: false,
             storage: TezosContextStorageConfiguration::TezEdgeOnly(
                 TezosContextTezEdgeStorageConfiguration {
-                    backend: ContextKvStoreConfiguration::InMem,
+                    backend: ContextKvStoreConfiguration::InMem(
+                        TezosContextTezedgeOnDiskBackendOptions {
+                            base_path: "/tmp/tezedge".to_string(),
+                            startup_check: false,
+                        },
+                    ),
                     ipc_socket_path: None,
                 },
             ),

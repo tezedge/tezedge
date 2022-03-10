@@ -844,6 +844,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
             let mut storage = index.storage.borrow_mut();
             let mut strings = index.get_string_interner()?;
 
+            strings.shrink_to_fit();
+
             let commit = match self.fetch_commit(object_ref, &mut storage, &mut strings)? {
                 Some(commit) => commit,
                 None => return Ok(None),
@@ -864,11 +866,15 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         )))
     }
 
-    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError> {
+    fn block_applied(
+        &self,
+        block_level: u32,
+        context_hash: &ContextHash,
+    ) -> Result<(), ContextError> {
         Ok(self
             .repository
             .write()?
-            .block_applied(referenced_older_objects)?)
+            .block_applied(block_level, context_hash)?)
     }
 
     fn cycle_started(&mut self) -> Result<(), ContextError> {
@@ -1008,7 +1014,6 @@ impl ShellContextApi for TezedgeContext {
             None,
             None,
             false,
-            false,
         )?;
 
         get_commit_hash(commit_ref, &*repository)
@@ -1122,8 +1127,10 @@ impl TezedgeContext {
             repository.commit(&self.tree, self.parent_commit_ref, author, message, date)?
         };
 
+        let mem = self.get_memory_usage()?;
+
         send_statistics(BlockMemoryUsage {
-            context: Box::new(self.get_memory_usage()?),
+            context: Box::new(mem),
             serialize: serialize_stats,
         });
 
@@ -1133,7 +1140,10 @@ impl TezedgeContext {
 
 #[cfg(test)]
 mod tests {
-    use tezos_context_api::{ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration};
+    use tezos_context_api::{
+        ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
+        TezosContextTezedgeOnDiskBackendOptions,
+    };
 
     use super::*;
     use crate::initializer::initialize_tezedge_context;
@@ -1141,7 +1151,10 @@ mod tests {
     #[test]
     fn init_context() {
         let context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
-            backend: ContextKvStoreConfiguration::InMem,
+            backend: ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+                base_path: "".to_string(),
+                startup_check: false,
+            }),
             ipc_socket_path: None,
         })
         .unwrap();

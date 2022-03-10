@@ -8,8 +8,8 @@ edition = "2021"
 clap = "2.33"
 ctrlc = "3.1.3"
 thiserror = "1.0"
-jemallocator = "0.3.2"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
+tikv-jemallocator = "0.4.3"
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 slog-async = "2.6"
 slog-term = "2.9"
 # local dependencies

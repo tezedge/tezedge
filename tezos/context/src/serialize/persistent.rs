@@ -4,7 +4,7 @@
 //! Serialization/deserialization for objects in the Working Tree so that they can be
 //! saved/loaded to/from the repository.
 
-use std::{borrow::Cow, convert::TryInto, io::Write, sync::Arc};
+use std::{borrow::Cow, convert::TryInto, io::Write};
 
 use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,8 @@ use static_assertions::assert_eq_size;
 use tezos_timing::SerializeStats;
 
 use crate::{
-    kv_store::HashId,
+    chunks::ChunkedVec,
+    kv_store::{in_memory::BATCH_CHUNK_CAPACITY, inline_boxed_slice::InlinedBoxedSlice, HashId},
     serialize::{deserialize_hash_id, serialize_hash_id, ObjectTag},
     working_tree::{
         shape::ShapeStrings,
@@ -83,7 +84,7 @@ struct CommitHeader {
 // Must fit in 1 byte
 assert_eq_size!(CommitHeader, u8);
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub struct AbsoluteOffset(u64);
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct RelativeOffset(u64);
@@ -431,8 +432,7 @@ pub fn serialize_object(
     storage: &Storage,
     strings: &StringInterner,
     stats: &mut SerializeStats,
-    _batch: &mut Vec<(HashId, Arc<[u8]>)>,
-    _referenced_older_objects: &mut Vec<HashId>,
+    _batch: &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &mut ContextKeyValueStore,
     file_offset: Option<AbsoluteOffset>,
 ) -> Result<Option<AbsoluteOffset>, SerializationError> {
@@ -712,8 +712,8 @@ fn serialize_inode(
                 PointersOffsetsHeader::from_pointers(offset, *pointers, storage)?;
             output.write_all(&bitfield_offsets.to_bytes())?;
 
-            for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index)?;
+            for (_, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
 
                 let pointer_offset = storage
                     .pointer_retrieve_offset(&pointer)?
@@ -1214,8 +1214,7 @@ mod tests {
         })
         .unwrap();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         let offset = repo.synchronize_data(&[], &[0, 0, 0, 0, 0, 0]).unwrap();
@@ -1260,7 +1259,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             offset,
         )
@@ -1321,7 +1319,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             offset,
         )
@@ -1382,7 +1379,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             offset,
         )
@@ -1414,7 +1410,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             Some(0.into()),
         )
@@ -1450,7 +1445,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             offset,
         )
@@ -1485,7 +1479,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             offset,
         )
@@ -1676,8 +1669,7 @@ mod tests {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
 
         let fake_hash_id = HashId::try_from(1).unwrap();
 
@@ -1708,7 +1700,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             Some(1.into()),
         )

@@ -111,6 +111,7 @@ pub struct BlockApplierApplyProtocolRunnerApplyRetryAction {
     /// application fails as failure cleans the cache and retry will
     /// resolve cache related issues.
     pub reason: ApplyBlockError,
+    pub block_hash: Option<Arc<BlockHash>>,
 }
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyRetryAction {

@@ -87,7 +87,8 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
         }
         Action::BlockApplierApplyProtocolRunnerApplyRetry(content) => {
             slog::warn!(log, "Block application failed! Retrying...";
-                "error" => format!("{:?}", content.reason));
+                        "error" => format!("{:?}", content.reason),
+                        "block_hash" => format!("{:?}", content.block_hash));
         }
         Action::BlockApplierApplyError(content) => {
             slog::error!(log, "Block application failed";

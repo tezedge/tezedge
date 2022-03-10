@@ -6,24 +6,24 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::chunks::ChunkedVec;
+use crate::chunks::{ChunkedVec, ChunkedVecIter};
 
 /// A container mapping a typed ID to a value.
 ///
 /// The underlying container is a `Vec` and the id is its index.
 #[derive(Debug)]
-pub struct IndexMap<K, V> {
-    entries: ChunkedVec<V>,
+pub struct IndexMap<K, V, const CHUNK_CAPACITY: usize> {
+    pub entries: ChunkedVec<V, CHUNK_CAPACITY>,
     _phantom: PhantomData<K>,
 }
 
-impl<K, V> Default for IndexMap<K, V> {
+impl<K, V, const CHUNK_CAPACITY: usize> Default for IndexMap<K, V, CHUNK_CAPACITY> {
     fn default() -> Self {
-        Self::empty()
+        Self::new()
     }
 }
 
-impl<K, V> IndexMap<K, V> {
+impl<K, V, const CHUNK_CAPACITY: usize> IndexMap<K, V, CHUNK_CAPACITY> {
     pub fn empty() -> Self {
         Self {
             entries: ChunkedVec::empty(),
@@ -31,9 +31,9 @@ impl<K, V> IndexMap<K, V> {
         }
     }
 
-    pub fn with_chunk_capacity(cap: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            entries: ChunkedVec::with_chunk_capacity(cap),
+            entries: ChunkedVec::default(),
             _phantom: PhantomData,
         }
     }
@@ -58,15 +58,27 @@ impl<K, V> IndexMap<K, V> {
         self.entries.iter()
     }
 
+    pub fn iter_with_keys(&self) -> IndexMapIter<'_, K, V, CHUNK_CAPACITY> {
+        IndexMapIter {
+            chunks: self.entries.iter(),
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
     }
 }
 
-impl<K, V> IndexMap<K, V>
+impl<K, V, const CHUNK_CAPACITY: usize> IndexMap<K, V, CHUNK_CAPACITY>
 where
     K: TryInto<usize>,
 {
+    pub fn contains_key(&mut self, key: K) -> Result<bool, K::Error> {
+        let index = key.try_into()?;
+        Ok(index < self.entries.len())
+    }
+
     pub fn set(&mut self, key: K, value: V) -> Result<V, K::Error> {
         Ok(std::mem::replace(&mut self.entries[key.try_into()?], value))
     }
@@ -80,7 +92,7 @@ where
     }
 }
 
-impl<K, V> IndexMap<K, V>
+impl<K, V, const CHUNK_CAPACITY: usize> IndexMap<K, V, CHUNK_CAPACITY>
 where
     K: TryFrom<usize>,
 {
@@ -90,9 +102,9 @@ where
     }
 }
 
-impl<K, V> IndexMap<K, V>
+impl<K, V, const CHUNK_CAPACITY: usize> IndexMap<K, V, CHUNK_CAPACITY>
 where
-    K: TryInto<usize>,
+    K: TryInto<usize> + Copy,
     K: TryFrom<usize>,
     V: Default,
 {
@@ -109,5 +121,37 @@ where
         }
 
         Ok(std::mem::replace(&mut self.entries[index], value))
+    }
+
+    pub fn entry(&mut self, key: K) -> Result<&mut V, <K as TryInto<usize>>::Error> {
+        if self.contains_key(key)? {
+            return Ok(self.get_mut(key)?.unwrap()); // Never fails, `Self::contains_key` returned `true`
+        }
+
+        let index: usize = key.try_into()?;
+        if index >= self.entries.len() {
+            self.entries.resize_with(index + 1, V::default);
+        }
+
+        Ok(self.get_mut(key)?.unwrap()) // Never fails, we just resized it
+    }
+}
+
+pub struct IndexMapIter<'a, K, V, const CHUNK_CAPACITY: usize> {
+    chunks: ChunkedVecIter<'a, V, CHUNK_CAPACITY>,
+    _phantom: PhantomData<K>,
+}
+
+impl<'a, K, V, const CHUNK_CAPACITY: usize> Iterator for IndexMapIter<'a, K, V, CHUNK_CAPACITY>
+where
+    K: TryFrom<usize>,
+{
+    type Item = (K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.chunks.index;
+        let index: K = index.try_into().ok()?;
+
+        self.chunks.next().map(|v| (index, v))
     }
 }

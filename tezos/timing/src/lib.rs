@@ -202,12 +202,14 @@ pub struct StorageMemoryUsage {
 pub struct StringsMemoryUsage {
     pub all_strings_map_cap: usize,
     pub all_strings_map_len: usize,
+    pub all_strings_to_serialize_cap: usize,
     pub all_strings_cap: usize,
     pub all_strings_len: usize,
     pub big_strings_cap: usize,
     pub big_strings_len: usize,
     pub big_strings_map_cap: usize,
     pub big_strings_map_len: usize,
+    pub big_strings_hashes_bytes: usize,
     pub total_bytes: usize,
 }
 
@@ -238,6 +240,8 @@ pub struct RepositoryMemoryUsage {
     pub shapes_total_bytes: usize,
     /// Bytes occupied by commit index in the repository
     pub commit_index_total_bytes: usize,
+    /// Capacity of `HashValueStore::new_ids`
+    pub new_ids_cap: usize,
 }
 
 #[derive(Debug)]
@@ -1172,25 +1176,9 @@ impl Timing {
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
         let query_name = query.query_kind.to_str();
 
-        let (root, key_id) = if query.key.is_empty() {
-            (None, None)
-        } else {
-            let key = query.key.as_str();
-
-            let root = match key.split_once('/') {
-                Some(slice) => slice.0,
-                None => key,
-            };
-
-            let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
-
-            stmt.execute([key])?;
-
-            let mut stmt = sql.prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
-
-            let key_id: usize = stmt.query_row([key], |row| row.get(0))?;
-
-            (Some(root), Some(key_id))
+        let root = match query.key.as_str().split_once('/') {
+            Some((root, _)) if !root.is_empty() => Some(root),
+            _ => None,
         };
 
         // TODO - TE-261: disabled for now because it is not used for anything
@@ -1198,6 +1186,15 @@ impl Timing {
         // We probably want to also add some kind of garbage collection to only keep
         // values for the last N cycles, and not everything since the beginning.
         if false {
+            let key = query.key.as_str();
+
+            let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
+            stmt.execute([key])?;
+
+            let mut stmt = sql.prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
+
+            let key_id: usize = stmt.query_row([key], |row| row.get(0))?;
+
             if let Some(transaction) = transaction.as_ref() {
                 let mut stmt = transaction.prepare_cached(
                     "

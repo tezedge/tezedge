@@ -11,7 +11,7 @@ use std::{
 };
 
 #[cfg(test)]
-use std::sync::Arc;
+use super::inline_boxed_slice::InlinedBoxedSlice;
 
 use blake2::{
     digest::{Update, VariableOutput},
@@ -32,7 +32,7 @@ use crate::{
         },
         get_commit_hash,
         lock::Lock,
-        DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics,
+        DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics, ReloadError,
     },
     serialize::{
         deserialize_hash_id,
@@ -133,6 +133,12 @@ pub struct Persistent {
     startup_check: bool,
     last_commit_on_startup: Option<ObjectReference>,
     read_statistics: Option<Mutex<ReadStatistics>>,
+}
+
+impl Drop for Persistent {
+    fn drop(&mut self) {
+        elog!("Dropping Persistent context");
+    }
 }
 
 impl NotGarbageCollected for Persistent {}
@@ -714,7 +720,7 @@ hashes_file={:?}, in sizes.db={:?}",
     pub fn put_hash(&mut self, hash: ObjectHash) -> Result<HashId, DBError> {
         let hash_id = self
             .get_vacant_object_hash()?
-            .write_with(|entry| *entry = hash);
+            .write_with(|entry| *entry = hash)?;
         Ok(hash_id)
     }
 
@@ -900,7 +906,7 @@ fn serialize_context_hash(
 }
 
 impl KeyValueStoreBackend for Persistent {
-    fn reload_database(&mut self) -> Result<(), DBError> {
+    fn reload_database(&mut self) -> Result<(), ReloadError> {
         if let Err(e) = self.reload_database() {
             elog!("Failed to reload database: {:?}", e);
             return Err(e.into());
@@ -957,7 +963,7 @@ impl KeyValueStoreBackend for Persistent {
         let strings_total_bytes = self.string_interner.memory_usage().total_bytes;
         let hashes_capacity = self.hashes.in_memory.total_capacity();
         let shapes_total_bytes = self.shapes.total_bytes();
-        let commit_index_total_bytes = self.context_hashes.capacity()
+        let commit_index_total_bytes = self.context_hashes.len()
             * (std::mem::size_of::<ObjectReference>() + std::mem::size_of::<u64>());
 
         let total_bytes = (hashes_capacity * std::mem::size_of::<ObjectHash>())
@@ -978,6 +984,7 @@ impl KeyValueStoreBackend for Persistent {
             strings_total_bytes,
             shapes_total_bytes,
             commit_index_total_bytes,
+            new_ids_cap: 0,
         }
     }
 
@@ -1096,7 +1103,6 @@ impl KeyValueStoreBackend for Persistent {
                 self,
                 Some(persistent::serialize_object),
                 Some(offset),
-                false,
                 enable_dedub_objects,
             )
             .map_err(Box::new)?;
@@ -1147,7 +1153,7 @@ impl KeyValueStoreBackend for Persistent {
     #[cfg(test)]
     fn synchronize_data(
         &mut self,
-        _batch: &[(HashId, Arc<[u8]>)],
+        _batch: &[(HashId, InlinedBoxedSlice)],
         output: &[u8],
     ) -> Result<Option<AbsoluteOffset>, DBError> {
         self.commit_to_disk(output)?;

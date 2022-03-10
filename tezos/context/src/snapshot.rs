@@ -53,11 +53,11 @@ pub fn read_commit_tree(
 > {
     let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(ctx));
     let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-    let context = index.checkout(&checkout_context_hash)?.unwrap();
+    let context = index.checkout(checkout_context_hash)?.unwrap();
 
     // Take the commit from repository
     let commit: Commit = index
-        .fetch_commit_from_context_hash(&checkout_context_hash)?
+        .fetch_commit_from_context_hash(checkout_context_hash)?
         .unwrap();
 
     // If the commit has a parent, fetch it
@@ -85,6 +85,7 @@ pub fn read_commit_tree(
 }
 
 /// Creates a new database to dump the context to
+#[allow(clippy::too_many_arguments)]
 pub fn create_new_database(
     mut tree: WorkingTree,
     mut storage: Storage,
@@ -166,10 +167,10 @@ pub fn recompute_hashes(
     let read_repo: Arc<RwLock<ContextKeyValueStore>> = Arc::new(RwLock::new(read_ctx));
 
     let index = TezedgeIndex::new(Arc::clone(&read_repo), None);
-    let mut context = index.checkout(&checkout_context_hash)?.unwrap();
+    let mut context = index.checkout(checkout_context_hash)?.unwrap();
 
     let commit: Commit = index
-        .fetch_commit_from_context_hash(&checkout_context_hash)?
+        .fetch_commit_from_context_hash(checkout_context_hash)?
         .unwrap();
     context.parent_commit_ref = commit.parent_commit_ref;
 

@@ -3,31 +3,33 @@
 
 use std::{
     borrow::Cow,
+    fmt::Debug,
     ops::{Index, IndexMut, Range},
 };
+
+use crate::gc::SortedMap;
 
 use super::{Chunk, DEFAULT_LIST_LENGTH};
 
 /// Structure allocating multiple `Chunk`
 ///
 /// Example:
-/// ```no_run
+/// ```
 /// use tezos_context::chunks::ChunkedVec;
 ///
-/// let mut chunks = ChunkedVec::with_chunk_capacity(1000);
+/// let mut chunks = ChunkedVec::<_, 1000>::default();
 /// let (start, length) = chunks.extend_from_slice(&[1, 2, 3]);
 /// assert_eq!(&*chunks.get_slice(start..start + length).unwrap(), &[1, 2, 3]);
 /// assert_eq!(*chunks.get(start).unwrap(), 1);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChunkedVec<T> {
-    list_of_chunks: Vec<Chunk<T>>,
-    chunk_capacity: usize,
+pub struct ChunkedVec<T, const CHUNK_CAPACITY: usize> {
+    pub list_of_chunks: Vec<Chunk<T>>,
     /// Number of elements in the chunks
     nelems: usize,
 }
 
-impl<T> Index<usize> for ChunkedVec<T> {
+impl<T, const CHUNK_CAPACITY: usize> Index<usize> for ChunkedVec<T, CHUNK_CAPACITY> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -37,7 +39,7 @@ impl<T> Index<usize> for ChunkedVec<T> {
     }
 }
 
-impl<T> IndexMut<usize> for ChunkedVec<T> {
+impl<T, const CHUNK_CAPACITY: usize> IndexMut<usize> for ChunkedVec<T, CHUNK_CAPACITY> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let (list_index, chunk_index) = self.get_indexes_at(index);
 
@@ -45,12 +47,12 @@ impl<T> IndexMut<usize> for ChunkedVec<T> {
     }
 }
 
-pub struct ChunkedVecIter<'a, T> {
-    chunks: &'a ChunkedVec<T>,
-    index: usize,
+pub struct ChunkedVecIter<'a, T, const CHUNK_CAPACITY: usize> {
+    chunks: &'a ChunkedVec<T, CHUNK_CAPACITY>,
+    pub index: usize,
 }
 
-impl<'a, T> Iterator for ChunkedVecIter<'a, T> {
+impl<'a, T, const CHUNK_CAPACITY: usize> Iterator for ChunkedVecIter<'a, T, CHUNK_CAPACITY> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -60,7 +62,7 @@ impl<'a, T> Iterator for ChunkedVecIter<'a, T> {
     }
 }
 
-impl<T> ChunkedVec<T>
+impl<T, const CHUNK_CAPACITY: usize> ChunkedVec<T, CHUNK_CAPACITY>
 where
     T: Clone,
 {
@@ -70,12 +72,11 @@ where
     pub fn extend_from_slice(&mut self, slice: &[T]) -> (usize, usize) {
         let start = self.len();
         let slice_length = slice.len();
-        let chunk_capacity = self.chunk_capacity;
         let mut remaining_slice = slice;
 
         while !remaining_slice.is_empty() {
             let last_chunk = self.get_next_chunk();
-            let space_in_chunk = chunk_capacity - last_chunk.len();
+            let space_in_chunk = CHUNK_CAPACITY - last_chunk.len();
 
             let (slice, rest) = if remaining_slice.len() > space_in_chunk {
                 remaining_slice.split_at(space_in_chunk)
@@ -91,6 +92,12 @@ where
         (start, slice_length)
     }
 
+    pub fn extend_from_chunks(&mut self, other: &Self) {
+        for chunk in &other.list_of_chunks {
+            self.extend_from_slice(chunk);
+        }
+    }
+
     /// Appends `other` in the last chunk.
     ///
     /// Return the index of the slice in the chunks, and its length
@@ -99,6 +106,13 @@ where
         other.truncate(0);
 
         (start, length)
+    }
+
+    /// Appends `other` chunks.
+    pub fn append_chunks<const OTHER_CAP: usize>(&mut self, mut other: ChunkedVec<T, OTHER_CAP>) {
+        while let Some(mut chunk) = other.pop_first_chunk() {
+            self.append(&mut chunk);
+        }
     }
 
     pub fn extend_from(&mut self, other: &Self) {
@@ -135,7 +149,7 @@ where
 
         let chunk = self.list_of_chunks.get(list_index)?;
 
-        if chunk_index + slice_length <= self.chunk_capacity {
+        if chunk_index + slice_length <= CHUNK_CAPACITY {
             chunk
                 .get(chunk_index..chunk_index + slice_length)
                 .map(Cow::Borrowed)
@@ -147,7 +161,7 @@ where
 
             while length > 0 {
                 let chunk = iter_chunk.next()?;
-                let end_in_chunk = (start_in_chunk + length).min(self.chunk_capacity);
+                let end_in_chunk = (start_in_chunk + length).min(CHUNK_CAPACITY);
 
                 let part_slice = chunk.get(start_in_chunk..end_in_chunk)?;
                 slice.extend_from_slice(part_slice);
@@ -163,33 +177,37 @@ where
     }
 }
 
-impl<T> ChunkedVec<T> {
+impl<T, const CHUNK_CAPACITY: usize> Default for ChunkedVec<T, CHUNK_CAPACITY> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T, const CHUNK_CAPACITY: usize> ChunkedVec<T, CHUNK_CAPACITY> {
     /// Returns a new `ChunkedVec<T>` without allocating
     pub fn empty() -> Self {
         Self {
             list_of_chunks: Vec::new(),
-            chunk_capacity: 1_000,
             nelems: 0,
         }
     }
 
-    pub fn with_chunk_capacity(chunk_capacity: usize) -> Self {
-        assert_ne!(chunk_capacity, 0);
+    pub fn new() -> Self {
+        assert_ne!(CHUNK_CAPACITY, 0);
 
-        let chunk: Vec<T> = Vec::with_capacity(chunk_capacity);
+        let chunk: Vec<T> = Vec::with_capacity(CHUNK_CAPACITY);
 
         let mut list_of_vec: Vec<Chunk<T>> = Vec::with_capacity(DEFAULT_LIST_LENGTH);
         list_of_vec.push(chunk);
 
         Self {
             list_of_chunks: list_of_vec,
-            chunk_capacity,
             nelems: 0,
         }
     }
 
     pub fn capacity(&self) -> usize {
-        self.chunk_capacity * self.list_of_chunks.len()
+        CHUNK_CAPACITY * self.list_of_chunks.len()
     }
 
     /// Returns the last chunk with space available.
@@ -198,7 +216,7 @@ impl<T> ChunkedVec<T> {
     /// - The last chunk has reached `Self::chunk_capacity` limit
     /// - `Self::list_of_chunks` is empty
     fn get_next_chunk(&mut self) -> &mut Chunk<T> {
-        let chunk_capacity = self.chunk_capacity;
+        let chunk_capacity = CHUNK_CAPACITY;
 
         let must_alloc_new_chunk = self
             .list_of_chunks
@@ -210,8 +228,7 @@ impl<T> ChunkedVec<T> {
             .unwrap_or(true);
 
         if must_alloc_new_chunk {
-            self.list_of_chunks
-                .push(Vec::with_capacity(self.chunk_capacity));
+            self.list_of_chunks.push(Vec::with_capacity(CHUNK_CAPACITY));
         }
 
         // Never fail, we just allocated one in case it's empty
@@ -242,20 +259,24 @@ impl<T> ChunkedVec<T> {
     }
 
     fn get_indexes_at(&self, index: usize) -> (usize, usize) {
-        let list_index = index / self.chunk_capacity;
-        let chunk_index = index % self.chunk_capacity;
+        let list_index = index / CHUNK_CAPACITY;
+        let chunk_index = index % CHUNK_CAPACITY;
 
         (list_index, chunk_index)
     }
 
-    pub fn iter(&self) -> ChunkedVecIter<T> {
+    pub fn nchunks(&self) -> usize {
+        self.list_of_chunks.len()
+    }
+
+    pub fn iter(&self) -> ChunkedVecIter<T, CHUNK_CAPACITY> {
         ChunkedVecIter {
             chunks: self,
             index: 0,
         }
     }
 
-    pub fn iter_from(&self, start: usize) -> ChunkedVecIter<T> {
+    pub fn iter_from(&self, start: usize) -> ChunkedVecIter<T, CHUNK_CAPACITY> {
         ChunkedVecIter {
             chunks: self,
             index: start,
@@ -306,6 +327,55 @@ impl<T> ChunkedVec<T> {
         };
         self.nelems = 0;
     }
+
+    pub fn pop_first_chunk(&mut self) -> Option<Vec<T>> {
+        if self.list_of_chunks.is_empty() {
+            None
+        } else {
+            let chunk = self.list_of_chunks.remove(0);
+            self.nelems -= chunk.len();
+            Some(chunk)
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        let last_chunk = self.list_of_chunks.last_mut()?;
+        let last_item = last_chunk.pop()?;
+
+        if last_chunk.is_empty() {
+            self.list_of_chunks.pop();
+        }
+
+        Some(last_item)
+    }
+
+    #[cfg(test)]
+    pub fn to_vec(self) -> Vec<T> {
+        let mut vec = Vec::with_capacity(self.nelems);
+        for mut chunk in self.list_of_chunks.into_iter() {
+            vec.append(&mut chunk);
+        }
+        vec
+    }
+}
+
+impl<K, V, const CHUNK_CAPACITY: usize> ChunkedVec<(K, V), CHUNK_CAPACITY>
+where
+    K: Ord + Copy,
+{
+    pub fn into_sorted_map(&mut self) -> SortedMap<K, V> {
+        let mut map = SortedMap::default();
+
+        while !self.list_of_chunks.is_empty() {
+            let chunk = self.list_of_chunks.remove(0);
+            for (k, v) in chunk.into_iter() {
+                map.insert(k, v);
+            }
+        }
+
+        map.shrink_to_fit();
+        map
+    }
 }
 
 #[cfg(test)]
@@ -315,8 +385,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_chunked_pop() {
+        let mut chunks = ChunkedVec::<_, 2>::default();
+        assert!(chunks.pop().is_none());
+
+        chunks.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7]);
+
+        assert_eq!(chunks.pop().unwrap(), 7);
+        assert_eq!(chunks.pop().unwrap(), 6);
+        assert_eq!(chunks.pop().unwrap(), 5);
+        assert_eq!(chunks.pop().unwrap(), 4);
+        assert_eq!(chunks.pop().unwrap(), 3);
+        assert_eq!(chunks.pop().unwrap(), 2);
+        assert_eq!(chunks.pop().unwrap(), 1);
+        assert!(chunks.pop().is_none());
+    }
+
+    #[test]
+    fn test_chunked_pop_chunk() {
+        let mut chunks = ChunkedVec::<_, 2>::default();
+        assert!(chunks.pop().is_none());
+        assert_eq!(chunks.capacity(), 2);
+
+        chunks.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(chunks.len(), 7);
+        assert_eq!(chunks.capacity(), 8);
+
+        chunks.pop_first_chunk().unwrap();
+        assert_eq!(chunks.len(), 5);
+        assert_eq!(chunks.get_slice(0..5).unwrap(), &[3, 4, 5, 6, 7][..]);
+        assert_eq!(chunks.capacity(), 6);
+
+        chunks.pop_first_chunk().unwrap();
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks.get_slice(0..3).unwrap(), &[5, 6, 7][..]);
+        assert_eq!(chunks.capacity(), 4);
+
+        chunks.pop_first_chunk().unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks.get_slice(0..1).unwrap(), &[7][..]);
+        assert_eq!(chunks.capacity(), 2);
+
+        chunks.pop_first_chunk().unwrap();
+        assert_eq!(chunks.len(), 0);
+        assert_eq!(chunks.capacity(), 0);
+
+        assert!(chunks.pop_first_chunk().is_none());
+    }
+
+    #[test]
     fn test_chunked_without_alloc() {
-        let mut chunks = ChunkedVec::with_chunk_capacity(5);
+        let mut chunks = ChunkedVec::<_, 5>::default();
 
         chunks.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7]);
 
@@ -338,25 +457,37 @@ mod tests {
 
     #[test]
     fn test_chunked() {
+        macro_rules! call_test_chunked_impl {
+            ($source_size:expr, $extend_by:expr, $($N:tt),*) => ({
+                $(test_chunked_impl::<$N>($source_size, $extend_by);)*
+            })
+        }
+
         let source_sizes: Vec<_> = successors(Some(1), |n| Some(n + 1)).take(61).collect();
-        let chunk_caps = source_sizes.clone();
+        // let chunk_caps = source_sizes.clone();
         let extend_by = &[1, 2, 3, 4];
 
         for source_size in &source_sizes {
-            for chunk_cap in &chunk_caps {
-                for extend_by in extend_by {
-                    test_chunked_impl(*source_size, *chunk_cap, *extend_by);
-                }
+            for extend_by in extend_by {
+                // Call test_chunked_impl with different CHUNK_CAPACITY
+                #[rustfmt::skip]
+                call_test_chunked_impl!(
+                    *source_size, *extend_by,
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+                    38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+                    55, 56, 57, 58, 59, 60, 61
+                );
             }
         }
     }
 
-    fn test_chunked_impl(source_size: usize, chunk_cap: usize, extend_by: usize) {
+    fn test_chunked_impl<const CHUNK_CAPACITY: usize>(source_size: usize, extend_by: usize) {
         let source: Vec<usize> = successors(Some(0), |n| Some(n + 1))
             .take(source_size)
             .collect();
 
-        let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
+        let mut chunks = ChunkedVec::<_, CHUNK_CAPACITY>::default();
 
         for i in 0..source_size {
             chunks.push(i);
@@ -365,7 +496,7 @@ mod tests {
         let slice = chunks.get_slice(0..source_size).unwrap();
         assert_eq!(slice, source);
 
-        let mut chunks = ChunkedVec::with_chunk_capacity(chunk_cap);
+        let mut chunks = ChunkedVec::<_, CHUNK_CAPACITY>::default();
 
         for sub_slice in source.chunks(extend_by) {
             chunks.extend_from_slice(sub_slice);

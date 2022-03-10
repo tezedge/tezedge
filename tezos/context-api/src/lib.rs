@@ -74,7 +74,7 @@ pub struct TezosContextTezedgeOnDiskBackendOptions {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ContextKvStoreConfiguration {
     ReadOnlyIpc,
-    InMem,
+    InMem(TezosContextTezedgeOnDiskBackendOptions),
     OnDisk(TezosContextTezedgeOnDiskBackendOptions),
 }
 

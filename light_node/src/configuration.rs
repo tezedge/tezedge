@@ -1196,7 +1196,15 @@ impl Environment {
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
-                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem(
+                            TezosContextTezedgeOnDiskBackendOptions {
+                                base_path: get_final_path(&tezos_data_dir, "context".into())
+                                    .into_os_string()
+                                    .into_string()
+                                    .unwrap(),
+                                startup_check,
+                            },
+                        ),
                         SupportedContextKeyValueStore::OnDisk => {
                             ContextKvStoreConfiguration::OnDisk(
                                 TezosContextTezedgeOnDiskBackendOptions {

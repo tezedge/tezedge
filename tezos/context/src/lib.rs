@@ -152,7 +152,6 @@ use std::sync::PoisonError;
 
 use gc::GarbageCollectionError;
 pub use kv_store::persistent::Persistent;
-use kv_store::HashId;
 
 use persistent::{DBError, KeyValueStoreBackend};
 use tezos_context_api::{ContextKey, ContextKeyOwned, ContextValue, StringTreeObject};
@@ -221,7 +220,11 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
     // called after a block is applied
-    fn block_applied(&self, referenced_older_objects: Vec<HashId>) -> Result<(), ContextError>;
+    fn block_applied(
+        &self,
+        block_level: u32,
+        context_hash: &ContextHash,
+    ) -> Result<(), ContextError>;
     // called when a new cycle starts
     fn cycle_started(&mut self) -> Result<(), ContextError>;
     // get value for key from a point in history indicated by context hash
@@ -459,4 +462,4 @@ impl std::hash::Hasher for NoHash {
 /// This is useful when the keys of the map are integers (u8, u32, u64, etc.)
 /// Since the keys are already integers, they do not need to be hashed.
 /// This `Map` will not call any hashing algorithm.
-pub type Map<K, V> = std::collections::HashMap<K, V, NoHash>;
+pub type Map<K, V> = std::collections::BTreeMap<K, V>;
