@@ -18,7 +18,7 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
-    MioPeerStreamMocked, MioServiceMocked, ProtocolRunnerServiceDummy, ProtocolServiceDummy,
+    MioPeerStreamMocked, MioServiceMocked, PrevalidatorServiceDummy, ProtocolRunnerServiceDummy,
     QuotaServiceDummy, RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
 };
 use crate::service::{Service, TimeService};
@@ -41,7 +41,7 @@ pub struct ServiceMocked {
     pub rpc: RpcServiceDummy,
     pub actors: ActorsServiceDummy,
     pub quota: QuotaServiceDummy,
-    pub protocol: ProtocolServiceDummy,
+    pub prevalidator: PrevalidatorServiceDummy,
 }
 
 impl ServiceMocked {
@@ -56,7 +56,7 @@ impl ServiceMocked {
             rpc: RpcServiceDummy::new(),
             actors: ActorsServiceDummy::new(),
             quota: QuotaServiceDummy::new(),
-            protocol: ProtocolServiceDummy::new(),
+            prevalidator: PrevalidatorServiceDummy::new(),
         }
     }
 
@@ -80,7 +80,7 @@ impl Service for ServiceMocked {
     type Rpc = RpcServiceDummy;
     type Actors = ActorsServiceDummy;
     type Quota = QuotaServiceDummy;
-    type Protocol = ProtocolServiceDummy;
+    type Prevalidator = PrevalidatorServiceDummy;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -114,8 +114,8 @@ impl Service for ServiceMocked {
         &mut self.quota
     }
 
-    fn protocol(&mut self) -> &mut Self::Protocol {
-        &mut self.protocol
+    fn prevalidator(&mut self) -> &mut Self::Prevalidator {
+        &mut self.prevalidator
     }
 }
 

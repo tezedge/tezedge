@@ -23,8 +23,8 @@ pub use rpc_service::*;
 mod mio_service;
 pub use mio_service::*;
 
-mod protocol_service;
-pub use protocol_service::*;
+mod prevalidator_service;
+pub use prevalidator_service::*;
 
 mod protocol_runner_service;
 pub use protocol_runner_service::*;

@@ -38,7 +38,7 @@ use crate::{
     rights::Slot,
 };
 use crate::{
-    service::{ProtocolService, RpcService},
+    service::{PrevalidatorService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
@@ -258,7 +258,7 @@ where
                     };
                     store
                         .service()
-                        .protocol()
+                        .prevalidator()
                         .begin_construction_for_prevalidation(req);
                     return;
                 }
@@ -275,7 +275,7 @@ where
                 let block_hash = block.hash.clone();
                 store
                     .service()
-                    .protocol()
+                    .prevalidator()
                     .begin_construction_for_prevalidation(req);
                 store.dispatch(kv_operations::StorageOperationsGetAction {
                     key: block_hash.into(),
@@ -564,7 +564,7 @@ where
                 };
                 store
                     .service()
-                    .protocol()
+                    .prevalidator()
                     .validate_operation_for_prevalidation(validate_req);
             } else {
                 store.dispatch(MempoolValidateWaitPrevalidatorAction {

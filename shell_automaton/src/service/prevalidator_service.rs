@@ -13,17 +13,16 @@ use tezos_protocol_ipc_client::{
 use crate::protocol::ProtocolAction;
 
 // TODO(vlad): proper error
-pub trait ProtocolService {
+pub trait PrevalidatorService {
     fn try_recv(&mut self) -> Result<ProtocolAction, ()>;
 
-    fn init_protocol_for_read(&mut self);
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest);
     fn validate_operation_for_prevalidation(&mut self, request: ValidateOperationRequest);
     fn begin_construction_for_mempool(&mut self, request: BeginConstructionRequest);
     fn validate_operation_for_mempool(&mut self, request: ValidateOperationRequest);
 }
 
-pub struct ProtocolServiceDefault {
+pub struct PrevalidatorServiceDefault {
     api: Arc<ProtocolRunnerApi>,
     connection: Arc<Mutex<Option<ProtocolRunnerConnection>>>,
     responses: mpsc::Receiver<(ProtocolAction, usize)>,
@@ -33,10 +32,10 @@ pub struct ProtocolServiceDefault {
     tasks: HashMap<usize, tokio::task::JoinHandle<()>>,
 }
 
-impl ProtocolServiceDefault {
+impl PrevalidatorServiceDefault {
     pub fn new(mio_waker: Arc<mio::Waker>, api: Arc<ProtocolRunnerApi>) -> Self {
         let (tx, rx) = mpsc::channel(1024);
-        ProtocolServiceDefault {
+        PrevalidatorServiceDefault {
             api,
             connection: Arc::new(Mutex::new(None)),
             responses: rx,
@@ -96,7 +95,7 @@ impl ProtocolServiceDefault {
     }
 }
 
-impl ProtocolService for ProtocolServiceDefault {
+impl PrevalidatorService for PrevalidatorServiceDefault {
     fn try_recv(&mut self) -> Result<ProtocolAction, ()> {
         self.responses
             .try_recv()
@@ -106,20 +105,6 @@ impl ProtocolService for ProtocolServiceDefault {
                 response
             })
             .map_err(|_| ())
-    }
-
-    fn init_protocol_for_read(&mut self) {
-        self.spawn(|connection| async move {
-            connection
-                .lock()
-                .await
-                .as_mut()
-                // the `cn` here cannot be None, it is a contract of `Self::spawn` method
-                .unwrap()
-                .init_protocol_for_read()
-                .await
-                .map(ProtocolAction::InitProtocolDone)
-        })
     }
 
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {

@@ -1,25 +1,23 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-pub use shell_automaton::{protocol::ProtocolAction, service::ProtocolService};
+pub use shell_automaton::{protocol::ProtocolAction, service::PrevalidatorService};
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 #[derive(Debug, Clone)]
-pub struct ProtocolServiceDummy {}
+pub struct PrevalidatorServiceDummy {}
 
-impl ProtocolServiceDummy {
+impl PrevalidatorServiceDummy {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl ProtocolService for ProtocolServiceDummy {
+impl PrevalidatorService for PrevalidatorServiceDummy {
     fn try_recv(&mut self) -> Result<ProtocolAction, ()> {
         Err(())
     }
-
-    fn init_protocol_for_read(&mut self) {}
 
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {
         let _ = request;

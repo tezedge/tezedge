@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crypto::hash::{BlockHash, ChainId};
 
@@ -110,7 +111,7 @@ pub struct BlockApplierApplyProtocolRunnerApplyRetryAction {
     /// Because of the issues in the cache, we have to retry if block
     /// application fails as failure cleans the cache and retry will
     /// resolve cache related issues.
-    pub reason: ApplyBlockError,
+    pub reason: ProtocolServiceError,
     pub block_hash: Option<Arc<BlockHash>>,
 }
 

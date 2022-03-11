@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, ChainId};
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
 use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::request::RequestId;
@@ -62,7 +62,7 @@ pub enum BlockApplierApplyState {
         apply_block_req: Arc<ApplyBlockRequest>,
 
         /// Is retry or not and if yes, what is the reason.
-        retry: Option<ApplyBlockError>,
+        retry: Option<ProtocolServiceError>,
     },
     ProtocolRunnerApplySuccess {
         time: u64,
@@ -73,7 +73,7 @@ pub enum BlockApplierApplyState {
         block_meta: Arc<Meta>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
-        retry: Option<ApplyBlockError>,
+        retry: Option<ProtocolServiceError>,
     },
 
     StoreApplyResultPending {
@@ -86,7 +86,7 @@ pub enum BlockApplierApplyState {
         block_meta: Arc<Meta>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
-        retry: Option<ApplyBlockError>,
+        retry: Option<ProtocolServiceError>,
     },
     StoreApplyResultSuccess {
         time: u64,
@@ -98,7 +98,7 @@ pub enum BlockApplierApplyState {
         block_additional_data: Arc<BlockAdditionalData>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
-        retry: Option<ApplyBlockError>,
+        retry: Option<ProtocolServiceError>,
     },
 
     Error {
@@ -116,7 +116,7 @@ pub enum BlockApplierApplyState {
         block_additional_data: Arc<BlockAdditionalData>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
-        retry: Option<ApplyBlockError>,
+        retry: Option<ProtocolServiceError>,
     },
 }
 
