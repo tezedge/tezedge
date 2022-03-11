@@ -619,16 +619,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction {}) => {
             mempool_state.operation_streams.clear();
         }
-        Action::MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction {
-            operation,
-        }) => {
-            mempool_state
-                .wait_prevalidator_operations
-                .push(operation.clone());
-        }
-        Action::MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction {}) => {
-            mempool_state.wait_prevalidator_operations.clear();
-        }
         Action::MempoolRpcRespond(MempoolRpcRespondAction {}) => {
             mempool_state.injected_rpc_ids.clear();
         }
@@ -784,30 +774,20 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // to validate again with new prevalidator
                 for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
                     if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                        mempool_state
-                            .pending_operations
-                            .insert(v.hash.into(), op.clone());
-                        mempool_state.wait_prevalidator_operations.push(op);
+                        mempool_state.pending_operations.insert(v.hash.into(), op);
                     }
                 }
-            } else {
-                // remove all remaining `applied` results and all `branch_delayed` results,
-                // put them into `pending_operations` to validate again with new prevalidator
-                for v in mem::take(&mut mempool_state.validated_operations.branch_delayed) {
-                    if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                        mempool_state
-                            .pending_operations
-                            .insert(v.hash.into(), op.clone());
-                        mempool_state.wait_prevalidator_operations.push(op);
-                    }
+            }
+            // remove all remaining `applied` results and all `branch_delayed` results,
+            // put them into `pending_operations` to validate again with new prevalidator
+            for v in mem::take(&mut mempool_state.validated_operations.branch_delayed) {
+                if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                    mempool_state.pending_operations.insert(v.hash.into(), op);
                 }
-                for v in mem::take(&mut mempool_state.validated_operations.applied) {
-                    if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                        mempool_state
-                            .pending_operations
-                            .insert(v.hash.into(), op.clone());
-                        mempool_state.wait_prevalidator_operations.push(op);
-                    }
+            }
+            for v in mem::take(&mut mempool_state.validated_operations.applied) {
+                if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                    mempool_state.pending_operations.insert(v.hash.into(), op);
                 }
             }
         }

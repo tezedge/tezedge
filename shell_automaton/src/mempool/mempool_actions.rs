@@ -128,32 +128,6 @@ impl EnablingCondition<State> for MempoolValidateStartAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolValidateWaitPrevalidatorAction {
-    pub operation: Operation,
-}
-
-impl EnablingCondition<State> for MempoolValidateWaitPrevalidatorAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolCleanupWaitPrevalidatorAction {}
-
-impl EnablingCondition<State> for MempoolCleanupWaitPrevalidatorAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolRegisterOperationsStreamAction {
     pub rpc_id: RpcId,
     pub applied: bool,

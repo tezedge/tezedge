@@ -69,11 +69,15 @@ where
     }
     match &action.action {
         Action::MempoolFlush(MempoolFlushAction {}) => {
-            let ops = store.state().mempool.wait_prevalidator_operations.clone();
+            let mempool_state = &store.state().mempool;
+            let ops = mempool_state
+                .pending_operations
+                .iter()
+                .map(|(_, op)| op.clone())
+                .collect::<Vec<_>>();
             for operation in ops {
                 store.dispatch(MempoolValidateStartAction { operation });
             }
-            store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
         }
         Action::Protocol(act) => {
             match act {
@@ -275,6 +279,10 @@ where
             let streams = store.state().mempool.operation_streams.clone();
             store.dispatch(MempoolUnregisterOperationsStreamsAction {});
             for stream in streams {
+                store
+                    .service()
+                    .rpc()
+                    .respond_stream(stream.rpc_id, Some(serde_json::json!([])));
                 store.service().rpc().respond_stream(stream.rpc_id, None);
             }
         }
@@ -562,10 +570,6 @@ where
                     .service()
                     .prevalidator()
                     .validate_operation_for_prevalidation(validate_req);
-            } else {
-                store.dispatch(MempoolValidateWaitPrevalidatorAction {
-                    operation: operation.clone(),
-                });
             }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
