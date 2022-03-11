@@ -268,12 +268,10 @@ where
                     .service()
                     .prevalidator()
                     .begin_construction_for_prevalidation(req);
-                if !store.state().mempool.branch_changed {
-                    store.dispatch(MempoolBroadcastAction {
-                        send_operations: false,
-                        prechecked_head: None,
-                    });
-                }
+                store.dispatch(MempoolBroadcastAction {
+                    send_operations: false,
+                    prechecked_head: None,
+                });
             }
             // close streams
             let streams = store.state().mempool.operation_streams.clone();
