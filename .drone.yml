@@ -3923,8 +3923,6 @@ steps:
     - echo "..."
     - tail /data/cache/tezedge-node-bootstrapped.log
     - grep -F "Waiting for the node to be bootstrapped..." -q /data/cache/tezedge-node-bootstrapped.log
-    - >-
-      grep -F "Current head: BKyjtcb7VhJf" -q /data/cache/tezedge-node-bootstrapped.log
     - grep -F "Node is bootstrapped." -q /data/cache/tezedge-node-bootstrapped.log
 
 volumes:
