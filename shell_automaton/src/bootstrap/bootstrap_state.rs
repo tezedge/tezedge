@@ -468,12 +468,12 @@ pub enum BootstrapState {
         /// Block hashes and their supporting peers. Once we have found
         /// block hash on which majority of peers agree on, we start
         /// bootstrap from that block.
-        block_supporters: BTreeMap<BlockHash, (Level, BTreeSet<SocketAddr>)>,
+        block_supporters: BTreeMap<BlockHash, (BlockHeaderWithHash, BTreeSet<SocketAddr>)>,
     },
     PeersMainBranchFindSuccess {
         time: u64,
 
-        main_block: (Level, BlockHash),
+        main_block: BlockHeaderWithHash,
         peer_branches: BTreeMap<SocketAddr, PeerBranch>,
     },
 
@@ -574,20 +574,20 @@ impl BootstrapState {
         }
     }
 
-    pub fn main_block(&self, peers_bootstrapped_min: usize) -> Option<(Level, BlockHash)> {
+    pub fn main_block(&self, peers_bootstrapped_min: usize) -> Option<BlockHeaderWithHash> {
         match self {
             BootstrapState::PeersMainBranchFindPending {
                 block_supporters, ..
             } => block_supporters
                 .iter()
                 .filter(|(_, (_, supporters))| supporters.len() >= peers_bootstrapped_min)
-                .max_by(|(_, (level1, supporters1)), (_, (level2, supporters2))| {
+                .max_by(|(_, (block1, supporters1)), (_, (block2, supporters2))| {
                     supporters1
                         .len()
                         .cmp(&supporters2.len())
-                        .then(level1.cmp(level2))
+                        .then(block1.header.level().cmp(&block2.header.level()))
                 })
-                .map(|(block_hash, (level, _))| (*level, block_hash.clone())),
+                .map(|(block_hash, (block, _))| block.clone()),
             _ => None,
         }
     }

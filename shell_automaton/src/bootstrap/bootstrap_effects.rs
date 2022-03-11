@@ -369,6 +369,7 @@ where
             store.dispatch(BootstrapFromPeerCurrentHeadAction { peer, current_head });
         }
         Action::PeerCurrentHeadUpdate(content) => {
+            store.dispatch(BootstrapPeersMainBranchFindSuccessAction {});
             store.dispatch(BootstrapFromPeerCurrentHeadAction {
                 peer: content.address,
                 current_head: content.current_head.clone(),

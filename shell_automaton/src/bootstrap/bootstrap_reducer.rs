@@ -58,10 +58,6 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 None => return,
             };
 
-            if !state.can_accept_new_head(&content.current_head) {
-                return;
-            }
-
             match &mut state.bootstrap {
                 BootstrapState::PeersMainBranchFindPending {
                     peer_branches,
@@ -75,18 +71,11 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             history: content.history.clone(),
                         },
                     );
-                    IntoIterator::into_iter([
-                        (branch_level - 1, branch_header.predecessor().clone()),
-                        (branch_level, branch_hash.clone()),
-                    ])
-                    .filter(|(level, _)| *level >= 0)
-                    .for_each(|(level, block_hash)| {
-                        block_supporters
-                            .entry(block_hash)
-                            .or_insert((level, Default::default()))
-                            .1
-                            .insert(content.peer);
-                    });
+                    block_supporters
+                        .entry(content.current_head.hash.clone())
+                        .or_insert_with(|| (content.current_head.clone(), Default::default()))
+                        .1
+                        .insert(content.peer);
                 }
                 BootstrapState::PeersBlockHeadersGetPending {
                     main_chain_last_level,
@@ -102,6 +91,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
 
                     branch
                         .iter()
+                        .filter(|(level, _)| *level > current_head.header.level())
                         .filter(|(level, _)| level <= main_chain_last_level)
                         .filter(|(level, _)| {
                             *level >= *main_chain_last_level - main_chain.len() as Level
@@ -179,6 +169,24 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::PeerCurrentHeadUpdate(content) => match &mut state.bootstrap {
+            BootstrapState::PeersMainBranchFindPending {
+                peer_branches,
+                block_supporters,
+                ..
+            } => {
+                peer_branches.insert(
+                    content.address,
+                    PeerBranch {
+                        current_head: content.current_head.clone(),
+                        history: vec![],
+                    },
+                );
+                block_supporters
+                    .entry(content.current_head.hash.clone())
+                    .or_insert_with(|| (content.current_head.clone(), Default::default()))
+                    .1
+                    .insert(content.address);
+            }
             BootstrapState::PeersBlockHeadersGetPending {
                 main_chain_last_level,
                 main_chain_last_hash,
@@ -275,7 +283,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 ..
             } = &mut state.bootstrap
             {
-                let main_block = main_block.clone();
+                let main_block = (main_block.header.level(), main_block.hash.clone());
                 let missing_levels_count = main_block.0 - current_head.header.level();
 
                 let peer_intervals = std::mem::take(peer_branches)

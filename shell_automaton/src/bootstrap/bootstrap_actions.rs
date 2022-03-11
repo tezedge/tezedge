@@ -480,7 +480,8 @@ impl EnablingCondition<State> for BootstrapFinishedAction {
         !state.block_applier.current.is_pending()
             && match &state.bootstrap {
                 BootstrapState::PeersMainBranchFindSuccess { main_block, .. } => {
-                    state.is_same_head(main_block.0, &main_block.1)
+                    state.is_same_head(main_block.header.level(), &main_block.hash)
+                        || !state.can_accept_new_head(main_block)
                 }
                 BootstrapState::PeersBlockOperationsGetSuccess { .. } => true,
                 BootstrapState::Error { .. } => true,
