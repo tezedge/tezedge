@@ -11,6 +11,8 @@ mod rpc_client;
 mod timer;
 mod types;
 
+mod alternative;
+
 fn main() {
     use self::{
         command_line::{Arguments, Command},
@@ -29,8 +31,8 @@ fn main() {
     } = Arguments::from_args();
 
     let logger = logger::main_logger();
-    let (sender, events) = mpsc::channel();
-    let client = RpcClient::new(endpoint, sender.clone());
+    let (sender, mut events) = mpsc::channel();
+    let client = RpcClient::new(endpoint, logger.clone(), sender.clone());
     let timer = Timer::spawn(sender);
 
     match command {
@@ -38,7 +40,6 @@ fn main() {
             // We don't use context storage and protocol_runner
             let _ = node_dir;
 
-            slog::info!(logger, "creating crypto service");
             let crypto = match CryptoService::read_key(&base_dir, &baker) {
                 Ok(v) => v,
                 Err(err) => {
@@ -46,13 +47,16 @@ fn main() {
                     return;
                 }
             };
+            slog::info!(logger, "crypto service ready: {}", crypto.public_key_hash());
 
-            let service = ServiceDefault {
+            let mut service = ServiceDefault {
                 logger: logger.clone(),
                 client,
                 crypto,
                 timer,
             };
+            alternative::run(&mut service, &mut events);
+
             let initial_time = SystemTime::now();
             let initial_state = State::Initial;
 

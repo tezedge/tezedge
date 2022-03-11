@@ -82,7 +82,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         },
                         round_state: {
                             let (current_round, next_timeout) = round_by_timestamp(
-                                now_timestamp.0,
+                                now_timestamp.0.as_secs(),
                                 &new_proposal.predecessor,
                                 &*config,
                             );
@@ -130,7 +130,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         };
                         *round_state = {
                             let (current_round, next_timeout) = round_by_timestamp(
-                                now_timestamp.0,
+                                now_timestamp.0.as_secs(),
                                 &new_proposal.predecessor,
                                 &*config,
                             );
@@ -180,7 +180,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                         // Their PQC is better than ours: we switch
                                         true
                                     } else {
-                                        // `current_pqc.round < new_pqc.round`
+                                        // `current_pqc.round == new_pqc.round`
                                         // There is a PQC on two branches with the same round and
                                         // the same level but not the same predecessor : it's
                                         // impossible unless if there was some double-baking. This
@@ -192,7 +192,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             if switch {
                                 level_state.latest_proposal = new_proposal.clone();
                                 let (current_round, next_timeout) = round_by_timestamp(
-                                    now_timestamp.0,
+                                    now_timestamp.0.as_secs(),
                                     &new_proposal.predecessor,
                                     &*config,
                                 );
@@ -401,16 +401,20 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                     round: latest_proposal.block.round,
                                     payload_hash: latest_proposal.block.payload_hash.clone(),
                                     firsts_slot: mempool.preendorsements.iter().map(|op| op.slot).collect(),
+                                    ops: vec![],
                                 },
                             });
                         }
                     }
                     if endorsements_power >= config.quorum_size {
-                        if elected_block.is_none() {
-                            *elected_block = Some(ElectedBlock {
-                                proposal: latest_proposal.clone(),
-                                quorum: mempool.endorsements.clone(),
-                            });
+                        match elected_block {
+                            None => {
+                                *elected_block = Some(ElectedBlock {
+                                    proposal: latest_proposal.clone(),
+                                    quorum: mempool.endorsements.clone(),
+                                });
+                            }
+                            Some(e) => e.quorum = mempool.endorsements.clone(),
                         }
                     }
                 }
@@ -418,9 +422,12 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             }
         }
         Action::Timeout(TimeoutAction { now_timestamp }) => match state {
-            State::Ready { round_state, level_state, block, .. } => {
+            State::Ready { config, round_state, level_state, block, .. } => {
                 let _ = now_timestamp;
-                round_state.next_timeout = None;
+                if let Some(next_timestamp) = &mut round_state.next_timeout {
+                    next_timestamp.0 += config.minimal_block_delay +
+                        config.delay_increment_per_round * (round_state.current_round as u32);
+                }
                 round_state.current_round += 1;
                 round_state.current_phase = Phase::NonProposer;
 
@@ -443,7 +450,8 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     let ops = votes_ops.chain(anonymous_ops).chain(managers_ops);
                     let hashes = ops.map(|op| op.hash.as_ref().cloned().unwrap()).collect::<Vec<_>>();
                     let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-                    let round = round_state.current_round - elected.proposal.block.round - 1;
+                    // let round = round_state.current_round - elected.proposal.block.round - 1;
+                    let round = 0;
                     // assert_eq!(round, 0);
                     let payload_hash =
                         BlockPayloadHash::calculate(&elected.proposal.block.hash, round as u32, &operation_list_hash)
@@ -546,6 +554,6 @@ fn round_by_timestamp(
         //     chrono::TimeZone::timestamp(&chrono::Utc, start_of_current_level as i64, 0),
         //     chrono::TimeZone::timestamp(&chrono::Utc, t as i64, 0),
         // );
-        (r as i32, Some(Timestamp(t)))
+        (r as i32, Some(Timestamp(Duration::from_secs(t))))
     }
 }

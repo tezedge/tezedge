@@ -45,10 +45,15 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
             // the result is stream of heads,
             // they will be dispatched from event loop
             let delegate = store.service().crypto.public_key_hash().clone();
+            let chain_id = match store.state() {
+                State::GotConstants(cfg) => cfg.chain_id.clone(),
+                _ => return,
+            };
             store
                 .service()
                 .client
                 .monitor_proposals(
+                    &chain_id,
                     delegate,
                     // it is first time we listening proposals,
                     // we know nothing, so no timeout required
@@ -112,7 +117,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
         }
         Action::Timeout(TimeoutAction { now_timestamp }) => {
             store.dispatch(PreapplyBlockInitAction {
-                timestamp: *now_timestamp,
+                timestamp: now_timestamp.as_secs() as i64,
             });
         }
         Action::NewOperationSeen(NewOperationSeenAction { .. }) => {}
@@ -162,6 +167,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .preapply_block(
                     protocol_block_header,
                     mempool.clone(),
+                    None,
                     *timestamp,
                     i64::MAX,
                     Action::Timeout,

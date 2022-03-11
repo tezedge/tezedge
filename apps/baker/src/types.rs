@@ -3,6 +3,7 @@
 
 use std::{
     collections::BTreeMap,
+    convert::TryInto,
     fmt,
     time::{Duration, SystemTime},
 };
@@ -25,7 +26,7 @@ use tezos_messages::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Timestamp(pub u64);
+pub struct Timestamp(pub Duration);
 
 impl Timestamp {
     pub fn duration_from_now(&self) -> Duration {
@@ -34,14 +35,14 @@ impl Timestamp {
             .expect("the unix epoch has begun");
 
         // TODO: check overflow
-        Duration::from_secs(self.0) - now
+        self.0 - now
     }
 
     pub fn now() -> Self {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("the unix epoch has begun");
-        Timestamp(now.as_secs())
+        Timestamp(now)
     }
 }
 
@@ -63,6 +64,7 @@ pub struct Prequorum {
     pub round: i32,
     pub payload_hash: BlockPayloadHash,
     pub firsts_slot: Vec<u16>,
+    pub ops: Vec<Operation>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -91,38 +93,47 @@ pub struct BlockInfo {
     pub protocol: ProtocolHash,
     pub next_protocol: ProtocolHash,
     pub prequorum: Option<Prequorum>,
-    pub quorum: Vec<InlinedEndorsementMempoolContentsEndorsementVariant>,
+    pub quorum: Vec<(InlinedEndorsementMempoolContentsEndorsementVariant, Operation)>,
     pub payload: BlockPayload,
 }
 
 impl BlockInfo {
     fn extract_consensus_operations(
         ops: &[Operation],
-    ) -> (Option<Prequorum>, Vec<InlinedEndorsementMempoolContentsEndorsementVariant>) {
+    ) -> (Option<Prequorum>, Vec<(InlinedEndorsementMempoolContentsEndorsementVariant, Operation)>) {
         let mut prequorum = Prequorum {
             level: 0,
             round: 0,
             payload_hash: BlockPayloadHash(vec![0; 32]),
             firsts_slot: vec![],
+            ops: vec![],
         };
         let mut quorum = vec![];
-        for content in ops.iter().map(|op| &op.contents).flatten() {
-            match content {
-                Contents::Preendorsement(v) => {
-                    prequorum.level = v.level;
-                    prequorum.round = v.round;
-                    prequorum.payload_hash = v.block_payload_hash.clone();
-                    prequorum.firsts_slot.push(v.slot);
+        for op in ops {
+            for content in &op.contents {
+                match content {
+                    Contents::Preendorsement(v) => {
+                        prequorum.level = v.level;
+                        prequorum.round = v.round;
+                        prequorum.payload_hash = v.block_payload_hash.clone();
+                        prequorum.firsts_slot.push(v.slot);
+                        prequorum.ops.push(op.clone());
+                        break;
+                    }
+                    Contents::Endorsement(v) => {
+                        quorum.push((
+                            InlinedEndorsementMempoolContentsEndorsementVariant {
+                                slot: v.slot,
+                                level: v.level,
+                                round: v.round,
+                                block_payload_hash: v.block_payload_hash.clone(),
+                            },
+                            op.clone(),
+                        ));
+                        break;
+                    }
+                    _ => (),
                 }
-                Contents::Endorsement(op) => {
-                    quorum.push(InlinedEndorsementMempoolContentsEndorsementVariant {
-                        slot: op.slot,
-                        level: op.level,
-                        round: op.round,
-                        block_payload_hash: op.block_payload_hash.clone(),
-                    });
-                }
-                _ => (),
             }
         }
         let prequorum = if prequorum.firsts_slot.is_empty() {
@@ -144,6 +155,7 @@ impl BlockInfo {
         } = protocols;
         let [consensus_payload, votes_payload, anonymous_payload, managers_payload] = operations;
         let (prequorum, quorum) = Self::extract_consensus_operations(&consensus_payload);
+        let payload_round = header.payload_round.unwrap_or(0);
 
         BlockInfo {
             hash: header.hash,
@@ -154,9 +166,12 @@ impl BlockInfo {
                 .unwrap()
                 .timestamp(),
             payload_hash: header.payload_hash.unwrap_or(BlockPayloadHash(vec![0; 32])),
-            payload_round: header.payload_round.unwrap_or(0),
-            // TODO: is it correct?
-            round: header.payload_round.unwrap_or(0),
+            payload_round,
+            round: header
+                .fitness
+                .get(4)
+                .map(|c| i32::from_be_bytes(hex::decode(c).unwrap().try_into().unwrap()))
+                .unwrap_or(0),
             protocol,
             next_protocol,
             prequorum,
@@ -182,7 +197,13 @@ impl BlockInfo {
         let (prequorum, quorum) = Self::extract_consensus_operations(&consensus_payload);
 
         let protocol_data_bytes = hex::decode(&shell_header.protocol_data).unwrap();
-        let protocol_data = ProtocolBlockHeader::from_bytes(protocol_data_bytes).unwrap();
+        let (payload_hash, payload_round) =
+            if protocol.to_base58_check() == crate::rpc_client::RpcClient::PROTOCOL {
+                let protocol_data = ProtocolBlockHeader::from_bytes(protocol_data_bytes).unwrap();
+                (protocol_data.payload_hash, protocol_data.payload_round)
+            } else {
+                (BlockPayloadHash(vec![0; 32]), 0)
+            };
 
         BlockInfo {
             hash: shell_header.hash,
@@ -192,10 +213,13 @@ impl BlockInfo {
                 .parse::<DateTime<Utc>>()
                 .unwrap()
                 .timestamp(),
-            payload_hash: protocol_data.payload_hash,
-            payload_round: protocol_data.payload_round,
-            // TODO: is it correct?
-            round: protocol_data.payload_round,
+            payload_hash,
+            payload_round,
+            round: shell_header
+                .fitness
+                .get(4)
+                .map(|c| i32::from_be_bytes(hex::decode(c).unwrap().try_into().unwrap()))
+                .unwrap_or(0),
             protocol,
             next_protocol,
             prequorum,
@@ -235,6 +259,7 @@ pub struct ElectedBlock {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DelegateSlots {
+    pub level: i32,
     pub slot: Option<u16>,
     pub delegates: BTreeMap<ContractTz1Hash, Slots>,
 }
@@ -268,6 +293,7 @@ pub struct Mempool {
     pub endorsements: Vec<InlinedEndorsementMempoolContentsEndorsementVariant>,
     pub preendorsements: Vec<PreendorsementOperation>,
     pub consensus_payload: Vec<Operation>,
+    pub preendorsement_consensus_payload: Vec<Operation>,
     pub payload: BlockPayload,
 }
 

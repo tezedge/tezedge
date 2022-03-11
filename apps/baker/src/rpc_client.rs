@@ -7,10 +7,11 @@ use chrono::{DateTime, Utc};
 use derive_more::From;
 use reqwest::{
     blocking::{Client, Response},
-    Url,
+    StatusCode, Url,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tezos_encoding::types::SizedBytes;
+use slog::Logger;
 use thiserror::Error;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, OperationHash, Signature};
@@ -33,6 +34,7 @@ pub struct RpcClient {
     tx: mpsc::Sender<Action>,
     endpoint: Url,
     inner: Client,
+    logger: Logger,
 }
 
 #[derive(Debug, Error, From)]
@@ -45,6 +47,8 @@ pub enum RpcError {
     Io(io::Error),
     #[error("{_0}")]
     Utf8(str::Utf8Error),
+    #[error("{_0}")]
+    Http(StatusCode),
 }
 
 #[derive(Deserialize, Debug)]
@@ -52,6 +56,7 @@ pub struct Constants {
     pub consensus_committee_size: u32,
     pub minimal_block_delay: String,
     pub delay_increment_per_round: String,
+    pub blocks_per_commitment: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -65,11 +70,12 @@ impl RpcClient {
     // 012-Psithaca
     pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
-    pub fn new(endpoint: Url, tx: mpsc::Sender<Action>) -> Self {
+    pub fn new(endpoint: Url, logger: Logger, tx: mpsc::Sender<Action>) -> Self {
         RpcClient {
             tx,
             endpoint,
             inner: Client::new(),
+            logger,
         }
     }
 
@@ -100,6 +106,7 @@ impl RpcClient {
 
     pub fn monitor_proposals<F, G>(
         &self,
+        chain_id: &ChainId,
         this_delegate: ContractTz1Hash,
         deadline: i64,
         deadline_wrapper: G,
@@ -109,10 +116,8 @@ impl RpcClient {
         F: Fn(NewProposalAction) -> Action + Sync + Send + 'static,
         G: Fn(TimeoutAction) -> Action + Sync + Send + 'static,
     {
-        let mut url = self
-            .endpoint
-            .join("monitor/heads/main")
-            .expect("valid constant url");
+        let s = format!("monitor/heads/{chain_id}");
+        let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("next_protocol", Self::PROTOCOL);
         let this = self.clone();
@@ -121,6 +126,8 @@ impl RpcClient {
             deadline,
             deadline_wrapper,
             move |shell_header| {
+                slog::info!(this.logger, "proposal");
+
                 let hash = shell_header.hash.clone().to_base58_check();
                 let predecessor_hash = shell_header.predecessor.to_base58_check();
 
@@ -132,29 +139,13 @@ impl RpcClient {
                 let url = this.endpoint.join(&s).expect("valid url");
                 let timeout = Self::deadline_to_duration(deadline)?;
                 let operations =
-                    this.single_response_blocking::<[Vec<Operation>; 4]>(url, Some(timeout))?;
-                let mut url = this
-                    .endpoint
-                    .join("chains/main/blocks/head/helpers/validators")
-                    .expect("valid constant url");
-                url.query_pairs_mut()
-                    .append_pair("level", &shell_header.level.to_string());
-                let timeout = Self::deadline_to_duration(deadline)?;
-                let validators =
-                    this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
-                let delegate_slots = {
-                    let mut v = DelegateSlots::default();
-                    for validator in validators {
-                        let Validator {
-                            delegate, slots, ..
-                        } = validator;
-                        if delegate.eq(&this_delegate) {
-                            v.slot = slots.first().cloned();
-                        }
-                        v.delegates.insert(delegate, Slots(slots));
-                    }
-                    v
-                };
+                    this.single_response_blocking::<Vec<Vec<Operation>>>(url, Some(timeout))?;
+                let operations = [
+                    operations.get(0).cloned().unwrap_or(vec![]),
+                    operations.get(1).cloned().unwrap_or(vec![]),
+                    operations.get(2).cloned().unwrap_or(vec![]),
+                    operations.get(3).cloned().unwrap_or(vec![]),
+                ];
                 let block = BlockInfo::new(shell_header, protocols, operations);
 
                 let s = format!("chains/main/blocks/{}/header", predecessor_hash);
@@ -177,12 +168,34 @@ impl RpcClient {
                     operations.get(2).cloned().unwrap_or(vec![]),
                     operations.get(3).cloned().unwrap_or(vec![]),
                 ];
-                let mut url = this
-                    .endpoint
-                    .join("chains/main/blocks/head/helpers/validators")
-                    .expect("valid constant url");
+                let predecessor =
+                    BlockInfo::new_with_full_header(shell_header, protocols, operations);
+
+                let s = format!("chains/main/blocks/{}/helpers/validators", hash);
+                let mut url = this.endpoint.join(&s).expect("valid constant url");
                 url.query_pairs_mut()
-                    .append_pair("level", &shell_header.level.to_string());
+                    .append_pair("level", &block.level.to_string());
+                let timeout = Self::deadline_to_duration(deadline)?;
+                let validators =
+                    this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
+                let delegate_slots = {
+                    let mut v = DelegateSlots::default();
+                    for validator in validators {
+                        let Validator {
+                            delegate, slots, ..
+                        } = validator;
+                        if delegate.eq(&this_delegate) {
+                            v.slot = slots.first().cloned();
+                        }
+                        v.level = block.level;
+                        v.delegates.insert(delegate, Slots(slots));
+                    }
+                    v
+                };
+                let s = format!("chains/main/blocks/{}/helpers/validators", predecessor_hash);
+                let mut url = this.endpoint.join(&s).expect("valid constant url");
+                url.query_pairs_mut()
+                    .append_pair("level", &(block.level + 1).to_string());
                 let timeout = Self::deadline_to_duration(deadline)?;
                 let validators =
                     this.single_response_blocking::<Vec<Validator>>(url, Some(timeout))?;
@@ -195,12 +208,11 @@ impl RpcClient {
                         if delegate.eq(&this_delegate) {
                             v.slot = slots.first().cloned();
                         }
+                        v.level = block.level + 1;
                         v.delegates.insert(delegate, Slots(slots));
                     }
                     v
                 };
-                let predecessor =
-                    BlockInfo::new_with_full_header(shell_header, protocols, operations);
 
                 Ok(wrapper(NewProposalAction {
                     new_proposal: Proposal { block, predecessor },
@@ -269,6 +281,7 @@ impl RpcClient {
         &self,
         protocol_block_header: ProtocolBlockHeader,
         mempool: Mempool,
+        predecessor: Option<BlockHash>,
         timestamp: i64,
         deadline: i64,
         deadline_wrapper: G,
@@ -304,10 +317,12 @@ impl RpcClient {
             serde_json::Value::String(Self::PROTOCOL.to_string()),
         );
 
-        let c = &mempool.consensus_payload;
         let p = &mempool.payload;
         let mut operations = [
-            c.iter()
+            mempool
+                .consensus_payload
+                .iter()
+                .chain(mempool.preendorsement_consensus_payload.iter())
                 .map(|op| serde_json::to_value(op).unwrap())
                 .collect::<Vec<_>>(),
             p.votes_payload
@@ -335,21 +350,25 @@ impl RpcClient {
             operations,
         };
 
-        let mut url = self
-            .endpoint
-            .join("chains/main/blocks/head/helpers/preapply/block")
-            .expect("valid constant url");
+        let s = if let Some(predecessor) = predecessor {
+            format!("chains/main/blocks/{predecessor}/helpers/preapply/block")
+        } else {
+            "chains/main/blocks/head/helpers/preapply/block".to_string()
+        };
+        let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("timestamp", &timestamp.to_string());
         let body = serde_json::to_string(&block_data)?;
         // TODO: remove temporal
-        println!("{}", body);
+        slog::info!(self.logger, "{}", body);
+        let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |v| {
             let PreapplyResponse {
                 shell_header,
                 operations,
             } = v;
-            println!("{}", serde_json::to_string(&operations).unwrap());
+            slog::info!(logger, "{}", serde_json::to_string(&shell_header).unwrap());
+            slog::info!(logger, "{}", serde_json::to_string(&operations).unwrap());
             let ShellBlockShortHeader {
                 level,
                 proto,
@@ -432,7 +451,9 @@ impl RpcClient {
             .expect("valid constant url");
         let body = serde_json::to_string(&block_data)?;
 
+        let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |hash| {
+            slog::info!(logger, "inject block success {hash}");
             wrapper(hash)
         })
         .map_err(Into::into)
@@ -471,7 +492,7 @@ impl RpcClient {
             serde_json::from_reader::<_, T>(response).map_err(Into::into)
         } else {
             Self::read_error(&mut response)?;
-            unreachable!()
+            Err(RpcError::Http(response.status()))
         }
     }
 
@@ -495,17 +516,18 @@ impl RpcClient {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
                     let action = TimeoutAction {
-                        now_timestamp: now.timestamp(),
+                        now_timestamp: Duration::from_secs(now.timestamp() as u64),
                     };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
         };
         let mut response = match body {
-            None => self.get(url, Some(timeout))?,
-            Some(body) => self.post(url, body, Some(timeout))?,
+            None => self.get(url.clone(), Some(timeout))?,
+            Some(body) => self.post(url.clone(), body, Some(timeout))?,
         };
 
+        let logger = self.logger.clone();
         let handle = thread::spawn(move || {
             if response.status().is_success() {
                 match serde_json::from_reader::<_, T>(response) {
@@ -517,7 +539,7 @@ impl RpcClient {
                         if io_err.kind() == io::ErrorKind::TimedOut {
                             let now = Utc::now();
                             let action = TimeoutAction {
-                                now_timestamp: now.timestamp(),
+                                now_timestamp: Duration::from_secs(now.timestamp() as u64),
                             };
                             let _ = tx.send(deadline_wrapper(action));
                         } else {
@@ -525,7 +547,7 @@ impl RpcClient {
                                 rpc_error: io_err.into(),
                             };
                             let _ = tx.send(Action::UnrecoverableError(action));
-                            panic!()
+                            panic!("{}", url)
                         }
                     }
                     Err(err) => {
@@ -533,12 +555,15 @@ impl RpcClient {
                             rpc_error: err.into(),
                         };
                         let _ = tx.send(Action::UnrecoverableError(action));
-                        panic!()
+                        panic!("{}", url)
                     }
                 }
             } else {
                 let action = match Self::read_error(&mut response) {
-                    Ok(error) => Action::RecoverableError(error),
+                    Ok(error) => {
+                        slog::error!(logger, "{}", error.description);
+                        Action::RecoverableError(error)
+                    }
                     Err(rpc_error) => {
                         Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
                     }
@@ -568,14 +593,15 @@ impl RpcClient {
                 return Ok(thread::spawn(move || {
                     let now = Utc::now();
                     let action = TimeoutAction {
-                        now_timestamp: now.timestamp(),
+                        now_timestamp: Duration::from_secs(now.timestamp() as u64),
                     };
                     let _ = tx.send(deadline_wrapper(action));
                 }));
             }
         };
-        let mut response = self.get(url, Some(timeout))?;
+        let mut response = self.get(url.clone(), Some(timeout))?;
 
+        let logger = self.logger.clone();
         let handle = thread::spawn(move || {
             let status = response.status();
 
@@ -590,7 +616,7 @@ impl RpcClient {
                         Err(RpcError::Io(io_err)) if io_err.kind() == io::ErrorKind::TimedOut => {
                             let now = Utc::now();
                             let action = TimeoutAction {
-                                now_timestamp: now.timestamp(),
+                                now_timestamp: Duration::from_secs(now.timestamp() as u64),
                             };
                             let _ = tx.send(deadline_wrapper(action));
                             break;
@@ -600,13 +626,16 @@ impl RpcClient {
                                 rpc_error: err.into(),
                             };
                             let _ = tx.send(Action::UnrecoverableError(action));
-                            panic!()
+                            // panic!("{}", url)
                         }
                     }
                 }
             } else {
                 let action = match Self::read_error(&mut response) {
-                    Ok(error) => Action::RecoverableError(error),
+                    Ok(error) => {
+                        slog::error!(logger, "{}", error.description);
+                        Action::RecoverableError(error)
+                    }
                     Err(rpc_error) => {
                         Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
                     }

@@ -320,9 +320,9 @@ pub struct DoubleEndorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsement {
-    branch: BlockHash,
-    operations: InlinedEndorsementMempoolContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedEndorsementMempoolContents,
+    pub signature: Signature,
 }
 
 /**
@@ -444,9 +444,9 @@ pub struct DoublePreendorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsement {
-    branch: BlockHash,
-    operations: InlinedPreendorsementContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedPreendorsementContents,
+    pub signature: Signature,
 }
 
 /**

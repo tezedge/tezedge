@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use derive_more::From;
 use serde::{Deserialize, Serialize};
@@ -93,10 +93,21 @@ impl EnablingCondition<State> for TimeoutScheduleAction {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TimeoutAction {
-    pub now_timestamp: i64,
+    pub now_timestamp: Duration,
 }
 
 impl EnablingCondition<State> for TimeoutAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(state, State::Ready { .. })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TimeoutDelayedAction {
+    pub now_timestamp: Duration,
+}
+
+impl EnablingCondition<State> for TimeoutDelayedAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(state, State::Ready { .. })
     }
@@ -287,6 +298,7 @@ pub enum Action {
     GetConstantsError(GetConstantsErrorAction),
     TimeoutSchedule(TimeoutScheduleAction),
     Timeout(TimeoutAction),
+    TimeoutDelayed(TimeoutDelayedAction),
     NewProposal(NewProposalAction),
     InjectPreendorsementInit(InjectPreendorsementInitAction),
     InjectPreendorsementSuccess(InjectPreendorsementSuccessAction),
@@ -313,6 +325,7 @@ impl fmt::Debug for Action {
             Action::GetConstantsError(v) => fmt::Debug::fmt(v, f),
             Action::TimeoutSchedule(v) => fmt::Debug::fmt(v, f),
             Action::Timeout(v) => fmt::Debug::fmt(v, f),
+            Action::TimeoutDelayed(v) => fmt::Debug::fmt(v, f),
             Action::NewProposal(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementInit(v) => fmt::Debug::fmt(v, f),
             Action::InjectPreendorsementSuccess(v) => fmt::Debug::fmt(v, f),
@@ -341,6 +354,7 @@ impl EnablingCondition<State> for Action {
             Action::GetConstantsError(v) => v.is_enabled(state),
             Action::TimeoutSchedule(v) => v.is_enabled(state),
             Action::Timeout(v) => v.is_enabled(state),
+            Action::TimeoutDelayed(v) => v.is_enabled(state),
             Action::NewProposal(v) => v.is_enabled(state),
             Action::InjectPreendorsementInit(v) => v.is_enabled(state),
             Action::InjectPreendorsementSuccess(v) => v.is_enabled(state),

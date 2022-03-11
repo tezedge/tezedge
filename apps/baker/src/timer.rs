@@ -4,7 +4,7 @@
 use std::{any::Any, sync::mpsc, thread, time::Duration};
 
 use crate::{
-    machine::action::{Action, TimeoutAction},
+    machine::action::{Action, TimeoutAction, TimeoutDelayedAction},
     types::Timestamp,
 };
 
@@ -20,13 +20,19 @@ impl Timer {
             let mut d = None;
             loop {
                 let next = match d.take() {
-                    Some(d) => match rx.recv_timeout(d) {
+                    Some((d, delayed)) => match rx.recv_timeout(d) {
                         Ok(next) => next,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
-                            let action = TimeoutAction {
-                                now_timestamp: Timestamp::now().0 as i64,
+                            let action = if delayed {
+                                Action::TimeoutDelayed(TimeoutDelayedAction {
+                                    now_timestamp: Timestamp::now().0,
+                                })
+                            } else {
+                                Action::Timeout(TimeoutAction {
+                                    now_timestamp: Timestamp::now().0,
+                                })
                             };
-                            let _ = action_sender.send(Action::Timeout(action));
+                            let _ = action_sender.send(action);
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -38,10 +44,10 @@ impl Timer {
                 };
                 match next {
                     Task::First(timestamp) => {
-                        d = Some(timestamp.duration_from_now());
+                        d = Some((timestamp.duration_from_now(), false));
                     }
                     Task::Next(duration) => {
-                        d = Some(duration);
+                        d = Some((duration, true));
                     }
                 }
             }
@@ -63,7 +69,7 @@ impl Timer {
     #[allow(dead_code)]
     pub fn next_timeout<F>(&self, duration: Duration, wrapper: F)
     where
-        F: Fn(TimeoutAction) -> Action + Send + 'static,
+        F: Fn(TimeoutDelayedAction) -> Action + Send + 'static,
     {
         let _ = wrapper;
         let _ = self.task_sender.send(Task::Next(duration));

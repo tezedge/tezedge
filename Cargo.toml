@@ -48,6 +48,7 @@ members = [
     "fuzz/peer_response_message",
     "fuzz/protocol_message",
     "apps/baker",
+    "apps/tenderbake",
 ]
 
 [patch.crates-io]

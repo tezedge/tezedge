@@ -6,8 +6,6 @@
 
 use std::convert::TryFrom;
 
-use serde::{Deserialize, Serialize};
-
 use crypto::hash::{
     BlockHash, ContextHash, ContractKt1Hash, ContractTz1Hash, HashTrait, OperationListListHash,
     ProtocolHash, Signature,
@@ -87,7 +85,7 @@ impl TryFrom<P2POperation> for OperationContents {
 /// Inline endorsement content, Endorsement (tag 0).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, Serialize, Deserialize, HasEncoding, NomReader, BinWriter)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsementVariant {
     pub level: i32,
 }
@@ -95,7 +93,7 @@ pub struct InlinedEndorsementVariant {
 /// Inlined endorsement contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-inlined-endorsement-contents-5-bytes-8-bit-tag].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, Serialize, Deserialize, HasEncoding, NomReader, BinWriter)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum InlinedEndorsementContents {
     /// Endorsement (tag 0).
@@ -407,7 +405,7 @@ pub enum ContractId {
     Originated(OriginatedContractId),
 }
 
-impl Serialize for ContractId {
+impl serde::Serialize for ContractId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -419,7 +417,7 @@ impl Serialize for ContractId {
     }
 }
 
-impl<'de> Deserialize<'de> for ContractId {
+impl<'de> serde::Deserialize<'de> for ContractId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
