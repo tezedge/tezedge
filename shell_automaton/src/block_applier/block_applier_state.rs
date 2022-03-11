@@ -10,6 +10,7 @@ use crypto::hash::BlockHash;
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
+use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::request::RequestId;
@@ -71,6 +72,7 @@ pub enum BlockApplierApplyState {
         protocol_runner_apply_duration: u64,
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
+        block_operations: Vec<Vec<Operation>>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -84,6 +86,7 @@ pub enum BlockApplierApplyState {
         storage_req_id: RequestId,
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
+        block_operations: Vec<Vec<Operation>>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -96,6 +99,7 @@ pub enum BlockApplierApplyState {
         store_apply_result_duration: u64,
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
+        block_operations: Vec<Vec<Operation>>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -114,6 +118,7 @@ pub enum BlockApplierApplyState {
         store_apply_result_duration: u64,
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
+        block_operations: Vec<Vec<Operation>>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,

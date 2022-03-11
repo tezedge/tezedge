@@ -275,20 +275,6 @@ impl EnablingCondition<State> for MempoolBroadcastDoneAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolRemoveAppliedOperationsAction {
-    pub operation_hashes: Vec<OperationHash>,
-}
-
-impl EnablingCondition<State> for MempoolRemoveAppliedOperationsAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolGetPendingOperationsAction {
     pub rpc_id: RpcId,
 }
@@ -321,7 +307,7 @@ pub struct MempoolFlushAction {}
 impl EnablingCondition<State> for MempoolFlushAction {
     fn is_enabled(&self, state: &State) -> bool {
         if let Some(state) = &state.mempool.local_head_state {
-            state.ops_removed && state.prevalidator_ready
+            state.prevalidator_ready
         } else {
             false
         }

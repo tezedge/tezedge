@@ -489,7 +489,6 @@ pub enum Action {
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction),
-    MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction),
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
     MempoolFlush(MempoolFlushAction),
     MempoolOperationDecoded(MempoolOperationDecodedAction),

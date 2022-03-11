@@ -101,6 +101,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     prepare_data_duration,
                     block,
                     block_meta,
+                    apply_block_req,
                     retry,
                     injector_rpc_id,
                     ..
@@ -112,6 +113,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                             protocol_runner_apply_duration: action.time_as_nanos() - time,
                             block: block.clone(),
                             block_meta: block_meta.clone(),
+                            block_operations: apply_block_req.operations.clone(),
                             apply_result: content.apply_result.clone(),
                             retry: retry.clone(),
                             injector_rpc_id: injector_rpc_id.clone(),
@@ -121,12 +123,13 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::BlockApplierApplyStoreApplyResultPending(content) => {
-            match &state.block_applier.current {
+            match &mut state.block_applier.current {
                 BlockApplierApplyState::ProtocolRunnerApplySuccess {
                     prepare_data_duration,
                     protocol_runner_apply_duration,
                     block,
                     block_meta,
+                    block_operations,
                     apply_result,
                     retry,
                     injector_rpc_id,
@@ -139,6 +142,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         storage_req_id: content.storage_req_id.clone(),
                         block: block.clone(),
                         block_meta: block_meta.clone(),
+                        block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
                         injector_rpc_id: injector_rpc_id.clone(),
@@ -148,12 +152,13 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::BlockApplierApplyStoreApplyResultSuccess(content) => {
-            match &state.block_applier.current {
+            match &mut state.block_applier.current {
                 BlockApplierApplyState::StoreApplyResultPending {
                     time,
                     prepare_data_duration,
                     protocol_runner_apply_duration,
                     block,
+                    block_operations,
                     apply_result,
                     retry,
                     injector_rpc_id,
@@ -163,9 +168,10 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         time: action.time_as_nanos(),
                         prepare_data_duration: *prepare_data_duration,
                         protocol_runner_apply_duration: *protocol_runner_apply_duration,
-                        store_apply_result_duration: action.time_as_nanos() - time,
+                        store_apply_result_duration: action.time_as_nanos() - *time,
                         block: block.clone(),
                         block_additional_data: content.block_additional_data.clone(),
+                        block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
                         injector_rpc_id: injector_rpc_id.clone(),
@@ -188,7 +194,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::BlockApplierApplySuccess(_) => {
-            match &state.block_applier.current {
+            match &mut state.block_applier.current {
                 BlockApplierApplyState::StoreApplyResultSuccess {
                     time,
                     prepare_data_duration,
@@ -196,6 +202,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     store_apply_result_duration,
                     block,
                     block_additional_data,
+                    block_operations,
                     apply_result,
                     retry,
                     injector_rpc_id,
@@ -208,6 +215,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         store_apply_result_duration: store_apply_result_duration.clone(),
                         block: block.clone(),
                         block_additional_data: block_additional_data.clone(),
+                        block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
                         injector_rpc_id: injector_rpc_id.clone(),

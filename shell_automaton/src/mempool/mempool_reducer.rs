@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
 use std::net::SocketAddr;
 
@@ -237,15 +237,36 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO: get from protocol
             const TTL: i32 = 120;
 
-            let (block, apply_result, retry) = match &state.block_applier.current {
+            let (block, block_operations, apply_result, retry) = match &state.block_applier.current
+            {
                 BlockApplierApplyState::Success {
                     block,
+                    block_operations,
                     apply_result,
                     retry,
                     ..
-                } => (block, apply_result, retry),
+                } => (block, block_operations, apply_result, retry),
                 _ => return,
             };
+
+            // Remove operations that are included in applied block.
+            let operation_hashes = block_operations
+                .iter()
+                .flatten()
+                .filter_map(|op| op.message_typed_hash::<OperationHash>().ok())
+                .collect::<BTreeSet<_>>();
+
+            mempool_state
+                .validated_operations
+                .applied
+                .retain(|v| !operation_hashes.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .branch_delayed
+                .retain(|v| !operation_hashes.contains(&v.hash));
+            for op in operation_hashes {
+                mempool_state.validated_operations.ops.remove(&op);
+            }
 
             if let Some(local_head_state) = &mempool_state.local_head_state {
                 let local_header = &local_head_state.header;
@@ -288,7 +309,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state.local_head_state = Some(HeadState {
                 header: (*block.header).clone(),
                 hash: block.hash.clone(),
-                ops_removed: false,
                 prevalidator_ready: false,
                 metadata_hash: apply_result.block_metadata_hash.clone(),
                 ops_metadata_hash: apply_result.ops_metadata_hash.clone(),
@@ -756,24 +776,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         _ => (),
                     }
                 }
-            }
-        }
-        Action::MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction {
-            operation_hashes,
-        }) => {
-            mempool_state
-                .validated_operations
-                .applied
-                .retain(|v| !operation_hashes.contains(&v.hash));
-            mempool_state
-                .validated_operations
-                .branch_delayed
-                .retain(|v| !operation_hashes.contains(&v.hash));
-            for op in operation_hashes {
-                mempool_state.validated_operations.ops.remove(op);
-            }
-            if let Some(state) = &mut mempool_state.local_head_state {
-                state.ops_removed = true;
             }
         }
         Action::MempoolFlush(MempoolFlushAction {}) => {

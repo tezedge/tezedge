@@ -170,22 +170,6 @@ pub async fn inject_block(
         None
     };
 
-    // clean actual mempool_state - just applied should be enough
-    if let Some(validation_passes) = &validation_passes {
-        let mut operation_hashes = Vec::new();
-        for op in validation_passes.into_iter().flatten() {
-            operation_hashes.push(op.message_typed_hash()?);
-        }
-
-        if let Err(err) = env
-            .shell_automaton_sender()
-            .send(RpcShellAutomatonMsg::RemoveOperations { operation_hashes })
-            .await
-        {
-            warn!(env.log(), "state machine failed to remove ops: {}", err);
-        }
-    }
-
     // compute the paths for each validation passes
     let paths = if let Some(vps) = validation_passes.as_ref() {
         let mut connection = env.tezos_protocol_api().readable_connection().await?;

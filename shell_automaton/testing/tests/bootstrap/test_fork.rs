@@ -82,7 +82,6 @@ fn data(chain_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     state.mempool.local_head_state = Some(HeadState {
         header: (*chain.last().unwrap().header).clone(),
         hash: chain.last().unwrap().hash.clone(),
-        ops_removed: true,
         prevalidator_ready: true,
 
         metadata_hash: None,

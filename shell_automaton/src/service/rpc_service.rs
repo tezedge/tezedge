@@ -102,9 +102,6 @@ pub enum RpcRequest {
         injected: Instant,
     },
     RequestCurrentHeadFromConnectedPeers,
-    RemoveOperations {
-        operation_hashes: Vec<OperationHash>,
-    },
     MempoolStatus,
     GetPendingOperations,
     GetBakingRights {

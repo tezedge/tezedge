@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::OperationHash;
 use redux_rs::Store;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -21,7 +20,6 @@ use tezos_messages::p2p::{
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
 use crate::protocol::ProtocolAction;
-use crate::storage::kv_operations;
 use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
     current_head_precheck::CurrentHeadPrecheckSuccessAction,
@@ -76,23 +74,6 @@ where
                 store.dispatch(MempoolValidateStartAction { operation });
             }
             store.dispatch(MempoolCleanupWaitPrevalidatorAction {});
-        }
-        Action::StorageOperationsOk(kv_operations::StorageOperationsOkAction { key, value }) => {
-            if store
-                .state()
-                .mempool
-                .local_head_state
-                .as_ref()
-                .map(|h| h.hash.eq(key))
-                .unwrap_or(false)
-            {
-                let operation_hashes = value
-                    .iter()
-                    .filter_map(|op| op.message_typed_hash::<OperationHash>().ok())
-                    .collect();
-                store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
-                store.dispatch(MempoolFlushAction {});
-            }
         }
         Action::Protocol(act) => {
             match act {
@@ -283,9 +264,6 @@ where
                     .service()
                     .prevalidator()
                     .begin_construction_for_prevalidation(req);
-                store.dispatch(kv_operations::StorageOperationsGetAction {
-                    key: block_hash.into(),
-                });
                 if !store.state().mempool.branch_changed {
                     store.dispatch(MempoolBroadcastAction {
                         send_operations: false,
@@ -454,8 +432,8 @@ where
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation, rpc_id, ..
         }) if store.state().mempool.is_old_endorsement(operation) => {
-            let current_head = match &store.state.get().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => Some(&block.hash),
+            let current_head = match &store.state.get().mempool.local_head_state.as_ref() {
+                Some(v) => Some(&v.hash),
                 _ => None,
             };
             store.service.rpc().respond(

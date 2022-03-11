@@ -81,8 +81,6 @@ impl MempoolState {
 pub struct HeadState {
     pub header: BlockHeader,
     pub hash: BlockHash,
-    // operations included in the head already removed
-    pub ops_removed: bool,
     // prevalidator for the head is created
     pub prevalidator_ready: bool,
 

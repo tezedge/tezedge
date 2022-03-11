@@ -7,7 +7,7 @@ use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
     MempoolOperationInjectAction, MempoolRegisterOperationsStreamAction,
-    MempoolRemoveAppliedOperationsAction, MempoolRpcEndorsementsStatusGetAction,
+    MempoolRpcEndorsementsStatusGetAction,
 };
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
@@ -169,13 +169,6 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     }
                     RpcRequest::RequestCurrentHeadFromConnectedPeers => {
                         store.dispatch(MempoolAskCurrentHeadAction {});
-                        store
-                            .service()
-                            .rpc()
-                            .respond(rpc_id, serde_json::Value::Null);
-                    }
-                    RpcRequest::RemoveOperations { operation_hashes } => {
-                        store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
                         store
                             .service()
                             .rpc()
