@@ -487,7 +487,19 @@ impl RpcClient {
     where
         T: DeserializeOwned,
     {
-        let mut response = self.get(url, timeout)?;
+        let mut retry = 3;
+        let mut response = loop {
+            match self.get(url.clone(), timeout) {
+                Ok(v) => break v,
+                Err(err) => {
+                    if retry == 0 {
+                        return Err(RpcError::Reqwest(err));
+                    } else {
+                        retry -= 1;
+                    }
+                }
+            }
+        };
         if response.status().is_success() {
             serde_json::from_reader::<_, T>(response).map_err(Into::into)
         } else {
