@@ -174,10 +174,12 @@ where
                                 None => break,
                             };
                             let block = block.clone();
+                            let peers = interval.peers.iter().cloned().collect();
                             store.dispatch(BootstrapErrorAction {
                                 error: BootstrapError::CementedBlockReorg {
                                     current_head,
                                     block,
+                                    peers,
                                 },
                             });
                             break;
@@ -339,7 +341,15 @@ where
         Action::BootstrapPeersBlockOperationsGetSuccess(_) => {
             store.dispatch(BootstrapFinishedAction {});
         }
-        Action::BootstrapError(_) => {
+        Action::BootstrapError(content) => {
+            match &content.error {
+                BootstrapError::CementedBlockReorg { peers, .. } => {
+                    for address in peers.iter().cloned() {
+                        store.dispatch(PeersGraylistAddressAction { address });
+                    }
+                }
+                _ => {}
+            }
             store.dispatch(BootstrapFinishedAction {});
         }
         Action::BootstrapFinished(_) => {

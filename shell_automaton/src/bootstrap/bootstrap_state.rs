@@ -434,6 +434,8 @@ pub enum BootstrapError {
     CementedBlockReorg {
         current_head: BlockHeaderWithHash,
         block: BlockHeaderWithHash,
+        /// Peers which agree on this reorg. We need to graylist them.
+        peers: Vec<SocketAddr>,
     },
     BlockApplicationFailed,
 }
