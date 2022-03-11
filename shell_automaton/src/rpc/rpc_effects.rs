@@ -33,6 +33,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         refused,
                         branch_delayed,
                         branch_refused,
+                        outdated,
                     } => {
                         store.dispatch(MempoolRegisterOperationsStreamAction {
                             rpc_id,
@@ -40,6 +41,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             refused,
                             branch_delayed,
                             branch_refused,
+                            outdated,
                         });
                     }
                 }

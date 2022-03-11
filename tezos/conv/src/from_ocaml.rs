@@ -221,6 +221,7 @@ impl_from_ocaml_record! {
         refused: OCamlList<OCamlErrored>,
         branch_refused: OCamlList<OCamlErrored>,
         branch_delayed: OCamlList<OCamlErrored>,
+        outdated: OCamlList<OCamlErrored>,
     }
 }
 

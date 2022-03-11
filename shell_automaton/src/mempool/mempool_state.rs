@@ -97,6 +97,7 @@ pub struct OperationStream {
     pub refused: bool,
     pub branch_delayed: bool,
     pub branch_refused: bool,
+    pub outdated: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -111,6 +112,7 @@ pub struct ValidatedOperations {
     // might be applied on a different branch if a reorganization happens
     pub branch_refused: Vec<Errored>,
     pub refused: Vec<Errored>,
+    pub outdated: Vec<Errored>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -402,6 +404,7 @@ pub enum OperationValidationResult {
     Refused,
     BranchRefused,
     BranchDelayed,
+    Outdated,
 
     Prechecked,
     PrecheckRefused,
@@ -607,6 +610,7 @@ pub enum OperationState {
     Refused,
     BranchRefused,
     BranchDelayed,
+    Outdated,
 }
 
 impl OperationState {

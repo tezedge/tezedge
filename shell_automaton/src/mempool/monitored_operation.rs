@@ -108,6 +108,7 @@ impl MempoolOperations {
         refused: &[Errored],
         branch_delayed: &[Errored],
         branch_refused: &[Errored],
+        outdated: &[Errored],
         operations: &HashMap<OperationHash, Operation>,
         protocol: &ProtocolHash,
     ) -> Self {
@@ -116,8 +117,8 @@ impl MempoolOperations {
             refused: convert_errored(refused, operations, protocol),
             branch_delayed: convert_errored(branch_delayed, operations, protocol),
             branch_refused: convert_errored(branch_refused, operations, protocol),
+            outdated: convert_errored(outdated, operations, protocol),
             unprocessed: vec![],
-            outdated: vec![], // TODO - for I: nothing here?
         }
     }
 }

@@ -198,6 +198,39 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                     }
                 }
+                for v in &result.result.outdated {
+                    if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        mempool_state
+                            .validated_operations
+                            .refused_ops
+                            .insert(v.hash.clone().into(), op);
+                        mempool_state.validated_operations.outdated.push(v.clone());
+                        mempool_state
+                            .operation_stats
+                            .entry(v.hash.clone().into())
+                            .or_insert_with(|| OperationStats::new())
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                Some(result.validate_operation_started_at),
+                                Some(result.validate_operation_ended_at),
+                                current_head_level,
+                                OperationValidationResult::Outdated,
+                            );
+                    }
+                    if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
+                        mempool_state.injected_rpc_ids.push(rpc_id);
+                    }
+                    if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
+                        if let MempoolOperation {
+                            state: OperationState::Decoded,
+                            ..
+                        } = operation_state
+                        {
+                            *operation_state =
+                                operation_state.next_state(OperationState::Outdated, action);
+                        }
+                    }
+                }
             }
             _ => {}
         },
@@ -315,6 +348,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .validated_operations
                         .branch_refused
                         .retain(|v| v.hash.ne(op));
+                    mempool_state
+                        .validated_operations
+                        .outdated
+                        .retain(|v| v.hash.ne(op));
                     for (_, peer_state) in &mut mempool_state.peer_state {
                         peer_state.seen_operations.remove(op);
                     }
@@ -371,6 +408,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .validated_operations
                         .branch_refused
+                        .retain(|v| v.hash.ne(op));
+                    mempool_state
+                        .validated_operations
+                        .outdated
                         .retain(|v| v.hash.ne(op));
                     for (_, peer_state) in &mut mempool_state.peer_state {
                         peer_state.seen_operations.remove(op);
@@ -558,6 +599,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 refused: act.refused,
                 branch_delayed: act.branch_delayed,
                 branch_refused: act.branch_refused,
+                outdated: act.outdated,
             });
         }
         Action::MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction {}) => {
