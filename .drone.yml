@@ -3824,6 +3824,11 @@ steps:
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
     - drone-cache/build_files/light-node --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "./drone-cache/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/data/cache/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
 
+- name: bootstrapping-tezedge
+  image: tezedge/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
 - name: tezos-client-bootstrapped-for-tezedge-node
   user: root
   image: tezos/tezos:v9-release
@@ -3832,14 +3837,8 @@ steps:
     - name: cache
       path: /data/cache
   commands:
-    - |
-      for i in $(seq 1 12); do
-          if tezos-client -E $${TEZEDGE_NODE_RPC_CONTEXT_ROOT} bootstrapped > /data/cache/tezedge-node-bootstrapped.log; then
-              cp /dev/null /data/cache/tezedge-node-bootstrapped.done
-              break
-          fi
-          sleep 5
-      done
+    - tezos-client -E $${TEZEDGE_NODE_RPC_CONTEXT_ROOT} bootstrapped > /data/cache/tezedge-node-bootstrapped.log
+    - cp /dev/null /data/cache/tezedge-node-bootstrapped.done
 
 - name: bootstrapping-tezedge
   image: tezedge/tezos-node-bootstrap:latest
@@ -3919,7 +3918,10 @@ steps:
     - name: cache
       path: /data/cache
   commands:
-    - test -f /data/cache/tezedge-node-bootstrapped.done
+    - test -f /data/cache/tezedge-node-bootstrapped.done || { echo "tezos-client bootstrapped has not finished"; exit 1; }
+    - head /data/cache/tezedge-node-bootstrapped.log
+    - echo "..."
+    - tail /data/cache/tezedge-node-bootstrapped.log
     - grep -F "Waiting for the node to be bootstrapped..." -q /data/cache/tezedge-node-bootstrapped.log
     - >-
       grep -F "Current head: BKyjtcb7VhJf" -q /data/cache/tezedge-node-bootstrapped.log
