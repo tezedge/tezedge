@@ -266,8 +266,6 @@ impl ProtocolRunnerServiceDefault {
 
     fn run(mut channel: ProtocolRunnerResponder, mut api: ProtocolRunnerApi, log: Logger) {
         // TODO:
-        //   - when an IPC requests fails because the protocol runner went down, retry it
-        //     after it has been restarted
         //   - pool connections
         api.tokio_runtime.clone().block_on(async move {
             let mut child_process_handle: Option<Child> = None;

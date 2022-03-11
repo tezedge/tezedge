@@ -3,9 +3,6 @@
 
 use std::sync::Arc;
 
-use tezos_api::ffi::ProtocolError;
-use tezos_protocol_ipc_client::ProtocolServiceError;
-
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
@@ -108,18 +105,13 @@ where
                         _ => None,
                     };
 
-                    if let ProtocolServiceError::ProtocolError {
-                        reason: ProtocolError::ApplyBlockError { reason },
-                    } = err
-                    {
-                        if store.dispatch(BlockApplierApplyProtocolRunnerApplyRetryAction {
-                            reason: reason.clone(),
-                            block_hash: block_hash.clone(),
-                        }) {
-                            // if retrying is enabled, return, otherwise
-                            // dispatch error action.
-                            return;
-                        }
+                    if store.dispatch(BlockApplierApplyProtocolRunnerApplyRetryAction {
+                        reason: err.clone(),
+                        block_hash: block_hash.clone(),
+                    }) {
+                        // if retrying is enabled, return, otherwise
+                        // dispatch error action.
+                        return;
                     }
 
                     store.dispatch(BlockApplierApplyErrorAction {
