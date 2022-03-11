@@ -587,7 +587,7 @@ impl BootstrapState {
                         .cmp(&supporters2.len())
                         .then(block1.header.level().cmp(&block2.header.level()))
                 })
-                .map(|(block_hash, (block, _))| block.clone()),
+                .map(|(_, (block, _))| block.clone()),
             _ => None,
         }
     }

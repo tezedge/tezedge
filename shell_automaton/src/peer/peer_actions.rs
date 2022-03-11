@@ -75,6 +75,14 @@ pub struct PeerCurrentHeadUpdateAction {
 
 impl EnablingCondition<State> for PeerCurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.peers.get_handshaked(&self.address).is_some()
+        state
+            .peers
+            .get_handshaked(&self.address)
+            .map_or(false, |peer| {
+                peer.current_head.as_ref().map_or(true, |h| {
+                    h.header.level() != self.current_head.header.level()
+                        || h.hash != self.current_head.hash
+                })
+            })
     }
 }
