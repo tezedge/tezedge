@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::env;
 use std::ffi::OsString;
-use std::fs;
+use std::fmt::Display;
+use std::{fs, env};
 use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
-use clap::{App, Arg};
+use clap::{ArgEnum, Parser, Subcommand};
 use slog::Logger;
 
 use crypto::hash::BlockHash;
@@ -20,7 +20,7 @@ use shell::shell_automaton_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
-use storage::{BlockReference, Replay, StorageSnapshot};
+use storage::BlockReference;
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
@@ -28,6 +28,342 @@ use tezos_context_api::{
     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
+
+#[derive(Clone, Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(args_override_self = true)]
+struct CliArgs {
+    /// Validate configuration and generated identity, than just stops application
+    #[clap(long)]
+    validate_cfg_identity_and_stop: bool,
+
+    /// Configuration file with start-up arguments (same format as cli arguments)
+    #[clap(long, parse(from_os_str), validator = validate_path_exists)]
+    config_file: Option<PathBuf>,
+
+    /// Context storage to use
+    #[clap(long, arg_enum, parse(try_from_str), default_value_t = TezosContextStorageChoice::Irmin)]
+    tezos_context_storage: TezosContextStorageChoice,
+
+    /// A directory for Tezos OCaml runtime storage (context/store)
+    #[clap(long, validator = validate_directory_exists_create, parse(from_os_str), default_value = "/tmp/tezedge")]
+    tezos_data_dir: PathBuf,
+
+    /// Enable or not the integrity check on persistent tezedge context
+    #[clap(long)]
+    context_integrity_check: bool,
+
+    /// Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
+    /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
+    #[clap(long, validator = validate_path_exists, default_value = "./light_node/etc/tezedge/identity.json")]
+    identity_file: PathBuf,
+
+    /// Expected power of identity for node. It is used to generate new identity
+    #[clap(long, parse(try_from_str), default_value_t = 26.0)]
+    identity_expected_pow: f64,
+
+    /// Path to bootstrap database directory.
+    /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
+    #[clap(long, validator = validate_path_exists, default_value = "bootstrap_db")]
+    bootstrap_db_path: PathBuf,
+
+    /// Path to context-stats database directory.
+    /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
+    #[clap(long, validator = validate_path_exists)]
+    context_stats_db_path: Option<PathBuf>,
+
+    /// Panic if the context initialization of application took longer than this number of seconds
+    #[clap(long, parse(try_from_str), default_value_t = Storage::DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS)]
+    initialize_context_timeout_in_secs: u64,
+
+    /// Panic if the chain manager first initialization of application took longer than this number of seconds
+    #[clap(long, parse(try_from_str), default_value_t = Environment::DEFAULT_INITIALIZE_CHAIN_MANAGER_TIMEOUT_IN_SECONDS)]
+    initialize_chain_manager_timeout_in_secs: u64,
+
+    /// Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.
+    #[clap(long, parse(try_from_str))]
+    db_cfg_max_threads: Option<usize>,
+
+    /// A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon.
+    /// Used according to --network parameter see TezosEnvironment
+    #[clap(long, parse(try_from_str), group = "bootstrap_lookup")]
+    bootstrap_lookup_address: Vec<String>,
+
+    /// Disables dns lookup to get the peers to bootstrap the network from
+    #[clap(long, group = "bootstrap_lookup")]
+    disable_bootstrap_lookup: bool,
+
+    /// Set the logger target. Possible values: terminal, file
+    #[clap(long, parse(try_from_str), default_value = "terminal")]
+    log: Vec<String>,
+
+    /// Path to the log file. 
+    /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
+    #[clap(long, default_value = Logging::DEFAULT_FILE_LOGGER_PATH)]
+    log_file: PathBuf,
+
+    /// Used for log file rotation, if actual log file reaches this size-in-bytes, it will be rotated to '*.0.gz, .1.gz, ...'
+    #[clap(long, parse(try_from_str), default_value_t = Logging::DEFAULT_FILE_LOGGER_ROTATE_IF_SIZE_IN_BYTES)]
+    log_rotate_if_size_in_bytes: u64,
+
+    /// Used for log file rotation, how many rotated files do we want to keep '*.0.gz, .1.gz, ...'
+    #[clap(long, parse(try_from_str), default_value_t = Logging::DEFAULT_FILE_LOGGER_KEEP_NUMBER_OF_ROTATED_FILE)]
+    log_rotate_keep_logs_number: u16,
+
+    /// Set output format of the log
+    #[clap(long, parse(try_from_str), default_value_t = LogFormatArg::Simple)]
+    log_format: LogFormatArg,
+
+    /// Set logging level
+    #[clap(long, arg_enum, parse(try_from_str), default_value_t = LogLevelArg::Info)]
+    log_level: LogLevelArg,
+
+    /// Flag for turn on/off logging in Tezos OCaml runtime
+    #[clap(long)]
+    ocaml_log_enabled: bool,
+
+    /// Enable or disable mempool
+    #[clap(long)]
+    disable_mempool: bool,
+
+    /// Enable or disable blocks prechecking
+    #[clap(long)]
+    disable_block_precheck: bool,
+
+    /// Enable or disable prechecking of endorsements
+    #[clap(long)]
+    disable_endorsements_precheck: bool,
+
+    /// Enable or disable retries when block fails to apply
+    #[clap(long)]
+    disable_apply_retry: bool,
+
+    /// Enable or disable peer graylisting
+    #[clap(long)]
+    disable_peer_graylist: bool,
+
+    /// Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to
+    #[clap(long, group = "bootstrap_lookup", requires = "peers")]
+    private_node: bool,
+
+    /// Tezos network to connect to
+    #[clap(long, arg_enum)]
+    network: TezosEnvironment,
+
+    /// Path to a JSON file defining a custom network using the same format used by Octez
+    #[clap(long, validator = validate_path_exists)]
+    custom_network_file: Option<PathBuf>,
+
+    /// Socket listening port for p2p for communication with tezos world
+    #[clap(long, parse(try_from_str), default_value_t = 9732)]
+    p2p_port: u16,
+
+    /// Rust server RPC port for communication with rust node
+    #[clap(long, parse(try_from_str), default_value_t = 18732)]
+    rpc_port: u16,
+
+    /// Flag for enable/disable test chain switching for block applying
+    #[clap(long)]
+    enable_testchain: bool,
+
+    /// Websocket address where various node metrics and statistics are available
+    #[clap(long, parse(try_from_str))]
+    websocket_address: Option<SocketAddr>,
+
+    /// Websocket max number of allowed concurrent connection
+    #[clap(long, parse(try_from_str), default_value_t = Rpc::DEFAULT_WEBSOCKET_MAX_CONNECTIONS)]
+    websocket_max_connections: u16,
+
+    /// Peers to bootstrap the network from.
+    #[clap(long, parse(try_from_str))]
+    peers: Vec<SocketAddr>,
+
+    /// Minimal number of peers to connect to
+    #[clap(long, parse(try_from_str), default_value_t = 20)]
+    peer_thresh_low: usize,
+
+    /// Maximal number of peers to connect to
+    #[clap(long, parse(try_from_str), default_value_t = 30)]
+    peer_thresh_high: usize,
+
+    /// Set the synchronizations threshol
+    #[clap(long, parse(try_from_str))]
+    synchronization_thresh: Option<usize>,
+
+    /// Path to a tezos protocol runner executable
+    #[clap(long, validator = validate_path_exists, default_value = "./target/release/protocol-runner")]
+    protocol_runner: PathBuf,
+
+    /// Path to a init file for sapling-spend.params
+    #[clap(long, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)]
+    init_sapling_spend_params_file: PathBuf,
+
+    /// Path to a init file for sapling-output.params
+    #[clap(long, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)]
+    init_sapling_output_params_file: PathBuf,
+
+    /// Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.
+    #[clap(long, parse(try_from_str), default_value_t = 0)]
+    tokio_threads: usize,
+
+    /// Number of threads spawned by a riker (actor system) thread pool. If value is zero, then number of threads equal to CPU cores is spawned.
+    #[clap(long, parse(try_from_str), default_value_t = 0)]
+    riker_threads: usize,
+
+    /// Options fo main database backend
+    #[clap(long, arg_enum, default_value_t = Storage::DEFAULT_MAINDB)]
+    maindb_backend: TezedgeDatabaseBackendConfiguration,
+
+    /// Choose the TezEdge context storage backend
+    #[clap(long, arg_enum, default_value_t = Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)]
+    context_kv_store: SupportedContextKeyValueStore,
+
+    /// Activate the computation of tree hashes when applying context actions
+    #[clap(long)]
+    compute_context_action_tree_hashes: bool,
+
+    /// Enable recording/persisting shell automaton state snapshots.
+    #[clap(long)]
+    record_shell_automaton_state_snapshots: bool,
+
+    /// Enable recording/persisting shell automaton actions.
+    #[clap(long)]
+    record_shell_automaton_actions: bool,
+
+    #[clap(long, validator = validate_path_exists)]
+    sandbox_patch_context_json_file: Option<PathBuf>,
+
+    #[clap(subcommand)]
+    command: Option<Commands>,
+
+    /// Override node's current head level in order to bootstrap from that block.
+    #[clap(long, parse(try_from_str))]
+    current_head_level_override: Option<i32>
+}
+
+impl CliArgs {
+    fn set_tezos_data_dir(&mut self, tezos_data_dir: PathBuf) {
+        self.tezos_data_dir = tezos_data_dir;
+    }
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum Commands {
+    /// Replay a specific part of the chain
+    Replay {
+        /// Block from which we start the replay
+        #[clap(long, parse(try_from_str))]
+        from_block: Option<BlockHash>,
+
+        /// Replay until this block
+        #[clap(long, parse(try_from_str))]
+        to_block: BlockHash,
+
+        /// A directory for the replay
+        #[clap(long, validator = validate_directory_exists_create, default_value = "/tmp/replay")]
+        target_path: PathBuf,
+
+        /// Panic if the block application took longer than this number of milliseconds
+        #[clap(long, parse(try_from_str))]
+        fail_above: Option<u64>,
+    },
+    /// Create a full snapshot from the node data
+    Snapshot {
+        // TODO: replicate the vlidation
+        /// Block to snapshot (by hash, level or offset (~<NUM>) from head)
+        #[clap(long)]
+        block: Option<String>,
+
+        /// Directory where the snapshot will be created
+        #[clap(long, validator = validate_directory_exists_create, default_value = "/tmp/tezedge-snapshot")]
+        target_path: PathBuf,
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+enum LogFormatArg {
+    Simple,
+    Json,
+}
+
+impl Display for LogFormatArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogFormatArg::Simple => write!(f, "simple"),
+            LogFormatArg::Json => write!(f, "json"),
+        }
+    }
+}
+
+impl FromStr for LogFormatArg {
+    type Err = InvalidVariant;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "simple" => Ok(LogFormatArg::Simple),
+            "json" => Ok(LogFormatArg::Json),
+            _ => Err(InvalidVariant(format!("Invalid log format: {}", s)))
+        }
+    }
+}
+
+impl From<LogFormatArg> for LogFormat {
+    fn from(format: LogFormatArg) -> Self {
+        match format {
+            LogFormatArg::Simple => LogFormat::Simple,
+            LogFormatArg::Json => LogFormat::Json,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+enum LogLevelArg {
+    Critical,
+    Error,
+    Warning,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<LogLevelArg> for slog::Level {
+    fn from(val: LogLevelArg) -> Self {
+        match val {
+            LogLevelArg::Critical => slog::Level::Critical,
+            LogLevelArg::Error => slog::Level::Error,
+            LogLevelArg::Warning => slog::Level::Warning,
+            LogLevelArg::Info => slog::Level::Info,
+            LogLevelArg::Debug => slog::Level::Debug,
+            LogLevelArg::Trace => slog::Level::Trace,
+        }
+    }
+}
+
+fn validate_directory_exists_create(s: &str) -> Result<(), String> {
+    let dir = Path::new(&s);
+    if dir.exists() {
+        if dir.is_dir() {
+            Ok(())
+        } else {
+            Err(format!("Required dir '{}' exists, but is not a directory!", s))
+        }
+    } else {
+        // Directory does not exists, try to create it
+        if let Err(e) = fs::create_dir_all(dir) {
+            Err(format!("Unable to create directory '{}': {} ", s, e))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn validate_path_exists(s: &str) -> Result<(), String> {
+    if Path::new(s).exists() {
+        Ok(())
+    } else {
+        Err(format!("File not found at '{}'", s))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -39,7 +375,7 @@ pub struct Rpc {
 }
 
 impl Rpc {
-    const DEFAULT_WEBSOCKET_MAX_CONNECTIONS: &'static str = "100";
+    const DEFAULT_WEBSOCKET_MAX_CONNECTIONS: u16 = 100;
 }
 
 #[derive(Debug, Clone)]
@@ -54,9 +390,16 @@ impl Logging {
     const DEFAULT_FILE_LOGGER_KEEP_NUMBER_OF_ROTATED_FILE: u16 = 100; // 100 MB * 100 = 10 GB
 }
 
-#[derive(Debug, Clone)]
-pub struct ParseTezosContextStorageChoiceError(String);
+#[derive(Debug, Clone, thiserror::Error)]
+pub struct InvalidVariant(String);
 
+impl Display for InvalidVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 enum TezosContextStorageChoice {
     Irmin,
     TezEdge,
@@ -64,14 +407,14 @@ enum TezosContextStorageChoice {
 }
 
 impl FromStr for TezosContextStorageChoice {
-    type Err = ParseTezosContextStorageChoiceError;
+    type Err = InvalidVariant;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_ref() {
             "both" => Ok(TezosContextStorageChoice::Both),
             "irmin" => Ok(TezosContextStorageChoice::Irmin),
             "tezedge" => Ok(TezosContextStorageChoice::TezEdge),
-            _ => Err(ParseTezosContextStorageChoiceError(format!(
+            _ => Err(InvalidVariant(format!(
                 "Invalid context storage name: {}",
                 s
             ))),
@@ -99,9 +442,9 @@ impl Storage {
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_context_api::ONDISK;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: SupportedContextKeyValueStore = SupportedContextKeyValueStore::OnDisk;
 
-    const DEFAULT_MAINDB: &'static str = "rocksdb";
+    const DEFAULT_MAINDB: TezedgeDatabaseBackendConfiguration = TezedgeDatabaseBackendConfiguration::RocksDB;
 
     const DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS: u64 = 15;
 }
@@ -133,8 +476,7 @@ pub struct Environment {
     pub storage: Storage,
     pub identity: Identity,
     pub ffi: Ffi,
-    pub replay: Option<Replay>,
-    pub snapshot: Option<StorageSnapshot>,
+    pub sub_command: Option<Commands>,
 
     pub tezos_network: TezosEnvironment,
     pub tezos_network_config: TezosEnvironmentConfiguration,
@@ -167,7 +509,7 @@ impl slog::Value for Environment {
         serializer.emit_arguments("storage", &format_args!("{:?}", self.storage))?;
         serializer.emit_arguments("identity", &format_args!("{:?}", self.identity))?;
         serializer.emit_arguments("ffi", &format_args!("{:?}", self.ffi))?;
-        serializer.emit_arguments("replay", &format_args!("{:?}", self.replay))?;
+        // serializer.emit_arguments("replay", &format_args!("{:?}", self.replay))?;
         serializer.emit_arguments(
             "initialize_chain_manager_timeout",
             &format_args!("{:?}", self.initialize_chain_manager_timeout),
@@ -190,524 +532,38 @@ impl slog::Value for Environment {
     }
 }
 
-macro_rules! parse_validator_fn {
-    ($t:ident, $err:expr) => {
-        |v| {
-            if v.parse::<$t>().is_ok() {
-                Ok(())
-            } else {
-                Err($err.to_string())
+pub fn parse_snapshot_block(block: &Option<String>) -> Option<BlockReference> {
+    block.as_ref().map(|b| {
+        if let Ok(block_hash) = b.parse::<BlockHash>() {
+            return BlockReference::BlockHash(block_hash);
+        }
+
+        // ~num is an offset from HEAD
+        if let Some(maybe_num) = b.strip_prefix('~') {
+            if let Ok(offset) = maybe_num.parse::<u32>() {
+                return BlockReference::OffsetFromHead(offset);
             }
         }
-    };
-}
 
-// Creates tezos app
-pub fn tezos_app() -> App<'static, 'static> {
-    // Default values for arguments are specidied in default configuration file
-    //
-    // Flag Required=true must be handled separately as we parse args twice,
-    // once to see only if confi-file arg is present and second time to parse all args
-    //
-    // In case some args are required=true and user provides only config-file,
-    // first round of parsing would always fail then
-    let app = App::new("TezEdge Light Node")
-        .version(env!("CARGO_PKG_VERSION"))
-        .author("TezEdge and the project contributors")
-        .about("Rust implementation of the Tezos node")
-        .setting(clap::AppSettings::AllArgsOverrideSelf)
-        .arg(Arg::with_name("validate-cfg-identity-and-stop")
-            .long("validate-cfg-identity-and-stop")
-            .global(true)
-            .takes_value(false)
-            .help("Validate configuration and generated identity, than just stops application"))
-        .arg(Arg::with_name("config-file")
-            .long("config-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Configuration file with start-up arguments (same format as cli arguments)")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
-        .arg(Arg::with_name("tezos-context-storage")
-            .long("tezos-context-storage")
-            .global(true)
-            .takes_value(true)
-            .value_name("NAME")
-            .help("Context storage to use (irmin/tezedge/both)"))
-        .arg(Arg::with_name("tezos-data-dir")
-            .long("tezos-data-dir")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("A directory for Tezos OCaml runtime storage (context/store)")
-            .validator(|v| {
-                let dir = Path::new(&v);
-                if dir.exists() {
-                    if dir.is_dir() {
-                        Ok(())
-                    } else {
-                        Err(format!("Required tezos data dir '{}' exists, but is not a directory!", v))
-                    }
-                } else {
-                    // Tezos data dir does not exists, try to create it
-                    if let Err(e) = fs::create_dir_all(dir) {
-                        Err(format!("Unable to create required tezos data dir '{}': {} ", v, e))
-                    } else {
-                        Ok(())
-                    }
-                }
-            }))
-        .arg(Arg::with_name("context-integrity-check")
-            .long("context-integrity-check")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Enable or not the integrity check on persistent tezedge context"))
-        .arg(Arg::with_name("identity-file")
-            .long("identity-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
-                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("identity-expected-pow")
-            .long("identity-expected-pow")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Expected power of identity for node. It is used to generate new identity. Default: 26.0")
-            .validator(parse_validator_fn!(f64, "Value must be a valid f64 number for expected_pow")))
-        .arg(Arg::with_name("bootstrap-db-path")
-            .long("bootstrap-db-path")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to bootstrap database directory.
-                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("context-stats-db-path")
-            .long("context-stats-db-path")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to context-stats database directory.
-                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("initialize-context-timeout-in-secs")
-            .long("initialize-context-timeout-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .required(false)
-            .help("Panic if the context initialization of application took longer than this number of seconds")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
-        )
-        .arg(Arg::with_name("initialize-chain-manager-timeout-in-secs")
-            .long("initialize-chain-manager-timeout-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .required(false)
-            .help("Panic if the chain manager first initialization of application took longer than this number of seconds")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
-        )
-        .arg(Arg::with_name("db-cfg-max-threads")
-            .long("db-cfg-max-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("bootstrap-lookup-address")
-            .long("bootstrap-lookup-address")
-            .global(true)
-            .takes_value(true)
-            .conflicts_with("peers")
-            .conflicts_with("private-node")
-            .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
-        .arg(Arg::with_name("disable-bootstrap-lookup")
-            .long("disable-bootstrap-lookup")
-            .global(true)
-            .takes_value(false)
-            .conflicts_with("bootstrap-lookup-address")
-            .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
-        .arg(Arg::with_name("current-head-level-override")
-            .long("current-head-level-override")
-            .global(true)
-            .takes_value(true)
-            .help("Override node's current head level in order to bootstrap from that block.")
-            .validator(parse_validator_fn!(u32, "Value must be a valid number")))
-        .arg(Arg::with_name("log")
-            .long("log")
-            .global(true)
-            .takes_value(true)
-            .multiple(true)
-            .value_name("STRING")
-            .possible_values(&LoggerType::possible_values())
-            .help("Set the logger target. Default: terminal"))
-        .arg(Arg::with_name("log-file")
-            .long("log-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal.
-                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("log-rotate-if-size-in-bytes")
-            .long("log-rotate-if-size-in-bytes")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Used for log file rotation, if actual log file reaches this size-in-bytes, it will be rotated to '*.0.gz, .1.gz, ...'")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
-        .arg(Arg::with_name("log-rotate-keep-logs-number")
-            .long("log-rotate-keep-logs-number")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Used for log file rotation, how many rotated files do we want to keep '*.0.gz, .1.gz, ...'")
-            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
-        .arg(Arg::with_name("log-format")
-            .long("log-format")
-            .global(true)
-            .takes_value(true)
-            .possible_values(&["json", "simple"])
-            .help("Set output format of the log"))
-        .arg(Arg::with_name("log-level")
-            .long("log-level")
-            .global(true)
-            .takes_value(true)
-            .value_name("LEVEL")
-            .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
-            .help("Set log level"))
-        .arg(Arg::with_name("ocaml-log-enabled")
-            .long("ocaml-log-enabled")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Flag for turn on/off logging in Tezos OCaml runtime"))
-        .arg(Arg::with_name("disable-mempool")
-            .long("disable-mempool")
-            .global(true)
-            .help("Enable or disable mempool"))
-        .arg(Arg::with_name("disable-block-precheck")
-            .long("disable-block-precheck")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Enable or disable blocks prechecking"))
-        .arg(Arg::with_name("disable-endorsements-precheck")
-            .long("disable-endorsements-precheck")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Enable or disable prechecking of endorsements"))
-        .arg(Arg::with_name("disable-peer-graylist")
-            .long("disable-peer-graylist")
-            .global(true)
-            .help("Disable peer graylisting"))
-        .arg(Arg::with_name("mempool-downloaded-operation-max-ttl-in-secs")
-            .long("mempool-downloaded-operation-max-ttl-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .required(false)
-            .help("Mempool download operation state will hold operation 'in-memory' as long as this timeout")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
-        )
-        .arg(Arg::with_name("mempool-download-operation-timeout-in-millis")
-            .long("mempool-download-operation-timeout-in-millis")
-            .takes_value(true)
-            .value_name("NUM")
-            .required(false)
-            .help("Timeout for downloading mempool operation from a peer, if exceeded, we try another peers")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number"))
-        )
-        .arg(Arg::with_name("private-node")
-            .long("private-node")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .requires("peers")
-            .conflicts_with("bootstrap-lookup-address")
-            .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
-        .arg(Arg::with_name("effects-seed")
-            .long("effects-seed")
-            .takes_value(true)
-            .value_name("SEED")
-            .help("The seed")
-        )
-        .arg(Arg::with_name("network")
-            .long("network")
-            .global(true)
-            .takes_value(true)
-            .possible_values(&TezosEnvironment::possible_values())
-            .help("Choose the Tezos environment")
-        )
-        .arg(Arg::with_name("custom-network-file")
-            .long("custom-network-file")
-            .global(true)
-            .takes_value(true)
-            .required_if("network", "custom")
-            .value_name("PATH")
-            .help("Path to a JSON file defining a custom network using the same format used by Octez")
-        )
-        .arg(Arg::with_name("p2p-port")
-            .long("p2p-port")
-            .global(true)
-            .takes_value(true)
-            .value_name("PORT")
-            .help("Socket listening port for p2p for communication with tezos world")
-            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-        .arg(Arg::with_name("rpc-port")
-            .long("rpc-port")
-            .global(true)
-            .takes_value(true)
-            .value_name("PORT")
-            .help("Rust server RPC port for communication with rust node")
-            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-        .arg(Arg::with_name("enable-testchain")
-            .long("enable-testchain")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Flag for enable/disable test chain switching for block applying. Default: false"))
-        .arg(Arg::with_name("websocket-address")
-            .long("websocket-address")
-            .global(true)
-            .takes_value(true)
-            .value_name("IP:PORT")
-            .help("Websocket address where various node metrics and statistics are available")
-            .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
-        .arg(Arg::with_name("websocket-max-connections")
-            .long("websocket-max-connections")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Websocket max number of allowed concurrent connection")
-            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
-        .arg(Arg::with_name("peers")
-            .long("peers")
-            .global(true)
-            .takes_value(true)
-            .value_name("IP:PORT")
-            .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
-            .validator(|v| {
-                let err_count = v.split(',')
-                    .map(|ip_port| ip_port.parse::<SocketAddr>())
-                    .filter(|v| v.is_err())
-                    .count();
-                if err_count == 0 {
-                    Ok(())
-                } else {
-                    Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
-                }
-            }))
-        .arg(Arg::with_name("peer-thresh-low")
-            .long("peer-thresh-low")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Minimal number of peers to connect to")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("peer-thresh-high")
-            .long("peer-thresh-high")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Maximal number of peers to connect to")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("synchronization-thresh")
-            .long("synchronization-thresh")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Maximal number of peers to connect to")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("protocol-runner")
-            .long("protocol-runner")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to a tezos protocol runner executable"))
-        .arg(Arg::with_name("init-sapling-spend-params-file")
-            .long("init-sapling-spend-params-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to a init file for sapling-spend.params")
-        )
-        .arg(Arg::with_name("init-sapling-output-params-file")
-            .long("init-sapling-output-params-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Path to a init file for sapling-output.params")
-        )
-        .arg(Arg::with_name("tokio-threads")
-            .long("tokio-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("riker-threads")
-            .long("riker-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of threads spawned by a riker (actor system) thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("maindb-backend")
-            .long("maindb-backend")
-            .takes_value(true)
-            .value_name("STRING")
-            .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
-            .default_value(Storage::DEFAULT_MAINDB)
-            .help("Options fo main database backend"))
-        .arg(Arg::with_name("context-kv-store")
-            .long("context-kv-store")
-            .global(true)
-            .takes_value(true)
-            .value_name("STRING")
-            .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the TezEdge context storage backend - supported backends: 'inmem', 'ondisk'"))
-        // TODO - TE-261: right now this is obsolete, either reintegrate with the timings database or remove
-        .arg(Arg::with_name("compute-context-action-tree-hashes")
-            .long("compute-context-action-tree-hashes")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Activate the computation of tree hashes when applying context actions"))
-        .arg(Arg::with_name("record-shell-automaton-state-snapshots")
-            .long("record-shell-automaton-state-snapshots")
-            .global(true)
-            .takes_value(false)
-            .help("Enable recording/persisting shell automaton state snapshots.")
-        )
-        .arg(Arg::with_name("record-shell-automaton-actions")
-            .long("record-shell-automaton-actions")
-            .global(true)
-            .takes_value(false)
-            .help("Enable recording/persisting shell automaton actions.")
-        )
-        .arg(Arg::with_name("sandbox-patch-context-json-file")
-            .long("sandbox-patch-context-json-file")
-            .global(true)
-            .takes_value(true)
-            .value_name("PATH")
-            .required(false)
-            .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }))
-        .subcommand(
-            clap::SubCommand::with_name("replay")
-                .arg(Arg::with_name("from-block")
-                     .long("from-block")
-                     .takes_value(true)
-                     .value_name("HASH")
-                     .display_order(0)
-                     .help("Block from which we start the replay")
-                     .validator(|value| {
-                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
-                     })
-                )
-                .arg(Arg::with_name("to-block")
-                     .long("to-block")
-                     .takes_value(true)
-                     .value_name("HASH")
-                     .display_order(0)
-                     .required(true)
-                     .help("Replay until this block")
-                     .validator(|value| {
-                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
-                     })
-                )
-                .arg(Arg::with_name("target-path")
-                     .long("target-path")
-                     .takes_value(true)
-                     .value_name("PATH")
-                     .display_order(1)
-                     .required(true)
-                     .help("A directory for the replay")
-                     .validator(|v| {
-                         let dir = Path::new(&v);
-                         if dir.exists() {
-                             if dir.is_dir() {
-                                 Ok(())
-                             } else {
-                                 Err(format!("Required replay data dir '{}' exists, but is not a directory!", v))
-                             }
-                         } else {
-                             // Tezos data dir does not exists, try to create it
-                             if let Err(e) = fs::create_dir_all(dir) {
-                                 Err(format!("Unable to create required replay data dir '{}': {} ", v, e))
-                             } else {
-                                 Ok(())
-                             }
-                         }
-                     }))
-                .arg(Arg::with_name("fail-above")
-                     .long("fail-above")
-                     .takes_value(true)
-                     .value_name("NUM")
-                     .display_order(1)
-                     .required(false)
-                     .help("Panic if the block application took longer than this number of milliseconds")
-                     .validator(parse_validator_fn!(u64, "Value must be a valid number"))
-                )
-        ).subcommand(
-            clap::SubCommand::with_name("snapshot")
-                .arg(Arg::with_name("block")
-                     .long("block")
-                     .takes_value(true)
-                     .value_name("HASH_OR_LEVEL_OR_OFFSET")
-                     .display_order(0)
-                     .required(false)
-                     .help("Block to snapshot (by hash, level or offset (~<NUM>) from head)")
-                     .validator(|value| {
-                         if value.parse::<BlockHash>().is_err() && value.parse::<u32>().is_err() && !(value.starts_with('~') && (&value[1..]).parse::<u32>().is_ok()) {
-                             Err("Block hash, level of offset  not valid".to_string())
-                         } else {
-                             Ok(())
-                         }
-                     })
-                )
-                .arg(Arg::with_name("target-path")
-                     .long("target-path")
-                     .takes_value(true)
-                     .value_name("PATH")
-                     .display_order(1)
-                     .required(true)
-                     .help("Directory where the snapshot will be created")
-                     .validator(|v| {
-                         let dir = Path::new(&v);
-                         if dir.exists() {
-                             if dir.is_dir() {
-                                 Ok(())
-                             } else {
-                                 Err(format!("Required snapshot data dir '{}' exists, but is not a directory!", v))
-                             }
-                         } else {
-                             // Tezos data dir does not exists, try to create it
-                             if let Err(e) = fs::create_dir_all(dir) {
-                                 Err(format!("Unable to create required snapshot data dir '{}': {} ", v, e))
-                             } else {
-                                 Ok(())
-                             }
-                         }
-                     }))
+        if let Ok(level) = b.parse::<u32>() {
+            return BlockReference::Level(level);
+        }
+
+        panic!(
+            "Provided value cannot be converted to BlockHash, level of offset from head"
         );
-    app
+    })
 }
 
 fn resolve_tezos_network_config(
-    args: &clap::ArgMatches,
+    tezos_network: &TezosEnvironment,
+    custom_network_file: Option<PathBuf>,
 ) -> (TezosEnvironment, TezosEnvironmentConfiguration) {
-    let tezos_network: TezosEnvironment = args
-        .value_of("network")
-        .expect("Network is required")
-        .parse::<TezosEnvironment>()
-        .expect("Was expecting one value from TezosEnvironment");
-
     if matches!(tezos_network, TezosEnvironment::Custom) {
         // If a custom network file has been provided, parse it and set the custom network
-        if let Some(custom_network_file) = args.value_of("custom-network-file") {
+        if let Some(custom_network_file) = custom_network_file {
             (
-                tezos_network,
+                *tezos_network,
                 TezosEnvironmentConfiguration::try_from_config_file(custom_network_file)
                     .expect("Failed to parse tezos network configuration"),
             )
@@ -716,49 +572,13 @@ fn resolve_tezos_network_config(
         }
     } else {
         // check in defaults
-        if let Some(tezos_network_config) = environment::default_networks().get(&tezos_network) {
-            (tezos_network, tezos_network_config.clone())
+        if let Some(tezos_network_config) = environment::default_networks().get(tezos_network) {
+            (*tezos_network, tezos_network_config.clone())
         } else {
             panic!(
                 "Missing default configuration for selected network `{:?}`",
                 tezos_network
             )
-        }
-    }
-}
-
-// Explicitly validates all required parameters
-// Flag Required=true must be handled separately as we parse args twice,
-// once to see only if config-file arg is present and second time to parse all args
-// In case some args are required=true and user provides only config-file,
-// first round of parsing would always fail then
-fn validate_required_args(args: &clap::ArgMatches) {
-    validate_required_arg(args, "tezos-data-dir", None);
-    validate_required_arg(
-        args,
-        "network",
-        Some(format!(
-            "possible_values: {:?}",
-            TezosEnvironment::possible_values()
-        )),
-    );
-    validate_required_arg(args, "bootstrap-db-path", None);
-    validate_required_arg(args, "p2p-port", None);
-    validate_required_arg(args, "protocol-runner", None);
-    validate_required_arg(args, "rpc-port", None);
-    validate_required_arg(args, "peer-thresh-low", None);
-    validate_required_arg(args, "peer-thresh-high", None);
-    validate_required_arg(args, "tokio-threads", None);
-    validate_required_arg(args, "identity-file", None);
-    validate_required_arg(args, "identity-expected-pow", None);
-}
-
-// Validates single required arg. If missing, exit whole process
-pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str, help: Option<String>) {
-    if !args.is_present(arg_name) {
-        match help {
-            Some(help) => panic!("Required \"{}\" arg is missing, {} !!!", arg_name, help),
-            None => panic!("Required \"{}\" arg is missing !!!", arg_name),
         }
     }
 }
@@ -823,163 +643,79 @@ pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
 
 impl Environment {
     pub fn from_args() -> Self {
-        let app = tezos_app();
-        let args: clap::ArgMatches;
+        let mut cli_args = CliArgs::parse();
 
+        // TODO: implement this with the new arg parsing
         // First, get cli arguments and find out only if config-file arg is provided
         // If config-file argument is present, read all parameters from config-file and merge it with cli arguments
-        let temp_args = app.clone().get_matches();
-        if temp_args.is_present("config-file") {
-            let config_path = temp_args
-                .value_of("config-file")
-                .unwrap()
-                .parse::<PathBuf>()
-                .expect("Provided config-file cannot be converted to path");
+        let temp_args = cli_args.clone();
+        if let Some(config_file) = temp_args.config_file {
 
-            let mut merged_args = parse_config(config_path);
+            let mut merged_args = parse_config(config_file);
 
-            let mut cli_args = env::args_os();
-            if let Some(bin) = cli_args.next() {
+            let mut cli_args_os = env::args_os();
+            if let Some(bin) = cli_args_os.next() {
                 merged_args.insert(0, bin);
             }
-            merged_args.extend(cli_args);
+            merged_args.extend(cli_args_os);
 
-            args = app.get_matches_from(merged_args);
+            // args = cli_args.get_matches_from(merged_args);
+            cli_args = CliArgs::parse_from(merged_args);
         }
         // Otherwise use only cli arguments that are already parsed
         else {
-            args = temp_args;
+            cli_args = temp_args;
         }
 
-        // Validates required flags of args
-        validate_required_args(&args);
-
-        let (tezos_network, tezos_network_config): (
-            TezosEnvironment,
-            TezosEnvironmentConfiguration,
-        ) = resolve_tezos_network_config(&args);
-
-        let context_storage: TezosContextStorageChoice = args
-            .value_of("tezos-context-storage")
-            .unwrap_or("irmin")
-            .parse::<TezosContextStorageChoice>()
-            .expect("Provided value cannot be converted to a context storage option");
-        let mut tezos_data_dir: PathBuf = args
-            .value_of("tezos-data-dir")
-            .unwrap_or("")
-            .parse::<PathBuf>()
-            .expect("Provided value cannot be converted to path");
-
-        let replay = args.subcommand_matches("replay").map(|args| {
-            let target_path = args
-                .value_of("target-path")
-                .unwrap()
-                .parse::<PathBuf>()
-                .expect("Provided value cannot be converted to path");
-
-            let to_block = args
-                .value_of("to-block")
-                .unwrap()
-                .parse::<BlockHash>()
-                .expect("Provided value cannot be converted to BlockHash");
-
-            let from_block = args.value_of("from-block").map(|b| {
-                b.parse::<BlockHash>()
-                    .expect("Provided value cannot be converted to BlockHash")
-            });
-
-            let fail_above = std::time::Duration::from_millis(
-                args.value_of("fail-above")
-                    .unwrap_or(&format!("{}", u64::MAX))
-                    .parse::<u64>()
-                    .expect("Provided value cannot be converted to number"),
-            );
-
+        // Replay corner case
+        if let Some(Commands::Replay { target_path, .. }) = &cli_args.command {
             let options = fs_extra::dir::CopyOptions {
                 content_only: true,
                 overwrite: true,
                 ..fs_extra::dir::CopyOptions::default()
             };
+    
+            fs_extra::dir::copy(cli_args.tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
+            
+            let new_path = target_path.clone();
+            cli_args.set_tezos_data_dir(new_path);
+        }
 
-            fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
+        let (tezos_network, tezos_network_config): (
+            TezosEnvironment,
+            TezosEnvironmentConfiguration,
+        ) = resolve_tezos_network_config(&cli_args.network, cli_args.custom_network_file.clone());
 
-            tezos_data_dir = target_path;
-
-            Replay {
-                from_block,
-                to_block,
-                fail_above,
+        let new_tezos_data_dir = cli_args.command.clone().map(|cmd|{
+            if let Commands::Replay { target_path, .. } = cmd {
+                let options = fs_extra::dir::CopyOptions {
+                    content_only: true,
+                    overwrite: true,
+                    ..fs_extra::dir::CopyOptions::default()
+                };
+    
+                fs_extra::dir::copy(&cli_args.tezos_data_dir, &target_path, &options).unwrap();
+                Some(target_path.clone())
+            } else {
+                None
             }
         });
 
-        let snapshot = args.subcommand_matches("snapshot").map(|args| {
-            let target_path = args
-                .value_of("target-path")
-                .unwrap()
-                .parse::<PathBuf>()
-                .expect("Provided value cannot be converted to path");
+        if let Some(Some(new_data_dir)) = new_tezos_data_dir {
+            cli_args.set_tezos_data_dir(new_data_dir);
+        }
 
-            let block = args.value_of("block").map(|b| {
-                if let Ok(block_hash) = b.parse::<BlockHash>() {
-                    return BlockReference::BlockHash(block_hash);
-                }
-
-                // ~num is an offset from HEAD
-                if let Some(maybe_num) = b.strip_prefix('~') {
-                    if let Ok(offset) = maybe_num.parse::<u32>() {
-                        return BlockReference::OffsetFromHead(offset);
-                    }
-                }
-
-                if let Ok(level) = b.parse::<u32>() {
-                    return BlockReference::Level(level);
-                }
-
-                panic!(
-                    "Provided value cannot be converted to BlockHash, level of offset from head"
-                );
-            });
-
-            StorageSnapshot { block, target_path }
-        });
-
-        let log_targets: HashSet<String> = match args.values_of("log") {
-            Some(v) => v.map(String::from).collect(),
-            None => std::iter::once("terminal".to_string()).collect(),
-        };
+        let log_targets: HashSet<String> = cli_args.log.into_iter().collect();
 
         let loggers = log_targets
             .iter()
             .map(|name| match name.as_str() {
                 "terminal" => LoggerType::TerminalLogger,
                 "file" => {
-                    let log_file_path = args
-                        .value_of("log-file")
-                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_PATH);
-                    let log_file_path = log_file_path
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path");
-
-                    let rotate_log_if_size_in_bytes = args
-                        .value_of("log-rotate-if-size-in-bytes")
-                        .map(|v| {
-                            v.parse::<u64>()
-                                .expect("Was expecting value of log-rotate-if-size-in-bytes")
-                        })
-                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_ROTATE_IF_SIZE_IN_BYTES);
-
-                    let keep_number_of_rotated_files = args
-                        .value_of("log-rotate-keep-logs-number")
-                        .map(|v| {
-                            v.parse::<u16>()
-                                .expect("Was expecting value of log-rotate-keep-logs-number")
-                        })
-                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_KEEP_NUMBER_OF_ROTATED_FILE);
-
                     LoggerType::FileLogger(FileLoggerConfig::new(
-                        get_final_path(&tezos_data_dir, log_file_path),
-                        rotate_log_if_size_in_bytes,
-                        keep_number_of_rotated_files,
+                        get_final_path(&cli_args.tezos_data_dir, cli_args.log_file.clone()),
+                        cli_args.log_rotate_if_size_in_bytes,
+                        cli_args.log_rotate_keep_logs_number,
                     ))
                 }
                 unknown_logger_type => {
@@ -992,176 +728,84 @@ impl Environment {
             })
             .collect();
 
-        let listener_port = args
-            .value_of("p2p-port")
-            .unwrap_or("")
-            .parse::<u16>()
-            .expect("Was expecting value of p2p-port");
-
-        let protocol_runner = args
-            .value_of("protocol-runner")
-            .unwrap_or("")
-            .parse::<PathBuf>()
-            .expect("Provided value cannot be converted to path");
-
         // Validate that protocol runner binary is correct before starting
-        if !Path::new(&protocol_runner).exists() {
+        if !cli_args.protocol_runner.exists() {
             panic!(
                 "Tezos protocol runner executable not found at '{}'",
-                protocol_runner.to_string_lossy(),
+                cli_args.protocol_runner.to_string_lossy(),
             )
         }
 
+        let bootstrap_addresses = if cli_args.bootstrap_lookup_address.is_empty() && cli_args.peers.is_empty() && !cli_args.private_node {
+            tezos_network_config.bootstrap_lookup_addresses.clone()
+        } else {
+            cli_args.bootstrap_lookup_address.clone()
+        };
+
+        let tezos_data_dir = cli_args.tezos_data_dir;
+
         Environment {
             p2p: crate::configuration::P2p {
-                listener_port,
-                listener_address: format!("0.0.0.0:{}", listener_port)
+                listener_port: cli_args.p2p_port,
+                listener_address: format!("0.0.0.0:{}", cli_args.p2p_port)
                     .parse::<SocketAddr>()
                     .expect("Failed to parse listener address"),
-                disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
-                disable_peer_graylist: args.is_present("disable-peer-graylist"),
-                bootstrap_lookup_addresses: args
-                    .value_of("bootstrap-lookup-address")
-                    .map(|addresses_str| {
-                        addresses_str
-                            .split(',')
-                            .map(|address| address.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_else(|| {
-                        if !args.is_present("peers") && !args.is_present("private-node") {
-                            tezos_network_config.bootstrap_lookup_addresses.clone()
-                        } else {
-                            Vec::with_capacity(0)
-                        }
-                    })
+                disable_bootstrap_lookup: cli_args.disable_bootstrap_lookup,
+                disable_peer_graylist: cli_args.disable_peer_graylist,
+                bootstrap_lookup_addresses: bootstrap_addresses
                     .iter()
                     .map(|addr| {
-                        environment::parse_bootstrap_addr_port(
-                            addr,
-                            crate::configuration::P2p::DEFAULT_P2P_PORT_FOR_LOOKUP,
-                        )
+                        environment::parse_bootstrap_addr_port(addr, crate::configuration::P2p::DEFAULT_P2P_PORT_FOR_LOOKUP)
                         .unwrap_or_else(|_| {
-                            panic!(
-                                "Was expecting 'ADDR' or 'ADDR:PORT', invalid value: {}",
-                                addr
-                            )
-                        })
-                    })
-                    .collect(),
-                bootstrap_peers: args
-                    .value_of("peers")
-                    .map(|peers_str| {
-                        peers_str
-                            .split(',')
-                            .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                current_head_level_override: args
-                    .value_of("current-head-level-override")
-                    .and_then(|level| level.parse().ok()),
+                                        panic!(
+                                            "Was expecting 'ADDR' or 'ADDR:PORT', invalid value: {}",
+                                            addr
+                                        )
+                                    })
+                    }).collect(),
+                bootstrap_peers: cli_args.peers,
                 peer_threshold: PeerConnectionThreshold::try_new(
-                    args.value_of("peer-thresh-low")
-                        .unwrap_or("")
-                        .parse::<usize>()
-                        .expect("Provided value cannot be converted to number"),
-                    args.value_of("peer-thresh-high")
-                        .unwrap_or("")
-                        .parse::<usize>()
-                        .expect("Provided value cannot be converted to number"),
-                    args.value_of("synchronization-thresh").map(|v| {
-                        v.parse::<usize>()
-                            .expect("Provided value cannot be converted to number")
-                    }),
+                    cli_args.peer_thresh_low,
+                    cli_args.peer_thresh_high,
+                    cli_args.synchronization_thresh,
                 )
                 .expect("Invalid threashold range"),
-                private_node: args
-                    .value_of("private-node")
-                    .unwrap_or("false")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
-                disable_mempool: args.is_present("disable-mempool"),
-                disable_block_precheck: args.value_of("disable-block-precheck").map_or(true, |s| {
-                    s.parse()
-                        .expect("Boolean value expected for disable-block-precheck")
-                }),
-                disable_endorsements_precheck: args
-                    .value_of("disable-endorsements-precheck")
-                    .map_or(false, |s| {
-                        s.parse()
-                            .expect("Boolean value expected for disable-endorsements-precheck")
-                    }),
-                randomness_seed: args.value_of("randomness-seed").map(|s| {
-                    s.parse::<u64>()
-                        .expect("Provided value cannot be converted to u64")
-                }),
-                record_shell_automaton_state_snapshots: args
-                    .is_present("record-shell-automaton-state-snapshots"),
-                record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
+                private_node: cli_args.private_node,
+                disable_mempool: cli_args.disable_mempool,
+                disable_block_precheck: cli_args.disable_block_precheck,
+                disable_endorsements_precheck: cli_args.disable_endorsements_precheck,
+                randomness_seed: None,
+                record_shell_automaton_state_snapshots: cli_args.record_shell_automaton_state_snapshots,
+                record_shell_automaton_actions: cli_args.record_shell_automaton_actions,
+                current_head_level_override: cli_args.current_head_level_override,
             },
             rpc: crate::configuration::Rpc {
-                listener_port: args
-                    .value_of("rpc-port")
-                    .unwrap_or("")
-                    .parse::<u16>()
-                    .expect("Was expecting value of rpc-port"),
-                websocket_cfg: args.value_of("websocket-address").and_then(|address| {
-                    address.parse::<SocketAddr>().map_or(None, |socket_addrs| {
-                        let max_connections = args
-                            .value_of("websocket-max-connections")
-                            .unwrap_or(Rpc::DEFAULT_WEBSOCKET_MAX_CONNECTIONS)
-                            .parse::<u16>()
-                            .expect("Provided value cannot be converted to number");
-                        Some((socket_addrs, max_connections))
-                    })
+                listener_port: cli_args.rpc_port,
+                websocket_cfg: cli_args.websocket_address.map(|address| {
+                    let max_connections = cli_args.websocket_max_connections;
+                    (address, max_connections)
                 }),
             },
             logging: crate::configuration::Logging {
                 slog: SlogConfig {
-                    level: args
-                        .value_of("log-level")
-                        .unwrap_or("")
-                        .parse::<slog::Level>()
-                        .expect("Was expecting one value from slog::Level"),
-                    format: args
-                        .value_of("log-format")
-                        .unwrap_or("")
-                        .parse::<LogFormat>()
-                        .expect("Was expecting 'simple' or 'json'"),
+                    level: cli_args.log_level.into(),
+                    format: cli_args.log_format.into(),
                     log: loggers,
                 },
-                ocaml_log_enabled: args
-                    .value_of("ocaml-log-enabled")
-                    .unwrap_or("")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
+                ocaml_log_enabled: cli_args.ocaml_log_enabled,
             },
             storage: {
-                let path = args
-                    .value_of("bootstrap-db-path")
-                    .unwrap_or("")
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path");
-                let db_path = get_final_path(&tezos_data_dir, path);
+                let db_path = get_final_path(&tezos_data_dir, cli_args.bootstrap_db_path);
 
-                let context_stats_db_path = args.value_of("context-stats-db-path").map(|value| {
-                    let path = value
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path");
+                let context_stats_db_path = cli_args.context_stats_db_path.map(|path| {
                     get_final_path(&tezos_data_dir, path)
                 });
 
-                let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
-                    value
-                        .parse::<usize>()
-                        .map(|val| {
-                            std::cmp::min(
-                                Storage::MINIMAL_THREAD_COUNT,
-                                val / Storage::STORAGES_COUNT,
-                            )
-                        })
-                        .expect("Provided value cannot be converted to number")
+                let db_threads_count = cli_args.db_cfg_max_threads.map(|value| {
+                    std::cmp::min(
+                        Storage::MINIMAL_THREAD_COUNT,
+                        value / Storage::STORAGES_COUNT,
+                    )
                 });
 
                 let db = RocksDbConfig {
@@ -1171,70 +815,36 @@ impl Environment {
                     columns: DbsRocksDbTableInitializer,
                     threads: db_threads_count,
                 };
-                let maindb_backend: TezedgeDatabaseBackendConfiguration = args
-                    .value_of("maindb-backend")
-                    .unwrap_or(Storage::DEFAULT_MAINDB)
-                    .parse::<TezedgeDatabaseBackendConfiguration>()
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "Expecting one value from {:?}, error: {:?}",
-                            TezedgeDatabaseBackendConfiguration::possible_values(),
-                            e
-                        )
-                    });
 
-                let startup_check = args
-                    .value_of("context-integrity-check")
-                    .unwrap_or("false")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool");
-
-                let context_kv_store = args
-                    .value_of("context-kv-store")
-                    .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
-                    .parse::<SupportedContextKeyValueStore>()
-                    .map(|v| match v {
-                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem(
+                let context_kv_store = match cli_args.context_kv_store {
+                    SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem(
+                        TezosContextTezedgeOnDiskBackendOptions {
+                            base_path: get_final_path(&tezos_data_dir, "context".into())
+                                .into_os_string()
+                                .into_string()
+                                .unwrap(),
+                            startup_check: cli_args.context_integrity_check,
+                        },
+                    ),
+                    SupportedContextKeyValueStore::OnDisk => {
+                        ContextKvStoreConfiguration::OnDisk(
                             TezosContextTezedgeOnDiskBackendOptions {
                                 base_path: get_final_path(&tezos_data_dir, "context".into())
                                     .into_os_string()
                                     .into_string()
                                     .unwrap(),
-                                startup_check,
+                                startup_check: cli_args.context_integrity_check,
                             },
-                        ),
-                        SupportedContextKeyValueStore::OnDisk => {
-                            ContextKvStoreConfiguration::OnDisk(
-                                TezosContextTezedgeOnDiskBackendOptions {
-                                    base_path: get_final_path(&tezos_data_dir, "context".into())
-                                        .into_os_string()
-                                        .into_string()
-                                        .unwrap(),
-                                    startup_check,
-                                },
-                            )
-                        }
-                    })
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "Expecting one value from {:?}, error: {:?}",
-                            SupportedContextKeyValueStore::possible_values(),
-                            e
                         )
-                    });
-
-                let compute_context_action_tree_hashes = args
-                    .value_of("compute-context-action-tree-hashes")
-                    .unwrap_or("false")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool");
+                    }
+                };
 
                 // TODO - TE-261: can this conversion be made prettier without `to_string_lossy`?
                 // Path for the socket that will be used for IPC access to the context
                 let context_ipc_socket_path =
                     async_ipc::temp_sock().to_string_lossy().as_ref().to_owned();
 
-                let context_storage_configuration = match context_storage {
+                let context_storage_configuration = match cli_args.tezos_context_storage {
                     TezosContextStorageChoice::TezEdge => {
                         TezosContextStorageConfiguration::TezEdgeOnly(
                             TezosContextTezEdgeStorageConfiguration {
@@ -1270,16 +880,13 @@ impl Environment {
                 crate::configuration::Storage {
                     db,
                     context_storage_configuration,
-                    main_db: maindb_backend,
+                    main_db: cli_args.maindb_backend,
                     db_path,
                     context_stats_db_path,
-                    compute_context_action_tree_hashes,
+                    compute_context_action_tree_hashes: cli_args.compute_context_action_tree_hashes,
                     patch_context: {
-                        match args.value_of("sandbox-patch-context-json-file") {
+                        match cli_args.sandbox_patch_context_json_file {
                             Some(path) => {
-                                let path = path
-                                    .parse::<PathBuf>()
-                                    .expect("Provided value cannot be converted to path");
                                 let path = get_final_path(&tezos_data_dir, path);
                                 match fs::read_to_string(&path) {
                                     Ok(content) => {
@@ -1312,75 +919,33 @@ impl Environment {
                         }
                     },
                     initialize_context_timeout: std::time::Duration::from_secs(
-                        args.value_of("initialize-context-timeout-in-secs")
-                            .unwrap_or(&format!(
-                                "{}",
-                                Storage::DEFAULT_INITIALIZE_CONTEXT_TIMEOUT_IN_SECONDS
-                            ))
-                            .parse::<u64>()
-                            .expect("Provided value cannot be converted to number"),
+                        cli_args.initialize_context_timeout_in_secs,
                     ),
                 }
             },
             identity: crate::configuration::Identity {
                 identity_json_file_path: {
-                    let identity_path = args
-                        .value_of("identity-file")
-                        .unwrap_or("")
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path");
-                    get_final_path(&tezos_data_dir, identity_path)
+                    get_final_path(&tezos_data_dir, cli_args.identity_file)
                 },
-                expected_pow: args
-                    .value_of("identity-expected-pow")
-                    .unwrap_or("26.0")
-                    .parse::<f64>()
-                    .expect("Provided value cannot be converted to number"),
+                expected_pow: cli_args.identity_expected_pow,
             },
             ffi: Ffi {
-                protocol_runner,
+                protocol_runner: cli_args.protocol_runner,
                 zcash_param: ZcashParams {
-                    init_sapling_spend_params_file: args
-                        .value_of("init-sapling-spend-params-file")
-                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path"),
-                    init_sapling_output_params_file: args
-                        .value_of("init-sapling-output-params-file")
-                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path"),
+                    init_sapling_spend_params_file: cli_args.init_sapling_spend_params_file,
+                    init_sapling_output_params_file: cli_args.init_sapling_output_params_file,
                 },
             },
-            replay,
-            snapshot,
-            tokio_threads: args
-                .value_of("tokio-threads")
-                .unwrap_or("0")
-                .parse::<usize>()
-                .expect("Provided value cannot be converted to number"),
-            riker_threads: args
-                .value_of("riker-threads")
-                .unwrap_or("0")
-                .parse::<usize>()
-                .expect("Provided value cannot be converted to number"),
+            tokio_threads: cli_args.tokio_threads,
+            riker_threads: cli_args.riker_threads,
             tezos_network,
             tezos_network_config,
-            enable_testchain: args
-                .value_of("enable-testchain")
-                .unwrap_or("false")
-                .parse::<bool>()
-                .expect("Provided value cannot be converted to bool"),
-            validate_cfg_identity_and_stop: args.is_present("validate-cfg-identity-and-stop"),
+            enable_testchain: cli_args.enable_testchain,
+            validate_cfg_identity_and_stop: cli_args.validate_cfg_identity_and_stop,
             initialize_chain_manager_timeout: std::time::Duration::from_secs(
-                args.value_of("initialize-chain-manager-timeout-in-secs")
-                    .unwrap_or(&format!(
-                        "{}",
-                        Environment::DEFAULT_INITIALIZE_CHAIN_MANAGER_TIMEOUT_IN_SECONDS
-                    ))
-                    .parse::<u64>()
-                    .expect("Provided value cannot be converted to number"),
+                cli_args.initialize_chain_manager_timeout_in_secs,
             ),
+            sub_command: cli_args.command
         }
     }
 

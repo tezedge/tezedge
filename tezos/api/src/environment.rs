@@ -12,6 +12,7 @@ use std::{
     fs,
 };
 
+use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use slog::{debug, info, Logger};
 use strum::IntoEnumIterator;
@@ -38,7 +39,7 @@ pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, Fro
 }
 
 /// Enum representing different Tezos environment.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, ArgEnum)]
 pub enum TezosEnvironment {
     Custom,
     Mainnet,

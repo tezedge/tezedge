@@ -8,6 +8,7 @@ use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::IteratorMode;
+use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::collections::HashMap;
@@ -85,7 +86,7 @@ pub enum TezedgeDatabaseBackendOptions {
     EdgeKV(EdgeKVBackend),
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, ArgEnum)]
 pub enum TezedgeDatabaseBackendConfiguration {
     Sled,
     RocksDB,

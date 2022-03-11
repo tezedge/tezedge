@@ -2207,7 +2207,7 @@ name = "light-node"
 version = "1.18.0"
 dependencies = [
  "async_ipc",
- "clap 2.34.0",
+ "clap 3.1.6",
  "crypto",
  "fs_extra",
  "futures",
@@ -3994,7 +3994,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bytes",
- "clap 2.34.0",
+ "clap 3.1.6",
  "commitlog",
  "criterion",
  "crypto",
@@ -4216,6 +4216,7 @@ version = "1.18.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 3.1.6",
  "crypto",
  "derive_builder",
  "fuzzcheck",
@@ -4277,6 +4278,7 @@ dependencies = [
 name = "tezos_context_api"
 version = "1.18.0"
 dependencies = [
+ "clap 3.1.6",
  "crypto",
  "derive_builder",
  "fuzzcheck",
