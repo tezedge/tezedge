@@ -404,10 +404,13 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     let pred_level = block.header.level() - 1;
                     let pred_hash = block.header.predecessor();
                     let current_level = current_head.header.level();
-                    if pred_level == current_level && pred_hash == &current_head.hash {
-                        peer_intervals[index]
-                            .current
-                            .to_finished(action.time_as_nanos(), content.peer);
+                    if pred_level > current_level {
+                    } else if pred_level == current_level {
+                        if pred_hash == &current_head.hash {
+                            peer_intervals[index]
+                                .current
+                                .to_finished(action.time_as_nanos(), content.peer);
+                        }
                     } else if current_level - 1 == pred_level {
                         if pred_hash == current_head.header.predecessor() {
                             // allow current head(1 level) reorg
@@ -415,7 +418,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 .current
                                 .to_finished(action.time_as_nanos(), content.peer);
                         }
-                    } else if current_level - 2 == pred_level {
+                    } else if pred_level >= 0 && current_level - 2 == pred_level {
                         let head_pred = state.current_head.get_pred();
                         if head_pred.map_or(false, |head_pred| {
                             pred_hash == head_pred.header.predecessor()
@@ -432,6 +435,13 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 error: PeerIntervalError::CementedBlockReorg,
                             };
                         }
+                    } else {
+                        peer_intervals[index].current = PeerIntervalCurrentState::Error {
+                            time: action.time_as_nanos(),
+                            peer: content.peer,
+                            block,
+                            error: PeerIntervalError::CementedBlockReorg,
+                        };
                     }
                 } else {
                     let pred_index = index - 1;
@@ -453,17 +463,19 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 index -= 1;
                             } else if pred_level + 1 == block.header.level() {
                                 if block.header.predecessor() != pred_hash {
-                                    slog::warn!(&log, "Predecessor hash mismatch!";
+                                    slog::debug!(&log, "Predecessor hash mismatch!";
                                                 "block_header" => format!("{:?}", block),
                                                 "pred_interval" => format!("{:?}", peer_intervals.get(pred_index - 1)),
                                                 "interval" => format!("{:?}", pred),
                                                 "next_interval" => format!("{:?}", peer_intervals[index]));
-                                    peer_intervals[pred_index].current = PeerIntervalCurrentState::Error {
-                                        time: action.time_as_nanos(),
-                                        peer: content.peer,
-                                        block,
-                                        error: PeerIntervalError::NextIntervalsPredecessorHashMismatch,
-                                    };
+                                    // peer_intervals[pred_index].current = PeerIntervalCurrentState::Error {
+                                    //     time: action.time_as_nanos(),
+                                    //     peer: content.peer,
+                                    //     block,
+                                    //     error: PeerIntervalError::NextIntervalsPredecessorHashMismatch,
+                                    // };
+                                    peer_intervals.remove(pred_index);
+                                    index -= 1;
                                 } else {
                                     peer_intervals[index]
                                         .current

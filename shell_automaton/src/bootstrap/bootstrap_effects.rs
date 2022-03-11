@@ -358,10 +358,11 @@ where
                 .peers
                 .handshaked_iter()
                 .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
+                .max_by_key(|(_, b)| b.header.level())
                 .filter(|(_, current_head)| {
                     !state.is_same_head(current_head.header.level(), &current_head.hash)
                 })
-                .find(|(_, current_head)| state.can_accept_new_head(current_head))
+                .filter(|(_, current_head)| state.can_accept_new_head(current_head))
             {
                 Some((addr, head)) => (addr, head.clone()),
                 None => return,
