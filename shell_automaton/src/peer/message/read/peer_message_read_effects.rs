@@ -231,7 +231,7 @@ where
                             block_hash: block_hash.clone(),
                         }) {
                             let state = store.state.get();
-                            slog::debug!(&state.log, "Peer - Too many block header requests!";
+                            slog::warn!(&state.log, "Peer - Too many block header requests!";
                                 "peer" => format!("{}", content.address),
                                 "current_requested_block_headers_len" => msg.get_block_headers().len());
                             break;
@@ -245,7 +245,7 @@ where
                             key: key.into(),
                         }) {
                             let state = store.state.get();
-                            slog::debug!(&state.log, "Peer - Too many block operations requests!";
+                            slog::warn!(&state.log, "Peer - Too many block operations requests!";
                                 "peer" => format!("{}", content.address),
                                 "current_requested_block_operations_len" => msg.get_operations_for_blocks().len());
                             break;
@@ -287,15 +287,11 @@ where
                             block,
                         });
                     } else {
-                        slog::warn!(&state.log, "Received unexpected BlockHeader from peer";
+                        slog::debug!(&state.log, "Received unexpected BlockHeader from peer";
                             "peer" => format!("{}", content.address),
                             "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
                             "block" => format!("{:?}", &block),
                             "expected" => format!("{:?}", state.bootstrap.peer_interval(content.address, |p| p.current.is_pending())));
-                        // TODO(zura): fix us requesting same block header multiple times.
-                        // store.dispatch(PeersGraylistAddressAction {
-                        //     address: content.address,
-                        // });
                     }
                 }
                 PeerMessage::OperationsForBlocks(msg) => {

@@ -263,7 +263,6 @@ where
                     predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
                     predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),
                 };
-                let block_hash = block.hash.clone();
                 store
                     .service()
                     .prevalidator()
