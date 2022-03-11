@@ -112,6 +112,7 @@ pub async fn mempool_monitor_operations(
     let branch_refused = query.get_str("branch_refused");
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
+    let outdated = query.get_str("outdated");
 
     let stream = env
         .shell_automaton_sender()
@@ -120,6 +121,7 @@ pub async fn mempool_monitor_operations(
             branch_refused: branch_refused == Some("yes"),
             branch_delayed: branch_delayed == Some("yes"),
             refused: refused == Some("yes"),
+            outdated: outdated == Some("yes"),
         })
         .await
         .ok()

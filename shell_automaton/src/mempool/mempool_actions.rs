@@ -160,6 +160,7 @@ pub struct MempoolRegisterOperationsStreamAction {
     pub refused: bool,
     pub branch_delayed: bool,
     pub branch_refused: bool,
+    pub outdated: bool,
 }
 
 impl EnablingCondition<State> for MempoolRegisterOperationsStreamAction {

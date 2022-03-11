@@ -100,6 +100,7 @@ pub enum RpcRequestStream {
         refused: bool,
         branch_delayed: bool,
         branch_refused: bool,
+        outdated: bool,
     },
 }
 

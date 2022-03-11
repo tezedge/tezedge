@@ -144,6 +144,11 @@ where
                         } else {
                             &[]
                         };
+                        let outdated = if stream.outdated {
+                            response.result.outdated.as_slice()
+                        } else {
+                            &[]
+                        };
                         let resp = std::iter::empty()
                             .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
                             .chain(MonitoredOperation::collect_errored(
@@ -161,6 +166,7 @@ where
                                 ops,
                                 &prot,
                             ))
+                            .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                             .collect::<Vec<_>>();
                         if let Ok(json) = serde_json::to_value(resp) {
                             store
@@ -342,6 +348,16 @@ where
             } else {
                 &[]
             };
+            let outdated = if act.outdated {
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .outdated
+                    .as_slice()
+            } else {
+                &[]
+            };
             let resp = std::iter::empty()
                 .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
                 .chain(MonitoredOperation::collect_errored(
@@ -359,6 +375,7 @@ where
                     ops,
                     &prot,
                 ))
+                .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                 .collect::<Vec<_>>();
             if let Ok(json) = serde_json::to_value(&resp) {
                 slog::trace!(&store.state().log, "============\n{:#?}", resp);
@@ -380,6 +397,7 @@ where
                 &v_ops.refused,
                 &v_ops.branch_delayed,
                 &v_ops.branch_refused,
+                &v_ops.outdated,
                 &v_ops.ops,
                 &prevalidator.protocol,
             );
