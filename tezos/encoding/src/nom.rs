@@ -260,6 +260,7 @@ hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 hash_nom_reader!(Signature);
+hash_nom_reader!(NonceHash);
 
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {

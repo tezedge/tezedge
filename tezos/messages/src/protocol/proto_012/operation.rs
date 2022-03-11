@@ -24,7 +24,8 @@ pub use super::super::proto_011::operation::{
 use std::convert::TryFrom;
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, HashTrait, OperationListListHash, Signature,
+    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationListListHash,
+    Signature,
 };
 use tezos_encoding::{
     binary_reader::BinaryReaderError,
@@ -313,7 +314,7 @@ pub struct FullHeader {
     pub payload_round: i32,
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed_nonce_hash: Option<SizedBytes<32>>,
+    pub seed_nonce_hash: Option<NonceHash>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,
 }
