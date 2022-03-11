@@ -378,8 +378,7 @@ where
         }
         Action::BootstrapFromPeerCurrentHead(content) => {
             if store
-                .state
-                .get()
+                .state()
                 .bootstrap
                 .peer_intervals()
                 .and_then(|intervals| intervals.last())
@@ -397,6 +396,35 @@ where
                     peer: content.peer,
                     block: content.current_head.clone(),
                 });
+            }
+
+            let current_head = match store.state().current_head.get() {
+                Some(v) => v,
+                None => return,
+            };
+            if current_head.header.level() + 128 < content.current_head.header.level() {
+                let peers = store
+                    .state()
+                    .peers
+                    .handshaked_iter()
+                    .filter(|(_, peer)| {
+                        peer.current_head
+                            .as_ref()
+                            .map_or(false, |b| b.hash == content.current_head.hash)
+                    })
+                    .map(|(addr, _)| addr)
+                    .collect::<Vec<_>>();
+
+                let chain_id = store.state().config.chain_id.clone();
+                let message = GetCurrentBranchMessage::new(chain_id);
+
+                for peer in peers {
+                    let message = message.clone();
+                    store.dispatch(PeerMessageWriteInitAction {
+                        address: peer,
+                        message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
+                    });
+                }
             }
         }
         Action::PeerDisconnected(content) => {
