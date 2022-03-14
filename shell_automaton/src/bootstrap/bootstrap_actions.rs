@@ -14,11 +14,15 @@ use crate::current_head::CurrentHeadState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::{EnablingCondition, State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
 use super::BootstrapError;
 
 pub const MAX_PENDING_GET_OPERATIONS: usize = 128;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapInitAction {}
 
 impl EnablingCondition<State> for BootstrapInitAction {
@@ -29,6 +33,7 @@ impl EnablingCondition<State> for BootstrapInitAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersConnectPendingAction {}
 
 impl EnablingCondition<State> for BootstrapPeersConnectPendingAction {
@@ -38,6 +43,7 @@ impl EnablingCondition<State> for BootstrapPeersConnectPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersConnectSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersConnectSuccessAction {
@@ -48,6 +54,7 @@ impl EnablingCondition<State> for BootstrapPeersConnectSuccessAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersMainBranchFindInitAction {}
 
 impl EnablingCondition<State> for BootstrapPeersMainBranchFindInitAction {
@@ -57,6 +64,7 @@ impl EnablingCondition<State> for BootstrapPeersMainBranchFindInitAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersMainBranchFindPendingAction {}
 
 impl EnablingCondition<State> for BootstrapPeersMainBranchFindPendingAction {
@@ -66,7 +74,9 @@ impl EnablingCondition<State> for BootstrapPeersMainBranchFindPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerCurrentBranchReceivedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub current_head: BlockHeaderWithHash,
     pub history: Vec<BlockHash>,
@@ -85,6 +95,7 @@ impl EnablingCondition<State> for BootstrapPeerCurrentBranchReceivedAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersMainBranchFindSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersMainBranchFindSuccessAction {
@@ -97,6 +108,7 @@ impl EnablingCondition<State> for BootstrapPeersMainBranchFindSuccessAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockHeadersGetInitAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetInitAction {
@@ -109,6 +121,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetInitAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockHeadersGetPendingAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetPendingAction {
@@ -121,7 +134,9 @@ impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockHeaderGetInitAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
 }
 
@@ -136,7 +151,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetInitAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockHeaderGetPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
 }
 
@@ -151,7 +168,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockHeaderGetTimeoutAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub block_hash: BlockHash,
 }
@@ -172,7 +191,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetTimeoutAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockHeaderGetSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub block: BlockHeaderWithHash,
 }
@@ -192,7 +213,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetSuccessAction {
 
 /// Consume downloaded block header.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockHeaderGetFinishAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
 }
 
@@ -206,6 +229,7 @@ impl EnablingCondition<State> for BootstrapPeerBlockHeaderGetFinishAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockHeadersGetSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetSuccessAction {
@@ -231,6 +255,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetSuccessAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockOperationsGetInitAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetInitAction {
@@ -244,6 +269,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetInitAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockOperationsGetPendingAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetPendingAction {
@@ -257,6 +283,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetPendingAction 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockOperationsGetNextAllAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetNextAllAction {
@@ -266,6 +293,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetNextAllAction 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockOperationsGetNextAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetNextAction {
@@ -280,7 +308,9 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetNextAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockOperationsGetPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub block_hash: BlockHash,
 }
@@ -301,7 +331,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetPendingAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockOperationsGetTimeoutAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub block_hash: BlockHash,
 }
@@ -326,7 +358,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetTimeoutAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockOperationsGetRetryAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub block_hash: BlockHash,
 }
@@ -343,7 +377,9 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetRetryAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockOperationsReceivedAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub message: OperationsForBlocksMessage,
 }
@@ -365,6 +401,7 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsReceivedAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeerBlockOperationsGetSuccessAction {
     pub block_hash: BlockHash,
 }
@@ -395,6 +432,7 @@ fn next_block_apply_level(state: &State) -> Option<Level> {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapScheduleBlocksForApplyAction {}
 
 impl EnablingCondition<State> for BootstrapScheduleBlocksForApplyAction {
@@ -411,6 +449,7 @@ impl EnablingCondition<State> for BootstrapScheduleBlocksForApplyAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapScheduleBlockForApplyAction {
     pub block_hash: BlockHash,
 }
@@ -436,6 +475,7 @@ impl EnablingCondition<State> for BootstrapScheduleBlockForApplyAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapPeersBlockOperationsGetSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetSuccessAction {
@@ -450,6 +490,7 @@ impl EnablingCondition<State> for BootstrapPeersBlockOperationsGetSuccessAction 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapErrorAction {
     pub error: BootstrapError,
 }
@@ -473,6 +514,7 @@ impl EnablingCondition<State> for BootstrapErrorAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapFinishedAction {}
 
 impl EnablingCondition<State> for BootstrapFinishedAction {
@@ -491,7 +533,9 @@ impl EnablingCondition<State> for BootstrapFinishedAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapFromPeerCurrentHeadAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub peer: SocketAddr,
     pub current_head: BlockHeaderWithHash,
 }
@@ -505,6 +549,7 @@ impl EnablingCondition<State> for BootstrapFromPeerCurrentHeadAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct BootstrapCheckTimeoutsInitAction {}
 
 impl EnablingCondition<State> for BootstrapCheckTimeoutsInitAction {
