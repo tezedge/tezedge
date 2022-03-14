@@ -315,10 +315,13 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                     }),
                     now_timestamp.into(),
                 );
-                service
-                    .client
-                    .monitor_operations(i64::MAX, Action::Timeout, Action::NewOperationSeen)
-                    .unwrap();
+                if let Err(err) = service.client.monitor_operations(
+                    i64::MAX,
+                    Action::Timeout,
+                    Action::NewOperationSeen,
+                ) {
+                    slog::error!(service.logger, "{:?}", err);
+                }
                 state
                     .handle(&config, &slots_info, event)
                     .into_iter()
@@ -393,6 +396,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                 header.signature.0 = vec![0x00; 64];
                 guess_proof_of_work(&mut header, proof_of_work_threshold);
                 header.signature.0.clear();
+                slog::info!(service.logger, "{:?}", header);
                 let (data, _) = service.crypto.sign(0x11, &chain_id, &header).unwrap();
                 service
                     .client

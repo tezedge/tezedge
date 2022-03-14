@@ -367,11 +367,11 @@ impl RpcClient {
         slog::info!(self.logger, "{}", body);
         let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |v| {
-            slog::info!(logger, "{}", serde_json::to_string(&v).unwrap());
             let PreapplyResponse {
                 shell_header,
                 operations,
             } = v;
+            slog::info!(logger, "{}", serde_json::to_string(&operations).unwrap());
             let ShellBlockShortHeader {
                 level,
                 proto,
