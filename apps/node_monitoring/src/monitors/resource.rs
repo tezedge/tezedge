@@ -18,7 +18,7 @@ use slog::{error, warn, Logger};
 use sysinfo::{System, SystemExt};
 use time::OffsetDateTime;
 
-use crate::display_info::{NodeInfo, OcamlDiskData, TezedgeDiskData};
+use crate::display_info::{NodeInfo, OCamlDiskData, TezedgeDiskData};
 use crate::monitors::alerts::Alerts;
 use crate::node::{Node, NodeStatus, NodeType};
 use crate::slack::SlackServer;
@@ -175,7 +175,7 @@ pub struct ResourceUtilization {
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "disk")]
-    ocaml_disk: Option<OcamlDiskData>,
+    ocaml_disk: Option<OCamlDiskData>,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -209,10 +209,10 @@ impl ResourceUtilization {
         let merged_ocaml_disk = if let (Some(ocaml_disk1), Some(ocaml_disk2)) =
             (self.ocaml_disk.as_ref(), other.ocaml_disk.as_ref())
         {
-            Some(OcamlDiskData::new(
+            Some(OCamlDiskData::new(
                 cmp::max(ocaml_disk1.debugger(), ocaml_disk2.debugger()),
                 cmp::max(ocaml_disk1.block_storage(), ocaml_disk2.block_storage()),
-                cmp::max(ocaml_disk1.context_irmin(), ocaml_disk2.context_irmin()),
+                cmp::max(ocaml_disk1.context_storage(), ocaml_disk2.context_storage()),
             ))
         } else {
             None
@@ -223,15 +223,11 @@ impl ResourceUtilization {
         {
             Some(TezedgeDiskData::new(
                 cmp::max(tezedge_disk1.debugger(), tezedge_disk2.debugger()),
-                cmp::max(tezedge_disk1.context_irmin(), tezedge_disk2.context_irmin()),
-                cmp::max(
-                    tezedge_disk1.context_merkle_rocksdb(),
-                    tezedge_disk2.context_merkle_rocksdb(),
-                ),
+                cmp::max(tezedge_disk1.context_storage(), tezedge_disk2.context_storage()),
                 cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
                 cmp::max(
-                    tezedge_disk1.context_actions(),
-                    tezedge_disk2.context_actions(),
+                    tezedge_disk1.context_stats(),
+                    tezedge_disk2.context_stats(),
                 ),
                 cmp::max(tezedge_disk1.main_db(), tezedge_disk2.main_db()),
             ))
@@ -592,7 +588,7 @@ async fn handle_alerts(
 ) {
     let thresholds = match *node_type {
         NodeType::Tezedge => *alerts.tezedge_thresholds(),
-        NodeType::Ocaml => *alerts.ocaml_thresholds(),
+        NodeType::OCaml => *alerts.ocaml_thresholds(),
     };
 
     // current time timestamp
@@ -900,7 +896,7 @@ mod tests {
                     validators: validators_cpu1,
                 },
             },
-            tezedge_disk: TezedgeDiskData::new(1, 1, 1, 1, 1, 1).into(),
+            tezedge_disk: TezedgeDiskData::new(1, 1, 1, 1, 1).into(),
             ocaml_disk: None,
             memory: MemoryStats {
                 node: 100,
@@ -957,7 +953,7 @@ mod tests {
                     validators: validators_cpu2,
                 },
             },
-            tezedge_disk: TezedgeDiskData::new(6, 5, 4, 3, 2, 125).into(),
+            tezedge_disk: TezedgeDiskData::new(6, 5, 4, 3, 125).into(),
             ocaml_disk: None,
             memory: MemoryStats {
                 node: 10,
@@ -1013,7 +1009,7 @@ mod tests {
                     validators: validators_cpu3,
                 },
             },
-            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 8, 7).into(),
+            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 8).into(),
             ocaml_disk: None,
             memory: MemoryStats {
                 node: 1500,
@@ -1070,7 +1066,7 @@ mod tests {
                     validators: validators_cpu_expected,
                 },
             },
-            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 8, 125).into(),
+            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 125).into(),
             ocaml_disk: None,
             memory: MemoryStats {
                 node: 1500,

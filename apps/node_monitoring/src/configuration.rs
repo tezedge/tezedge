@@ -280,7 +280,7 @@ fn parse_nodes_args(
 ) -> Vec<Node> {
     let arg_string = match node_type {
         NodeType::Tezedge => "tezedge-nodes",
-        NodeType::Ocaml => "ocaml-nodes",
+        NodeType::OCaml => "ocaml-nodes",
     };
 
     if let Some(vals) = args.values_of(arg_string) {
@@ -392,7 +392,7 @@ impl DeployMonitoringEnvironment {
 
         let mut tezedge_nodes =
             parse_nodes_args(&args, &NodeType::Tezedge, proxy_port, debugger_path.clone());
-        let ocaml_nodes = parse_nodes_args(&args, &NodeType::Ocaml, proxy_port, debugger_path);
+        let ocaml_nodes = parse_nodes_args(&args, &NodeType::OCaml, proxy_port, debugger_path);
 
         // combine the nodes
         tezedge_nodes.extend(ocaml_nodes);
