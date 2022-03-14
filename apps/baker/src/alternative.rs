@@ -8,6 +8,7 @@ use super::{
         action::{Action, *},
         service::ServiceDefault,
     },
+    proof_of_work::guess_proof_of_work,
     types::{BlockInfo, BlockPayload, Mempool, Prequorum, ProtocolBlockHeader, Slots, Timestamp},
 };
 
@@ -260,6 +261,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
             constants.delay_increment_per_round.parse().unwrap(),
         ),
     };
+    let proof_of_work_threshold = constants.proof_of_work_threshold.parse::<i64>().unwrap();
     let mut state = Machine::empty();
 
     let mut slots_info = SlotsInfo {
@@ -385,6 +387,8 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                 mut header,
                 operations,
             }) => {
+                header.signature.0 = vec![0x00; 64];
+                guess_proof_of_work(&mut header, proof_of_work_threshold);
                 header.signature.0.clear();
                 let (data, _) = service.crypto.sign(0x11, &chain_id, &header).unwrap();
                 service
