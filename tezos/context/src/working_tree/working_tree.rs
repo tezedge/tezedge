@@ -220,7 +220,6 @@ struct TreeWalkerLevel {
     current_depth: i64,
     yield_self: bool,
     children_iter: Option<IntoIter<(String, DirEntryId)>>,
-    order: FoldOrder,
 }
 
 impl TreeWalkerLevel {
@@ -237,7 +236,7 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
-                let dir_vec = Self::get_keys_on_directory(&root, *dir_id);
+                let dir_vec = Self::get_keys_on_directory(&root, *dir_id, order);
                 Some(dir_vec.into_iter())
             } else {
                 None
@@ -252,11 +251,14 @@ impl TreeWalkerLevel {
             current_depth,
             yield_self: depth.map(|d| d.should_apply(current_depth)).unwrap_or(true),
             children_iter,
-            order,
         }
     }
 
-    fn get_keys_on_directory(root: &WorkingTree, dir_id: DirectoryId) -> Vec<(String, DirEntryId)> {
+    fn get_keys_on_directory(
+        root: &WorkingTree,
+        dir_id: DirectoryId,
+        order: FoldOrder,
+    ) -> Vec<(String, DirEntryId)> {
         let mut storage = root.index.storage.borrow_mut();
         let mut strings = match root.index.get_string_interner() {
             Ok(strings) => strings,
@@ -277,8 +279,12 @@ impl TreeWalkerLevel {
             }
         };
 
-        // TODO: use `sorted/unsorted` depending on specified order
-        let dir = match storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository) {
+        let fun = match order {
+            FoldOrder::Sorted => Storage::dir_to_vec_sorted,
+            FoldOrder::Undefined => Storage::dir_to_vec_unsorted,
+        };
+
+        let dir = match fun(&mut storage, dir_id, &mut strings, &*repository) {
             Ok(dir) => dir,
             Err(e) => {
                 eprintln!("TreeWalkerLevel `dir_to_vec_sorted` failed '{:?}'", e);
