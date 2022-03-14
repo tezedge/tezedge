@@ -39,15 +39,15 @@ pub struct RpcClient {
 
 #[derive(Debug, Error, From)]
 pub enum RpcError {
-    #[error("{_0}")]
+    #[error("reqwest: {_0}")]
     Reqwest(reqwest::Error),
-    #[error("{_0}")]
+    #[error("serde_json: {_0}")]
     SerdeJson(serde_json::Error),
-    #[error("{_0}")]
+    #[error("io: {_0}")]
     Io(io::Error),
-    #[error("{_0}")]
+    #[error("utf8: {_0}")]
     Utf8(str::Utf8Error),
-    #[error("{_0}")]
+    #[error("http: {_0}")]
     Http(StatusCode),
 }
 
@@ -57,6 +57,7 @@ pub struct Constants {
     pub minimal_block_delay: String,
     pub delay_increment_per_round: String,
     pub blocks_per_commitment: u32,
+    pub proof_of_work_threshold: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -126,8 +127,6 @@ impl RpcClient {
             deadline,
             deadline_wrapper,
             move |shell_header| {
-                slog::info!(this.logger, "proposal");
-
                 let hash = shell_header.hash.clone().to_base58_check();
                 let predecessor_hash = shell_header.predecessor.to_base58_check();
 
@@ -342,6 +341,11 @@ impl RpcClient {
             for op in &mut operations[i] {
                 if let Some(op_obj) = op.as_object_mut() {
                     op_obj.remove("hash");
+                    // if let Some(sig) = op_obj.get_mut("signature") {
+                    //     if sig.is_null() {
+                    //         op_obj.remove("signature");
+                    //     }
+                    // }
                 }
             }
         }
@@ -363,12 +367,11 @@ impl RpcClient {
         slog::info!(self.logger, "{}", body);
         let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |v| {
+            slog::info!(logger, "{}", serde_json::to_string(&v).unwrap());
             let PreapplyResponse {
                 shell_header,
                 operations,
             } = v;
-            slog::info!(logger, "{}", serde_json::to_string(&shell_header).unwrap());
-            slog::info!(logger, "{}", serde_json::to_string(&operations).unwrap());
             let ShellBlockShortHeader {
                 level,
                 proto,
@@ -453,7 +456,7 @@ impl RpcClient {
 
         let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |hash| {
-            slog::info!(logger, "inject block success {hash}");
+            slog::info!(logger, "injection/block {hash}");
             wrapper(hash)
         })
         .map_err(Into::into)

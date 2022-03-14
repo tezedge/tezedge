@@ -3,10 +3,11 @@
 
 use core::{
     fmt,
-    ops::{Add, Sub},
     time::Duration,
+    ops::{Add, Sub},
 };
 
+/// Timestamp as a unix time
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct Timestamp {
     pub unix_epoch: Duration,

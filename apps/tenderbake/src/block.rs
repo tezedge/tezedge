@@ -1,7 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cmp::Ordering, collections::BTreeMap, fmt, time::Duration};
+use core::{cmp::Ordering, fmt, time::Duration, ops::AddAssign};
+use alloc::collections::BTreeMap;
 
 use super::{timestamp::Timestamp, validator::Validator};
 
@@ -19,22 +20,6 @@ impl fmt::Display for BlockId {
     }
 }
 
-impl fmt::Debug for BlockId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl PartialOrd for BlockId {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.level == other.level && self.payload_hash == other.payload_hash {
-            Some(self.round.cmp(&other.round))
-        } else {
-            None
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Votes<I> {
     pub ids: BTreeMap<u32, I>,
@@ -47,23 +32,6 @@ impl<I> Default for Votes<I> {
             ids: BTreeMap::default(),
             power: 0,
         }
-    }
-}
-
-impl<I> Eq for Votes<I> {}
-
-impl<I> PartialEq for Votes<I> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.ids.len() != other.ids.len() || self.power != other.power {
-            return false;
-        }
-        for k in self.ids.keys() {
-            if !other.ids.contains_key(k) {
-                return false;
-            }
-        }
-
-        true
     }
 }
 
@@ -83,20 +51,21 @@ impl<I> FromIterator<(Validator, I)> for Votes<I> {
 
 impl<I> Extend<(Validator, I)> for Votes<I> {
     fn extend<T: IntoIterator<Item = (Validator, I)>>(&mut self, iter: T) {
-        for (Validator { id, power }, op) in iter {
-            self.ids.insert(id, op);
+        for v in iter {
+            *self += v;
+        }
+    }
+}
+
+impl<I> AddAssign<(Validator, I)> for Votes<I> {
+    fn add_assign(&mut self, (Validator { id, power }, op): (Validator, I)) {
+        if self.ids.insert(id, op).is_none() {
             self.power += power;
         }
     }
 }
 
-impl<I> fmt::Debug for Votes<I> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.power)
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Prequorum<I> {
     pub block_id: BlockId,
     pub votes: Votes<I>,
@@ -106,17 +75,23 @@ impl<I> Eq for Prequorum<I> {}
 
 impl<I> PartialEq for Prequorum<I> {
     fn eq(&self, other: &Self) -> bool {
-        self.block_id == other.block_id && self.votes == other.votes
+        self.block_id.eq(&other.block_id)
     }
 }
 
 impl<I> PartialOrd for Prequorum<I> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.block_id.partial_cmp(&other.block_id)
+        if self.block_id.payload_hash != other.block_id.payload_hash {
+            None
+        } else {
+            self.block_id
+                .payload_round
+                .partial_cmp(&other.block_id.payload_round)
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Quorum<I> {
     pub votes: Votes<I>,
 }
@@ -143,15 +118,6 @@ where
     pub payload: P,
 }
 
-impl<P> Default for BlockInfo<P>
-where
-    P: Payload,
-{
-    fn default() -> Self {
-        BlockInfo::GENESIS
-    }
-}
-
 impl<P> BlockInfo<P>
 where
     P: Payload,
@@ -174,7 +140,7 @@ where
     };
 }
 
-impl<P> fmt::Debug for BlockInfo<P>
+impl<P> fmt::Display for BlockInfo<P>
 where
     P: Payload,
 {

@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+libm = { version = "0.2.2" }
+arrayvec = { version = "0.7.2", default-features = false }
 log = { version = "0.4.14" }

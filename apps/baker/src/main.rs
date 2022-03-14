@@ -7,6 +7,7 @@ mod command_line;
 mod key;
 mod logger;
 mod machine;
+mod proof_of_work;
 mod rpc_client;
 mod timer;
 mod types;

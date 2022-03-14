@@ -228,12 +228,13 @@ impl ValidatorMap for SlotsInfo {
         })
     }
 
-    fn proposer(&self, level: i32, round: i32) -> bool {
-        if let Some(slots) = self.slots(level) {
-            slots.contains(&(round as _))
-        } else {
-            false
-        }
+    fn proposer(&self, level: i32, round: i32) -> Option<i32> {
+        self.slots(level)
+            .into_iter()
+            .flatten()
+            .skip_while(|c| **c < round as u16)
+            .next()
+            .map(|r| *r as i32)
     }
 }
 
@@ -259,7 +260,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
             constants.delay_increment_per_round.parse().unwrap(),
         ),
     };
-    let mut state = Machine::default();
+    let mut state = Machine::empty();
 
     let mut slots_info = SlotsInfo {
         this: service.crypto.public_key_hash().clone(),
@@ -284,18 +285,8 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
 
     while let Ok(action) = events.recv() {
         let tb_actions = match action {
-            Action::Timeout(TimeoutAction { now_timestamp }) => {
-                let event = tenderbake::Event::Timeout(Timestamp(now_timestamp).into());
-                state
-                    .handle(&config, &slots_info, event)
-                    .into_iter()
-                    .collect::<Vec<_>>()
-            }
-            Action::TimeoutDelayed(TimeoutDelayedAction { now_timestamp }) => {
-                let t = tenderbake::Timestamp {
-                    unix_epoch: now_timestamp,
-                };
-                let event = tenderbake::Event::TimeoutDelayed(t);
+            Action::Timeout(TimeoutAction { .. }) => {
+                let event = tenderbake::Event::Timeout;
                 state
                     .handle(&config, &slots_info, event)
                     .into_iter()
@@ -375,6 +366,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                                             },
                                         },
                                         op.clone(),
+                                        Timestamp::now().into(),
                                     );
                                     tb_actions.extend(
                                         state.handle(&config, &slots_info, event).into_iter(),
@@ -436,9 +428,6 @@ fn perform(
         tenderbake::Action::ScheduleTimeout(timestamp) => {
             service.timer.timeout(timestamp.into(), Action::Timeout);
         }
-        tenderbake::Action::ScheduleTimeoutDelayed(delay) => {
-            service.timer.next_timeout(delay, Action::TimeoutDelayed);
-        }
         tenderbake::Action::Propose(proposal) => {
             let mempool = Mempool {
                 endorsements: vec![],
@@ -485,12 +474,11 @@ fn perform(
             } else {
                 BlockPayloadHash(proposal.head.block_id.payload_hash.to_vec())
             };
+            let pos_in_cycle = (proposal.head.block_id.level as u32) % blocks_per_commitment;
             let mut protocol_block_header = ProtocolBlockHeader {
                 payload_hash,
                 payload_round,
-                seed_nonce_hash: if (proposal.head.block_id.level as u32) % blocks_per_commitment
-                    == 0
-                {
+                seed_nonce_hash: if pos_in_cycle == 0 {
                     Some(NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap()))
                 } else {
                     None
