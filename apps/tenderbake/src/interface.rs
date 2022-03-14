@@ -31,11 +31,11 @@ impl Config {
         (self.minimal_block_delay / 5).min(Duration::from_secs(1))
     }
 
-    pub fn round(&self, now: Timestamp, start_of_this_level: Timestamp) -> i32 {
-        let elapsed = if now < start_of_this_level {
+    pub fn round(&self, now: Timestamp, start_this_level: Timestamp) -> i32 {
+        let elapsed = if now < start_this_level {
             Duration::ZERO
         } else {
-            now - start_of_this_level
+            now - start_this_level
         };
 
         // m := minimal_block_delay

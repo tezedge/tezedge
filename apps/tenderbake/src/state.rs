@@ -13,12 +13,18 @@ use super::{
     interface::{Config, Proposal, Preendorsement, Endorsement, Event, Action},
 };
 
+pub struct LockedRound {
+    round: i32,
+    payload_hash: [u8; 32],
+}
+
 pub struct EndorsablePayload<P>
 where
     P: Payload,
 {
     pred: BlockInfo<P>,
     prequorum: Prequorum<P::Item>,
+    locked: Option<LockedRound>,
 }
 
 pub struct ElectedBlock<P>
@@ -40,10 +46,10 @@ impl fmt::Display for ClosestRound {
         match self {
             ClosestRound::Never => write!(f, "nor this level not next level"),
             ClosestRound::ThisLevel { round, timestamp } => {
-                write!(f, "this level, {round}, {timestamp}")
+                write!(f, "this level, round: {round}, {timestamp}")
             }
             ClosestRound::NextLevel { round, timestamp } => {
-                write!(f, "next level, {round}, {timestamp}")
+                write!(f, "next level, round: {round}, {timestamp}")
             }
         }
     }
@@ -63,13 +69,11 @@ where
     incomplete_prequorum: Votes<P::Item>,
     incomplete_quorum: Votes<P::Item>,
 
-    locked_round: Option<BlockId>,
     endorsable_payload: Option<EndorsablePayload<P>>,
     elected_block: Option<ElectedBlock<P>>,
     round_state: i32,
     payload: P,
 
-    start_this_level: Timestamp,
     closest_timestamp_this_level: Option<Timestamp>,
     closest_timestamp_next_level: Option<Timestamp>,
     closest_round: ClosestRound,
@@ -88,14 +92,10 @@ where
             },
             incomplete_prequorum: Votes::default(),
             incomplete_quorum: Votes::default(),
-            locked_round: None,
             endorsable_payload: None,
             elected_block: None,
             round_state: 0,
             payload: P::EMPTY,
-            start_this_level: Timestamp {
-                unix_epoch: Default::default(),
-            },
             closest_timestamp_this_level: None,
             closest_timestamp_next_level: None,
             closest_round: ClosestRound::Never,
@@ -200,9 +200,9 @@ where
                 // we received a block for a next level
                 // TODO: transition
                 let pred_duration = config.round_duration(new_proposal.pred.block_id.round);
-                self.start_this_level = new_proposal.pred.timestamp + pred_duration;
-                self.round_state = config.round(now, self.start_this_level);
-                log::info!(" .  start this level: {}", self.start_this_level);
+                let start_this_level = new_proposal.pred.timestamp + pred_duration;
+                log::info!(" .  start this level: {start_this_level}");
+                self.round_state = config.round(now, start_this_level);
                 log::info!(" .  this round: {}", self.round_state);
 
                 if self.round_state < new_proposal.head.block_id.round {
@@ -215,7 +215,6 @@ where
                 self.closest_timestamp_next_level = None;
                 self.closest_round = ClosestRound::Never;
 
-                self.locked_round = None;
                 self.endorsable_payload = None;
                 self.elected_block = None;
 
@@ -249,7 +248,10 @@ where
                 return ArrayVec::default();
             }
             Ordering::Equal => {
-                self.round_state = config.round(now, self.start_this_level);
+                let pred_duration = config.round_duration(new_proposal.pred.block_id.round);
+                let start_this_level = new_proposal.pred.timestamp + pred_duration;
+                log::info!(" .  start this level: {start_this_level}");
+                self.round_state = config.round(now, start_this_level);
                 log::info!(" .  this round: {}", self.round_state);
 
                 if self.proposal.pred.hash != new_proposal.pred.hash {
@@ -298,14 +300,17 @@ where
                 {
                     self.update_endorsable_payload(&new_proposal);
                     let head = &self.proposal.head;
-                    let will_preendorse = match &self.locked_round {
-                        None => true,
-                        Some(ref locked_round) => {
+                    let will_preendorse = match &self.endorsable_payload {
+                        Some(EndorsablePayload {
+                            locked: Some(ref l),
+                            ..
+                        }) => {
                             matches!(
                                 &head.prequorum,
-                                Some(ref p) if p.block_id.round >= locked_round.round,
-                            ) || locked_round.payload_hash == head.block_id.payload_hash
+                                Some(ref p) if p.block_id.round >= l.round,
+                            ) || l.payload_hash == head.block_id.payload_hash
                         }
+                        _ => true,
                     };
                     if will_preendorse {
                         let block_id = new_proposal.head.block_id.clone();
@@ -337,10 +342,16 @@ where
                 // our prequorum is better, do nothing
                 return;
             }
-            // update
+            // take locked round if any
+            let locked = self
+                .endorsable_payload
+                .as_mut()
+                .and_then(|e| e.locked.take());
             self.endorsable_payload = Some(EndorsablePayload {
                 pred: new_proposal.pred.clone(),
                 prequorum: new.clone(),
+                // put it back
+                locked,
             });
         }
     }
@@ -381,8 +392,12 @@ where
             return ArrayVec::default();
         }
 
-        if matches!(&self.locked_round, Some(ref locked) if locked.round == head.block_id.round) {
-            return ArrayVec::default();
+        match &self.endorsable_payload {
+            Some(EndorsablePayload {
+                locked: Some(ref l),
+                ..
+            }) if l.round == head.block_id.round => return ArrayVec::default(),
+            _ => (),
         }
 
         self.endorsable_payload = Some(EndorsablePayload {
@@ -391,9 +406,12 @@ where
                 block_id: head.block_id.clone(),
                 votes: self.incomplete_prequorum.clone(),
             },
+            locked: Some(LockedRound {
+                round: head.block_id.round,
+                payload_hash: head.block_id.payload_hash,
+            }),
         });
         log::info!(" .  lock {head}");
-        self.locked_round = Some(head.block_id.clone());
 
         let mut actions = ArrayVec::new();
 
@@ -500,21 +518,17 @@ where
     where
         V: ValidatorMap,
     {
-        let round_delta = self.proposal.pred.block_id.round
-            - self
+        if let Some(round) = map.proposer(self.proposal.head.block_id.level, self.round_state + 1) {
+            let pred = self
                 .endorsable_payload
                 .as_ref()
-                .map(|pqc| pqc.prequorum.block_id.round)
-                .unwrap_or(0);
-        log::info!(" .  round delta: {round_delta}");
-        let next_round = self.round_state + 1 + round_delta;
-        if let Some(round) = map.proposer(self.proposal.head.block_id.level, next_round) {
-            if round <= self.round_state {
-                return None;
-            }
+                .map(|e| &e.pred)
+                .unwrap_or(&self.proposal.pred);
+            let endorsable_duration = config.round_duration(pred.block_id.round);
+            let start_this_level = pred.timestamp + endorsable_duration;
             let d = config.minimal_block_delay * (round as u32)
                 + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
-            let timestamp = self.start_this_level + d;
+            let timestamp = start_this_level + d;
             self.closest_timestamp_this_level = Some(timestamp);
             log::info!(" .  closest round this level: {round}, {timestamp}");
             if let Some(alt) = self.closest_timestamp_next_level {
