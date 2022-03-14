@@ -165,7 +165,7 @@ impl From<&Mutez> for BigInt {
 has_encoding!(Mutez, MUTEZ_ENCODING, { Encoding::Mutez });
 
 #[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+//#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct SizedBytes<const SIZE: usize>(pub [u8; SIZE]);
 
 impl<const SIZE: usize> std::fmt::Display for SizedBytes<SIZE> {

@@ -14,6 +14,12 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::types::{Mutez, SizedBytes};
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::option::OptionMutator;
+
 use crate::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
 use crate::Timestamp;
 
@@ -109,6 +115,7 @@ pub struct InlinedEndorsement {
 
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]
@@ -121,8 +128,10 @@ pub struct FullHeader {
     pub fitness: Fitness,
     pub context: ContextHash,
     pub priority: u16,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "fuzzing", field_mutator(OptionMutator<SizedBytes<32>, SizedBytesMutator<32>>))]
     pub seed_nonce_hash: Option<SizedBytes<32>>,
     pub signature: Signature,
 }
@@ -195,6 +204,7 @@ pub struct EndorsementOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct SeedNonceRevelationOperation {
     pub level: i32,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<32>))]
     pub nonce: SizedBytes<32>,
 }
 
@@ -224,6 +234,7 @@ pub struct DoubleBakingEvidenceOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct ActivateAccountOperation {
     pub pkh: ContractTz1Hash,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<20>))]
     pub secret: SizedBytes<20>,
 }
 

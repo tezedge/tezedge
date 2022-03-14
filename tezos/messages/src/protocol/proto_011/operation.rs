@@ -25,6 +25,12 @@ use tezos_encoding::{
     types::{Mutez, SizedBytes},
 };
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::option::OptionMutator;
+
 use crate::{
     base::signature_public_key::SignaturePublicKeyHash,
     p2p::encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
@@ -158,6 +164,7 @@ pub enum Contents {
 
 /// Register_global_constant (tag 111).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#register-global-constant-tag-111].
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct RegisterGlobalConstantOperation {
     pub source: SignaturePublicKeyHash,
@@ -195,8 +202,10 @@ pub struct FullHeader {
     pub fitness: Fitness,
     pub context: ContextHash,
     pub priority: u16,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "fuzzing", field_mutator(OptionMutator<SizedBytes<32>, SizedBytesMutator<32>>))]
     pub seed_nonce_hash: Option<SizedBytes<32>>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,

@@ -33,6 +33,10 @@ use tezos_encoding::{
     nom::NomReader,
     types::{Mutez, SizedBytes},
 };
+
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
 use tezos_encoding_derive::BinWriter;
 
 use crate::{
@@ -312,6 +316,7 @@ pub struct FullHeader {
     pub context: ContextHash,
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<NonceHash>,

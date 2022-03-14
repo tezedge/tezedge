@@ -22,6 +22,12 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::types::SizedBytes;
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::option::OptionMutator;
+
 use crate::p2p::encoding::{
     block_header::Level, fitness::Fitness, operation::Operation as P2POperation,
 };
@@ -178,8 +184,10 @@ pub struct FullHeader {
     pub fitness: Fitness,
     pub context: ContextHash,
     pub priority: u16,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "fuzzing", field_mutator(OptionMutator<SizedBytes<32>, SizedBytesMutator<32>>))]
     pub seed_nonce_hash: Option<SizedBytes<32>>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,
