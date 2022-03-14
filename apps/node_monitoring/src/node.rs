@@ -115,7 +115,7 @@ impl Node {
             let disk_data = TezedgeDiskData::new(
                 debugger,
                 dir::get_size(&format!("{}/{}", volume_path, "context")).unwrap_or(0),
-                dir::get_size(&format!("{}/{}", volume_path, "bootstrap_db/context")).unwrap_or(0),
+                dir::get_size(&format!("{}/{}", volume_path, "context-tezedge")).unwrap_or(0),
                 dir::get_size(&format!("{}/{}", volume_path, "bootstrap_db/block_storage"))
                     .unwrap_or(0),
                 context_actions,
