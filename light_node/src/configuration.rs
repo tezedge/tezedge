@@ -1198,20 +1198,26 @@ impl Environment {
                     .map(|v| match v {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem(
                             TezosContextTezedgeOnDiskBackendOptions {
-                                base_path: get_final_path(&tezos_data_dir, "context".into())
-                                    .into_os_string()
-                                    .into_string()
-                                    .unwrap(),
+                                base_path: get_final_path(
+                                    &tezos_data_dir,
+                                    "context-tezedge".into(),
+                                )
+                                .into_os_string()
+                                .into_string()
+                                .unwrap(),
                                 startup_check,
                             },
                         ),
                         SupportedContextKeyValueStore::OnDisk => {
                             ContextKvStoreConfiguration::OnDisk(
                                 TezosContextTezedgeOnDiskBackendOptions {
-                                    base_path: get_final_path(&tezos_data_dir, "context".into())
-                                        .into_os_string()
-                                        .into_string()
-                                        .unwrap(),
+                                    base_path: get_final_path(
+                                        &tezos_data_dir,
+                                        "context-tezedge".into(),
+                                    )
+                                    .into_os_string()
+                                    .into_string()
+                                    .unwrap(),
                                     startup_check,
                                 },
                             )

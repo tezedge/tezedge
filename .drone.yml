@@ -1069,7 +1069,7 @@ steps:
     - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
     - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
     - cp -R /cache/replay ./source-database
-    - rm ./source-database/context/lock
+    - rm ./source-database/context-tezedge/lock
     - >
       drone-cache/build_files/light-node
       --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"

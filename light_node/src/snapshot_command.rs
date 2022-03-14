@@ -278,7 +278,7 @@ pub fn snapshot_storage(
 
     // NOTE: the curret implementation produces some gargbage when dumping
     // the tezedge context, because of that we are explicit on what we keep here.
-    let useful_files = ["context", "bootstrap_db"];
+    let useful_files = ["context", "context-tezedge", "bootstrap_db"];
     let is_useful_file = |entry: &std::fs::DirEntry| {
         useful_files.contains(&entry.file_name().to_string_lossy().as_ref())
     };
@@ -299,7 +299,7 @@ pub fn snapshot_storage(
     }
 
     // Necessary for now because of how we produce tezedge context snapshots
-    let tezedge_lock_file = final_path.join("context").join("lock");
+    let tezedge_lock_file = final_path.join("context-tezedge").join("lock");
     std::fs::remove_file(tezedge_lock_file).ok();
 }
 
