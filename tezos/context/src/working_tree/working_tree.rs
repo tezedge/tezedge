@@ -83,7 +83,7 @@ use crate::{ContextKey, ContextValue};
 
 use super::{
     storage::{BlobId, DirEntryId, DirectoryId, Storage, StorageError},
-    string_interner::StringInterner,
+    string_interner::{StringId, StringInterner},
     ObjectReference,
 };
 
@@ -215,17 +215,16 @@ impl FoldDepth {
 }
 
 struct TreeWalkerLevel {
-    key: ContextKeyOwned,
+    key: Vec<StringId>,
     root: WorkingTree,
     current_depth: i64,
     yield_self: bool,
-    children_iter: Option<IntoIter<(String, DirEntryId)>>,
-    order: FoldOrder,
+    children_iter: Option<IntoIter<(StringId, DirEntryId)>>,
 }
 
 impl TreeWalkerLevel {
     fn new(
-        key: ContextKeyOwned,
+        key: Vec<StringId>,
         root: WorkingTree,
         current_depth: i64,
         depth: &Option<FoldDepth>,
@@ -237,7 +236,7 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
-                let dir_vec = Self::get_keys_on_directory(&root, *dir_id);
+                let dir_vec = Self::get_keys_on_directory(&root, *dir_id, order);
                 Some(dir_vec.into_iter())
             } else {
                 None
@@ -252,11 +251,14 @@ impl TreeWalkerLevel {
             current_depth,
             yield_self: depth.map(|d| d.should_apply(current_depth)).unwrap_or(true),
             children_iter,
-            order,
         }
     }
 
-    fn get_keys_on_directory(root: &WorkingTree, dir_id: DirectoryId) -> Vec<(String, DirEntryId)> {
+    fn get_keys_on_directory(
+        root: &WorkingTree,
+        dir_id: DirectoryId,
+        order: FoldOrder,
+    ) -> Vec<(StringId, DirEntryId)> {
         let mut storage = root.index.storage.borrow_mut();
         let mut strings = match root.index.get_string_interner() {
             Ok(strings) => strings,
@@ -277,27 +279,18 @@ impl TreeWalkerLevel {
             }
         };
 
-        // TODO: use `sorted/unsorted` depending on specified order
-        let dir = match storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository) {
+        let fun = match order {
+            FoldOrder::Sorted => Storage::dir_to_vec_sorted,
+            FoldOrder::Undefined => Storage::dir_to_vec_unsorted,
+        };
+
+        match fun(&mut storage, dir_id, &mut strings, &*repository) {
             Ok(dir) => dir,
             Err(e) => {
                 eprintln!("TreeWalkerLevel `dir_to_vec_sorted` failed '{:?}'", e);
                 Vec::new()
             }
-        };
-
-        dir.into_iter()
-            .map(|(key_id, dir_entry_id)| {
-                (
-                    strings
-                        .get_str(key_id)
-                        .map(|s| s.to_string())
-                        // Never fail, the error would have been caught above with `dir_to_vec_sorted`.
-                        .unwrap_or_default(),
-                    dir_entry_id,
-                )
-            })
-            .collect()
+        }
     }
 }
 
@@ -309,7 +302,7 @@ pub struct TreeWalker {
 
 impl TreeWalker {
     fn new(
-        key: ContextKeyOwned,
+        key: Vec<StringId>,
         root: WorkingTree,
         depth: Option<FoldDepth>,
         order: FoldOrder,
@@ -338,7 +331,27 @@ impl Iterator for TreeWalker {
             if let Some(current_level) = self.stack.last_mut() {
                 if current_level.yield_self {
                     current_level.yield_self = false;
-                    return Some((current_level.key.clone(), current_level.root.clone()));
+
+                    let strings = match current_level.root.index.get_string_interner() {
+                        Ok(strings) => strings,
+                        Err(e) => {
+                            eprintln!("TreeWalker failed to get the string interner: {:?}", e);
+                            return None;
+                        }
+                    };
+                    let keys = current_level
+                        .key
+                        .iter()
+                        .map(|string_id| match strings.get_str(*string_id) {
+                            Ok(s) => s.to_string(),
+                            Err(e) => {
+                                eprintln!("TreeWalker failed to get a string: {:?}", e);
+                                String::new()
+                            }
+                        })
+                        .collect();
+
+                    return Some((keys, current_level.root.clone()));
                 }
 
                 if let Some(iter) = &mut current_level.children_iter {
@@ -347,9 +360,9 @@ impl Iterator for TreeWalker {
                     if let Some((k, dir_entry)) = iter.next() {
                         match current_level.root.dir_entry_tree(dir_entry) {
                             Ok(root) => {
-                                // TODO: this is not very efficient, maybe we need to improve the key representation
-                                let mut key = current_level.key.clone();
-                                key.push(k.to_string());
+                                let mut key = Vec::with_capacity(current_level.key.len() + 1);
+                                key.extend_from_slice(&current_level.key);
+                                key.push(k);
 
                                 self.stack.push(TreeWalkerLevel::new(
                                     key,
