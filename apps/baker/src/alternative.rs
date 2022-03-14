@@ -181,6 +181,7 @@ impl SlotsInfo {
 
     fn convert_block_info(&self, v: BlockInfo) -> tenderbake::BlockInfo<BlockPayload> {
         tenderbake::BlockInfo {
+            pred_hash: v.predecessor.0.as_slice().try_into().unwrap(),
             hash: v.hash.0.as_slice().try_into().unwrap(),
             block_id: BlockId {
                 level: v.level,
@@ -305,9 +306,11 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                     next_level_delegate_slots.level,
                     next_level_delegate_slots.delegates,
                 );
+                let pred = slots_info.convert_block_info(new_proposal.predecessor);
                 let event = tenderbake::Event::Proposal(
                     Box::new(tenderbake::Proposal {
-                        pred: slots_info.convert_block_info(new_proposal.predecessor),
+                        pred_timestamp: pred.timestamp,
+                        pred_round: pred.block_id.round,
                         head: slots_info.convert_block_info(new_proposal.block),
                     }),
                     now_timestamp.into(),
@@ -432,20 +435,18 @@ fn perform(
         tenderbake::Action::ScheduleTimeout(timestamp) => {
             service.timer.timeout(timestamp.into(), Action::Timeout);
         }
-        tenderbake::Action::Propose(proposal) => {
+        tenderbake::Action::Propose(block) => {
             let mempool = Mempool {
                 endorsements: vec![],
                 preendorsements: vec![],
-                consensus_payload: proposal
-                    .head
+                consensus_payload: block
                     .quorum
                     .map(|q| q.votes.ids)
                     .into_iter()
                     .flatten()
                     .map(|(_, op)| op)
                     .collect(),
-                preendorsement_consensus_payload: proposal
-                    .head
+                preendorsement_consensus_payload: block
                     .prequorum
                     .map(|q| q.votes.ids)
                     .into_iter()
@@ -453,9 +454,9 @@ fn perform(
                     .map(|(_, op)| op)
                     .collect(),
                 payload: BlockPayload {
-                    votes_payload: proposal.head.payload.votes_payload,
-                    anonymous_payload: proposal.head.payload.anonymous_payload,
-                    managers_payload: proposal.head.payload.managers_payload,
+                    votes_payload: block.payload.votes_payload,
+                    anonymous_payload: block.payload.anonymous_payload,
+                    managers_payload: block.payload.managers_payload,
                 },
             };
             let votes_ops = mempool.payload.votes_payload.iter();
@@ -466,9 +467,9 @@ fn perform(
                 .map(|op| op.hash.as_ref().cloned().unwrap())
                 .collect::<Vec<_>>();
             let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-            let payload_round = proposal.head.block_id.payload_round;
-            let predecessor_hash = BlockHash(proposal.pred.hash.to_vec());
-            let payload_hash = if proposal.head.block_id.payload_hash == [0; 32] {
+            let payload_round = block.block_id.payload_round;
+            let predecessor_hash = BlockHash(block.pred_hash.to_vec());
+            let payload_hash = if block.block_id.payload_hash == [0; 32] {
                 BlockPayloadHash::calculate(
                     &predecessor_hash,
                     payload_round as u32,
@@ -476,9 +477,9 @@ fn perform(
                 )
                 .unwrap()
             } else {
-                BlockPayloadHash(proposal.head.block_id.payload_hash.to_vec())
+                BlockPayloadHash(block.block_id.payload_hash.to_vec())
             };
-            let pos_in_cycle = (proposal.head.block_id.level as u32) % blocks_per_commitment;
+            let pos_in_cycle = (block.block_id.level as u32) % blocks_per_commitment;
             let mut protocol_block_header = ProtocolBlockHeader {
                 payload_hash,
                 payload_round,
@@ -502,7 +503,7 @@ fn perform(
                     protocol_block_header,
                     mempool,
                     Some(predecessor_hash),
-                    proposal.head.timestamp.unix_epoch.as_secs() as i64,
+                    block.timestamp.unix_epoch.as_secs() as i64,
                     i64::MAX,
                     Action::Timeout,
                     |header, operations| PreapplyBlockSuccessAction { header, operations }.into(),

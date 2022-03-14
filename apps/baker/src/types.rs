@@ -84,6 +84,7 @@ impl fmt::Debug for BlockPayload {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BlockInfo {
+    pub predecessor: BlockHash,
     pub hash: BlockHash,
     pub level: i32,
     pub timestamp: i64,
@@ -158,6 +159,7 @@ impl BlockInfo {
         let payload_round = header.payload_round.unwrap_or(0);
 
         BlockInfo {
+            predecessor: header.predecessor,
             hash: header.hash,
             level: header.level,
             timestamp: header
@@ -206,6 +208,7 @@ impl BlockInfo {
             };
 
         BlockInfo {
+            predecessor: shell_header.predecessor,
             hash: shell_header.hash,
             level: shell_header.level,
             timestamp: shell_header

@@ -109,6 +109,7 @@ pub struct BlockInfo<P>
 where
     P: Payload,
 {
+    pub pred_hash: [u8; 32],
     pub hash: [u8; 32],
     pub block_id: BlockId,
     pub timestamp: Timestamp,
@@ -123,6 +124,7 @@ where
     P: Payload,
 {
     pub const GENESIS: Self = BlockInfo {
+        pred_hash: [0; 32],
         hash: [0; 32],
         block_id: BlockId {
             level: 0,

@@ -62,7 +62,8 @@ pub struct Proposal<P>
 where
     P: Payload,
 {
-    pub pred: BlockInfo<P>,
+    pub pred_timestamp: Timestamp,
+    pub pred_round: i32,
     pub head: BlockInfo<P>,
 }
 
@@ -112,7 +113,7 @@ where
         pred_hash: [u8; 32],
         content: Endorsement,
     },
-    Propose(Box<Proposal<P>>),
+    Propose(Box<BlockInfo<P>>),
 }
 
 #[cfg(test)]

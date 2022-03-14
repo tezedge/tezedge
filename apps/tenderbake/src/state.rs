@@ -22,7 +22,9 @@ pub struct EndorsablePayload<P>
 where
     P: Payload,
 {
-    pred: BlockInfo<P>,
+    pred_timestamp: Timestamp,
+    pred_round: i32,
+    pred_hash: [u8; 32],
     prequorum: Prequorum<P::Item>,
     locked: Option<LockedRound>,
 }
@@ -87,7 +89,10 @@ where
     pub fn empty() -> Self {
         Machine {
             proposal: Proposal {
-                pred: BlockInfo::GENESIS,
+                pred_timestamp: Timestamp {
+                    unix_epoch: Default::default(),
+                },
+                pred_round: 0,
                 head: BlockInfo::GENESIS,
             },
             incomplete_prequorum: Votes::default(),
@@ -127,32 +132,29 @@ where
     fn timeout(&mut self) -> ArrayVec<Action<P>, 2> {
         let level = self.proposal.head.block_id.level;
         log::info!(" .  will bake level: {level}, {}", self.closest_round);
-        let proposal = match mem::take(&mut self.closest_round) {
+        let block = match mem::take(&mut self.closest_round) {
             ClosestRound::Never => None,
             ClosestRound::NextLevel { round, timestamp } => {
                 let elected_block = self.elected_block.as_ref().expect("msg");
-                let new_proposal = Proposal {
-                    pred: elected_block.head.clone(),
-                    head: BlockInfo {
-                        hash: [0; 32],
-                        block_id: BlockId {
-                            level: self.proposal.head.block_id.level + 1,
-                            round,
-                            payload_hash: [0; 32],
-                            payload_round: round,
-                        },
-                        timestamp,
-                        transition: false,
-                        prequorum: None,
-                        quorum: Some(elected_block.quorum.clone()),
-                        payload: mem::replace(&mut self.payload, P::EMPTY),
+                let new_block = BlockInfo {
+                    pred_hash: elected_block.head.hash,
+                    hash: [0; 32],
+                    block_id: BlockId {
+                        level: self.proposal.head.block_id.level + 1,
+                        round,
+                        payload_hash: [0; 32],
+                        payload_round: round,
                     },
+                    timestamp,
+                    transition: false,
+                    prequorum: None,
+                    quorum: Some(elected_block.quorum.clone()),
+                    payload: mem::replace(&mut self.payload, P::EMPTY),
                 };
                 self.closest_timestamp_next_level = None;
-                Some(Box::new(new_proposal))
+                Some(Box::new(new_block))
             }
             ClosestRound::ThisLevel { round, timestamp } => {
-                let mut pred = self.proposal.pred.clone();
                 let mut head = self.proposal.head.clone();
                 head.timestamp = timestamp;
                 head.block_id.round = round;
@@ -161,17 +163,17 @@ where
                     head.block_id.payload_round =
                         endorsable_payload.prequorum.block_id.payload_round;
                     head.prequorum = Some(endorsable_payload.prequorum.clone());
-                    pred = endorsable_payload.pred.clone();
+                    head.pred_hash = endorsable_payload.pred_hash;
                 } else {
                     head.block_id.payload_hash = [0; 32];
                     head.block_id.payload_round = round;
                     head.prequorum = None;
                 }
                 self.closest_timestamp_this_level = None;
-                Some(Box::new(Proposal { pred, head }))
+                Some(Box::new(head))
             }
         };
-        proposal.map(Action::Propose).into_iter().collect()
+        block.map(Action::Propose).into_iter().collect()
     }
 
     fn proposal<V>(
@@ -199,8 +201,8 @@ where
             Ordering::Less => {
                 // we received a block for a next level
                 // TODO: transition
-                let pred_duration = config.round_duration(new_proposal.pred.block_id.round);
-                let start_this_level = new_proposal.pred.timestamp + pred_duration;
+                let pred_duration = config.round_duration(new_proposal.pred_round);
+                let start_this_level = new_proposal.pred_timestamp + pred_duration;
                 log::info!(" .  start this level: {start_this_level}");
                 self.round_state = config.round(now, start_this_level);
                 log::info!(" .  this round: {}", self.round_state);
@@ -222,7 +224,7 @@ where
 
                 if self.round_state == new_proposal.head.block_id.round {
                     let block_id = new_proposal.head.block_id.clone();
-                    actions.extend(Self::preendorse(map, block_id, new_proposal.pred.hash));
+                    actions.extend(Self::preendorse(map, block_id, new_proposal.head.pred_hash));
                 }
 
                 self.proposal = new_proposal;
@@ -248,13 +250,13 @@ where
                 return ArrayVec::default();
             }
             Ordering::Equal => {
-                let pred_duration = config.round_duration(new_proposal.pred.block_id.round);
-                let start_this_level = new_proposal.pred.timestamp + pred_duration;
+                let pred_duration = config.round_duration(new_proposal.pred_round);
+                let start_this_level = new_proposal.pred_timestamp + pred_duration;
                 log::info!(" .  start this level: {start_this_level}");
                 self.round_state = config.round(now, start_this_level);
                 log::info!(" .  this round: {}", self.round_state);
 
-                if self.proposal.pred.hash != new_proposal.pred.hash {
+                if self.proposal.head.pred_hash != new_proposal.head.pred_hash {
                     let switch = match (&self.endorsable_payload, &self.proposal.head.prequorum) {
                         (None, _) => {
                             // The new branch contains a PQC (and we do not) or a better
@@ -314,7 +316,8 @@ where
                     };
                     if will_preendorse {
                         let block_id = new_proposal.head.block_id.clone();
-                        actions.extend(Self::preendorse(map, block_id, new_proposal.pred.hash));
+                        let pred_hash = new_proposal.head.pred_hash;
+                        actions.extend(Self::preendorse(map, block_id, pred_hash));
                     }
                     self.proposal = new_proposal;
                 } else {
@@ -348,7 +351,9 @@ where
                 .as_mut()
                 .and_then(|e| e.locked.take());
             self.endorsable_payload = Some(EndorsablePayload {
-                pred: new_proposal.pred.clone(),
+                pred_timestamp: new_proposal.pred_timestamp,
+                pred_round: new_proposal.pred_round,
+                pred_hash: new_proposal.head.pred_hash,
                 prequorum: new.clone(),
                 // put it back
                 locked,
@@ -401,7 +406,9 @@ where
         }
 
         self.endorsable_payload = Some(EndorsablePayload {
-            pred: self.proposal.pred.clone(),
+            pred_timestamp: self.proposal.pred_timestamp,
+            pred_round: self.proposal.pred_round,
+            pred_hash: self.proposal.head.pred_hash,
             prequorum: Prequorum {
                 block_id: head.block_id.clone(),
                 votes: self.incomplete_prequorum.clone(),
@@ -415,7 +422,7 @@ where
 
         let mut actions = ArrayVec::new();
 
-        let endorsement = Self::endorse(map, head.block_id.clone(), self.proposal.pred.hash);
+        let endorsement = Self::endorse(map, head.block_id.clone(), self.proposal.head.pred_hash);
         let timeout = self
             .update_timeout_this_level(config, map)
             .map(Action::ScheduleTimeout);
@@ -519,13 +526,13 @@ where
         V: ValidatorMap,
     {
         if let Some(round) = map.proposer(self.proposal.head.block_id.level, self.round_state + 1) {
-            let pred = self
+            let start_this_level = self
                 .endorsable_payload
                 .as_ref()
-                .map(|e| &e.pred)
-                .unwrap_or(&self.proposal.pred);
-            let endorsable_duration = config.round_duration(pred.block_id.round);
-            let start_this_level = pred.timestamp + endorsable_duration;
+                .map(|e| e.pred_timestamp + config.round_duration(e.pred_round))
+                .unwrap_or({
+                    self.proposal.pred_timestamp + config.round_duration(self.proposal.pred_round)
+                });
             let d = config.minimal_block_delay * (round as u32)
                 + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
             let timestamp = start_this_level + d;
