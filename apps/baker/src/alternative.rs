@@ -395,8 +395,8 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
             }) => {
                 header.signature.0 = vec![0x00; 64];
                 guess_proof_of_work(&mut header, proof_of_work_threshold);
-                header.signature.0.clear();
                 slog::info!(service.logger, "{:?}", header);
+                header.signature.0.clear();
                 let (data, _) = service.crypto.sign(0x11, &chain_id, &header).unwrap();
                 service
                     .client

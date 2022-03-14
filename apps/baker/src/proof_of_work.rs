@@ -36,12 +36,12 @@ mod tests {
     };
     use tezos_messages::protocol::proto_012::operation::FullHeader;
 
-    use crate::proof_of_work::check_proof_of_work;
+    use crate::proof_of_work::guess_proof_of_work;
 
     #[test]
     fn pow_test() {
         let proof_of_work_threshold = 70368744177663_i64;
-        let header = FullHeader {
+        let mut header = FullHeader {
             level: 232680,
             proto: 2,
             predecessor: BlockHash::from_base58_check(
@@ -72,11 +72,12 @@ mod tests {
             )
             .unwrap(),
             payload_round: 0,
-            proof_of_work_nonce: hex::decode("409a3f3ff9820000").unwrap(),
+            proof_of_work_nonce: hex::decode("409a3f3ff981ffff").unwrap(),
             liquidity_baking_escape_vote: false,
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),
         };
-        assert!(check_proof_of_work(&header, proof_of_work_threshold));
+        guess_proof_of_work(&mut header, proof_of_work_threshold);
+        assert_eq!(hex::encode(header.proof_of_work_nonce), "409a3f3ff9820000");
     }
 }
