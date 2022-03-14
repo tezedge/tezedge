@@ -26,7 +26,7 @@ pub fn check_proof_of_work(header: &FullHeader, proof_of_work_threshold: i64) ->
     let block_header = BlockHeader::from_bytes(&header_bytes).unwrap();
     let block_hash = block_header.message_typed_hash::<BlockHash>().unwrap();
     let stamp = i64::from_be_bytes(block_hash.0[0..8].try_into().unwrap());
-    stamp < proof_of_work_threshold
+    stamp < proof_of_work_threshold && stamp > 0
 }
 
 #[cfg(test)]
@@ -36,12 +36,12 @@ mod tests {
     };
     use tezos_messages::protocol::proto_012::operation::FullHeader;
 
-    use crate::proof_of_work::guess_proof_of_work;
+    use crate::proof_of_work::check_proof_of_work;
 
     #[test]
     fn pow_test() {
         let proof_of_work_threshold = 70368744177663_i64;
-        let mut header = FullHeader {
+        let header = FullHeader {
             level: 232680,
             proto: 2,
             predecessor: BlockHash::from_base58_check(
@@ -72,12 +72,51 @@ mod tests {
             )
             .unwrap(),
             payload_round: 0,
-            proof_of_work_nonce: hex::decode("409a3f3ff981ffff").unwrap(),
+            proof_of_work_nonce: hex::decode("409a3f3ff9820000").unwrap(),
             liquidity_baking_escape_vote: false,
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),
         };
-        guess_proof_of_work(&mut header, proof_of_work_threshold);
-        assert_eq!(hex::encode(header.proof_of_work_nonce), "409a3f3ff9820000");
+        assert!(check_proof_of_work(&header, proof_of_work_threshold));
+    }
+
+    #[test]
+    fn pow_fail_test() {
+        let proof_of_work_threshold = 70368744177663_i64;
+        let header = FullHeader {
+            level: 234487,
+            proto: 2,
+            predecessor: BlockHash::from_base58_check(
+                "BKnspHSGAkdjjRQ5k83tPzx73UueJLHmW1jgT4fwTrMyoXUPT2o",
+            )
+            .unwrap(),
+            timestamp: 1647280025,
+            validation_pass: 4,
+            operations_hash: OperationListListHash::from_base58_check(
+                "LLoa6FrQ37toJPdS2PU1cepexNrvncEyqj8D4KtYf1qpccSu1NxSH",
+            )
+            .unwrap(),
+            fitness: vec![
+                vec![0x02],
+                234487u32.to_be_bytes().to_vec(),
+                vec![],
+                vec![255, 255, 255, 255],
+                vec![0, 0, 0, 0],
+            ],
+            context: ContextHash::from_base58_check(
+                "CoUjRZrB2TVagSRRYJJcc3Y7SUTfSLqZc55EktpYPpfp8xnR6PM8",
+            )
+            .unwrap(),
+            payload_hash: BlockPayloadHash::from_base58_check(
+                "vh2VjzHiqaTcKh8wu5AbP6TZ5ibRCqkz7qQ2bAhGK7i2Ffj2akkp",
+            )
+            .unwrap(),
+            payload_round: 0,
+            proof_of_work_nonce: vec![121, 133, 250, 254, 31, 183, 3, 1],
+            liquidity_baking_escape_vote: false,
+            seed_nonce_hash: None,
+            signature: Signature(vec![0x00; 64]),
+        };
+        assert!(!check_proof_of_work(&header, proof_of_work_threshold));
     }
 }
