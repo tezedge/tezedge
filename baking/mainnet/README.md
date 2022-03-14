@@ -72,8 +72,6 @@ Once everything works, you can continue with launching the node.
 
 _Note: This cmd runs from the main TezEdge git sources directory - see the relative './' paths_
 
-_Note: The option `--disable-apply-retry=true` is indended for a Tezege node running within the network where the majority of nodes are subjects to failing with block application because of the cache issue (v11.x.x)._
-
 ```
 $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --network "mainnet" \
@@ -90,8 +88,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --ocaml-log-enabled false \
     --log terminal \
     --log-level info \
-    --log-format simple \
-    --disable-apply-retry=true
+    --log-format simple
 
 Jun 16 13:01:24.804 INFO Configured network ["mainnet"] -> TEZOS_MAINNET
 Jun 16 13:01:24.804 INFO Checking zcash-params for sapling... (1/5)
@@ -122,8 +119,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts nohup ./target/release/light-n
     --ocaml-log-enabled false \
     --log terminal \
     --log-level info \
-    --log-format simple \
-    --disable-apply-retry=true &> $HOME/data-mainnet/nohup-node.out &
+    --log-format simple &> $HOME/data-mainnet/nohup-node.out &
 ```
 
 You can check the logs by typing this command:
