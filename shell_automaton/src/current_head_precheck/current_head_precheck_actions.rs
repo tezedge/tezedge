@@ -23,10 +23,10 @@ pub struct CurrentHeadReceivedAction {
 /// and its block hash hasn't seen yet.
 impl EnablingCondition<State> for CurrentHeadReceivedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck
-            && state
-                .current_head_candidate_level()
-                .map_or(true, |l| l == self.block_header.level())
+        // TODO: maybe we need to check `state.can_accept_new_head(head)` instead?
+        state
+            .current_head_candidate_level()
+            .map_or(true, |l| l == self.block_header.level())
             && !state
                 .current_heads
                 .candidates
@@ -43,18 +43,17 @@ pub struct CurrentHeadPrecheckAction {
 
 impl EnablingCondition<State> for CurrentHeadPrecheckAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck
-            && state
-                .current_head_level()
-                .map_or(false, |applied_head_level| {
-                    if let Some(CurrentHeadState::Received { block_header }) =
-                        state.current_heads.candidates.get(&self.block_hash)
-                    {
-                        block_header.level() == applied_head_level + 1
-                    } else {
-                        false
-                    }
-                })
+        state
+            .current_head_level()
+            .map_or(false, |applied_head_level| {
+                if let Some(CurrentHeadState::Received { block_header }) =
+                    state.current_heads.candidates.get(&self.block_hash)
+                {
+                    block_header.level() == applied_head_level + 1
+                } else {
+                    false
+                }
+            })
     }
 }
 
@@ -104,6 +103,6 @@ pub struct CurrentHeadPrecacheBakingRightsAction {}
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.config.disable_block_precheck && state.current_head.get().is_some()
+        state.current_head.get().is_some()
     }
 }
