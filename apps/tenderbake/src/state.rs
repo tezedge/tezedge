@@ -349,14 +349,16 @@ where
     where
         V: ValidatorMap,
     {
-        log::info!(" .  inject preendorsement: {block_id}");
         map.preendorser(block_id.level, block_id.round)
-            .map(|validator| Action::Preendorse {
-                pred_hash,
-                content: Preendorsement {
-                    validator,
-                    block_id,
-                },
+            .map(|validator| {
+                log::info!(" .  inject preendorsement: {block_id}");
+                Action::Preendorse {
+                    pred_hash,
+                    content: Preendorsement {
+                        validator,
+                        block_id,
+                    },
+                }
             })
     }
 
@@ -409,14 +411,16 @@ where
     where
         V: ValidatorMap,
     {
-        log::info!(" .  inject endorsement: {block_id}");
         map.endorser(block_id.level, block_id.round)
-            .map(|validator| Action::Endorse {
-                pred_hash,
-                content: Endorsement {
-                    validator,
-                    block_id,
-                },
+            .map(|validator| {
+                log::info!(" .  inject endorsement: {block_id}");
+                Action::Endorse {
+                    pred_hash,
+                    content: Endorsement {
+                        validator,
+                        block_id,
+                    },
+                }
             })
     }
 
