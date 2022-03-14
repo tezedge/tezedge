@@ -54,8 +54,8 @@ where
 
         Action::CurrentHeadReceived(CurrentHeadReceivedAction {
             block_hash,
+            block_header,
             injected,
-            ..
         }) => {
             if let Some(CurrentHeadState::Received { .. }) =
                 store.state.get().current_heads.candidates.get(block_hash)
@@ -65,6 +65,7 @@ where
                 });
                 store.dispatch(CurrentHeadPrecheckAction {
                     block_hash: block_hash.clone(),
+                    prev_block_hash: block_header.predecessor().clone(),
                     injected: *injected,
                 });
             }
@@ -72,6 +73,7 @@ where
         Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction {
             block_hash,
             injected,
+            ..
         }) => {
             match store.state.get().current_heads.candidates.get(block_hash) {
                 Some(CurrentHeadState::Prechecked {
@@ -108,7 +110,14 @@ where
         }
 
         Action::CurrentHeadUpdate(_) => {
-            store.dispatch(CurrentHeadPrecacheBakingRightsAction {});
+            if let crate::current_head::CurrentHeadState::Rehydrated {
+                head_pred: Some(head_pred),
+                ..
+            } = &store.state().current_head
+            {
+                let prev_block_hash = head_pred.hash.clone();
+                store.dispatch(CurrentHeadPrecacheBakingRightsAction { prev_block_hash });
+            }
         }
         Action::CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction {
             ..
@@ -124,7 +133,7 @@ where
                 })
             {
                 let max_priority = match max_priority_to_precache(
-                    prev_timestamp,
+                    prev_timestamp.into(),
                     (20, 30),
                     action.duration_since_epoch().as_secs(),
                 ) {

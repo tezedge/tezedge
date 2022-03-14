@@ -435,7 +435,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             message,
             level,
             timestamp,
-            proto: _,
+            ..
         }) => {
             mempool_state.first_current_head = false;
             if let Some(local_head_state) = &mempool_state.local_head_state {
@@ -995,7 +995,7 @@ fn should_skip_block_with_retry(
     }
     let protocol = state
         .protocol_version_cache
-        .protocol_versions
+        .next_protocol_versions
         .get(block_hash)
         .map(|(_, p)| p);
     protocol.map_or(false, |p| *p == SupportedProtocol::Proto011)

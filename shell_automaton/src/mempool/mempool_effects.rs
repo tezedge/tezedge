@@ -197,6 +197,7 @@ where
                     store.dispatch(MempoolRecvDoneAction {
                         address: *address,
                         block_hash,
+                        prev_block_hash: current_head.current_block_header().predecessor().clone(),
                         message,
                         level: current_head.current_block_header().level(),
                         timestamp: current_head.current_block_header().timestamp().into(),
@@ -388,12 +389,15 @@ where
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
+            prev_block_hash,
             proto,
             level,
             ..
         }) => {
             // Ask prechecker to precache endorsing rights for new level, using latest applied block
-            if store.state().mempool.first_current_head {
+            if store.state().mempool.first_current_head
+                && crate::prechecker::prechecking_enabled(store.state(), prev_block_hash)
+            {
                 if let Some(current_head) = store
                     .state
                     .get()
@@ -452,9 +456,15 @@ where
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            store.dispatch(PrecheckerPrecheckOperationRequestAction {
-                operation: operation.clone(),
-            });
+            if crate::prechecker::prechecking_enabled(store.state(), operation.branch()) {
+                store.dispatch(PrecheckerPrecheckOperationRequestAction {
+                    operation: operation.clone(),
+                });
+            } else {
+                store.dispatch(MempoolValidateStartAction {
+                    operation: operation.clone(),
+                });
+            }
         }
         Action::PrecheckerPrecheckOperationResponse(
             PrecheckerPrecheckOperationResponseAction { response },

@@ -45,11 +45,11 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             let cache = &mut state.prechecker.protocol_version_cache;
             let duration = cache.time;
             cache
-                .protocol_versions
+                .next_protocol_versions
                 .retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
             if let Ok(protocol_version) = value.next_protocol_hash().try_into() {
                 cache
-                    .protocol_versions
+                    .next_protocol_versions
                     .insert(key.clone(), (action.id, protocol_version));
             }
         }

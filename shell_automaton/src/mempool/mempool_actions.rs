@@ -25,6 +25,7 @@ pub struct MempoolRecvDoneAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub block_hash: BlockHash,
+    pub prev_block_hash: BlockHash,
     pub message: Mempool,
     pub level: Level,
     pub timestamp: i64,
