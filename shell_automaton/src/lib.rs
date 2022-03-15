@@ -49,6 +49,8 @@ use protocol_runner::ProtocolRunnerStartAction;
 
 pub mod block_applier;
 
+pub mod bootstrap;
+
 pub mod rpc;
 
 pub mod actors;
@@ -65,6 +67,7 @@ pub mod prechecker;
 pub mod shutdown;
 
 pub mod current_head;
+pub mod current_head_precheck;
 
 pub mod stats;
 

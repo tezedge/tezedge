@@ -10,10 +10,7 @@ use tezedge_actor_system::{actor::*, system::Timer};
 
 use crypto::hash::ChainId;
 use networking::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
-use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use shell::subscription::{
-    subscribe_to_network_events, subscribe_to_shell_events, subscribe_to_shell_new_current_head,
-};
+use shell::subscription::subscribe_to_network_events;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
@@ -39,12 +36,11 @@ pub struct LogStats;
 
 pub type MonitorRef = ActorRef<MonitorMsg>;
 
-#[actor(BroadcastSignal, NetworkChannelMsg, ShellChannelMsg, LogStats)]
+#[actor(BroadcastSignal, NetworkChannelMsg, LogStats)]
 pub struct Monitor {
     persistent_storage: PersistentStorage,
     main_chain_id: ChainId,
     network_channel: NetworkChannelRef,
-    shell_channel: ShellChannelRef,
     websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
     peer_monitors: HashMap<SocketAddr, PeerMonitor>,
@@ -66,7 +62,6 @@ impl Monitor {
         sys: &impl ActorRefFactory,
         event_channel: NetworkChannelRef,
         websocket_ref: ActorRef<WebsocketHandlerMsg>,
-        shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         main_chain_id: ChainId,
     ) -> Result<MonitorRef, CreateError> {
@@ -75,7 +70,6 @@ impl Monitor {
             Props::new_args((
                 event_channel,
                 websocket_ref,
-                shell_channel,
                 persistent_storage,
                 main_chain_id,
             )),
@@ -116,16 +110,14 @@ impl
     ActorFactoryArgs<(
         NetworkChannelRef,
         ActorRef<WebsocketHandlerMsg>,
-        ShellChannelRef,
         PersistentStorage,
         ChainId,
     )> for Monitor
 {
     fn create_args(
-        (event_channel, websocket_ref, shell_channel, persistent_storage, main_chain_id): (
+        (event_channel, websocket_ref, persistent_storage, main_chain_id): (
             NetworkChannelRef,
             ActorRef<WebsocketHandlerMsg>,
-            ShellChannelRef,
             PersistentStorage,
             ChainId,
         ),
@@ -139,7 +131,6 @@ impl
             persistent_storage,
             main_chain_id,
             network_channel: event_channel,
-            shell_channel,
             websocket_ref,
             peer_monitors: HashMap::new(),
             bootstrap_monitor,
@@ -155,8 +146,6 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
         subscribe_to_network_events(&self.network_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
@@ -277,27 +266,8 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     );
                 }
             }
-        }
-    }
-}
 
-impl Receive<ShellChannelMsg> for Monitor {
-    type Msg = MonitorMsg;
-
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match msg {
-            ShellChannelMsg::BlockReceived(msg) => {
-                // Update current max block count
-                self.bootstrap_monitor.set_level(msg.level as usize);
-
-                // Start tracking it in the blocks monitor
-                self.blocks_monitor.accept_block();
-                self.bootstrap_monitor.increase_headers_count();
-
-                // update stats for block header
-                self.chain_monitor.process_block_header(msg.level);
-            }
-            ShellChannelMsg::NewCurrentHead(notification) => {
+            NetworkChannelMsg::NewCurrentHead(notification) => {
                 // update stats for block applications
                 self.chain_monitor
                     .process_block_application(notification.block.header.level());
@@ -309,14 +279,25 @@ impl Receive<ShellChannelMsg> for Monitor {
                     notification.block.header.fitness().clone(),
                 ));
             }
-            ShellChannelMsg::AllBlockOperationsReceived(msg) => {
+            NetworkChannelMsg::BlockReceived(msg) => {
+                // Update current max block count
+                self.bootstrap_monitor.set_level(msg.level as usize);
+
+                // Start tracking it in the blocks monitor
+                self.blocks_monitor.accept_block();
+                self.bootstrap_monitor.increase_headers_count();
+
+                // update stats for block header
+                self.chain_monitor.process_block_header(msg.level);
+            }
+            NetworkChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
                 self.blocks_monitor.block_finished_downloading_operations();
 
                 // update stats for block operations
                 self.chain_monitor.process_block_operations(msg.level);
             }
-            _ => (),
+            _ => {}
         }
     }
 }

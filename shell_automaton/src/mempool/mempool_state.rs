@@ -43,8 +43,6 @@ pub struct MempoolState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<OperationHash, Operation>,
-    // operations that passed basic checks, are not sent because prevalidator is not ready
-    pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
@@ -81,8 +79,6 @@ impl MempoolState {
 pub struct HeadState {
     pub header: BlockHeader,
     pub hash: BlockHash,
-    // operations included in the head already removed
-    pub ops_removed: bool,
     // prevalidator for the head is created
     pub prevalidator_ready: bool,
 

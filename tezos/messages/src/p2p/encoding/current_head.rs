@@ -15,7 +15,7 @@ use super::mempool::Mempool;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, PartialEq,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
@@ -42,7 +42,9 @@ impl CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
+)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]

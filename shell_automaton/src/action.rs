@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use derive_more::From;
 use enum_dispatch::enum_dispatch;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
@@ -17,7 +16,8 @@ use crate::block_applier::{
     BlockApplierApplyStoreApplyResultPendingAction, BlockApplierApplyStoreApplyResultSuccessAction,
     BlockApplierApplySuccessAction, BlockApplierEnqueueBlockAction,
 };
-use crate::current_head::current_head_actions::*;
+use crate::current_head::*;
+use crate::current_head_precheck::*;
 use crate::event::{P2pPeerEvent, P2pServerEvent, WakeupEvent};
 use crate::State;
 
@@ -32,9 +32,12 @@ use crate::peer::chunk::read::*;
 use crate::peer::chunk::write::*;
 use crate::peer::message::read::*;
 use crate::peer::message::write::*;
+use crate::peer::remote_requests::block_header_get::*;
+use crate::peer::remote_requests::block_operations_get::*;
+use crate::peer::remote_requests::current_branch_get::*;
 use crate::peer::{
-    PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
-    PeerTryWriteLoopStartAction,
+    PeerCurrentHeadUpdateAction, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
+    PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
 };
 
 use crate::peer::connection::closed::PeerConnectionClosedAction;
@@ -71,6 +74,7 @@ use crate::protocol::ProtocolAction;
 
 use crate::rights::rights_actions::*;
 
+use crate::bootstrap::*;
 use crate::mempool::mempool_actions::*;
 
 use crate::protocol_runner::init::context::{
@@ -183,11 +187,24 @@ impl EnablingCondition<State> for MioTimeoutEvent {
     }
 }
 
+#[enum_dispatch]
+trait EnablingConditionDispatched {
+    fn is_enabled(&self, state: &State) -> bool;
+}
+
+impl<T> EnablingConditionDispatched for T
+where
+    T: EnablingCondition<State>,
+{
+    fn is_enabled(&self, state: &State) -> bool {
+        EnablingCondition::is_enabled(self, state)
+    }
+}
+
 #[derive(
     EnumKind,
     strum_macros::AsRefStr,
     strum_macros::IntoStaticStr,
-    From,
     Serialize,
     Deserialize,
     Debug,
@@ -200,11 +217,13 @@ impl EnablingCondition<State> for MioTimeoutEvent {
         strum_macros::Display,
         Serialize,
         Deserialize,
-        Hash
+        Hash,
+        Ord,
+        PartialOrd,
     )
 )]
 #[serde(tag = "kind", content = "content")]
-#[enum_dispatch(EnablingCondition<State>)]
+#[enum_dispatch(EnablingConditionDispatched)]
 pub enum Action {
     Init(InitAction),
 
@@ -249,6 +268,13 @@ pub enum Action {
 
     ProtocolRunnerResponse(ProtocolRunnerResponseAction),
     ProtocolRunnerResponseUnexpected(ProtocolRunnerResponseUnexpectedAction),
+
+    CurrentHeadRehydrateInit(CurrentHeadRehydrateInitAction),
+    CurrentHeadRehydratePending(CurrentHeadRehydratePendingAction),
+    CurrentHeadRehydrateError(CurrentHeadRehydrateErrorAction),
+    CurrentHeadRehydrateSuccess(CurrentHeadRehydrateSuccessAction),
+    CurrentHeadRehydrated(CurrentHeadRehydratedAction),
+    CurrentHeadUpdate(CurrentHeadUpdateAction),
 
     BlockApplierEnqueueBlock(BlockApplierEnqueueBlockAction),
 
@@ -380,6 +406,83 @@ pub enum Action {
     PeerHandshakingError(PeerHandshakingErrorAction),
     PeerHandshakingFinish(PeerHandshakingFinishAction),
 
+    PeerCurrentHeadUpdate(PeerCurrentHeadUpdateAction),
+
+    PeerRemoteRequestsBlockHeaderGetEnqueue(PeerRemoteRequestsBlockHeaderGetEnqueueAction),
+    PeerRemoteRequestsBlockHeaderGetInitNext(PeerRemoteRequestsBlockHeaderGetInitNextAction),
+    PeerRemoteRequestsBlockHeaderGetPending(PeerRemoteRequestsBlockHeaderGetPendingAction),
+    PeerRemoteRequestsBlockHeaderGetError(PeerRemoteRequestsBlockHeaderGetErrorAction),
+    PeerRemoteRequestsBlockHeaderGetSuccess(PeerRemoteRequestsBlockHeaderGetSuccessAction),
+    PeerRemoteRequestsBlockHeaderGetFinish(PeerRemoteRequestsBlockHeaderGetFinishAction),
+
+    PeerRemoteRequestsBlockOperationsGetEnqueue(PeerRemoteRequestsBlockOperationsGetEnqueueAction),
+    PeerRemoteRequestsBlockOperationsGetInitNext(
+        PeerRemoteRequestsBlockOperationsGetInitNextAction,
+    ),
+    PeerRemoteRequestsBlockOperationsGetPending(PeerRemoteRequestsBlockOperationsGetPendingAction),
+    PeerRemoteRequestsBlockOperationsGetError(PeerRemoteRequestsBlockOperationsGetErrorAction),
+    PeerRemoteRequestsBlockOperationsGetSuccess(PeerRemoteRequestsBlockOperationsGetSuccessAction),
+    PeerRemoteRequestsBlockOperationsGetFinish(PeerRemoteRequestsBlockOperationsGetFinishAction),
+
+    PeerRemoteRequestsCurrentBranchGetInit(PeerRemoteRequestsCurrentBranchGetInitAction),
+    PeerRemoteRequestsCurrentBranchGetPending(PeerRemoteRequestsCurrentBranchGetPendingAction),
+    PeerRemoteRequestsCurrentBranchGetNextBlockInit(
+        PeerRemoteRequestsCurrentBranchGetNextBlockInitAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockPending(
+        PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockError(
+        PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetNextBlockSuccess(
+        PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+    ),
+    PeerRemoteRequestsCurrentBranchGetSuccess(PeerRemoteRequestsCurrentBranchGetSuccessAction),
+    PeerRemoteRequestsCurrentBranchGetFinish(PeerRemoteRequestsCurrentBranchGetFinishAction),
+
+    BootstrapInit(BootstrapInitAction),
+
+    BootstrapPeersConnectPending(BootstrapPeersConnectPendingAction),
+    BootstrapPeersConnectSuccess(BootstrapPeersConnectSuccessAction),
+
+    BootstrapPeersMainBranchFindInit(BootstrapPeersMainBranchFindInitAction),
+    BootstrapPeersMainBranchFindPending(BootstrapPeersMainBranchFindPendingAction),
+    BootstrapPeerCurrentBranchReceived(BootstrapPeerCurrentBranchReceivedAction),
+    BootstrapPeersMainBranchFindSuccess(BootstrapPeersMainBranchFindSuccessAction),
+
+    BootstrapPeersBlockHeadersGetInit(BootstrapPeersBlockHeadersGetInitAction),
+    BootstrapPeersBlockHeadersGetPending(BootstrapPeersBlockHeadersGetPendingAction),
+
+    BootstrapPeerBlockHeaderGetInit(BootstrapPeerBlockHeaderGetInitAction),
+    BootstrapPeerBlockHeaderGetPending(BootstrapPeerBlockHeaderGetPendingAction),
+    BootstrapPeerBlockHeaderGetTimeout(BootstrapPeerBlockHeaderGetTimeoutAction),
+    BootstrapPeerBlockHeaderGetSuccess(BootstrapPeerBlockHeaderGetSuccessAction),
+    BootstrapPeerBlockHeaderGetFinish(BootstrapPeerBlockHeaderGetFinishAction),
+
+    BootstrapPeersBlockHeadersGetSuccess(BootstrapPeersBlockHeadersGetSuccessAction),
+
+    BootstrapPeersBlockOperationsGetInit(BootstrapPeersBlockOperationsGetInitAction),
+    BootstrapPeersBlockOperationsGetPending(BootstrapPeersBlockOperationsGetPendingAction),
+    BootstrapPeersBlockOperationsGetNextAll(BootstrapPeersBlockOperationsGetNextAllAction),
+    BootstrapPeersBlockOperationsGetNext(BootstrapPeersBlockOperationsGetNextAction),
+    BootstrapPeerBlockOperationsGetPending(BootstrapPeerBlockOperationsGetPendingAction),
+    BootstrapPeerBlockOperationsGetTimeout(BootstrapPeerBlockOperationsGetTimeoutAction),
+    BootstrapPeerBlockOperationsGetRetry(BootstrapPeerBlockOperationsGetRetryAction),
+    BootstrapPeerBlockOperationsReceived(BootstrapPeerBlockOperationsReceivedAction),
+    BootstrapPeerBlockOperationsGetSuccess(BootstrapPeerBlockOperationsGetSuccessAction),
+
+    BootstrapScheduleBlocksForApply(BootstrapScheduleBlocksForApplyAction),
+    BootstrapScheduleBlockForApply(BootstrapScheduleBlockForApplyAction),
+
+    BootstrapPeersBlockOperationsGetSuccess(BootstrapPeersBlockOperationsGetSuccessAction),
+
+    BootstrapCheckTimeoutsInit(BootstrapCheckTimeoutsInitAction),
+
+    BootstrapError(BootstrapErrorAction),
+    BootstrapFinished(BootstrapFinishedAction),
+    BootstrapFromPeerCurrentHead(BootstrapFromPeerCurrentHeadAction),
+
     Protocol(ProtocolAction),
 
     MempoolRecvDone(MempoolRecvDoneAction),
@@ -388,7 +491,6 @@ pub enum Action {
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
     MempoolOperationInject(MempoolOperationInjectAction),
     MempoolValidateStart(MempoolValidateStartAction),
-    MempoolValidateWaitPrevalidator(MempoolValidateWaitPrevalidatorAction),
     MempoolRpcRespond(MempoolRpcRespondAction),
     MempoolRegisterOperationsStream(MempoolRegisterOperationsStreamAction),
     MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction),
@@ -397,8 +499,6 @@ pub enum Action {
     MempoolAskCurrentHead(MempoolAskCurrentHeadAction),
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
-    MempoolCleanupWaitPrevalidator(MempoolCleanupWaitPrevalidatorAction),
-    MempoolRemoveAppliedOperations(MempoolRemoveAppliedOperationsAction),
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
     MempoolFlush(MempoolFlushAction),
     MempoolOperationDecoded(MempoolOperationDecodedAction),
@@ -461,7 +561,6 @@ pub enum Action {
     CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction),
     CurrentHeadPrecheckRejected(CurrentHeadPrecheckRejectedAction),
     CurrentHeadError(CurrentHeadErrorAction),
-    CurrentHeadApply(CurrentHeadApplyAction),
     CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction),
 
     StatsCurrentHeadPrecheckInit(StatsCurrentHeadPrecheckInitAction),
@@ -577,14 +676,17 @@ pub enum Action {
     ProtocolRunnerShutdownInit(ProtocolRunnerShutdownInitAction),
     ProtocolRunnerShutdownPending(ProtocolRunnerShutdownPendingAction),
     ProtocolRunnerShutdownSuccess(ProtocolRunnerShutdownSuccessAction),
-
-    BootstrapNewCurrentHead(BootstrapNewCurrentHeadAction),
 }
 
 impl Action {
     #[inline(always)]
     pub fn kind(&self) -> ActionKind {
         ActionKind::from(self)
+    }
+
+    #[inline(always)]
+    pub fn is_enabled(&self, state: &State) -> bool {
+        EnablingConditionDispatched::is_enabled(self, state)
     }
 }
 
@@ -612,19 +714,5 @@ impl<'a> From<&'a ActionWithMeta> for ActionKind {
 impl From<ActionWithMeta> for ActionKind {
     fn from(action: ActionWithMeta) -> ActionKind {
         action.action.kind()
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BootstrapNewCurrentHeadAction {
-    pub chain_id: std::sync::Arc<crypto::hash::ChainId>,
-    pub block: std::sync::Arc<storage::BlockHeaderWithHash>,
-    pub is_bootstrapped: bool,
-}
-
-impl EnablingCondition<State> for BootstrapNewCurrentHeadAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
     }
 }

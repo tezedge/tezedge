@@ -81,4 +81,10 @@ impl<Request> PendingRequests<Request> {
         }
         Some(self.list.remove(id.locator()).request)
     }
+
+    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (RequestId, &'a Request)> {
+        self.list
+            .iter()
+            .map(|(locator, req)| (RequestId::new(locator, req.counter), &req.request))
+    }
 }

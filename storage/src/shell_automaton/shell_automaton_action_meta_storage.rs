@@ -52,16 +52,20 @@ pub struct ShellAutomatonActionStats {
     pub total_duration: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ShellAutomatonActionsStats {
     pub stats: HashMap<String, ShellAutomatonActionStats>,
 }
 
 impl ShellAutomatonActionsStats {
     pub fn new() -> Self {
-        Self {
-            stats: HashMap::new(),
-        }
+        Default::default()
+    }
+}
+
+impl From<HashMap<String, ShellAutomatonActionStats>> for ShellAutomatonActionsStats {
+    fn from(stats: HashMap<String, ShellAutomatonActionStats>) -> Self {
+        Self { stats }
     }
 }
 

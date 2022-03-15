@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
-use crate::peer::{Peer, PeerStatus};
+use crate::peer::{Peer, PeerHandshaked, PeerStatus};
 
 use super::check::timeouts::PeersCheckTimeoutsState;
 use super::dns_lookup::PeersDnsLookupState;
@@ -68,8 +68,22 @@ impl PeersState {
     }
 
     #[inline(always)]
+    pub fn get_handshaked(&self, address: &SocketAddr) -> Option<&PeerHandshaked> {
+        self.list
+            .get(address)
+            .and_then(|p| p.status.as_handshaked())
+    }
+
+    #[inline(always)]
     pub fn get_mut(&mut self, address: &SocketAddr) -> Option<&mut Peer> {
         self.list.get_mut(address)
+    }
+
+    #[inline(always)]
+    pub fn get_handshaked_mut(&mut self, address: &SocketAddr) -> Option<&mut PeerHandshaked> {
+        self.list
+            .get_mut(address)
+            .and_then(|p| p.status.as_handshaked_mut())
     }
 
     #[inline(always)]
@@ -145,6 +159,19 @@ impl PeersState {
     #[inline(always)]
     pub fn is_blacklisted(&self, ip: &IpAddr) -> bool {
         self.get_blacklisted_ip(ip).is_some()
+    }
+
+    /// Iterator over handshaked peers.
+    pub fn handshaked_iter<'a>(
+        &'a self,
+    ) -> impl 'a + Iterator<Item = (SocketAddr, &'a PeerHandshaked)> {
+        self.iter()
+            .filter_map(|(addr, peer)| peer.status.as_handshaked().map(|p| (*addr, p)))
+    }
+
+    /// Number of peers that are handshaked
+    pub fn handshaked_len(&self) -> usize {
+        self.handshaked_iter().count()
     }
 
     #[inline(always)]

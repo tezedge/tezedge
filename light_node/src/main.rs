@@ -13,15 +13,10 @@ use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
-use shell::chain_manager::{ChainManager, ChainManagerRef, ProcessValidatedBlock};
-use shell::connector::ShellConnectorSupport;
 use shell::shell_automaton_manager::{
     ApplyBlockCallback, ApplyBlockResult, ShellAutomatonManager, ShellAutomatonMsg,
 };
-use shell::shell_channel::ShellChannelRef;
-use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::ShellCompatibilityVersion;
-use shell_integration::create_oneshot_callback;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -118,7 +113,7 @@ fn block_on_actors(
         log.clone(),
     );
 
-    info!(log, "Initializing actors... (4/7)";
+    info!(log, "Initializing actors...";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
@@ -147,8 +142,6 @@ fn block_on_actors(
 
     let network_channel =
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
-    let shell_channel =
-        ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
 
     // initialize shell automaton manager
     let (mut shell_automaton_manager, rpc_shell_automaton_channel) = ShellAutomatonManager::new(
@@ -169,14 +162,14 @@ fn block_on_actors(
     shell_automaton_manager.start();
 
     // start chain_feeder with controlled startup and wait for ok initialized context
-    info!(log, "Initializing protocol runners and context... (5/7)");
+    info!(log, "Initializing protocol runners and context...");
     tezos_protocol_api.wait_for_context_init_sync().unwrap();
-    info!(log, "Protocol runners and context initialized (5/7)");
+    info!(log, "Protocol runners and context initialized");
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
-    info!(log, "Hydrating current head... (6/7)");
-    let hydrated_current_head_block: Arc<BlockHeaderWithHash> =
-        hydrate_current_head(&init_storage_data, &persistent_storage)
+    info!(log, "Hydrating current head...");
+    let hydrated_current_head_block: BlockHeaderWithHash =
+        hydrate_current_head(&init_storage_data.chain_id, &persistent_storage)
             .expect("Failed to load current_head from database");
     let hydrated_current_head = Head::new(
         hydrated_current_head_block.hash.clone(),
@@ -185,49 +178,14 @@ fn block_on_actors(
     );
     {
         let (head, level, fitness) = hydrated_current_head.to_debug_info();
-        info!(log, "Current head hydrated (6/7)";
+        info!(log, "Current head hydrated";
                    "block_hash" => head,
                    "level" => level,
                    "fitness" => fitness);
     }
 
-    // start chain_manager with controlled startup and wait for initialization
-    info!(log, "Initializing chain manager... (7/7)");
-    let (
-        initialize_chain_manager_result_callback,
-        initialize_chain_manager_result_callback_receiver,
-    ) = create_oneshot_callback();
-
-    let (chain_manager, mut chain_manager_p2p_reader_thread_watcher) = ChainManager::actor(
-        actor_system.as_ref(),
-        network_channel.clone(),
-        shell_automaton_manager.shell_automaton_sender(),
-        shell_channel.clone(),
-        persistent_storage.clone(),
-        Arc::clone(&tezos_protocol_api),
-        init_storage_data.clone(),
-        is_sandbox,
-        hydrated_current_head,
-        env.p2p
-            .peer_threshold
-            .num_of_peers_for_bootstrap_threshold(),
-        identity,
-        initialize_chain_manager_result_callback,
-    )
-    .expect("Failed to create chain manager");
-
-    if let Err(e) = initialize_chain_manager_result_callback_receiver
-        .recv_timeout(env.initialize_chain_manager_timeout)
-    {
-        panic!("Chain manager was not initialized within {:?} timeout, e.g. try increase [--initialize-chain-manager-timeout-in-secs] and check logs for errors, reason: {}", env.initialize_chain_manager_timeout, e)
-    };
-    info!(log, "Chain manager initialized (7/7)");
-
-    let shell_connector = ShellConnectorSupport::new(chain_manager.clone());
-
     let mut rpc_server = RpcServer::new(
         log.clone(),
-        Box::new(shell_connector),
         rpc_shell_automaton_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         tokio_runtime.handle().clone(),
@@ -236,14 +194,14 @@ fn block_on_actors(
         env.tezos_network_config,
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
-        hydrated_current_head_block,
+        Arc::new(hydrated_current_head_block),
         env.storage
             .context_storage_configuration
             .tezedge_is_enabled(),
     );
     let _ = RpcNotificationCallbackActor::actor(
         actor_system.as_ref(),
-        shell_channel.clone(),
+        network_channel.clone(),
         rpc_server.rpc_env(),
     )
     .expect("Failed to create rpc notification callback handler actor");
@@ -263,7 +221,6 @@ fn block_on_actors(
             actor_system.as_ref(),
             network_channel,
             websocket_handler,
-            shell_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.chain_id.clone(),
         )
@@ -274,9 +231,7 @@ fn block_on_actors(
         schedule_replay_blocks(
             blocks,
             &init_storage_data,
-            chain_manager,
             shell_automaton_manager,
-            shell_channel,
             log.clone(),
         );
         return;
@@ -311,48 +266,22 @@ fn block_on_actors(
             handle_signals(&log).await;
         }
 
-        info!(log, "Shutting down shell automaton (1/9)");
+        info!(log, "Shutting down shell automaton (1/4)");
         shell_automaton_manager.shutdown_and_wait();
 
-        info!(log, "Shutting down rpc server (2/9)");
+        info!(log, "Shutting down rpc server (2/4)");
         drop(rpc_server);
 
-        info!(log, "Shutting down of thread workers starting (3/9)");
-        if let Err(e) = chain_manager_p2p_reader_thread_watcher.stop() {
-            warn!(log, "Failed to stop thread watcher";
-                       "thread_name" => chain_manager_p2p_reader_thread_watcher.thread_name(),
-                       "reason" => format!("{}", e));
-        }
-
-        info!(log, "Sending shutdown notification to actors (4/9)");
-        shell_channel.tell(
-            Publish {
-                msg: ShuttingDown.into(),
-                topic: ShellChannelTopic::ShellShutdown.into(),
-            },
-            None,
-        );
-
-        info!(log, "Shutting down actors (5/9)");
+        info!(log, "Shutting down actors (3/4)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (6/9)");
-        if let Some(thread) = chain_manager_p2p_reader_thread_watcher.thread() {
-            thread.thread().unpark();
-            if let Err(e) = thread.join() {
-                warn!(log, "Failed to wait for p2p reader thread"; "reason" => format!("{:?}", e));
-            }
-        }
-        info!(log, "Thread workers stopped");
-
-        info!(log, "Flushing databases (8/9)");
+        info!(log, "Flushing databases (4/4)");
         drop(persistent_storage);
-        info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (9/9)");
+        info!(log, "Shutdown complete");
     });
 }
 
@@ -390,14 +319,12 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
 fn schedule_replay_blocks(
     blocks: Vec<Arc<BlockHash>>,
     init_storage_data: &StorageInitInfo,
-    chain_manager: ChainManagerRef,
     shell_automaton_manager: ShellAutomatonManager,
-    shell_channel: ShellChannelRef,
     log: Logger,
 ) {
-    let chain_manager = Arc::new(chain_manager);
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
-    let (result_callback_sender, result_callback_receiver) = create_oneshot_callback();
+    let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
+    let result_callback_sender = Arc::new(result_callback_sender);
     let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
     let nblocks = blocks.len();
     let now = std::time::Instant::now();
@@ -406,7 +333,6 @@ fn schedule_replay_blocks(
         let result_callback = result_callback_sender.clone();
 
         let now = std::time::Instant::now();
-        let chain_manager = chain_manager.clone();
 
         let _ =
             shell_automaton_manager
@@ -416,13 +342,6 @@ fn schedule_replay_blocks(
                     block_hash: block.clone(),
                     callback: ApplyBlockCallback::from(move |_, result: ApplyBlockResult| {
                         let res = result.as_ref().map(|_| ()).map_err(|_| ());
-
-                        if let Ok((chain_id, block)) = result {
-                            chain_manager.tell(
-                                ProcessValidatedBlock::new(block, chain_id, Instant::now()),
-                                None,
-                            );
-                        }
 
                         result_callback
                             .send(res)
@@ -439,13 +358,13 @@ fn schedule_replay_blocks(
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
         if result.as_ref().is_err() {
-            replay_shutdown(&log, shell_channel, shell_automaton_manager);
+            replay_shutdown(&log, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
                 index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
-            replay_shutdown(&log, shell_channel, shell_automaton_manager);
+            replay_shutdown(&log, shell_automaton_manager);
             panic!(
                 "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
                 index, percent, hash, time, fail_above, result
@@ -470,23 +389,11 @@ fn schedule_replay_blocks(
         now.elapsed()
     );
 
-    replay_shutdown(&log, shell_channel, shell_automaton_manager);
+    replay_shutdown(&log, shell_automaton_manager);
 }
 
 // TODO(zura):
-fn replay_shutdown(
-    _: &Logger,
-    shell_channel: ShellChannelRef,
-    shell_automaton_manager: ShellAutomatonManager,
-) {
-    shell_channel.tell(
-        Publish {
-            msg: ShuttingDown.into(),
-            topic: ShellChannelTopic::ShellShutdown.into(),
-        },
-        None,
-    );
-
+fn replay_shutdown(_: &Logger, shell_automaton_manager: ShellAutomatonManager) {
     shell_automaton_manager.shutdown_and_wait();
 
     // give actors some time to shut down
@@ -609,7 +516,7 @@ fn main() {
     check_deprecated_network(&env, &log);
 
     // create/initialize databases
-    info!(log, "Loading databases... (1/7)");
+    info!(log, "Loading databases...");
     let instant = Instant::now();
 
     {
@@ -649,7 +556,7 @@ fn main() {
                     )
                 } else {
                     // Validate zcash-params
-                    info!(log, "Checking zcash-params for sapling... (2/7)");
+                    info!(log, "Checking zcash-params for sapling...");
                     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
                         let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
                         error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
@@ -658,7 +565,7 @@ fn main() {
                     }
 
                     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-                    info!(log, "Loading identity... (3/7)");
+                    info!(log, "Loading identity...");
                     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
                         Ok(identity) => {
                             info!(log, "Identity loaded from file";

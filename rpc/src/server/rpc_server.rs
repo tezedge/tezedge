@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use networking::network_channel::NewCurrentHeadNotificationRef;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
-use shell_integration::notifications::*;
 use shell_integration::*;
 use slog::{error, info, warn, Logger};
 use std::collections::HashMap;
@@ -41,7 +41,6 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn new(
         log: Logger,
-        shell_connector: ShellConnectorRef,
         shell_automaton_channel: RpcShellAutomatonSender,
         rpc_listen_address: SocketAddr,
         tokio_executor: Handle,
@@ -61,7 +60,6 @@ impl RpcServer {
 
         let env = Arc::new(RpcServiceEnvironment::new(
             Arc::new(tokio_executor),
-            shell_connector,
             shell_automaton_channel,
             tezos_env,
             network_version,

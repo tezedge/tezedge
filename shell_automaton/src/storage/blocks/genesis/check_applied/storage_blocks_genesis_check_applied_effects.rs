@@ -5,7 +5,7 @@ use crate::protocol_runner::init::ProtocolRunnerInitCheckGenesisAppliedSuccessAc
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
-use crate::storage::request::StorageRequestCreateAction;
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -32,6 +32,7 @@ pub fn storage_blocks_genesis_check_applied_effects<S>(
                 .clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockMetaGet(genesis_hash.into()),
+                requestor: StorageRequestor::None,
             });
             store.dispatch(StorageBlocksGenesisCheckAppliedGetMetaPendingAction {});
         }

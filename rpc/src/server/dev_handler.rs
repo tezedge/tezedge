@@ -309,6 +309,15 @@ pub async fn dev_shell_automaton_state_raw_get(
         .body(Body::from(contents))?)
 }
 
+pub async fn dev_shell_automaton_storage_requests_get(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_storage_requests(&env).await?)
+}
+
 pub async fn dev_shell_automaton_actions_get(
     _: Request<Body>,
     _: Params,
@@ -459,7 +468,7 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
         .unwrap_or_default();
     serde_json::json!({
         "block_hash": hash,
-        "block_timestamp": stats.block_timestamp * 1_000_000_000,
+        "block_timestamp": stats.block_timestamp.map(|t| t * 1_000_000_000),
         "receive_timestamp": stats.receive_timestamp,
         "injected": stats.injected,
 

@@ -19,7 +19,7 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
     MioPeerStreamMocked, MioServiceMocked, PrevalidatorServiceDummy, ProtocolRunnerServiceDummy,
-    QuotaServiceDummy, RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
+    RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
 };
 use crate::service::{Service, TimeService};
 
@@ -40,7 +40,6 @@ pub struct ServiceMocked {
     pub storage: StorageServiceDummy,
     pub rpc: RpcServiceDummy,
     pub actors: ActorsServiceDummy,
-    pub quota: QuotaServiceDummy,
     pub prevalidator: PrevalidatorServiceDummy,
 }
 
@@ -55,7 +54,6 @@ impl ServiceMocked {
             storage: StorageServiceDummy::new(),
             rpc: RpcServiceDummy::new(),
             actors: ActorsServiceDummy::new(),
-            quota: QuotaServiceDummy::new(),
             prevalidator: PrevalidatorServiceDummy::new(),
         }
     }
@@ -79,7 +77,6 @@ impl Service for ServiceMocked {
     type Storage = StorageServiceDummy;
     type Rpc = RpcServiceDummy;
     type Actors = ActorsServiceDummy;
-    type Quota = QuotaServiceDummy;
     type Prevalidator = PrevalidatorServiceDummy;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
@@ -110,10 +107,6 @@ impl Service for ServiceMocked {
         &mut self.actors
     }
 
-    fn quota(&mut self) -> &mut Self::Quota {
-        &mut self.quota
-    }
-
     fn prevalidator(&mut self) -> &mut Self::Prevalidator {
         &mut self.prevalidator
     }
@@ -129,7 +122,11 @@ impl Cluster {
         Self {
             store: Store::new(
                 reducer,
-                effects,
+                |store, action| {
+                    eprintln!("[+] Action: {:#?}", &action);
+                    eprintln!("[+] State: {:#?}\n", store.state());
+                    effects(store, action)
+                },
                 ServiceMocked::new(),
                 initial_time,
                 initial_state,
@@ -143,6 +140,10 @@ impl Cluster {
 
     pub fn state(&self) -> &State {
         self.store.state()
+    }
+
+    pub fn service(&mut self) -> &mut ServiceMocked {
+        self.store.service()
     }
 
     pub fn dispatch<T>(&mut self, action: T) -> bool

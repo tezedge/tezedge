@@ -63,14 +63,6 @@ steps:
     - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
-    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` drone-cache/tests/shell_chain_test
-    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` drone-cache/tests/protocol_runner_test
-    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` drone-cache/tests/p2p_test
-    # copy test resources
-    - cp ./shell/tests/resources/apply_block_request_until_1326.zip drone-cache/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip drone-cache/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip drone-cache/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox-patch-context.json drone-cache/test_data/tests/resources
     # collect modified python tests stuff
     - mkdir -p drone-cache/python-tests/daemons
     - mkdir -p drone-cache/python-tests/launchers

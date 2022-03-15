@@ -8,13 +8,12 @@ use std::sync::{mpsc, Arc};
 
 use crypto::hash::{BlockHash, ChainId};
 use networking::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
+    AllBlockOperationsReceived, BlockReceived, NetworkChannelMsg, NetworkChannelRef,
+    NetworkChannelTopic, NewCurrentHeadNotificationRef, PeerMessageReceived,
 };
 use storage::BlockHeaderWithHash;
 use tezedge_actor_system::actors::*;
-use tezos_messages::p2p::encoding::prelude::{
-    MetadataMessage, NetworkVersion, PeerMessageResponse,
-};
+use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 use crate::peer::PeerId;
 
@@ -42,6 +41,11 @@ pub enum ActorsMessageTo {
     PeerHandshaked(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
     PeerDisconnected(SocketAddr),
     PeerMessageReceived(PeerMessageReceived),
+
+    NewCurrentHead(NewCurrentHeadNotificationRef),
+    BlockReceived(BlockReceived),
+    BlockApplied(Arc<BlockHash>),
+    AllBlockOperationsReceived(AllBlockOperationsReceived),
 }
 
 impl From<ActorsMessageTo> for NetworkChannelMsg {
@@ -52,6 +56,10 @@ impl From<ActorsMessageTo> for NetworkChannelMsg {
             }
             ActorsMessageTo::PeerDisconnected(address) => Self::PeerDisconnected(address),
             ActorsMessageTo::PeerMessageReceived(address) => Self::PeerMessageReceived(address),
+            ActorsMessageTo::NewCurrentHead(v) => Self::NewCurrentHead(v),
+            ActorsMessageTo::BlockReceived(v) => Self::BlockReceived(v),
+            ActorsMessageTo::BlockApplied(v) => Self::BlockApplied(v),
+            ActorsMessageTo::AllBlockOperationsReceived(v) => Self::AllBlockOperationsReceived(v),
         }
     }
 }
@@ -79,14 +87,6 @@ impl fmt::Debug for ApplyBlockCallback {
 #[derive(Debug)]
 pub enum ActorsMessageFrom {
     P2pInit,
-    PeerStalled(Arc<PeerId>),
-    BlacklistPeer(Arc<PeerId>, String),
-    SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
-    NewCurrentHead {
-        chain_id: Arc<ChainId>,
-        block: Arc<BlockHeaderWithHash>,
-        is_bootstrapped: bool,
-    },
     ApplyBlock {
         chain_id: Arc<ChainId>,
         block_hash: Arc<BlockHash>,

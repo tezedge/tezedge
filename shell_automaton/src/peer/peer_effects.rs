@@ -4,7 +4,10 @@ use std::io;
 use tezos_messages::p2p::binary_message::CONTENT_LENGTH_FIELD_BYTES;
 
 use crate::paused_loops::{PausedLoop, PausedLoopsAddAction};
+use crate::request::RequestId;
+use crate::service::storage_service::{StorageResponseError, StorageResponseSuccess};
 use crate::service::{MioService, Service};
+use crate::storage::request::StorageRequestor;
 use crate::{Action, ActionWithMeta, Store};
 
 use super::binary_message::read::PeerBinaryMessageReadState;
@@ -25,6 +28,17 @@ use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnectAction;
 use super::handshaking::PeerHandshakingStatus;
 use super::message::read::PeerMessageReadState;
+use super::remote_requests::block_header_get::{
+    PeerRemoteRequestsBlockHeaderGetErrorAction, PeerRemoteRequestsBlockHeaderGetSuccessAction,
+};
+use super::remote_requests::block_operations_get::{
+    PeerRemoteRequestsBlockOperationsGetErrorAction,
+    PeerRemoteRequestsBlockOperationsGetSuccessAction,
+};
+use super::remote_requests::current_branch_get::{
+    PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+    PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+};
 use super::{
     PeerHandshaked, PeerIOLoopResult, PeerStatus, PeerTryReadLoopFinishAction,
     PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -35,58 +49,6 @@ where
     S: Service,
 {
     match &action.action {
-        Action::WakeupEvent(_) => {
-            let quota_restore_duration_millis =
-                store.state.get().config.quota.restore_duration_millis as u128;
-            let read_addresses = store
-                .state
-                .get()
-                .peers
-                .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_read
-                        && action
-                            .id
-                            .duration_since(peer.quota.read_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
-                    {
-                        Some(address)
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            let write_addresses = store
-                .state
-                .get()
-                .peers
-                .iter()
-                .filter_map(|(address, peer)| {
-                    if peer.quota.reject_write
-                        && action
-                            .id
-                            .duration_since(peer.quota.write_timestamp)
-                            .as_millis()
-                            >= quota_restore_duration_millis
-                    {
-                        Some(address)
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            for address in read_addresses {
-                store.dispatch(PeerTryReadLoopStartAction { address });
-            }
-            for address in write_addresses {
-                store.dispatch(PeerTryWriteLoopStartAction { address });
-            }
-        }
         // Handle peer related mio event.
         Action::P2pPeerEvent(event) => {
             let address = event.address();
@@ -142,10 +104,6 @@ where
                     Some(v) => v,
                     None => return,
                 };
-
-                if peer.quota.reject_write {
-                    return finish(store, action.address, PeerIOLoopResult::ByteQuotaReached);
-                }
 
                 let peer_token = match &peer.status {
                     PeerStatus::Handshaking(s) => s.token,
@@ -242,10 +200,6 @@ where
                     None => return,
                 };
 
-                if peer.quota.reject_read {
-                    return finish(store, action.address, PeerIOLoopResult::ByteQuotaReached);
-                }
-
                 let peer_token = match &peer.status {
                     PeerStatus::Handshaking(s) => s.token,
                     PeerStatus::Handshaked(s) => s.token,
@@ -334,6 +288,113 @@ where
             }
             _ => {}
         },
+        Action::StorageResponseReceived(content) => {
+            let address = match &content.requestor {
+                StorageRequestor::Peer(address) => *address,
+                _ => return,
+            };
+            let state = store.state.get();
+            let peer = match state.peers.get_handshaked(&address) {
+                Some(v) => v,
+                None => {
+                    slog::debug!(&state.log, "Peer not found for storage response";
+                        "address" => address.to_string(),
+                        "response" => format!("{:?}", content.response));
+                    return;
+                }
+            };
+
+            let req_id = content.response.req_id;
+            let req_id_matches = |expected_req_id: Option<RequestId>| {
+                let result = expected_req_id
+                    .and_then(|expected_id| req_id.map(|id| id == expected_id))
+                    .unwrap_or(false);
+                if !result {
+                    slog::debug!(&state.log, "Unexpected storage response for peer";
+                        "address" => address.to_string(),
+                        "response" => format!("{:?}", content.response));
+                }
+                result
+            };
+
+            match &content.response.result {
+                Ok(StorageResponseSuccess::BlockHeaderGetSuccess(_, result)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_header_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockHeaderGetSuccessAction {
+                        address,
+                        result: result.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockHeaderGetError(_, error)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_header_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockHeaderGetErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                Ok(StorageResponseSuccess::BlockOperationsGetSuccess(result)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_operations_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockOperationsGetSuccessAction {
+                        address,
+                        result: result.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockOperationsGetError(error)) => {
+                    if !req_id_matches(
+                        peer.remote_requests
+                            .block_operations_get
+                            .current
+                            .storage_req_id(),
+                    ) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsBlockOperationsGetErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                Ok(StorageResponseSuccess::BlockHashByLevelGetSuccess(result)) => {
+                    if !req_id_matches(peer.remote_requests.current_branch_get.storage_req_id()) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction {
+                        address,
+                        result: result.clone(),
+                    });
+                }
+                Err(StorageResponseError::BlockHashByLevelGetError(error)) => {
+                    if !req_id_matches(peer.remote_requests.current_branch_get.storage_req_id()) {
+                        return;
+                    }
+                    store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction {
+                        address,
+                        error: error.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
         _ => {}
     }
 }

@@ -14,7 +14,6 @@ use std::vec;
 use crypto::hash::{ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
-use shell_automaton::service::storage_service::ActionGraph;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 
@@ -32,8 +31,8 @@ use storage::persistent::Decoder;
 //};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ConstantsStorage,
-    CycleErasStorage, Direction, IteratorMode, PersistentStorage, ShellAutomatonActionMetaStorage,
-    ShellAutomatonActionStorage, ShellAutomatonStateStorage, StorageError,
+    CycleErasStorage, Direction, IteratorMode, PersistentStorage, ShellAutomatonActionStorage,
+    ShellAutomatonStateStorage, StorageError,
 };
 //use tezos_context::channel::ContextAction;
 use tezos_messages::base::ConversionError;
@@ -395,6 +394,21 @@ pub(crate) async fn get_shell_automaton_state_current(
     rx.await
 }
 
+pub(crate) async fn get_shell_automaton_storage_requests(
+    env: &RpcServiceEnvironment,
+) -> Result<
+    shell_automaton::service::rpc_service::StorageRequests,
+    tokio::sync::oneshot::error::RecvError,
+> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetStorageRequests { channel: tx })
+        .await;
+    rx.await
+}
+
 pub(crate) async fn get_shell_automaton_state_after(
     env: &RpcServiceEnvironment,
     target_action_id: u64,
@@ -660,22 +674,22 @@ pub(crate) struct ShellAutomatonActionStats {
 pub(crate) async fn get_shell_automaton_actions_stats(
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<ShellAutomatonActionsStats> {
-    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-    let meta = match action_meta_storage.get_stats()? {
-        Some(v) => v,
-        None => return Ok(Default::default()),
-    };
-
-    Ok(meta
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetActionKindStats { channel: tx })
+        .await;
+    Ok(rx
+        .await?
         .stats
         .into_iter()
-        .map(|(action_kind, meta)| {
+        .map(|(k, v)| {
             (
-                action_kind,
+                k,
                 ShellAutomatonActionStats {
-                    total_calls: meta.total_calls,
-                    total_duration: meta.total_duration,
+                    total_calls: v.total_calls,
+                    total_duration: v.total_duration,
                 },
             )
         })
@@ -685,11 +699,14 @@ pub(crate) async fn get_shell_automaton_actions_stats(
 pub(crate) async fn get_shell_automaton_actions_graph(
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    let action_meta_storage = ShellAutomatonActionMetaStorage::new(env.persistent_storage());
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-    let graph: ActionGraph = action_meta_storage.get_graph()?.unwrap_or_default();
-
-    Ok(graph
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetActionGraph { channel: tx })
+        .await;
+    Ok(rx
+        .await?
         .into_iter()
         .enumerate()
         .map(|(action_id, node)| {

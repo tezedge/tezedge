@@ -22,7 +22,9 @@ pub fn display_fitness(fitness: &Fitness) -> String {
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
+)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
     block_header: BlockHeader,
@@ -42,7 +44,9 @@ impl From<BlockHeaderMessage> for BlockHeader {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
+)]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
     #[encoding(dynamic, list = "GET_BLOCK_HEADERS_MAX_LENGTH")]
@@ -60,6 +64,7 @@ impl GetBlockHeadersMessage {
 #[derive(
     Serialize,
     Deserialize,
+    Eq,
     PartialEq,
     Debug,
     Clone,
@@ -112,7 +117,7 @@ pub struct BlockHeader {
     feature = "fuzzing",
     derive(fuzzcheck::DefaultMutator, Serialize, Deserialize)
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct EncodingHash(pub Option<Vec<u8>>);
 
 impl PartialEq for EncodingHash {

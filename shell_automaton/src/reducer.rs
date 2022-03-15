@@ -7,7 +7,9 @@ use crate::action::{Action, ActionWithMeta};
 use crate::State;
 
 use crate::block_applier::block_applier_reducer;
+use crate::bootstrap::bootstrap_reducer;
 use crate::current_head::current_head_reducer;
+use crate::current_head_precheck::current_head_precheck_reducer;
 use crate::paused_loops::paused_loops_reducer;
 
 use crate::peer::binary_message::read::peer_binary_message_read_reducer;
@@ -22,6 +24,9 @@ use crate::peer::handshaking::peer_handshaking_reducer;
 use crate::peer::message::read::peer_message_read_reducer;
 use crate::peer::message::write::peer_message_write_reducer;
 use crate::peer::peer_reducer;
+use crate::peer::remote_requests::block_header_get::peer_remote_requests_block_header_get_reducer;
+use crate::peer::remote_requests::block_operations_get::peer_remote_requests_block_operations_get_reducer;
+use crate::peer::remote_requests::current_branch_get::peer_remote_requests_current_branch_get_reducer;
 
 use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
@@ -91,6 +96,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         protocol_runner_init_context_reducer,
         protocol_runner_init_context_ipc_server_reducer,
         protocol_runner_reducer,
+        current_head_reducer,
         block_applier_reducer,
         peer_reducer,
         peer_connection_outgoing_reducer,
@@ -104,15 +110,19 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peer_chunk_write_reducer,
         peer_chunk_read_reducer,
         peer_disconnection_reducer,
+        peer_remote_requests_block_header_get_reducer,
+        peer_remote_requests_block_operations_get_reducer,
+        peer_remote_requests_current_branch_get_reducer,
         peers_dns_lookup_reducer,
         peers_add_multi_reducer,
         peers_add_reducer,
         peers_remove_reducer,
         peers_check_timeouts_reducer,
         peers_graylist_reducer,
+        bootstrap_reducer,
         mempool_reducer,
         rights_reducer,
-        current_head_reducer,
+        current_head_precheck_reducer,
         stats_current_head_reducer,
         prechecker_reducer,
         rpc_reducer,

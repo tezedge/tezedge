@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::time::Duration;
+
 use crate::peer::connection::incoming::{
     PeerConnectionIncomingError, PeerConnectionIncomingErrorAction,
 };
@@ -8,6 +10,7 @@ use crate::peer::connection::outgoing::{
     PeerConnectionOutgoingError, PeerConnectionOutgoingErrorAction,
 };
 use crate::peer::connection::PeerConnectionStatePhase;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::{PeerHandshakingError, PeerHandshakingErrorAction};
 use crate::peer::{Peer, PeerStatus};
 use crate::peers::graylist::PeersGraylistIpRemoveAction;
@@ -38,7 +41,20 @@ fn check_timeout(
             }
             PeerTimeout::Handshaking((&handshaking.status).into())
         }
-        PeerStatus::Handshaked(_) => return None,
+        PeerStatus::Handshaked(peer) => {
+            if let Some(current_head_last_update) = peer.current_head_last_update {
+                if current_time - current_head_last_update
+                    < Duration::from_secs(120).as_nanos() as u64
+                {
+                    return None;
+                }
+            } else {
+                if current_time - peer.handshaked_since < Duration::from_secs(8).as_nanos() as u64 {
+                    return None;
+                }
+            }
+            PeerTimeout::CurrentHeadUpdate
+        }
         PeerStatus::Disconnecting(_) => return None,
         PeerStatus::Disconnected => return None,
     })
@@ -129,6 +145,9 @@ where
                                     address,
                                     error: PeerHandshakingError::Timeout(timeout),
                                 });
+                            }
+                            PeerTimeout::CurrentHeadUpdate => {
+                                store.dispatch(PeerDisconnectAction { address });
                             }
                         }
                     }

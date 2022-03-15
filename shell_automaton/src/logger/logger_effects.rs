@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use tezos_messages::p2p::encoding::block_header::display_fitness;
+
 use crate::{Action, ActionWithMeta, Service, Store};
 
 #[allow(unused)]
@@ -9,9 +11,66 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
     // eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
 
-    let log = &store.state().log;
+    let state = store.state.get();
+    let log = &state.log;
 
     match &action.action {
+        Action::CurrentHeadUpdate(content) => {
+            slog::info!(log, "CurrentHead Updated";
+                "level" => content.new_head.header.level(),
+                "hash" => content.new_head.hash.to_string(),
+                "fitness" => display_fitness(content.new_head.header.fitness()));
+            slog::debug!(log, "CurrentHead Updated - full header";
+                "new_head" => slog::FnValue(|_| format!("{:?}", content.new_head)));
+        }
+        Action::PeerCurrentHeadUpdate(content) => {
+            slog::info!(log, "Peer CurrentHead Updated";
+                "peer_address" => content.address,
+                "peer_pkh" => state.peer_public_key_hash_b58check(content.address),
+                "level" => content.current_head.header.level(),
+                "hash" => content.current_head.hash.to_string(),
+                "fitness" => display_fitness(content.current_head.header.fitness()));
+            slog::debug!(log, "Peer CurrentHead Updated - full header";
+                "new_head" => slog::FnValue(|_| format!("{:?}", content.current_head)));
+        }
+        Action::BootstrapFromPeerCurrentHead(content) => {
+            let current_head = match state.current_head.get() {
+                Some(v) => v,
+                None => return,
+            };
+            slog::info!(log, "Bootstrapping from a new current head";
+                "peer_address" => content.peer,
+                "peer_pkh" => state.peer_public_key_hash_b58check(content.peer),
+                "current_head_level" => current_head.header.level(),
+                "current_head_hash" => current_head.hash.to_string(),
+                "current_head_fitness" => display_fitness(current_head.header.fitness()),
+                "new_head_level" => content.current_head.header.level(),
+                "new_head_hash" => content.current_head.hash.to_string(),
+                "new_head_fitness" => display_fitness(content.current_head.header.fitness()));
+        }
+        Action::BootstrapError(content) => {
+            let current_head = match state.current_head.get() {
+                Some(v) => v,
+                None => return,
+            };
+            slog::warn!(log, "Bootstrap pipeline failed";
+                "error" => format!("{:?}", content.error),
+                "bootstrap_state" => format!("{:?}", state.bootstrap),
+                "block_applier_state" => format!("{:?}", state.block_applier));
+        }
+        Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
+            slog::warn!(log, "Fetching BlockHeader from peer timed out";
+                "peer_address" => content.peer,
+                "peer_pkh" => state.peer_public_key_hash_b58check(content.peer),
+                "block_hash" => content.block_hash.to_string());
+        }
+        Action::BootstrapPeerBlockOperationsGetTimeout(content) => {
+            slog::warn!(log, "Fetching BlockOperations from peer timed out";
+                "peer_address" => content.peer,
+                "peer_pkh" => state.peer_public_key_hash_b58check(content.peer),
+                "block_hash" => content.block_hash.to_string());
+        }
+
         Action::PeerConnectionOutgoingError(content) => {
             slog::warn!(log, "Failed to connect (outgoing) to peer";
                 "address" => content.address.to_string(),
@@ -55,7 +114,9 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 "error" => format!("{:?}", content.error));
         }
         Action::PeerHandshakingFinish(content) => {
-            slog::info!(log, "Peer Handshaking successful"; "address" => content.address.to_string());
+            slog::info!(log, "Peer Handshaking successful";
+            "address" => content.address.to_string(),
+            "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)));
         }
         Action::PeerDisconnect(content) => {
             slog::warn!(log, "Disconnecting peer"; "address" => content.address.to_string());
@@ -72,6 +133,18 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 slog::warn!(log, "Peers timed out";
                     "timeouts" => format!("{:?}", content.peer_timeouts));
             }
+        }
+        Action::PeerMessageReadSuccess(content) => {
+            slog::trace!(log, "Received message from a peer";
+                "address" => content.address.to_string(),
+                "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)),
+                "message" => content.message.message());
+        }
+        Action::PeerMessageWriteInit(content) => {
+            slog::trace!(log, "Sending message to a peer";
+                "address" => content.address.to_string(),
+                "public_key_hash" => slog::FnValue(|_| state.peer_public_key_hash_b58check(content.address)),
+                "message" => content.message.message());
         }
 
         Action::StorageResponseReceived(content) => match &content.response.result {
@@ -95,9 +168,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 "error" => format!("{:?}", content.error));
         }
         Action::ProtocolRunnerReady(_) => {
-            slog::info!(log, "Protocol Runner initialized";
-                // TODO(zura): TMP
-                "state" => format!("{:#?}", store.state()));
+            slog::info!(log, "Protocol Runner initialized");
         }
         Action::ProtocolRunnerNotifyStatus(_) => {
             slog::info!(

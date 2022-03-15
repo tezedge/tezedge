@@ -8,6 +8,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::commit_log::{CommitLogWithSchema, Location};
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
@@ -113,6 +114,28 @@ impl BlockStorage {
             by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
+    }
+
+    pub fn get_block_by_level(
+        &self,
+        level: Level,
+    ) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        let location = match self
+            .by_level_index
+            .get_blocks(level, 1)
+            .map(|v| v.into_iter().nth(0))?
+        {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        self.get_block_header_by_location(&location)
+            .map(|v| Some(v))
+    }
+
+    pub fn get_block_hash_by_level(&self, level: Level) -> Result<Option<BlockHash>, StorageError> {
+        // TODO: optimize and don't get the whole header just to get hash.
+        self.get_block_by_level(level).map(|v| v.map(|b| b.hash))
     }
 
     /// Stores header in key-value store and commit_log.

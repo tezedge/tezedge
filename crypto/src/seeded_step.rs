@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::hash::sha256;
 use sodiumoxide::crypto::hash::sha256::Digest;
 
@@ -26,6 +27,7 @@ impl<'s, 'r> Seed<'s, 'r> {
 
 /// Step implementation according to tezos [block_locator.ml]
 /// The sequence is deterministic for a given triple of sender, receiver and block hash.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Step {
     step: i32,
     counter: i32,

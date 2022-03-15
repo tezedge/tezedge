@@ -11,6 +11,8 @@ use std::{
 };
 
 use getset::{CopyGetters, Getters};
+use hyper::body::HttpBody;
+use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use slog::{error, Logger};
@@ -19,7 +21,7 @@ use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
-use shell_integration::{ShellConnectorRef, StreamCounter, StreamWakers};
+use shell_integration::{StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_context_ipc_client::TezedgeContextClient;
@@ -72,8 +74,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
-    shell_connector: ShellConnectorRef,
-    #[get = "pub(crate)"]
     shell_automaton_sender: RpcShellAutomatonSender,
     #[get = "pub(crate)"]
     tezos_environment: TezosEnvironmentConfiguration,
@@ -99,7 +99,6 @@ pub struct RpcServiceEnvironment {
 impl RpcServiceEnvironment {
     pub fn new(
         tokio_executor: Arc<Handle>,
-        shell_connector: ShellConnectorRef,
         shell_automaton_sender: RpcShellAutomatonSender,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -114,7 +113,6 @@ impl RpcServiceEnvironment {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_protocol_api));
         Self {
             tokio_executor,
-            shell_connector,
             shell_automaton_sender,
             tezos_environment,
             network_version,
@@ -169,7 +167,8 @@ pub fn spawn_server(
     let routes = Arc::new(router::create_routes(env.tezedge_is_enabled));
 
     hyper::Server::bind(bind_address)
-        .serve(make_service_fn(move |_| {
+        .serve(make_service_fn(move |socket: &AddrStream| {
+            let remote_addr = socket.remote_addr();
             let env = env.clone();
             let routes = routes.clone();
 
@@ -178,17 +177,27 @@ pub fn spawn_server(
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
+                        let log = env.log().clone();
+                        let req_method = req.method().clone();
                         let original_path = req.uri().path();
                         let normalized_path = normalize_path(req.uri().path()).unwrap_or_else(|| original_path.to_owned());
 
-                        if let Some((method_and_handler, params)) = routes.find(normalized_path.trim_end_matches('/')) {
+                        slog::debug!(&log, "Rpc request";
+                            "remote_addr" => remote_addr,
+                            "method" => req_method.to_string(),
+                            "original_path" => &original_path,
+                            "normalized_path" => &normalized_path,
+                            "body" => slog::FnValue(|_| {
+                                format!("{:?}", req.body())
+                            }));
+
+                        let result = if let Some((method_and_handler, params)) = routes.find(normalized_path.trim_end_matches('/')) {
                             let MethodHandler {
                                 allowed_methods,
                                 handler,
                             } = method_and_handler;
 
                             let request_method = req.method();
-                            let log = env.log.clone();
 
                             match *request_method {
                                 Method::OPTIONS => {
@@ -218,7 +227,42 @@ pub fn spawn_server(
                             }
                         } else {
                             not_found()
-                        }
+                        };
+
+                        let result = match result {
+                            Ok(v) => {
+                                let remote_addr = remote_addr.clone();
+                                let req_method = req_method.clone();
+                                let normalized_path = normalized_path.clone();
+                                let status = v.status();
+
+                                let (parts, data) = v.into_parts();
+
+                                let data = data.map_data(move |data| {
+                                    slog::trace!(&log, "Rpc response";
+                                        "remote_addr" => remote_addr,
+                                        "method" => req_method.to_string(),
+                                        "normalized_path" => &normalized_path,
+                                        "status" => status.to_string(),
+                                        "body" => slog::FnValue(|_| {
+                                            format!("{:?}", data)
+                                        }));
+                                    data
+                                });
+                                Ok(Response::from_parts(parts, data))
+                            }
+                            Err(err) => {
+                                slog::trace!(&log, "Rpc response error";
+                                    "remote_addr" => remote_addr,
+                                    "method" => req_method.to_string(),
+                                    "normalized_path" => &normalized_path,
+                                    "status" => "500".to_owned(),
+                                    "body" => slog::FnValue(|_| format!("Err: {}", err)));
+                                Err(err)
+                            }
+                        };
+
+                        result
                     }
                 }))
             }

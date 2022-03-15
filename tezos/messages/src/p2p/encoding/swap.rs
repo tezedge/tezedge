@@ -12,7 +12,9 @@ use tezos_encoding::nom::NomReader;
 use super::limits::P2P_POINT_MAX_SIZE;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Eq, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter,
+)]
 pub struct SwapMessage {
     #[get = "pub"]
     #[encoding(bounded = "P2P_POINT_MAX_SIZE")]

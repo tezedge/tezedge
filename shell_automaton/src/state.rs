@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 
 use ::storage::persistent::SchemaError;
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::block_applier::BlockApplierState;
+use crate::bootstrap::BootstrapState;
 use crate::config::Config;
-use crate::current_head::CurrentHeads;
+use crate::current_head::CurrentHeadState;
+use crate::current_head_precheck::CurrentHeads;
 use crate::mempool::MempoolState;
 use crate::paused_loops::PausedLoopsState;
 use crate::peer::connection::incoming::accept::PeerConnectionIncomingAcceptState;
@@ -58,12 +63,14 @@ pub struct State {
     pub protocol_runner: ProtocolRunnerState,
     pub block_applier: BlockApplierState,
 
+    pub bootstrap: BootstrapState,
     pub mempool: MempoolState,
 
     pub prechecker: PrecheckerState,
 
     pub rights: RightsState,
 
+    pub current_head: CurrentHeadState,
     pub current_heads: CurrentHeads,
 
     pub stats: super::stats::Stats,
@@ -93,6 +100,7 @@ impl State {
             peers: PeersState::new(),
             peer_connection_incoming_accept: PeerConnectionIncomingAcceptState::Idle { time: 0 },
             storage: StorageState::new(),
+            bootstrap: BootstrapState::new(),
             mempool: MempoolState::default(),
             rights: RightsState::default(),
             protocol_runner: ProtocolRunnerState::Idle,
@@ -100,6 +108,7 @@ impl State {
 
             prechecker: PrecheckerState::default(),
 
+            current_head: CurrentHeadState::new(),
             current_heads: CurrentHeads::default(),
 
             stats: super::stats::Stats::default(),
@@ -169,38 +178,54 @@ impl State {
     }
 
     pub fn current_head_level(&self) -> Option<Level> {
-        self.mempool
-            .local_head_state
-            .as_ref()
-            .map(|v| v.header.level())
+        self.current_head.get().map(|head| head.header.level())
+    }
+
+    pub fn current_head_candidate_level(&self) -> Option<Level> {
+        self.current_head_level().map(|l| l + 1)
+    }
+
+    pub fn current_head_hash(&self) -> Option<&BlockHash> {
+        self.current_head.get().map(|head| &head.hash)
+    }
+
+    pub fn best_remote_level(&self) -> Option<i32> {
+        self.peers
+            .handshaked_iter()
+            .filter_map(|(_, peer)| peer.current_head.as_ref())
+            .map(|head| head.header.level())
+            .max()
     }
 
     /// Global bootstrap status is considered as bootstrapped, only if
     /// number of bootstrapped peers is above threshold.
     pub fn is_bootstrapped(&self) -> bool {
-        let current_head_level = match self.current_head_level() {
-            Some(v) => v,
+        const SYNC_LATENCY: i64 = 150;
+
+        let current_head_timestamp = match self.current_head.get() {
+            Some(v) => v.header.timestamp(),
             None => return false,
         };
 
         let bootstrapped_peers_len = self
             .peers
-            .iter()
-            .filter_map(|(_, p)| p.status.as_handshaked())
-            .filter_map(|peer| peer.current_head_level)
-            .filter_map(|level| {
-                // calculate what percentage is our current head of
-                // peer's current head. If percentage is greater than
-                // or equal to `Self::HIGH_LEVEL_MARGIN_PERCENTAGE`,
-                // then we are in sync with the peer.
-                current_head_level
-                    .checked_mul(100)
-                    .and_then(|l| l.checked_div(level))
-            })
-            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
+            .handshaked_iter()
+            .filter_map(|(_, peer)| peer.current_head.as_ref())
+            .map(|current_head| current_head_timestamp - current_head.header.timestamp())
+            .filter(|latency| latency.abs() < SYNC_LATENCY)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
+    pub fn peer_public_key_hash(&self, peer: SocketAddr) -> Option<&CryptoboxPublicKeyHash> {
+        self.peers.get(&peer).and_then(|p| p.public_key_hash())
+    }
+
+    pub fn peer_public_key_hash_b58check(&self, peer: SocketAddr) -> Option<String> {
+        self.peers
+            .get(&peer)
+            .and_then(|p| p.public_key_hash_b58check())
     }
 
     /// Global bootstrap status is considered as bootstrapped, only if
@@ -218,12 +243,44 @@ impl State {
             .peers
             .iter()
             .filter_map(|(_, p)| p.status.as_handshaked())
-            .filter_map(|peer| peer.current_head_level)
+            .filter_map(|peer| peer.current_head.as_ref())
+            .map(|head| head.header.level())
             .filter(|level| (level - current_head_level).abs() <= 1)
-            .filter(|perc| *perc >= Self::HIGH_LEVEL_MARGIN_PERCENTAGE)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
+    }
+
+    pub fn can_accept_new_head(&self, head: &BlockHeaderWithHash) -> bool {
+        let current_head = match self.current_head.get() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        if current_head.header.level() > head.header.level() {
+            return false;
+        }
+
+        if current_head.header.level() == head.header.level()
+            && !self.is_same_head(head.header.level(), &head.hash)
+        {
+            return false;
+        }
+
+        // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
+        //     return false;
+        // }
+
+        // TODO(zura): other checks
+        true
+    }
+
+    pub fn is_same_head(&self, level: Level, hash: &BlockHash) -> bool {
+        self.current_head
+            .get()
+            .filter(|current_head| current_head.header.level() == level)
+            .filter(|current_head| &current_head.hash == hash)
+            .is_some()
     }
 
     /// If shutdown was initiated and finished or not.

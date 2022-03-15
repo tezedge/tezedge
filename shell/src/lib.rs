@@ -6,11 +6,7 @@
 
 use thiserror::Error;
 
-pub mod chain_manager;
-pub mod peer_branch_bootstrapper;
 pub mod shell_automaton_manager;
-pub mod shell_channel;
-pub mod state;
 pub mod stats;
 pub mod validation;
 
@@ -69,16 +65,8 @@ impl PeerConnectionThreshold {
             // NOTE: in a sandbox enviroment, it's ok to set to 0
             sync_tresh
         } else {
-            // calculate othervise
-            // TODO TE-244 - Implement the synchronization heuristic
-            // NOTE: the calculation should never yield 0!
-
-            // since we define the low and high bound, calculate the expected connections
-            // see [node_shared_arg.ml]
-            let expected_connections = 2 * self.high / 3;
-
             // never yield 0!
-            std::cmp::max(1, expected_connections / 4)
+            std::cmp::max(1, self.high / 8)
         }
     }
 }
@@ -136,117 +124,30 @@ pub mod subscription {
             Some(myself.into()),
         );
     }
-
-    #[inline]
-    pub fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellEvents.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_new_current_head<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellNewCurrentHead.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_shutdown<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: crate::shell_channel::ShellChannelTopic::ShellShutdown.into(),
-            },
-            None,
-        );
-    }
-}
-
-/// Module implements shell integration based on actual shell constalation.
-/// In case of new architecture (state machine, ..., whatever),
-/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ShellAutomatonSender or whatever
-pub mod connector {
-    use shell_integration::*;
-
-    use crate::chain_manager::{ChainManagerRef, InjectBlockRequest};
-
-    pub struct ShellConnectorSupport {
-        chain_manager: ChainManagerRef,
-    }
-
-    impl ShellConnectorSupport {
-        pub fn new(chain_manager: ChainManagerRef) -> Self {
-            ShellConnectorSupport { chain_manager }
-        }
-    }
-
-    impl ShellConnector for ShellConnectorSupport {}
-
-    impl InjectBlockConnector for ShellConnectorSupport {
-        fn inject_block(
-            &self,
-            request: InjectBlock,
-            result_callback: Option<InjectBlockOneshotResultCallback>,
-        ) {
-            // actual implementation use tezedge_actor_system and sends command to shell_channel
-            use tezedge_actor_system::actors::*;
-
-            self.chain_manager.tell(
-                InjectBlockRequest {
-                    request,
-                    result_callback,
-                },
-                None,
-            );
-        }
-    }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
 
-    #[test]
-    fn test_num_of_peers_for_bootstrap_threshold() {
-        // fixed threshold
-        let peer_threshold =
-            PeerConnectionThreshold::try_new(0, 10, Some(5)).expect("Invalid range");
-        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
-        assert_eq!(sync_threshold, 5);
+    // #[test]
+    // fn test_num_of_peers_for_bootstrap_threshold() {
+    //     // fixed threshold
+    //     let peer_threshold =
+    //         PeerConnectionThreshold::try_new(0, 10, Some(5)).expect("Invalid range");
+    //     let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+    //     assert_eq!(sync_threshold, 5);
 
-        // clasic scenario
-        let peer_threshold = PeerConnectionThreshold::try_new(5, 500, None).expect("Invalid range");
-        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
-        assert_eq!(sync_threshold, 83);
+    //     // clasic scenario
+    //     let peer_threshold = PeerConnectionThreshold::try_new(5, 500, None).expect("Invalid range");
+    //     let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+    //     assert_eq!(sync_threshold, 83);
 
-        // calculated threshold too low (0), use minimal value of 1
-        let peer_threshold = PeerConnectionThreshold::try_new(1, 4, None).expect("Invalid range");
-        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
-        assert_eq!(sync_threshold, 1);
-    }
+    //     // calculated threshold too low (0), use minimal value of 1
+    //     let peer_threshold = PeerConnectionThreshold::try_new(1, 4, None).expect("Invalid range");
+    //     let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+    //     assert_eq!(sync_threshold, 1);
+    // }
 
     #[test]
     fn test_invalid_range_threshold() {

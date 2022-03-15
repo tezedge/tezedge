@@ -49,8 +49,9 @@ pub const MAX_PASS_MERKLE_DEPTH: usize = 3;
     Clone,
     Serialize,
     Deserialize,
-    PartialEq,
     Debug,
+    Eq,
+    PartialEq,
     CopyGetters,
     Getters,
     HasEncoding,
@@ -82,7 +83,7 @@ impl OperationsForBlock {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone, Serialize, Deserialize, PartialEq, Debug, Getters, HasEncoding, NomReader, BinWriter,
+    Clone, Serialize, Deserialize, Debug, Eq, PartialEq, Getters, HasEncoding, NomReader, BinWriter,
 )]
 pub struct OperationsForBlocksMessage {
     #[get = "pub"]
@@ -116,7 +117,7 @@ impl From<OperationsForBlocksMessage> for Vec<Operation> {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters)]
 pub struct PathRight {
     #[get = "pub"]
     left: Hash,
@@ -130,7 +131,7 @@ impl PathRight {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters)]
 pub struct PathLeft {
     #[get = "pub"]
     right: Hash,
@@ -144,7 +145,7 @@ impl PathLeft {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub enum PathItem {
     Right(PathRight),
     Left(PathLeft),
@@ -160,7 +161,7 @@ impl PathItem {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, PartialEq, Debug, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Debug, Deserialize)]
 pub struct Path(pub Vec<PathItem>);
 
 #[cfg(feature = "fuzzing")]
@@ -344,7 +345,9 @@ impl BinWriter for Path {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
+)]
 pub struct GetOperationsForBlocksMessage {
     #[get = "pub"]
     #[encoding(dynamic, list = "GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH")]

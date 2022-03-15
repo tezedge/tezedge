@@ -16,6 +16,7 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use thiserror::Error;
 
 use crypto::{
@@ -80,7 +81,11 @@ impl BlockHeaderWithHash {
     /// Create block header extensions from plain block header
     /// TODO https://viablesystems.atlassian.net/browse/TE-674
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
-        let hash = if let Some(hash) = block_header.hash().as_ref() {
+        let hash = if block_header.level() == 0 {
+            // For genesis block, we don't get the genesis block hash by
+            // hashing the header. Instead we need to use predecessor.
+            block_header.predecessor().clone()
+        } else if let Some(hash) = block_header.hash().as_ref() {
             hash.as_slice().try_into()?
         } else {
             block_header.message_hash()?.try_into()?
@@ -411,9 +416,11 @@ fn resolve_block_data(
 
 /// Stores apply result to storage and mark block as applied, if everythnig is ok.
 pub fn store_applied_block_result(
+    chain_meta_storage: &ChainMetaStorage,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
+    block_fitness: Fitness,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta,
     cycle_meta_storage: &CycleMetaStorage,
@@ -480,6 +487,12 @@ pub fn store_applied_block_result(
     // mark current head as applied
     block_metadata.set_is_applied(true);
     block_meta_storage.put(block_hash, block_metadata)?;
+
+    // TODO(zura): maybe move to separate storage call.
+    chain_meta_storage.set_current_head(
+        block_metadata.chain_id(),
+        Head::new(block_hash.clone(), block_metadata.level(), block_fitness),
+    )?;
 
     // return additional data for later use
     Ok(block_additional_data)
@@ -593,13 +606,11 @@ pub fn initialize_storage_with_genesis_block(
 }
 
 pub fn hydrate_current_head(
-    init_storage_data: &StorageInitInfo,
+    chain_id: &ChainId,
     persistent_storage: &PersistentStorage,
-) -> Result<Arc<BlockHeaderWithHash>, StorageError> {
+) -> Result<BlockHeaderWithHash, StorageError> {
     // check last stored current_head
-    let current_head = match ChainMetaStorage::new(persistent_storage)
-        .get_current_head(&init_storage_data.chain_id)?
-    {
+    let current_head = match ChainMetaStorage::new(persistent_storage).get_current_head(chain_id)? {
         Some(head) => head,
         None => {
             return Err(StorageError::MissingKey {
@@ -610,7 +621,7 @@ pub fn hydrate_current_head(
 
     // get block_header data
     match BlockStorage::new(persistent_storage).get(current_head.block_hash())? {
-        Some(block) => Ok(Arc::new(block)),
+        Some(block) => Ok(block),
         None => Err(StorageError::MissingKey {
             when: "current_head_header".into(),
         }),

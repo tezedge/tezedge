@@ -6,19 +6,23 @@ use serde::{Deserialize, Serialize};
 
 use crypto::crypto_box::PublicKey;
 use crypto::hash::CryptoboxPublicKeyHash;
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::{ActionId, Port};
+use crate::Port;
 
 use super::connection::PeerConnectionState;
 use super::disconnection::PeerDisconnecting;
 use super::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use super::message::read::PeerMessageReadState;
 use super::message::write::PeerMessageWriteState;
+use super::remote_requests::PeerRemoteRequestsState;
 use super::{PeerCrypto, PeerToken};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerHandshaked {
+    pub handshaked_since: u64,
+
     pub token: PeerToken,
     pub port: Port,
     pub version: NetworkVersion,
@@ -31,8 +35,11 @@ pub struct PeerHandshaked {
     pub message_read: PeerMessageReadState,
     pub message_write: PeerMessageWriteState,
 
-    /// Level of the current head received from peer.
-    pub current_head_level: Option<i32>,
+    pub remote_requests: PeerRemoteRequestsState,
+
+    /// Last current head received from peer.
+    pub current_head: Option<BlockHeaderWithHash>,
+    pub current_head_last_update: Option<u64>,
 }
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
@@ -67,7 +74,6 @@ impl PeerStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Peer {
     pub status: PeerStatus,
-    pub quota: PeerQuota,
     pub try_read_loop: PeerIOLoopState,
     pub try_write_loop: PeerIOLoopState,
 }
@@ -109,29 +115,6 @@ pub enum PeerIOLoopResult {
 
     /// We reached the limit on max io syscalls for this iteration/loop.
     MaxIOSyscallBoundReached,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PeerQuota {
-    pub bytes_read: usize,
-    pub bytes_written: usize,
-    pub read_timestamp: ActionId,
-    pub write_timestamp: ActionId,
-    pub reject_read: bool,
-    pub reject_write: bool,
-}
-
-impl PeerQuota {
-    pub fn new(timestamp: ActionId) -> Self {
-        Self {
-            bytes_read: 0,
-            bytes_written: 0,
-            read_timestamp: timestamp,
-            write_timestamp: timestamp,
-            reject_read: false,
-            reject_write: false,
-        }
-    }
 }
 
 impl Peer {
@@ -232,5 +215,9 @@ impl Peer {
             PeerStatus::Handshaked(peer) => Some(&peer.public_key_hash),
             _ => None,
         }
+    }
+
+    pub fn public_key_hash_b58check(&self) -> Option<String> {
+        self.public_key_hash().map(|pkh| pkh.to_base58_check())
     }
 }

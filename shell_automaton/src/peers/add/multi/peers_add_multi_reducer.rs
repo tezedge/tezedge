@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::peer::{Peer, PeerIOLoopState, PeerQuota, PeerStatus};
+use crate::peer::{Peer, PeerIOLoopState, PeerStatus};
 use crate::{Action, ActionWithMeta, State};
 
 use super::PeersAddMultiAction;
@@ -19,7 +19,6 @@ pub fn peers_add_multi_reducer(state: &mut State, action: &ActionWithMeta) {
                 if let Ok(entry) = state.peers.entry(*address) {
                     entry.or_insert_with(|| Peer {
                         status: PeerStatus::Potential,
-                        quota: PeerQuota::new(action.id),
                         try_read_loop: PeerIOLoopState::Idle,
                         try_write_loop: PeerIOLoopState::Idle,
                     });
