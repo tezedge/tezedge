@@ -371,7 +371,7 @@ impl RpcClient {
                 shell_header,
                 operations,
             } = v;
-            slog::info!(logger, "{}", serde_json::to_string(&operations).unwrap());
+            slog::debug!(logger, "{}", serde_json::to_string(&operations).unwrap());
             let ShellBlockShortHeader {
                 level,
                 proto,
@@ -427,6 +427,8 @@ impl RpcClient {
 
     pub fn inject_block<F, G>(
         &self,
+        level: i32,
+        round: i32,
         header: Vec<u8>, // serialized
         operations: Vec<Vec<DecodedOperation>>,
         deadline: i64,
@@ -456,7 +458,10 @@ impl RpcClient {
 
         let logger = self.logger.clone();
         self.single_response(url, Some(body), deadline, deadline_wrapper, move |hash| {
-            slog::info!(logger, "injection/block {hash}");
+            slog::info!(
+                logger,
+                "injection/block for level: {level}, round: {round}, {hash}"
+            );
             wrapper(hash)
         })
         .map_err(Into::into)
@@ -559,6 +564,7 @@ impl RpcClient {
                             let _ = tx.send(deadline_wrapper(action));
                         } else {
                             let action = UnrecoverableErrorAction {
+                                description: "".to_string(),
                                 rpc_error: io_err.into(),
                             };
                             let _ = tx.send(Action::UnrecoverableError(action));
@@ -567,6 +573,7 @@ impl RpcClient {
                     }
                     Err(err) => {
                         let action = UnrecoverableErrorAction {
+                            description: "".to_string(),
                             rpc_error: err.into(),
                         };
                         let _ = tx.send(Action::UnrecoverableError(action));
@@ -579,9 +586,10 @@ impl RpcClient {
                         slog::error!(logger, "{}", error.description);
                         Action::RecoverableError(error)
                     }
-                    Err(rpc_error) => {
-                        Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
-                    }
+                    Err(rpc_error) => Action::UnrecoverableError(UnrecoverableErrorAction {
+                        description: "IO error while reading error".to_string(),
+                        rpc_error,
+                    }),
                 };
                 let _ = tx.send(action);
             }
@@ -636,9 +644,10 @@ impl RpcClient {
                             let _ = tx.send(deadline_wrapper(action));
                             break;
                         }
-                        Err(err) => {
+                        Err(rpc_error) => {
                             let action = UnrecoverableErrorAction {
-                                rpc_error: err.into(),
+                                description: "".to_string(),
+                                rpc_error,
                             };
                             let _ = tx.send(Action::UnrecoverableError(action));
                             // panic!("{}", url)
@@ -651,9 +660,10 @@ impl RpcClient {
                         slog::error!(logger, "{}", error.description);
                         Action::RecoverableError(error)
                     }
-                    Err(rpc_error) => {
-                        Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error })
-                    }
+                    Err(rpc_error) => Action::UnrecoverableError(UnrecoverableErrorAction {
+                        description: "IO error while reading error".to_string(),
+                        rpc_error,
+                    }),
                 };
                 let _ = tx.send(action);
             }

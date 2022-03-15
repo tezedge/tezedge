@@ -278,6 +278,7 @@ impl EnablingCondition<State> for RecoverableErrorAction {
 
 #[derive(Debug)]
 pub struct UnrecoverableErrorAction {
+    pub description: String,
     pub rpc_error: RpcError,
 }
 

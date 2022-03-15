@@ -249,11 +249,17 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
 
     let chain_id = service.client.get_chain_id().unwrap();
     let constants = service.client.get_constants().unwrap();
+    service.client.wait_bootstrapped().unwrap();
 
     slog::info!(
         &service.logger,
         "committee size: {}",
         constants.consensus_committee_size
+    );
+    slog::info!(
+        &service.logger,
+        "pow threshold: {}",
+        constants.proof_of_work_threshold
     );
     let config = Config {
         consensus_threshold: 2 * (constants.consensus_committee_size / 3) + 1,
@@ -262,7 +268,13 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
             constants.delay_increment_per_round.parse().unwrap(),
         ),
     };
-    let proof_of_work_threshold = constants.proof_of_work_threshold.parse::<i64>().unwrap();
+    let proof_of_work_threshold = u64::from_be_bytes(
+        constants
+            .proof_of_work_threshold
+            .parse::<i64>()
+            .unwrap()
+            .to_be_bytes(),
+    );
     let mut state = Machine::empty();
 
     let mut slots_info = SlotsInfo {
@@ -350,6 +362,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                                             },
                                         },
                                         op.clone(),
+                                        Timestamp::now().into(),
                                     );
                                     tb_actions.extend(
                                         state.handle(&config, &slots_info, event).into_iter(),
@@ -394,13 +407,16 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                 operations,
             }) => {
                 header.signature.0 = vec![0x00; 64];
-                guess_proof_of_work(&mut header, proof_of_work_threshold);
+                let p = guess_proof_of_work(&header, proof_of_work_threshold);
+                header.proof_of_work_nonce = p.to_vec();
                 slog::info!(service.logger, "{:?}", header);
                 header.signature.0.clear();
                 let (data, _) = service.crypto.sign(0x11, &chain_id, &header).unwrap();
                 service
                     .client
                     .inject_block(
+                        header.level,
+                        i32::from_be_bytes(header.fitness[4].as_slice().try_into().unwrap()),
                         data,
                         operations.clone(),
                         i64::MAX,
@@ -410,8 +426,11 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                     .unwrap();
                 vec![]
             }
-            Action::UnrecoverableError(UnrecoverableErrorAction { rpc_error }) => {
-                slog::error!(service.logger, "{rpc_error}");
+            Action::UnrecoverableError(UnrecoverableErrorAction {
+                description,
+                rpc_error,
+            }) => {
+                slog::error!(service.logger, "description: {description}, {rpc_error}");
                 vec![]
             }
             _ => vec![],

@@ -67,6 +67,17 @@ where
     pub head: BlockInfo<P>,
 }
 
+impl<P> Proposal<P>
+where
+    P: Payload,
+{
+    pub fn round_local_coord(&self, config: &Config, now: Timestamp) -> i32 {
+        let (pred_timestamp, pred_round) = (self.pred_timestamp, self.pred_round);
+        let start_this_level = pred_timestamp + config.round_duration(pred_round);
+        config.round(now, start_this_level)
+    }
+}
+
 pub struct Preendorsement {
     pub validator: Validator,
     pub block_id: BlockId,
@@ -94,7 +105,7 @@ where
     P: Payload,
 {
     Proposal(Box<Proposal<P>>, Timestamp),
-    Preendorsement(Preendorsement, P::Item),
+    Preendorsement(Preendorsement, P::Item, Timestamp),
     Endorsement(Endorsement, P::Item, Timestamp),
     Timeout,
     PayloadItem(P::Item),

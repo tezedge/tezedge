@@ -3,30 +3,31 @@
 
 use std::convert::TryInto;
 
-use crypto::hash::BlockHash;
+use crypto::blake2b;
 use tezos_encoding::enc::BinWriter;
-use tezos_messages::{
-    p2p::{
-        binary_message::{BinaryRead, MessageHash},
-        encoding::block_header::BlockHeader,
-    },
-    protocol::proto_012::operation::FullHeader,
-};
+use tezos_messages::protocol::proto_012::operation::FullHeader;
 
-pub fn guess_proof_of_work(header: &mut FullHeader, proof_of_work_threshold: i64) {
-    while !check_proof_of_work(header, proof_of_work_threshold) {
-        let nonce = i64::from_be_bytes(header.proof_of_work_nonce[0..8].try_into().unwrap());
-        header.proof_of_work_nonce = nonce.wrapping_add(1).to_be_bytes().to_vec();
+pub fn guess_proof_of_work(header: &FullHeader, proof_of_work_threshold: u64) -> [u8; 8] {
+    let mut header_bytes = vec![];
+    header.bin_write(&mut header_bytes).unwrap();
+    let fitness_size = u32::from_be_bytes(header_bytes[78..82].try_into().unwrap()) as usize;
+    let nonce_pos = fitness_size + 150;
+
+    loop {
+        let nonce = header_bytes[nonce_pos..(nonce_pos + 8)].try_into().unwrap();
+        if check_proof_of_work(&header_bytes, proof_of_work_threshold) {
+            break nonce;
+        }
+
+        let nonce = u64::from_be_bytes(nonce).wrapping_add(1).to_be_bytes();
+        header_bytes[nonce_pos..(nonce_pos + 8)].clone_from_slice(&nonce);
     }
 }
 
-pub fn check_proof_of_work(header: &FullHeader, proof_of_work_threshold: i64) -> bool {
-    let mut header_bytes = vec![];
-    header.bin_write(&mut header_bytes).unwrap();
-    let block_header = BlockHeader::from_bytes(&header_bytes).unwrap();
-    let block_hash = block_header.message_typed_hash::<BlockHash>().unwrap();
-    let stamp = i64::from_be_bytes(block_hash.0[0..8].try_into().unwrap());
-    stamp < proof_of_work_threshold && stamp > 0
+fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: u64) -> bool {
+    let hash = blake2b::digest_256(&header_bytes).unwrap();
+    let stamp = u64::from_be_bytes(hash[0..8].try_into().unwrap());
+    stamp < proof_of_work_threshold
 }
 
 #[cfg(test)]
@@ -34,13 +35,14 @@ mod tests {
     use crypto::hash::{
         BlockHash, BlockPayloadHash, ContextHash, OperationListListHash, Signature,
     };
+    use tezos_encoding::enc::BinWriter;
     use tezos_messages::protocol::proto_012::operation::FullHeader;
 
     use crate::proof_of_work::check_proof_of_work;
 
     #[test]
     fn pow_test() {
-        let proof_of_work_threshold = 70368744177663_i64;
+        let proof_of_work_threshold = 70368744177663_u64;
         let header = FullHeader {
             level: 232680,
             proto: 2,
@@ -77,12 +79,14 @@ mod tests {
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),
         };
-        assert!(check_proof_of_work(&header, proof_of_work_threshold));
+        let mut header_bytes = vec![];
+        header.bin_write(&mut header_bytes).unwrap();
+        assert!(check_proof_of_work(&header_bytes, proof_of_work_threshold));
     }
 
     #[test]
     fn pow_fail_test() {
-        let proof_of_work_threshold = 70368744177663_i64;
+        let proof_of_work_threshold = 70368744177663_u64;
         let header = FullHeader {
             level: 234487,
             proto: 2,
@@ -117,6 +121,8 @@ mod tests {
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),
         };
-        assert!(!check_proof_of_work(&header, proof_of_work_threshold));
+        let mut header_bytes = vec![];
+        header.bin_write(&mut header_bytes).unwrap();
+        assert!(!check_proof_of_work(&header_bytes, proof_of_work_threshold));
     }
 }

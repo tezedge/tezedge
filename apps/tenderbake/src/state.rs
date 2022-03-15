@@ -73,7 +73,6 @@ where
 
     endorsable_payload: Option<EndorsablePayload<P>>,
     elected_block: Option<ElectedBlock<P>>,
-    round_state: i32,
     payload: P,
 
     closest_timestamp_this_level: Option<Timestamp>,
@@ -99,7 +98,6 @@ where
             incomplete_quorum: Votes::default(),
             endorsable_payload: None,
             elected_block: None,
-            round_state: 0,
             payload: P::EMPTY,
             closest_timestamp_this_level: None,
             closest_timestamp_next_level: None,
@@ -119,7 +117,9 @@ where
     {
         match event {
             Event::Proposal(proposal, now) => self.proposal(config, map, *proposal, now),
-            Event::Preendorsement(content, op) => self.preendorsement(config, map, content, op),
+            Event::Preendorsement(content, op, now) => {
+                self.preendorsement(config, map, now, content, op)
+            }
             Event::Endorsement(content, op, now) => self.endorsement(config, map, now, content, op),
             Event::Timeout => self.timeout(),
             Event::PayloadItem(item) => {
@@ -190,7 +190,6 @@ where
 
         let mut actions = ArrayVec::new();
 
-        let old_block_id = self.proposal.head.block_id.clone();
         match self
             .proposal
             .head
@@ -201,17 +200,6 @@ where
             Ordering::Less => {
                 // we received a block for a next level
                 // TODO: transition
-                let pred_duration = config.round_duration(new_proposal.pred_round);
-                let start_this_level = new_proposal.pred_timestamp + pred_duration;
-                log::info!(" .  start this level: {start_this_level}");
-                self.round_state = config.round(now, start_this_level);
-                log::info!(" .  this round: {}", self.round_state);
-
-                if self.round_state < new_proposal.head.block_id.round {
-                    // proposal from future, ignore
-                    log::warn!(" .  ignore proposal from future");
-                    return ArrayVec::default();
-                }
 
                 self.closest_timestamp_this_level = None;
                 self.closest_timestamp_next_level = None;
@@ -222,7 +210,16 @@ where
 
                 self.update_endorsable_payload(&new_proposal);
 
-                if self.round_state == new_proposal.head.block_id.round {
+                let current_round = new_proposal.round_local_coord(config, now);
+                log::info!(" .  this round: {current_round}");
+
+                if current_round < new_proposal.head.block_id.round {
+                    // proposal from future, ignore
+                    log::warn!(" .  ignore proposal from future");
+                    return ArrayVec::default();
+                }
+
+                if current_round == new_proposal.head.block_id.round {
                     let block_id = new_proposal.head.block_id.clone();
                     actions.extend(Self::preendorse(map, block_id, new_proposal.head.pred_hash));
                 }
@@ -250,12 +247,6 @@ where
                 return ArrayVec::default();
             }
             Ordering::Equal => {
-                let pred_duration = config.round_duration(new_proposal.pred_round);
-                let start_this_level = new_proposal.pred_timestamp + pred_duration;
-                log::info!(" .  start this level: {start_this_level}");
-                self.round_state = config.round(now, start_this_level);
-                log::info!(" .  this round: {}", self.round_state);
-
                 if self.proposal.head.pred_hash != new_proposal.head.pred_hash {
                     let switch = match (&self.endorsable_payload, &self.proposal.head.prequorum) {
                         (None, _) => {
@@ -290,13 +281,16 @@ where
                     }
                 }
 
+                let current_round = self.proposal.round_local_coord(config, now);
+                log::info!(" .  this round: {current_round}");
+
                 let head = &self.proposal.head;
-                if new_proposal.head.block_id.round < self.round_state
+                if new_proposal.head.block_id.round < current_round
                     && head.block_id.round < new_proposal.head.block_id.round
                 {
                     self.update_endorsable_payload(&new_proposal);
                     self.proposal = new_proposal;
-                } else if new_proposal.head.block_id.round == self.round_state
+                } else if new_proposal.head.block_id.round == current_round
                     && (head.block_id.round != new_proposal.head.block_id.round
                         || head.block_id.payload_hash == new_proposal.head.block_id.payload_hash)
                 {
@@ -326,13 +320,12 @@ where
                 }
             }
         };
-        if old_block_id != self.proposal.head.block_id {
-            self.incomplete_prequorum = Votes::default();
-            self.incomplete_quorum = Votes::default();
-            self.payload = P::EMPTY;
-        }
+        self.incomplete_prequorum = Votes::default();
+        self.incomplete_quorum = Votes::default();
+        self.payload = P::EMPTY;
+
         let timeout = self
-            .update_timeout_this_level(config, map)
+            .update_timeout_this_level(config, map, now)
             .map(Action::ScheduleTimeout);
         actions.extend(timeout);
 
@@ -382,14 +375,17 @@ where
         &mut self,
         config: &Config,
         map: &V,
+        now: Timestamp,
         content: Preendorsement,
         op: P::Item,
     ) -> ArrayVec<Action<P>, 2>
     where
         V: ValidatorMap,
     {
+        let current_round = self.proposal.round_local_coord(config, now);
+
         let head = &self.proposal.head;
-        if head.block_id == content.block_id && head.block_id.round == self.round_state {
+        if head.block_id == content.block_id && head.block_id.round == current_round {
             self.incomplete_prequorum += (content.validator, op);
         }
 
@@ -424,7 +420,7 @@ where
 
         let endorsement = Self::endorse(map, head.block_id.clone(), self.proposal.head.pred_hash);
         let timeout = self
-            .update_timeout_this_level(config, map)
+            .update_timeout_this_level(config, map, now)
             .map(Action::ScheduleTimeout);
         actions.extend(endorsement);
         actions.extend(timeout);
@@ -460,8 +456,10 @@ where
     where
         V: ValidatorMap,
     {
+        let current_round = self.proposal.round_local_coord(config, now);
+
         let head = &self.proposal.head;
-        if head.block_id == content.block_id && head.block_id.round == self.round_state {
+        if head.block_id == content.block_id && head.block_id.round == current_round {
             self.incomplete_quorum += (content.validator, op);
         }
 
@@ -521,18 +519,25 @@ where
     }
 
     // call when endorsable payload changed
-    fn update_timeout_this_level<V>(&mut self, config: &Config, map: &V) -> Option<Timestamp>
+    fn update_timeout_this_level<V>(
+        &mut self,
+        config: &Config,
+        map: &V,
+        now: Timestamp,
+    ) -> Option<Timestamp>
     where
         V: ValidatorMap,
     {
-        if let Some(round) = map.proposer(self.proposal.head.block_id.level, self.round_state + 1) {
-            let start_this_level = self
-                .endorsable_payload
-                .as_ref()
-                .map(|e| e.pred_timestamp + config.round_duration(e.pred_round))
-                .unwrap_or({
-                    self.proposal.pred_timestamp + config.round_duration(self.proposal.pred_round)
-                });
+        // let current_round = self.round_local_coord(config, now);
+        let (pred_timestamp, pred_round) = self
+            .endorsable_payload
+            .as_ref()
+            .map(|endorsable| (endorsable.pred_timestamp, endorsable.pred_round))
+            .unwrap_or((self.proposal.pred_timestamp, self.proposal.pred_round));
+        let start_this_level = pred_timestamp + config.round_duration(pred_round);
+        let round = config.round(now, start_this_level);
+
+        if let Some(round) = map.proposer(self.proposal.head.block_id.level, round + 1) {
             let d = config.minimal_block_delay * (round as u32)
                 + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
             let timestamp = start_this_level + d;
