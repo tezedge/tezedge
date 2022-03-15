@@ -168,9 +168,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
                 "error" => format!("{:?}", content.error));
         }
         Action::ProtocolRunnerReady(_) => {
-            slog::info!(log, "Protocol Runner initialized";
-                // TODO(zura): TMP
-                "state" => format!("{:#?}", store.state()));
+            slog::info!(log, "Protocol Runner initialized");
         }
         Action::ProtocolRunnerNotifyStatus(_) => {
             slog::info!(

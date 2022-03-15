@@ -113,7 +113,7 @@ fn block_on_actors(
         log.clone(),
     );
 
-    info!(log, "Initializing actors... (4/7)";
+    info!(log, "Initializing actors...";
                "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
                "is_sandbox" => is_sandbox);
 
@@ -162,12 +162,12 @@ fn block_on_actors(
     shell_automaton_manager.start();
 
     // start chain_feeder with controlled startup and wait for ok initialized context
-    info!(log, "Initializing protocol runners and context... (5/7)");
+    info!(log, "Initializing protocol runners and context...");
     tezos_protocol_api.wait_for_context_init_sync().unwrap();
-    info!(log, "Protocol runners and context initialized (5/7)");
+    info!(log, "Protocol runners and context initialized");
 
     // load current_head, at least genesis should be stored, if not, just finished, something is wrong
-    info!(log, "Hydrating current head... (6/7)");
+    info!(log, "Hydrating current head...");
     let hydrated_current_head_block: BlockHeaderWithHash =
         hydrate_current_head(&init_storage_data.chain_id, &persistent_storage)
             .expect("Failed to load current_head from database");
@@ -178,7 +178,7 @@ fn block_on_actors(
     );
     {
         let (head, level, fitness) = hydrated_current_head.to_debug_info();
-        info!(log, "Current head hydrated (6/7)";
+        info!(log, "Current head hydrated";
                    "block_hash" => head,
                    "level" => level,
                    "fitness" => fitness);
@@ -266,23 +266,22 @@ fn block_on_actors(
             handle_signals(&log).await;
         }
 
-        info!(log, "Shutting down shell automaton (1/9)");
+        info!(log, "Shutting down shell automaton (1/4)");
         shell_automaton_manager.shutdown_and_wait();
 
-        info!(log, "Shutting down rpc server (2/9)");
+        info!(log, "Shutting down rpc server (2/4)");
         drop(rpc_server);
 
-        info!(log, "Shutting down actors (5/9)");
+        info!(log, "Shutting down actors (3/4)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Flushing databases (8/9)");
+        info!(log, "Flushing databases (4/4)");
         drop(persistent_storage);
-        info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (9/9)");
+        info!(log, "Shutdown complete");
     });
 }
 
@@ -517,7 +516,7 @@ fn main() {
     check_deprecated_network(&env, &log);
 
     // create/initialize databases
-    info!(log, "Loading databases... (1/7)");
+    info!(log, "Loading databases...");
     let instant = Instant::now();
 
     {
@@ -557,7 +556,7 @@ fn main() {
                     )
                 } else {
                     // Validate zcash-params
-                    info!(log, "Checking zcash-params for sapling... (2/7)");
+                    info!(log, "Checking zcash-params for sapling...");
                     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
                         let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
                         error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
@@ -566,7 +565,7 @@ fn main() {
                     }
 
                     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-                    info!(log, "Loading identity... (3/7)");
+                    info!(log, "Loading identity...");
                     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
                         Ok(identity) => {
                             info!(log, "Identity loaded from file";
