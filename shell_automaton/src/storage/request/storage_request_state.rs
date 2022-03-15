@@ -9,6 +9,9 @@ use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageRequestStatus {
     Idle {
@@ -41,6 +44,7 @@ impl StorageRequestStatus {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub enum StorageRequestor {
     // Internal requestors.
     None,
@@ -48,7 +52,7 @@ pub enum StorageRequestor {
     BlockApplier,
 
     // External requestors.
-    Peer(SocketAddr),
+    Peer(#[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))] SocketAddr),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
