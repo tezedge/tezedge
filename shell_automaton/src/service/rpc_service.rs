@@ -18,7 +18,7 @@ use tezos_messages::p2p::encoding::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{request::RequestId, storage::request::StorageRequestor, State};
+use crate::{request::RequestId, rpc::ValidBlocksQuery, storage::request::StorageRequestor, State};
 
 use super::{
     statistics_service::ActionGraph, storage_service::StorageRequestPayloadKind, BlockApplyStats,
@@ -124,6 +124,7 @@ pub enum RpcRequest {
 #[derive(Debug)]
 pub enum RpcRequestStream {
     Bootstrapped,
+    ValidBlocks(ValidBlocksQuery),
     GetOperations {
         applied: bool,
         refused: bool,

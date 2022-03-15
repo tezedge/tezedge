@@ -5,11 +5,13 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use crate::Timestamp;
+
 use super::fitness::Fitness;
 use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
-use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::{enc::BinWriter, types::Bytes};
 
 use super::limits::{
     BLOCK_HEADER_MAX_SIZE, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE, GET_BLOCK_HEADERS_MAX_LENGTH,
@@ -66,7 +68,6 @@ impl GetBlockHeadersMessage {
     Deserialize,
     Eq,
     PartialEq,
-    Debug,
     Clone,
     Builder,
     Getters,
@@ -85,8 +86,7 @@ pub struct BlockHeader {
     #[get = "pub"]
     predecessor: BlockHash,
     #[get_copy = "pub"]
-    #[encoding(timestamp)]
-    timestamp: i64,
+    timestamp: Timestamp,
     #[get_copy = "pub"]
     validation_pass: u8,
     #[get = "pub"]
@@ -97,18 +97,30 @@ pub struct BlockHeader {
     context: ContextHash,
 
     #[get = "pub"]
-    #[encoding(
-        bounded = "BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE",
-        list,
-        builtin = "Uint8"
-    )]
-    protocol_data: Vec<u8>,
+    #[encoding(bounded = "BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE")]
+    protocol_data: Bytes,
 
     #[get = "pub"]
     #[serde(skip)]
     #[builder(default)]
     #[encoding(hash)]
     hash: EncodingHash,
+}
+
+impl std::fmt::Debug for BlockHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockHeader")
+            .field("level", &self.level)
+            .field("proto", &self.proto)
+            .field("predecessor", &self.predecessor)
+            .field("timestamp", &self.timestamp)
+            .field("validation_pass", &self.validation_pass)
+            .field("operations_hash", &self.operations_hash)
+            .field("fitness", &self.fitness)
+            .field("context", &self.context)
+            .field("protocol_data", &self.protocol_data)
+            .finish()
+    }
 }
 
 /// Optional 256-bit digest of encoded data

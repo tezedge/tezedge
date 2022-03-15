@@ -68,7 +68,7 @@ pub struct MempoolState {
 impl MempoolState {
     /// Is endorsement for already applied block or not.
     pub fn is_old_endorsement(&self, operation: &Operation) -> bool {
-        OperationKind::from_operation_content_raw(operation.data()).is_endorsement()
+        OperationKind::from_operation_content_raw(operation.data().as_ref()).is_endorsement()
             && self
                 .last_predecessor_blocks
                 .contains_key(operation.branch())

@@ -61,7 +61,7 @@ pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, 
 /// Returns only true, if timestamp of header is not in the far future
 pub fn is_future_block(block_header: &BlockHeader) -> Result<bool, anyhow::Error> {
     let future_margin = OffsetDateTime::now_utc() + Duration::from_secs(15);
-    let block_timestamp = OffsetDateTime::from_unix_timestamp(block_header.timestamp())
+    let block_timestamp = OffsetDateTime::from_unix_timestamp(block_header.timestamp().into())
         .map_err(|_| TimestampOutOfRangeError)?;
     Ok(block_timestamp > future_margin)
 }
@@ -158,7 +158,7 @@ pub async fn check_multipass_validation(
     if let Err(e) = api
         .assert_encoding_for_protocol_data(
             protocol_hash,
-            validated_block_header.protocol_data().clone(),
+            validated_block_header.protocol_data().clone().into(),
         )
         .await
     {
@@ -291,7 +291,7 @@ mod tests {
                     .try_into()
                     .unwrap(),
             )
-            .timestamp(-3551937681785568940)
+            .timestamp((-3551937681785568940).into())
             .validation_pass(4)
             .operations_hash(
                 "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc"
@@ -304,7 +304,7 @@ mod tests {
                     .try_into()
                     .unwrap(),
             )
-            .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+            .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8].into())
             .build()
             .unwrap();
         assert!(is_future_block(&block_header).is_err());
@@ -318,14 +318,14 @@ mod tests {
                     .level(34)
                     .proto(1)
                     .predecessor("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()?)
-                    .timestamp(5_635_634)
+                    .timestamp(5_635_634.into())
                     .validation_pass(4)
                     .operations_hash(
                         "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
                     )
                     .fitness(fitness)
                     .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
-                    .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+                    .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8].into())
                     .build()
                     .unwrap(),
             ),

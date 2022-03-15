@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::Arc;
+
+use crypto::hash::ProtocolHash;
 use serde::{Deserialize, Serialize};
 
 use storage::BlockHeaderWithHash;
@@ -96,7 +99,9 @@ impl EnablingCondition<State> for CurrentHeadRehydratedAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadUpdateAction {
-    pub new_head: BlockHeaderWithHash,
+    pub new_head: Arc<BlockHeaderWithHash>,
+    pub protocol: ProtocolHash,
+    pub next_protocol: ProtocolHash,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {

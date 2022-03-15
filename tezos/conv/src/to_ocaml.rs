@@ -181,7 +181,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
             level: block_header.level(),
             proto_level: block_header.proto() as i32,
             predecessor: predecessor_hash,
-            timestamp: block_header.timestamp(),
+            timestamp: block_header.timestamp().into(),
             validation_passes: block_header.validation_pass() as i32,
             operations_hash,
             fitness: block_header.fitness(),
@@ -195,7 +195,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeader<'a> {
         let shell = FfiBlockHeaderShellHeader::from(block_header);
         Self {
             shell,
-            protocol_data: block_header.protocol_data(),
+            protocol_data: block_header.protocol_data().as_ref(),
         }
     }
 }
@@ -213,7 +213,7 @@ impl<'a> From<&'a Operation> for FfiOperation<'a> {
         let shell = FfiOperationShellHeader::from(operation);
         Self {
             shell,
-            data: operation.data(),
+            data: operation.data().as_ref(),
         }
     }
 }

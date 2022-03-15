@@ -119,7 +119,7 @@ where
                     (
                         head.hash.clone(),
                         head.header.level(),
-                        head.header.timestamp(),
+                        head.header.timestamp().i64(),
                     )
                 })
             {

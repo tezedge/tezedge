@@ -392,7 +392,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .get(op)
                         .or_else(|| mempool_state.pending_operations.get(op))
                         .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
-                        .map(|op| OperationKind::from_operation_content_raw(&op.data()))
+                        .map(|op| OperationKind::from_operation_content_raw(op.data().as_ref()))
                         .filter(|op_kind| op_kind.is_endorsement())
                         .is_some();
 
@@ -569,7 +569,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state.operations_state.insert(
                     operation_hash.clone().into(),
                     MempoolOperation::injected(
-                        local_head_state.header.timestamp(),
+                        local_head_state.header.timestamp().into(),
                         mempool_state.first_current_head_time,
                         action,
                     ),
@@ -596,9 +596,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     OperationNodeCurrentHeadStats {
                         time: action.time_as_nanos(),
                         block_level,
-                        block_timestamp,
+                        block_timestamp: block_timestamp.into(),
                     },
-                    operation.data(),
+                    operation.data().as_ref(),
                     injected_timestamp,
                 );
         }
@@ -841,7 +841,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 OperationNodeCurrentHeadStats {
                                     time,
                                     block_level: block_header.level(),
-                                    block_timestamp: block_header.timestamp(),
+                                    block_timestamp: block_header.timestamp().into(),
                                 },
                             );
                     }
@@ -865,7 +865,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .operation_stats
                         .entry(op_hash)
                         .or_insert(OperationStats::new())
-                        .content_received(peer_pkh, time, msg.operation().data());
+                        .content_received(peer_pkh, time, msg.operation().data().as_ref());
                 }
                 _ => return,
             };
@@ -944,7 +944,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                         OperationNodeCurrentHeadStats {
                             time,
                             block_level: block_header.level(),
-                            block_timestamp: block_header.timestamp(),
+                            block_timestamp: block_header.timestamp().into(),
                         },
                     );
             }

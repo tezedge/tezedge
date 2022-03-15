@@ -9,7 +9,7 @@ use hyper::{Body, Method, Request};
 
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
-use crypto::hash::ProtocolHash;
+use crypto::hash::{ChainId, ProtocolHash};
 use shell_automaton::service::rpc_service::RpcRequestStream;
 
 use crate::helpers::{
@@ -72,10 +72,26 @@ pub async fn protocols(
 pub async fn valid_blocks(
     _: Request<Body>,
     _: Params,
-    _: Query,
-    _: Arc<RpcServiceEnvironment>,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
 ) -> HResult {
-    empty()
+    use shell_automaton::rpc::ValidBlocksQuery;
+    let chain_id = query.get_hash::<ChainId>("chain_id")?;
+    let protocol = query.get_hash::<ProtocolHash>("protocol")?;
+    let next_protocol = query.get_hash::<ProtocolHash>("next_protocol")?;
+    let stream = env
+        .shell_automaton_sender()
+        .request_stream(RpcRequestStream::ValidBlocks(ValidBlocksQuery {
+            chain_id,
+            protocol,
+            next_protocol,
+        }))
+        .await
+        .ok()
+        .expect("state machine should be correct");
+    let stream =
+        UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
+    make_json_stream_response(stream)
 }
 
 pub async fn head_chain(

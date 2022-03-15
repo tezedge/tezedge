@@ -205,11 +205,9 @@ steps:
     - mkdir -p drone-cache/python-tests/daemons
     - mkdir -p drone-cache/python-tests/launchers
     - mkdir -p drone-cache/python-tests/tools
-    - cp -r ./tezos/python-tests/daemons/node.py drone-cache/python-tests/daemons/node.py
-    - cp -r ./tezos/python-tests/daemons/baker.py drone-cache/python-tests/daemons/baker.py
-    - cp -r ./tezos/python-tests/daemons/endorser.py drone-cache/python-tests/daemons/endorser.py
-    - cp -r ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/sandbox.py
-    - cp -r ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/constants.py
+    - cp ./tezos/python-tests/daemons/*.py drone-cache/python-tests/daemons/
+    - cp ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/
+    - cp ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/
 
 - name: rebuild-artifacts-cache
   image: meltwater/drone-cache
@@ -1047,12 +1045,10 @@ steps:
     - mkdir -p tezos-src
     - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
     # prepare modified python files for tests (compatibility with tezedge node)
-    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
-    - cp drone-cache/python-tests/daemons/baker.py tezos-src/tezos/tests_python/daemons/baker.py
-    - cp drone-cache/python-tests/daemons/endorser.py tezos-src/tezos/tests_python/daemons/endorser.py
-    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
-    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/python-tests/daemons/*.py tezos-src/tezos/tests_python/daemons/
+    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
+    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1080,7 +1076,6 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_accuser.py
-  failure: ignore
 
 - name: block-times-ideal-scenario-test
   <<: *python-test
@@ -1176,6 +1171,7 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_per_block_votes.py
+  failure: ignore
 
 - name: sapling-test
   <<: *python-test
@@ -1291,12 +1287,10 @@ steps:
     - mkdir -p tezos-src
     - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
     # prepare modified python files for tests (compatibility with tezedge node)
-    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
-    - cp drone-cache/python-tests/daemons/baker.py tezos-src/tezos/tests_python/daemons/baker.py
-    - cp drone-cache/python-tests/daemons/endorser.py tezos-src/tezos/tests_python/daemons/endorser.py
-    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
-    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/python-tests/daemons/*.py tezos-src/tezos/tests_python/daemons/
+    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
+    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1324,7 +1318,6 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_accuser.py
-  failure: ignore
 
 - name: block-times-ideal-scenario-test
   <<: *python-test
@@ -1420,6 +1413,7 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_per_block_votes.py
+  failure: ignore
 
 - name: sapling-test
   <<: *python-test
@@ -1541,12 +1535,10 @@ steps:
     - mkdir -p tezos-src
     - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
     # prepare modified python files for tests (compatibility with tezedge node)
-    - cp drone-cache/python-tests/daemons/node.py tezos-src/tezos/tests_python/daemons/node.py
-    - cp drone-cache/python-tests/daemons/baker.py tezos-src/tezos/tests_python/daemons/baker.py
-    - cp drone-cache/python-tests/daemons/endorser.py tezos-src/tezos/tests_python/daemons/endorser.py
-    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/sandbox.py
-    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/constants.py
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/sandbox-patch-context.json
+    - cp drone-cache/python-tests/daemons/*.py tezos-src/tezos/tests_python/daemons/
+    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
+    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
+    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1570,12 +1562,10 @@ steps:
   environment:
     PYTHON_TEST: test_nonce_seed_revelation.py
 
-# TODO: re-enable once it stops freezing
-# - name: accuser-test
-#   <<: *python-test
-#   environment:
-#     PYTHON_TEST: test_accuser.py
-#   failure: ignore
+- name: accuser-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_accuser.py
 
 - name: many-nodes-test
   <<: *python-test

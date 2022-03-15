@@ -183,12 +183,12 @@ fn test_block_header_conv() {
         let level = block_header.level().to_boxroot(rt);
         let proto_level = OCaml::of_i32(block_header.proto() as i32);
         let validation_passes = OCaml::of_i32(block_header.validation_pass() as i32);
-        let timestamp = block_header.timestamp().to_boxroot(rt);
+        let timestamp = block_header.timestamp().i64().to_boxroot(rt);
         let predecessor = block_header.predecessor().to_boxroot(rt);
         let operations_hash = block_header.operations_hash().to_boxroot(rt);
         let fitness = block_header.fitness().as_ref().to_boxroot(rt);
         let context = block_header.context().to_boxroot(rt);
-        let protocol_data = block_header.protocol_data().to_boxroot(rt);
+        let protocol_data = AsRef::<Vec<u8>>::as_ref(&block_header.protocol_data()).to_boxroot(rt);
         let block_header = FfiBlockHeader::from(&block_header).to_boxroot(rt);
 
         tezos_ffi::construct_and_compare_block_header(
@@ -545,7 +545,7 @@ fn test_validate_operation_conv() {
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         let branch = operation.branch().to_boxroot(rt);
-        let proto = operation.data().to_boxroot(rt);
+        let proto = AsRef::<Vec<u8>>::as_ref(operation.data()).to_boxroot(rt);
         let operation = FfiOperation::from(&operation).to_boxroot(rt);
         tezos_ffi::construct_and_compare_operation(rt, &operation, &branch, &proto).to_rust(rt)
     })

@@ -207,6 +207,7 @@ where
                 BlockApplierApplyState::Success {
                     block,
                     injector_rpc_id,
+                    block_additional_data,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -217,8 +218,14 @@ where
                     if let Some(rpc_id) = injector_rpc_id.clone() {
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
-                    let new_head = (**block).clone();
-                    store.dispatch(CurrentHeadUpdateAction { new_head });
+                    let new_head = block.clone();
+                    let protocol = block_additional_data.protocol_hash.clone();
+                    let next_protocol = block_additional_data.next_protocol_hash.clone();
+                    store.dispatch(CurrentHeadUpdateAction {
+                        new_head,
+                        protocol,
+                        next_protocol,
+                    });
                 }
                 _ => return,
             }

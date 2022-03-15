@@ -51,7 +51,7 @@ fn stats_message_received(
                 None => return false,
             };
             let time = state.time_as_nanos() / 1_000_000_000;
-            let block_timestamp = head.header.timestamp() as u64;
+            let block_timestamp = head.header.timestamp().as_u64();
             time >= block_timestamp && time - block_timestamp <= 150
         };
 
@@ -67,7 +67,7 @@ fn stats_message_received(
                         stats.block_new(
                             b.clone(),
                             block_header.level(),
-                            Some(block_header.timestamp()),
+                            Some(block_header.timestamp().into()),
                             block_header.validation_pass(),
                             time,
                             Some(address),
@@ -88,7 +88,7 @@ fn stats_message_received(
                     stats.block_new(
                         b.clone(),
                         block_header.level(),
-                        Some(block_header.timestamp()),
+                        Some(block_header.timestamp().into()),
                         block_header.validation_pass(),
                         time,
                         Some(address),

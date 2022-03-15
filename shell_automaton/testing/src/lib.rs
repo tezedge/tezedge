@@ -34,7 +34,7 @@ pub fn generate_next_block(
         .level(level)
         .proto(1)
         .predecessor(pred.hash.clone())
-        .timestamp(10000000000 + (level as i64) * 30000 + additional_timestamp)
+        .timestamp((10000000000 + (level as i64) * 30000 + additional_timestamp).into())
         .validation_pass(4)
         .operations_hash(
             "LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp"
@@ -47,7 +47,7 @@ pub fn generate_next_block(
                 .try_into()
                 .unwrap(),
         )
-        .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+        .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8].into())
         .build()
         .unwrap();
     BlockHeaderWithHash::new(block_header).unwrap()

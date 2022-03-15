@@ -3,12 +3,15 @@
 
 //! Defines types of the intermediate data format.
 
+use std::str::FromStr;
+
 use crate::enc::BinWriter;
 use crate::encoding::Encoding;
 use crate::encoding::HasEncoding;
 use crate::has_encoding;
 use crate::nom::NomReader;
 
+use hex::FromHexError;
 use num_bigint::Sign;
 use serde::{Deserialize, Serialize};
 
@@ -313,6 +316,120 @@ impl<const SIZE: usize> HasEncoding for SizedBytes<SIZE> {
     }
 }
 
+/// Sequence of bytes bounded by maximum size
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct Bytes(Vec<u8>);
+
+#[derive(Debug, thiserror::Error)]
+pub enum BytesDecodeError {
+    #[error(transparent)]
+    Hex(#[from] FromHexError),
+}
+
+impl Bytes {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl std::fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Bytes").field(&self.to_string()).finish()
+    }
+}
+
+impl std::fmt::Display for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        hex::encode(&self.0).fmt(f)
+    }
+}
+
+impl From<Vec<u8>> for Bytes {
+    fn from(source: Vec<u8>) -> Self {
+        Self(source)
+    }
+}
+
+impl From<Bytes> for Vec<u8> {
+    fn from(source: Bytes) -> Self {
+        source.0
+    }
+}
+
+impl FromStr for Bytes {
+    type Err = BytesDecodeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(hex::decode(s)?))
+    }
+}
+
+impl AsRef<[u8]> for Bytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<Vec<u8>> for Bytes {
+    fn as_ref(&self) -> &Vec<u8> {
+        &self.0
+    }
+}
+
+impl HasEncoding for Bytes {
+    fn encoding() -> Encoding {
+        Encoding::list(Encoding::Uint8)
+    }
+}
+
+impl NomReader for Bytes {
+    fn nom_read(input: &[u8]) -> crate::nom::NomResult<Self> {
+        use crate::nom::bytes;
+        let (input, b) = bytes(input)?;
+        Ok((input, Self(b)))
+    }
+}
+
+impl BinWriter for Bytes {
+    fn bin_write(&self, output: &mut Vec<u8>) -> crate::enc::BinResult {
+        crate::enc::put_bytes(self.0.as_ref(), output);
+        Ok(())
+    }
+}
+
+impl serde::Serialize for Bytes {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            let hex_bytes = hex::encode(&self.0);
+            serde::Serialize::serialize(&hex_bytes, serializer)
+        } else {
+            serde::Serialize::serialize(&self.0, serializer)
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Bytes {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let hex_bytes: String = serde::Deserialize::deserialize(deserializer)?;
+            let bytes = hex::decode(&hex_bytes).map_err(|err| {
+                serde::de::Error::custom(format!("error decoding from hex string: {err}"))
+            })?;
+            Ok(Self(bytes))
+        } else {
+            let bytes = serde::Deserialize::deserialize(deserializer)?;
+            Ok(Self(bytes))
+        }
+    }
+}
+
 /// Represents `true` value in binary format.
 pub const BYTE_VAL_TRUE: u8 = 0xFF;
 /// Represents `false` value in binary format.
@@ -406,4 +523,43 @@ pub enum Value {
     Record(Vec<(String, Value)>),
     /// Tuple is heterogeneous collection of values, it should have fixed amount of elements
     Tuple(Vec<Value>),
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn bytes_to_string() {
+        let bytes = Bytes(vec![0xde, 0xad, 0xbe, 0xef]);
+        let bytes_hex = bytes.to_string();
+        assert_eq!(&bytes_hex, "deadbeef");
+    }
+
+    #[test]
+    fn bytes_parse() {
+        let bytes: Bytes = "deadbeef".parse().unwrap();
+        assert_eq!(bytes, Bytes(vec![0xde, 0xad, 0xbe, 0xef]));
+    }
+
+    #[test]
+    fn bytes_parse_error() {
+        let _ = "deadbeefe".parse::<Bytes>().expect_err("");
+        let _ = "morebeef".parse::<Bytes>().expect_err("");
+    }
+
+    #[test]
+    fn bytes_to_json() {
+        let bytes = Bytes(vec![0xde, 0xad, 0xbe, 0xef]);
+        let json = serde_json::to_value(bytes).unwrap();
+        assert!(matches!(json.as_str(), Some("deadbeef")))
+    }
+
+    #[test]
+    fn bytes_from_json() {
+        let json = serde_json::json!("deadbeef");
+        let bytes: Bytes = serde_json::from_value(json).unwrap();
+        assert_eq!(bytes, Bytes(vec![0xde, 0xad, 0xbe, 0xef]));
+    }
 }

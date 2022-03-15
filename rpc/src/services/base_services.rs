@@ -20,7 +20,6 @@ use crate::helpers::{
 use crate::server::RpcServiceEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlocksMessage;
-use tezos_messages::ts_to_rfc3339;
 
 pub type BlockOperationsHashes = Vec<String>;
 
@@ -52,7 +51,7 @@ pub(crate) fn get_blocks(
         let r = BlockStorage::new(persistent_storage)
             .get_multiple_with_direction(&hash, limit, Direction::Reverse)?
             .into_iter()
-            .filter(|b| b.header.timestamp() >= min_date)
+            .filter(|b| b.header.timestamp().i64() >= min_date)
             .map(|b| b.hash.to_base58_check())
             .collect::<Vec<_>>();
         response.push(r);
@@ -553,7 +552,7 @@ pub(crate) async fn get_block(
         level: block_header.header.level(),
         proto: block_header.header.proto(),
         predecessor: block_header.header.predecessor().to_base58_check(),
-        timestamp: ts_to_rfc3339(block_header.header.timestamp())?,
+        timestamp: block_header.header.timestamp().to_rfc3339()?,
         validation_pass: block_header.header.validation_pass(),
         operations_hash: block_header.header.operations_hash().to_base58_check(),
         fitness: block_header.header.fitness().as_hex_vec(),

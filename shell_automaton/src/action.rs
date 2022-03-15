@@ -572,6 +572,8 @@ pub enum Action {
     RpcBootstrapped(RpcBootstrappedAction),
     RpcBootstrappedNewBlock(RpcBootstrappedNewBlockAction),
     RpcBootstrappedDone(RpcBootstrappedDoneAction),
+    RpcMonitorValidBlocks(RpcMonitorValidBlocksAction),
+    RpcReplyValidBlock(RpcReplyValidBlockAction),
 
     StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),
     StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction),

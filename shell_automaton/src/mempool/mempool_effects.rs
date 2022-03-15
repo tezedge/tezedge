@@ -199,7 +199,7 @@ where
                         block_hash,
                         message,
                         level: current_head.current_block_header().level(),
-                        timestamp: current_head.current_block_header().timestamp(),
+                        timestamp: current_head.current_block_header().timestamp().into(),
                         proto: current_head.current_block_header().proto(),
                     });
                 }

@@ -96,23 +96,23 @@ fn test_assert_encoding_for_protocol_data() {
 
     // check
     assert!(assert_encoding_for_protocol_data(
-        protocol_hash_1.clone(),
-        block_header_1.protocol_data().clone(),
+        protocol_hash_1.clone().into(),
+        block_header_1.protocol_data().clone().into(),
     )
     .is_ok());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_1,
-        block_header_2.protocol_data().clone(),
+        block_header_2.protocol_data().clone().into(),
     )
     .is_err());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_2.clone(),
-        block_header_1.protocol_data().clone(),
+        block_header_1.protocol_data().clone().into(),
     )
     .is_err());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_2,
-        block_header_2.protocol_data().clone(),
+        block_header_2.protocol_data().clone().into(),
     )
     .is_ok());
 }

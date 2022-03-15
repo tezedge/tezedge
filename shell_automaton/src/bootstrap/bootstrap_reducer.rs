@@ -459,6 +459,10 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                 index -= 1;
                             } else if pred_level + 1 > block.header.level() {
                                 // TODO(zura): log. Impossible state.
+                                slog::error!(
+                                    state.log,
+                                    "impossible state: pred_level + 1 > block.header.level()"
+                                );
                                 peer_intervals.remove(pred_index);
                                 index -= 1;
                             } else if pred_level + 1 == block.header.level() {
