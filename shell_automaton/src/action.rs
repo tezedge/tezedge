@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use derive_more::From;
 use enum_dispatch::enum_dispatch;
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
@@ -188,11 +187,24 @@ impl EnablingCondition<State> for MioTimeoutEvent {
     }
 }
 
+#[enum_dispatch]
+trait EnablingConditionDispatched {
+    fn is_enabled(&self, state: &State) -> bool;
+}
+
+impl<T> EnablingConditionDispatched for T
+where
+    T: EnablingCondition<State>,
+{
+    fn is_enabled(&self, state: &State) -> bool {
+        EnablingCondition::is_enabled(self, state)
+    }
+}
+
 #[derive(
     EnumKind,
     strum_macros::AsRefStr,
     strum_macros::IntoStaticStr,
-    From,
     Serialize,
     Deserialize,
     Debug,
@@ -211,7 +223,7 @@ impl EnablingCondition<State> for MioTimeoutEvent {
     )
 )]
 #[serde(tag = "kind", content = "content")]
-#[enum_dispatch(EnablingCondition<State>)]
+#[enum_dispatch(EnablingConditionDispatched)]
 pub enum Action {
     Init(InitAction),
 
@@ -670,6 +682,11 @@ impl Action {
     #[inline(always)]
     pub fn kind(&self) -> ActionKind {
         ActionKind::from(self)
+    }
+
+    #[inline(always)]
+    pub fn is_enabled(&self, state: &State) -> bool {
+        EnablingConditionDispatched::is_enabled(self, state)
     }
 }
 
