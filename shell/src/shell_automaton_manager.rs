@@ -46,7 +46,6 @@ pub struct P2p {
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
     pub disable_peer_graylist: bool,
-    pub disable_apply_retry: bool,
     pub private_node: bool,
 
     pub peer_threshold: PeerConnectionThreshold,
@@ -224,7 +223,6 @@ impl ShellAutomatonManager {
             },
             disable_block_precheck: p2p_config.disable_block_precheck,
             disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
-            disable_apply_retry: p2p_config.disable_apply_retry,
         });
 
         initial_state.set_logger(log.clone());

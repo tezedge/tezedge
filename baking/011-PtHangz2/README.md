@@ -34,8 +34,6 @@ E.g. for Hangzhounet to support baking/endorsing:
 
 _Note: This cmd runs from the main git sources directory_
 
-_Note: The option `--disable-apply-retry=true` is indended for a Tezege node running within the network where the majority of nodes are subjects to failing with block application because of the cache issue (v11.x.x)._
-
 ```
 $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --network "hangzhounet" \
@@ -53,8 +51,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --tezos-context-storage=irmin \
  --log terminal \
  --log-level info \
- --log-format simple \
- --disable-apply-retry=true
+ --log-format simple
 Jun 10 12:29:34.855 INFO Configured network ["granadanet", "granada"] -> TEZOS_GRANADANET_2021-05-21T15:00:00Z
 Jun 10 12:29:34.855 INFO Checking zcash-params for sapling... (1/5)
 Jun 10 12:29:34.855 INFO Found existing zcash-params files, output_path: "/home/dev/.zcash-params/sapling-output.params", spend_path: "/home/dev/.zcash-params/sapling-spend.params", candidate_dir: "/home/dev/.zcash-params"
