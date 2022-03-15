@@ -16,7 +16,7 @@ use netinfo::{InoutType, NetStatistics};
 use sysinfo::{ProcessExt, System, SystemExt};
 
 use crate::display_info::NodeInfo;
-use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
+use crate::display_info::{DiskData, OCamlDiskData, TezedgeDiskData};
 use crate::monitors::resource::{
     DiskReadWrite, NetworkStats, ProcessCpuUsage, ResourceMonitorError, ValidatorCpuStats,
     ValidatorIOStats, ValidatorMemoryStats,
@@ -26,7 +26,7 @@ const MILLIS_TO_SECONDS_CONVERSION_CONSTANT: u64 = 1000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NodeType {
-    Ocaml,
+    OCaml,
     Tezedge,
 }
 
@@ -94,10 +94,10 @@ impl Node {
     pub fn get_disk_data(&self) -> DiskData {
         let volume_path = self.volume_path.as_path().display();
         if self.node_type == NodeType::Tezedge {
-            // context actions DB is optional
-            let context_actions = dir::get_size(&format!(
+            // context stats DB is optional
+            let context_stats = dir::get_size(&format!(
                 "{}/{}",
-                volume_path, "bootstrap_db/context_actions"
+                volume_path, "context-stats-db"
             ))
             .unwrap_or(0);
 
@@ -115,10 +115,9 @@ impl Node {
             let disk_data = TezedgeDiskData::new(
                 debugger,
                 dir::get_size(&format!("{}/{}", volume_path, "context")).unwrap_or(0),
-                dir::get_size(&format!("{}/{}", volume_path, "bootstrap_db/context")).unwrap_or(0),
                 dir::get_size(&format!("{}/{}", volume_path, "bootstrap_db/block_storage"))
                     .unwrap_or(0),
-                context_actions,
+                context_stats,
                 dir::get_size(&format!("{}/{}", volume_path, "bootstrap_db/db")).unwrap_or(0),
             );
 
@@ -135,7 +134,7 @@ impl Node {
                 0
             };
 
-            DiskData::Ocaml(OcamlDiskData::new(
+            DiskData::OCaml(OCamlDiskData::new(
                 debugger,
                 dir::get_size(&format!("{}/{}", volume_path, "data/store")).unwrap_or(0),
                 dir::get_size(&format!("{}/{}", volume_path, "data/context")).unwrap_or(0),
