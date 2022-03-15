@@ -468,7 +468,7 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
         .unwrap_or_default();
     serde_json::json!({
         "block_hash": hash,
-        "block_timestamp": stats.block_timestamp * 1_000_000_000,
+        "block_timestamp": stats.block_timestamp.map(|t| t * 1_000_000_000),
         "receive_timestamp": stats.receive_timestamp,
         "injected": stats.injected,
 

@@ -45,16 +45,29 @@ fn stats_message_received(
             .and_then(Peer::public_key_hash)
             .cloned();
 
+        let should_save_current_head = || {
+            let head = match state.current_head.get() {
+                Some(v) => v,
+                None => return false,
+            };
+            let time = state.time_as_nanos() / 1_000_000_000;
+            let block_timestamp = head.header.timestamp() as u64;
+            time >= block_timestamp && time - block_timestamp <= 150
+        };
+
         match message {
             PeerMessage::CurrentHead(m) => {
                 m.current_block_header()
                     .message_typed_hash()
                     .map(|b: BlockHash| {
                         let block_header = m.current_block_header();
+                        if !should_save_current_head() {
+                            return;
+                        }
                         stats.block_new(
                             b.clone(),
                             block_header.level(),
-                            block_header.timestamp(),
+                            Some(block_header.timestamp()),
                             block_header.validation_pass(),
                             time,
                             Some(address),
@@ -69,10 +82,13 @@ fn stats_message_received(
                 .message_typed_hash()
                 .map(|b: BlockHash| {
                     let block_header = m.block_header();
+                    if !should_save_current_head() {
+                        return;
+                    }
                     stats.block_new(
                         b.clone(),
                         block_header.level(),
-                        block_header.timestamp(),
+                        Some(block_header.timestamp()),
                         block_header.validation_pass(),
                         time,
                         Some(address),

@@ -11,6 +11,11 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::vector::VecMutator;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerIntervalState {
     pub peers: BTreeSet<SocketAddr>,
@@ -36,6 +41,7 @@ impl PeerIntervalState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub enum PeerIntervalError {
     /// We can't accept interval as interval requires to change cemented
     /// block in the chain.
@@ -430,11 +436,13 @@ pub struct PeerBranch {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub enum BootstrapError {
     CementedBlockReorg {
         current_head: BlockHeaderWithHash,
         block: BlockHeaderWithHash,
         /// Peers which agree on this reorg. We need to graylist them.
+        #[cfg_attr(feature = "fuzzing", field_mutator(VecMutator<SocketAddr, SocketAddrMutator>))]
         peers: Vec<SocketAddr>,
     },
     BlockApplicationFailed,

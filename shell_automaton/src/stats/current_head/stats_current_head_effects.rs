@@ -37,7 +37,7 @@ where
                 s.block_new(
                     block_hash.clone(),
                     block_header.level(),
-                    block_header.timestamp(),
+                    Some(block_header.timestamp()),
                     block_header.validation_pass(),
                     action.time_as_nanos(),
                     None,

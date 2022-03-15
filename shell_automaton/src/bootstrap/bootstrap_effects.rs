@@ -215,16 +215,17 @@ where
             }
         }
         Action::BootstrapPeersBlockOperationsGetNext(_) => {
+            let state = store.state.get();
             let (peer, block_hash, validation_pass) =
-                match store.state().bootstrap.operations_get_queue_next() {
+                match state.bootstrap.operations_get_queue_next() {
                     Some(v) => (v.peer, v.block_hash.clone(), v.validation_pass),
                     None => return,
                 };
 
             let peer = match peer
-                .filter(|peer| store.state().peers.get_handshaked(peer).is_some())
+                .filter(|peer| state.peers.get_handshaked(peer).is_some())
                 .or_else(|| {
-                    let handshaked_iter = store.state().peers.handshaked_iter();
+                    let handshaked_iter = state.peers.handshaked_iter();
                     let peers = handshaked_iter.map(|(addr, _)| addr).collect::<Vec<_>>();
                     store.service.randomness().choose_peer(&peers)
                 }) {
@@ -232,6 +233,29 @@ where
                 // TODO(zura): log that we dont have peers for getting ops.
                 None => return,
             };
+
+            store.service.statistics().map(|stats| {
+                let level = match &state.bootstrap {
+                    BootstrapState::PeersBlockOperationsGetPending {
+                        last_level, queue, ..
+                    } => *last_level - queue.len() as i32,
+                    _ => return,
+                };
+
+                let time = state.time_as_nanos();
+                if !stats.block_stats_get_all().contains_key(&block_hash) {
+                    stats.block_new(
+                        block_hash.clone(),
+                        level,
+                        None,
+                        validation_pass,
+                        time,
+                        Some(peer),
+                        None,
+                        None,
+                    );
+                }
+            });
 
             request_block_operations(store, peer, block_hash, validation_pass);
         }
