@@ -20,17 +20,7 @@ use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Eq, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct OperationMessage {
     #[get = "pub"]
@@ -52,16 +42,7 @@ impl From<OperationMessage> for Operation {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Debug,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, HasEncoding, NomReader, BinWriter,
 )]
 pub struct Operation {
     branch: BlockHash,
@@ -128,17 +109,7 @@ impl From<Operation> for DecodedOperation {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetOperationsMessage {
     #[get = "pub"]

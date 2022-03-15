@@ -20,7 +20,7 @@ pub struct StructEncoding<'a> {
 
 #[derive(Debug)]
 pub enum FieldKind<'a> {
-    Encoded(Box<Encoding<'a>>),
+    Encoded(Box<EncodedField<'a>>),
     Hash,
     Skip,
 }
@@ -34,10 +34,16 @@ pub struct FieldEncoding<'a> {
 impl<'a> FieldEncoding<'a> {
     pub fn encoding(&'a self) -> Option<&Encoding<'a>> {
         match &self.kind {
-            FieldKind::Encoded(encoding) => Some(encoding),
+            FieldKind::Encoded(encoded_field) => Some(&encoded_field.encoding),
             _ => None,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct EncodedField<'a> {
+    pub encoding: Encoding<'a>,
+    pub reserve: Option<syn::Expr>,
 }
 
 #[derive(Debug)]

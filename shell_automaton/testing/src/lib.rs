@@ -41,7 +41,7 @@ pub fn generate_next_block(
                 .try_into()
                 .unwrap(),
         )
-        .fitness(vec![level.to_be_bytes().to_vec()])
+        .fitness(vec![level.to_be_bytes().to_vec()].into())
         .context(
             "CoV8SQumiVU9saiu3FVNeDNewJaJH8yWdsGF3WLdsRr2P9S7MzCj"
                 .try_into()

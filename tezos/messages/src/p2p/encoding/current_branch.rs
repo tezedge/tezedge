@@ -15,17 +15,7 @@ use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Debug,
-    Getters,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters, HasEncoding, NomReader, BinWriter,
 )]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
@@ -46,17 +36,7 @@ impl CurrentBranchMessage {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Debug,
-    Getters,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters, HasEncoding, NomReader, BinWriter,
 )]
 pub struct CurrentBranch {
     #[get = "pub"]
@@ -80,16 +60,7 @@ impl CurrentBranch {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Debug,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Eq, PartialEq, Debug, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,

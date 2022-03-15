@@ -24,7 +24,6 @@ use super::limits::{MEMPOOL_MAX_OPERATIONS, MEMPOOL_MAX_SIZE};
     HasEncoding,
     NomReader,
     BinWriter,
-    tezos_encoding::generator::Generated,
 )]
 #[encoding(bounded = "MEMPOOL_MAX_SIZE")]
 pub struct Mempool {

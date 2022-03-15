@@ -20,6 +20,7 @@ use storage::{
 };
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
@@ -98,7 +99,7 @@ pub enum StorageRequestPayload {
     },
     StoreApplyBlockResult {
         block_hash: Arc<BlockHash>,
-        block_fitness: Vec<Vec<u8>>,
+        block_fitness: Fitness,
         block_result: Arc<ApplyBlockResponse>,
         block_metadata: Arc<Meta>,
     },

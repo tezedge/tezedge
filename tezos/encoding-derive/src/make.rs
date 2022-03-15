@@ -76,8 +76,12 @@ fn make_field(field: &syn::Field) -> Result<FieldEncoding> {
         None => {
             let encoding = make_type_encoding(&field.ty, meta)?;
             let encoding = make_bounded_encoding(meta, encoding)?;
+            let reserve = get_attribute_with_param(meta, &symbol::RESERVE, None, true)?;
             assert_empty_meta(meta)?;
-            FieldKind::Encoded(Box::new(encoding))
+            FieldKind::Encoded(Box::new(EncodedField {
+                encoding,
+                reserve: reserve.map(|r| r.param),
+            }))
         }
     };
     Ok(FieldEncoding { name, kind })
@@ -100,23 +104,14 @@ fn make_type_path_encoding<'a>(
     match &segment.arguments {
         syn::PathArguments::None => make_basic_encoding_from_type(path, meta),
         syn::PathArguments::AngleBracketed(args) => {
-            if args.args.len() != 1 {
-                return Err(error_spanned(&args.args, "Expected single argument"));
-            }
-            let arg = args.args.last().unwrap();
-            let inner_encoding = match arg {
-                syn::GenericArgument::Type(ty) => make_type_encoding(ty, meta)?,
-                _ => return Err(error_spanned(arg, "Only type generic parameters supported")),
-            };
             let encoding = if segment.ident == symbol::rust::VEC {
-                make_list_encoding_from_type(path, meta, inner_encoding)?
+                let encoding = type_argument_encoding(args, meta)?;
+                make_list_encoding_from_type(path, meta, encoding)?
             } else if segment.ident == symbol::rust::OPTION {
-                make_optional_field_encoding_from_type(path, meta, inner_encoding)?
+                let encoding = type_argument_encoding(args, meta)?;
+                make_optional_field_encoding_from_type(path, meta, encoding)?
             } else {
-                return Err(error_spanned(
-                    args,
-                    "Only `Vec<_>` and `Option<_>` are supported",
-                ));
+                make_basic_encoding_from_type(path, meta)?
             };
             let encoding = make_bounded_encoding(meta, encoding)?;
             Ok(encoding)
@@ -125,6 +120,21 @@ fn make_type_path_encoding<'a>(
             &segment.arguments,
             "Only angle-bracketed generic arguments are supported",
         )),
+    }
+}
+
+fn type_argument_encoding<'a>(
+    args: &'a syn::AngleBracketedGenericArguments,
+    meta: &mut Vec<syn::Meta>,
+) -> Result<Encoding<'a>> {
+    if args.args.len() != 1 {
+        Err(error_spanned(&args.args, "Expected single argument"))
+    } else {
+        let arg = args.args.last().unwrap();
+        match arg {
+            syn::GenericArgument::Type(ty) => make_type_encoding(ty, meta),
+            _ => Err(error_spanned(arg, "Only type generic parameters supported")),
+        }
     }
 }
 

@@ -13,7 +13,6 @@ pub mod binary_writer;
 
 pub mod enc;
 pub mod encoding;
-pub mod generator;
 pub mod nom;
 
 #[cfg(feature = "fuzzing")]

@@ -15,16 +15,7 @@ use super::limits::{
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct ProtocolMessage {
     protocol: Protocol,
@@ -33,16 +24,7 @@ pub struct ProtocolMessage {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct Component {
     #[encoding(string = "COMPONENT_NAME_MAX_LENGTH")]
@@ -56,16 +38,7 @@ pub struct Component {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct Protocol {
     expected_env_version: i16,
@@ -86,16 +59,7 @@ impl Protocol {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetProtocolsMessage {
     #[encoding(dynamic, list = "GET_PROTOCOLS_MAX_LENGTH")]

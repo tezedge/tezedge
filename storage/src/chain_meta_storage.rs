@@ -268,6 +268,7 @@ mod tests {
     use std::convert::TryInto;
 
     use anyhow::Error;
+    use tezos_messages::p2p::encoding::fitness::Fitness;
 
     use crate::tests_common::TmpStorage;
 
@@ -282,14 +283,14 @@ mod tests {
         let block_1 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
-            vec![],
+            Fitness::default(),
         );
 
         let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
-            vec![],
+            Fitness::default(),
         );
 
         // no current heads
@@ -343,14 +344,14 @@ mod tests {
         let block_1 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
-            vec![],
+            Fitness::default(),
         );
 
         let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
-            vec![],
+            Fitness::default(),
         );
 
         // no current heads
@@ -404,14 +405,14 @@ mod tests {
         let block_1 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
-            vec![],
+            Fitness::default(),
         );
 
         let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
             "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
-            vec![],
+            Fitness::default(),
         );
 
         // no current heads

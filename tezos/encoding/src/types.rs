@@ -3,10 +3,13 @@
 
 //! Defines types of the intermediate data format.
 
+use crate::enc::BinWriter;
 use crate::encoding::Encoding;
 use crate::encoding::HasEncoding;
 use crate::has_encoding;
+use crate::nom::NomReader;
 
+use num_bigint::Sign;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "fuzzing")]
@@ -84,10 +87,44 @@ has_encoding!(Zarith, ZARITH_ENCODING, { Encoding::Z });
 
 /// Mutez number
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Mutez(
     #[cfg_attr(feature = "fuzzing", field_mutator(BigIntMutator))] pub num_bigint::BigInt,
 );
+
+impl<'de> Deserialize<'de> for Mutez {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let string: String = serde::Deserialize::deserialize(deserializer)?;
+            let big_int: num_bigint::BigInt = string
+                .parse()
+                .map_err(|err| serde::de::Error::custom(format!("cannot parse big int: {err}")))?;
+            if big_int.sign() == Sign::Minus {
+                return Err(serde::de::Error::custom("negative number for natural"));
+            }
+            Ok(Self(big_int))
+        } else {
+            Ok(Self(serde::Deserialize::deserialize(deserializer)?))
+        }
+    }
+}
+
+impl Serialize for Mutez {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            let string = self.0.to_string();
+            string.serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
 
 impl From<num_bigint::BigInt> for Mutez {
     fn from(from: num_bigint::BigInt) -> Self {
@@ -126,6 +163,155 @@ impl From<&Mutez> for BigInt {
 }
 
 has_encoding!(Mutez, MUTEZ_ENCODING, { Encoding::Mutez });
+
+#[derive(Clone, PartialEq, Eq)]
+//#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct SizedBytes<const SIZE: usize>(pub [u8; SIZE]);
+
+impl<const SIZE: usize> std::fmt::Display for SizedBytes<SIZE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl<const SIZE: usize> std::fmt::Debug for SizedBytes<SIZE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "bytes: {}", hex::encode(self.0))
+    }
+}
+
+impl<const SIZE: usize> AsRef<[u8]> for SizedBytes<SIZE> {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl<const SIZE: usize> AsMut<[u8]> for SizedBytes<SIZE> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl<const SIZE: usize> From<[u8; SIZE]> for SizedBytes<SIZE> {
+    fn from(bytes: [u8; SIZE]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl<const SIZE: usize> From<SizedBytes<SIZE>> for [u8; SIZE] {
+    fn from(bytes: SizedBytes<SIZE>) -> Self {
+        bytes.0
+    }
+}
+
+impl<const SIZE: usize> Serialize for SizedBytes<SIZE> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&hex::encode(self.0.as_ref()))
+        } else {
+            serializer.serialize_newtype_struct(stringify!(Bytes<SIZE>), self.0.as_ref())
+        }
+    }
+}
+
+struct BytesVisitor<const SIZE: usize>;
+
+impl<'de, const SIZE: usize> serde::de::Visitor<'de> for BytesVisitor<SIZE> {
+    type Value = SizedBytes<{ SIZE }>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("eigher sequence of bytes or hex encoded data expected")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let mut bytes = [0_u8; SIZE];
+        hex::decode_to_slice(v, &mut bytes)
+            .map_err(|e| E::custom(format!("error constructing bytes from hex: {e}")))?;
+        Ok(bytes.into())
+    }
+
+    fn visit_newtype_struct<E>(self, e: E) -> Result<Self::Value, E::Error>
+    where
+        E: serde::Deserializer<'de>,
+    {
+        let mut bytes = [0_u8; SIZE];
+        match <Vec<u8> as serde::Deserialize>::deserialize(e) {
+            Ok(val) if val.len() == SIZE => bytes.copy_from_slice(&val),
+            Ok(val) => {
+                return Err(serde::de::Error::custom(format!(
+                    "invalid lenght, expected {SIZE}, got {len}",
+                    len = val.len()
+                )))
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        };
+        Ok(bytes.into())
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut bytes = [0_u8; SIZE];
+        match seq.next_element::<Vec<u8>>() {
+            Ok(Some(val)) if val.len() == SIZE => bytes.copy_from_slice(&val),
+            Ok(Some(val)) => {
+                return Err(serde::de::Error::custom(format!(
+                    "invalid lenght, expected {SIZE}, got {len}",
+                    len = val.len()
+                )))
+            }
+            Ok(None) => return Err(serde::de::Error::custom("no bytes".to_string())),
+            Err(err) => return Err(err),
+        };
+        Ok(bytes.into())
+    }
+}
+
+impl<'de, const SIZE: usize> Deserialize<'de> for SizedBytes<SIZE> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(BytesVisitor)
+        } else {
+            deserializer.deserialize_newtype_struct("Bytes<SIZE>", BytesVisitor)
+        }
+    }
+}
+
+impl<const SIZE: usize> NomReader for SizedBytes<SIZE> {
+    fn nom_read(input: &[u8]) -> crate::nom::NomResult<Self> {
+        use crate::nom;
+        let (input, slice) = nom::sized(SIZE, nom::bytes)(input)?;
+        let mut bytes = [0; SIZE];
+        bytes.copy_from_slice(&slice);
+        Ok((input, bytes.into()))
+    }
+}
+
+impl<const SIZE: usize> BinWriter for SizedBytes<SIZE> {
+    fn bin_write(&self, bytes: &mut Vec<u8>) -> crate::enc::BinResult {
+        use crate::enc;
+        enc::put_bytes(&self.0, bytes);
+        Ok(())
+    }
+}
+
+impl<const SIZE: usize> HasEncoding for SizedBytes<SIZE> {
+    fn encoding() -> Encoding {
+        Encoding::sized(SIZE, Encoding::Bytes)
+    }
+}
 
 /// Represents `true` value in binary format.
 pub const BYTE_VAL_TRUE: u8 = 0xFF;

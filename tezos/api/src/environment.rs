@@ -703,7 +703,7 @@ impl TezosEnvironmentConfiguration {
             .timestamp(genesis_time)
             .validation_pass(0)
             .operations_hash(operation_list_list_hash)
-            .fitness(vec![])
+            .fitness(vec![].into())
             .context(context_hash)
             .protocol_data(vec![])
             .build()

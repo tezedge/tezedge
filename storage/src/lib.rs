@@ -16,6 +16,7 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use thiserror::Error;
 
 use crypto::{
@@ -419,7 +420,7 @@ pub fn store_applied_block_result(
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
-    block_fitness: Vec<Vec<u8>>,
+    block_fitness: Fitness,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta,
     cycle_meta_storage: &CycleMetaStorage,
@@ -1043,6 +1044,8 @@ pub mod tests_common {
 
     #[cfg(test)]
     mod tests {
+        use tezos_messages::p2p::encoding::fitness::Fitness;
+
         use super::TmpStorage;
         use crate::{ChainId, ChainMetaStorage, Head};
         use std::{
@@ -1074,7 +1077,7 @@ pub mod tests_common {
                                     .try_into()
                                     .unwrap(),
                                 level * 2,
-                                vec![],
+                                Fitness::default(),
                             )
                         };
 

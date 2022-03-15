@@ -11,16 +11,13 @@ use nom::{
 };
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, Hash, HashTrait, HashType, OperationListListHash};
+use crypto::hash::{BlockHash, Hash, HashType};
 use tezos_encoding::nom::NomResult;
-use tezos_encoding::{enc::BinError, nom::NomReader};
 use tezos_encoding::{
-    enc::BinWriter,
-    generator::{self, Generated, Generator},
-};
-use tezos_encoding::{
+    enc::{BinError, BinWriter},
     encoding::{Encoding, HasEncoding},
     has_encoding,
+    nom::NomReader,
 };
 
 use crate::p2p::encoding::operation::Operation;
@@ -60,7 +57,6 @@ pub const MAX_PASS_MERKLE_DEPTH: usize = 3;
     HasEncoding,
     NomReader,
     BinWriter,
-    tezos_encoding::generator::Generated,
 )]
 pub struct OperationsForBlock {
     #[get = "pub"]
@@ -87,17 +83,7 @@ impl OperationsForBlock {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Getters,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    Generated,
+    Clone, Serialize, Deserialize, Debug, Eq, PartialEq, Getters, HasEncoding, NomReader, BinWriter,
 )]
 pub struct OperationsForBlocksMessage {
     #[get = "pub"]
@@ -143,21 +129,6 @@ impl PathRight {
     }
 }
 
-impl Generated for PathRight {
-    fn generator<F: generator::GeneratorFactory>(
-        prefix: &str,
-        f: &mut F,
-    ) -> Box<dyn generator::Generator<Item = Self>> {
-        Box::new(
-            f.hash_bytes(
-                &(prefix.to_string() + ".left"),
-                OperationListListHash::hash_type(),
-            )
-            .map(|left| Self { left }),
-        )
-    }
-}
-
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters)]
@@ -172,26 +143,9 @@ impl PathLeft {
     }
 }
 
-impl Generated for PathLeft {
-    fn generator<F: generator::GeneratorFactory>(
-        prefix: &str,
-        f: &mut F,
-    ) -> Box<dyn generator::Generator<Item = Self>> {
-        Box::new(
-            f.hash_bytes(
-                &(prefix.to_string() + ".right"),
-                OperationListListHash::hash_type(),
-            )
-            .map(|right| Self { right }),
-        )
-    }
-}
-
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(
-    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, tezos_encoding::generator::Generated,
-)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub enum PathItem {
     Right(PathRight),
     Left(PathLeft),
@@ -389,35 +343,10 @@ impl BinWriter for Path {
     }
 }
 
-impl tezos_encoding::generator::Generated for Path {
-    fn generator<F: tezos_encoding::generator::GeneratorFactory>(
-        prefix: &str,
-        f: &mut F,
-    ) -> Box<dyn tezos_encoding::generator::Generator<Item = Self>> {
-        Box::new(
-            generator::vec_of_items(
-                PathItem::generator(&(prefix.to_string() + "[]"), f),
-                f.size(prefix, Path::encoding().clone(), Encoding::Unit), //generator::values(&[0, 1, MAX_PASS_MERKLE_DEPTH, MAX_PASS_MERKLE_DEPTH+1, MAX_PASS_MERKLE_DEPTH * 2])
-            )
-            .map(|vec| Self(vec)),
-        )
-    }
-}
-
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetOperationsForBlocksMessage {
     #[get = "pub"]

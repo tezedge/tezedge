@@ -5,14 +5,14 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, generator::Generated, nom::NomReader};
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
 use std::hash::{Hash, Hasher};
 
 /// Holds informations about chain compatibility, features compatibility...
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated)]
+#[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct NetworkVersion {
     #[get = "pub"]
     #[encoding(string = "CHAIN_NAME_MAX_LENGTH")]

@@ -556,12 +556,7 @@ pub(crate) async fn get_block(
         timestamp: ts_to_rfc3339(block_header.header.timestamp())?,
         validation_pass: block_header.header.validation_pass(),
         operations_hash: block_header.header.operations_hash().to_base58_check(),
-        fitness: block_header
-            .header
-            .fitness()
-            .iter()
-            .map(|x| hex::encode(&x))
-            .collect(),
+        fitness: block_header.header.fitness().as_hex_vec(),
         context: block_header.header.context().to_base58_check(),
         protocol_data: serde_json::from_str(block_header_proto_json).unwrap_or_default(),
     };

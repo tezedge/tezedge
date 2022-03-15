@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use anyhow::Error;
-use crypto::hash::HashType;
 use std::{borrow::Cow, collections::HashMap, fmt, path::PathBuf, rc::Rc};
 use tezos_encoding::encoding::{Encoding, Field};
 use tezos_messages::p2p::encoding::{
@@ -64,29 +63,7 @@ fn get_contents(
             let info = get_info(name, fields, infos);
             FieldContents::Reference(info)
         }
-        Encoding::Hash(hash) => match hash {
-            HashType::ChainId => "ChainId",
-            HashType::BlockHash => "BlockHash",
-            HashType::BlockMetadataHash => "BlockMetadataHash",
-            HashType::BlockPayloadHash => "BlockPayloadHash",
-            HashType::ProtocolHash => "ProtocolHash",
-            HashType::ContextHash => "ContextHash",
-            HashType::OperationHash => "OperationHash",
-            HashType::OperationListListHash => "OperationListListHash",
-            HashType::OperationMetadataHash => "OperationMetadataHash",
-            HashType::OperationMetadataListListHash => "OperationMetadataListListHash",
-            HashType::CryptoboxPublicKeyHash => "CryptoboxPublicKeyHash",
-            HashType::ContractKt1Hash => "ContractKt1Hash",
-            HashType::ContractTz1Hash => "ContractTz1Hash",
-            HashType::ContractTz2Hash => "ContractTz2Hash",
-            HashType::ContractTz3Hash => "ContractTz3Hash",
-            HashType::PublicKeyEd25519 => "PublicKeyEd25519",
-            HashType::PublicKeySecp256k1 => "PublicKeySecp256k1",
-            HashType::PublicKeyP256 => "PublicKeyP256",
-            HashType::Ed25519Signature => "Ed25519Signature",
-            HashType::Signature => "Signature",
-        }
-        .into(),
+        Encoding::Hash(hash) => hash.as_ref().into(),
         Encoding::Sized(size, encoding) => {
             FieldContents::sized(*size, get_contents(context, encoding, infos))
         }
@@ -319,7 +296,7 @@ fn peer_message_response(infos: &mut HashMap<String, Rc<MessageInfo>>) -> Messag
     let mut pre_size = Limit::default();
     if let BoundedDynamic(total_size, obj_encoding) = PeerMessageResponse::encoding() {
         pre_size += 4; // Dynamic encoding size, 4 bytes
-        if let Obj(_, ref fields) = **obj_encoding {
+        if let Obj(_, ref fields) = *obj_encoding {
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].get_name(), &"message".to_string());
             if let Tags(tag_size, tag_map) = fields[0].get_encoding() {
@@ -358,7 +335,7 @@ fn peer_message_response(infos: &mut HashMap<String, Rc<MessageInfo>>) -> Messag
                 }
 
                 if let Limit::UpTo(limit) = pre_size + max {
-                    assert!(limit <= *total_size, "PeerMessageResponse is limited to {} and cannot contain message of size {}", total_size, limit);
+                    assert!(limit <= total_size, "PeerMessageResponse is limited to {} and cannot contain message of size {}", total_size, limit);
                 }
 
                 return res;
