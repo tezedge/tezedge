@@ -173,7 +173,7 @@ impl RemoteBestKnownCurrentHead {
             self.remote = Some(Head::new(
                 block_header.hash.clone(),
                 block_header.header.level(),
-                block_header.header.fitness().to_vec(),
+                block_header.header.fitness().clone(),
             ));
         }
     }

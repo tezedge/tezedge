@@ -297,22 +297,16 @@ impl Encoding {
     }
 }
 
-/// Indicates that type has it's own ser/de schema.
+/// Indicates that type has its own ser/de schema.
 pub trait HasEncoding {
-    fn encoding() -> &'static Encoding;
+    fn encoding() -> Encoding;
 }
 
 macro_rules! hash_has_encoding {
     ($hash_name:ident, $enc_ref_name:ident) => {
-        lazy_static::lazy_static! {
-            static ref $enc_ref_name: Encoding = {
-                Encoding::Hash(crypto::hash::$hash_name::hash_type())
-            };
-        }
-
         impl HasEncoding for crypto::hash::$hash_name {
-            fn encoding() -> &'static Encoding {
-                &$enc_ref_name
+            fn encoding() -> Encoding {
+                Encoding::Hash(crypto::hash::$hash_name::hash_type())
             }
         }
     };
@@ -340,20 +334,15 @@ hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
 hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 hash_has_encoding!(Signature, SIGNATURE);
+hash_has_encoding!(NonceHash, NONCE_HASH);
 
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]
 macro_rules! has_encoding {
     ($struct_name:ident, $enc_ref_name:ident, $code:block) => {
-        lazy_static::lazy_static! {
-            static ref $enc_ref_name: Encoding = {
-                $code
-            };
-        }
-
         impl HasEncoding for $struct_name {
-            fn encoding() -> &'static Encoding {
-                &$enc_ref_name
+            fn encoding() -> Encoding {
+                $code
             }
         }
     };

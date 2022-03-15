@@ -46,7 +46,10 @@ use tezos_context_api::{
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosContextTezedgeOnDiskBackendOptions,
 };
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_messages::p2p::encoding::{
+    fitness::Fitness,
+    prelude::{BlockHeader, Operation},
+};
 use tezos_protocol_ipc_messages::{
     ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
     ContextGetTreeByPrefixRequest, DumpContextRequest, GenesisResultDataParams,
@@ -313,7 +316,7 @@ impl_to_ocaml_record! {
     PrevalidatorWrapper => OCamlPrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>
+        context_fitness: Option<OCamlList<OCamlBytes>>,
     }
 }
 
@@ -507,7 +510,7 @@ unsafe impl<'a> ToOCaml<OCamlBlockHeaderShellHeader> for FfiBlockHeaderShellHead
                 timestamp: OCamlInt64,
                 validation_passes: OCamlInt,
                 operations_hash: OCamlOperationListListHash,
-                fitness: OCamlList<OCamlBytes>,
+                fitness: OCamlList<OCamlBytes> => Fitness::as_ref(fitness),
                 context: OCamlContextHash,
             }
         }

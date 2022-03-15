@@ -83,10 +83,10 @@ fn assert_bounded(encoding: &Encoding, unbounded: &mut HashSet<String>) -> bool 
 fn boundaries() {
     let mut unbounded = HashSet::new();
 
-    assert_bounded(ConnectionMessage::encoding(), &mut unbounded);
-    assert_bounded(MetadataMessage::encoding(), &mut unbounded);
-    assert_bounded(AckMessage::encoding(), &mut unbounded);
-    assert_bounded(PeerMessageResponse::encoding(), &mut unbounded);
+    assert_bounded(&ConnectionMessage::encoding(), &mut unbounded);
+    assert_bounded(&MetadataMessage::encoding(), &mut unbounded);
+    assert_bounded(&AckMessage::encoding(), &mut unbounded);
+    assert_bounded(&PeerMessageResponse::encoding(), &mut unbounded);
 
     assert!(
         unbounded.is_empty(),

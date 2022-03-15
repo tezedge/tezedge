@@ -241,12 +241,7 @@ impl BlockHeaderShellInfo {
             timestamp: ts_to_rfc3339(block.header.timestamp())?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
-            fitness: block
-                .header
-                .fitness()
-                .iter()
-                .map(|x| hex::encode(&x))
-                .collect(),
+            fitness: block.header.fitness().as_hex_vec(),
             context: block.header.context().to_base58_check(),
         })
     }
@@ -263,7 +258,7 @@ impl BlockHeaderInfo {
         let predecessor = header.predecessor().to_base58_check();
         let timestamp = ts_to_rfc3339(header.timestamp())?;
         let operations_hash = header.operations_hash().to_base58_check();
-        let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
+        let fitness = header.fitness().as_hex_vec();
         let context = header.context().to_base58_check();
         let hash = block.hash.to_base58_check();
 

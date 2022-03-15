@@ -5,39 +5,24 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use super::fitness::Fitness;
 use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
 use super::limits::{
-    BLOCK_HEADER_FITNESS_MAX_SIZE, BLOCK_HEADER_MAX_SIZE, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE,
-    GET_BLOCK_HEADERS_MAX_LENGTH,
+    BLOCK_HEADER_MAX_SIZE, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE, GET_BLOCK_HEADERS_MAX_LENGTH,
 };
 
-pub type Fitness = Vec<Vec<u8>>;
 pub type Level = i32;
 
 pub fn display_fitness(fitness: &Fitness) -> String {
-    fitness
-        .iter()
-        .map(hex::encode)
-        .collect::<Vec<String>>()
-        .join("::")
+    fitness.to_string()
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
-)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
     block_header: BlockHeader,
@@ -57,17 +42,7 @@ impl From<BlockHeaderMessage> for BlockHeader {
 
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
-)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
     #[encoding(dynamic, list = "GET_BLOCK_HEADERS_MAX_LENGTH")]
@@ -94,7 +69,6 @@ impl GetBlockHeadersMessage {
     HasEncoding,
     NomReader,
     BinWriter,
-    tezos_encoding::generator::Generated,
 )]
 #[encoding(bounded = "BLOCK_HEADER_MAX_SIZE")]
 pub struct BlockHeader {
@@ -113,13 +87,6 @@ pub struct BlockHeader {
     #[get = "pub"]
     operations_hash: OperationListListHash,
     #[get = "pub"]
-    #[encoding(composite(
-        dynamic = "BLOCK_HEADER_FITNESS_MAX_SIZE",
-        list,
-        dynamic,
-        list,
-        builtin = "Uint8"
-    ))]
     fitness: Fitness,
     #[get = "pub"]
     context: ContextHash,

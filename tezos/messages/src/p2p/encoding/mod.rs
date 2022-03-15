@@ -10,6 +10,7 @@ pub mod connection;
 pub mod current_branch;
 pub mod current_head;
 pub mod deactivate;
+pub mod fitness;
 pub mod limits;
 pub mod mempool;
 pub mod metadata;

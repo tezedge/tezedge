@@ -14,7 +14,7 @@ use crypto::hash::{
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
-use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
+use tezos_messages::p2p::encoding::fitness::{FitnessInner, FitnessRef};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
 };
@@ -147,7 +147,7 @@ pub struct ApplyBlockExecutionTimestamps {
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
-    pub context_fitness: Option<Fitness>,
+    pub context_fitness: Option<FitnessInner>,
 }
 
 impl fmt::Debug for PrevalidatorWrapper {
@@ -158,7 +158,7 @@ impl fmt::Debug for PrevalidatorWrapper {
             self.chain_id.to_base58_check(),
             self.protocol.to_base58_check(),
             match &self.context_fitness {
-                Some(fitness) => display_fitness(fitness),
+                Some(fitness) => FitnessRef(fitness).to_string(),
                 None => "-none-".to_string(),
             },
         )

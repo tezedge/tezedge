@@ -848,6 +848,8 @@ dependencies = [
  "serde 1.0.136",
  "serde_json",
  "sodiumoxide",
+ "strum",
+ "strum_macros",
  "thiserror",
 ]
 

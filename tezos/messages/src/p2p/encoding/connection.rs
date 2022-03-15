@@ -11,7 +11,6 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::generator::Generated;
 use tezos_encoding::{
     binary_reader::BinaryReaderError, enc::BinWriter, encoding::HasEncoding, nom::NomReader,
 };
@@ -20,9 +19,7 @@ use crate::p2p::binary_message::{BinaryChunk, BinaryRead};
 use crate::p2p::encoding::version::NetworkVersion;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(
-    Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated,
-)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct ConnectionMessage {
     pub port: u16,
     #[get = "pub"]

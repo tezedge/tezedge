@@ -18,57 +18,34 @@ use std::convert::TryFrom;
 
 use crypto::hash::{BlockHash, ContextHash, HashTrait, OperationListListHash, Signature};
 use tezos_encoding::{
-    binary_reader::BinaryReaderError, encoding::HasEncoding, nom::NomReader, types::Mutez,
+    binary_reader::BinaryReaderError,
+    enc::BinWriter,
+    encoding::HasEncoding,
+    nom::NomReader,
+    types::{Mutez, SizedBytes},
 };
+
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
+#[cfg(feature = "fuzzing")]
+use fuzzcheck::mutators::option::OptionMutator;
 
 use crate::{
     base::signature_public_key::SignaturePublicKeyHash,
-    p2p::encoding::{
-        block_header::{Fitness, Level},
-        limits::BLOCK_HEADER_FITNESS_MAX_SIZE,
-        operation::Operation as P2POperation,
-    },
+    p2p::encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
+    Timestamp,
 };
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct Operation {
     pub branch: BlockHash,
+    #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
     pub signature: Signature,
-}
-
-impl tezos_encoding::nom::NomReader for Operation {
-    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
-        nom::combinator::map(
-            nom::sequence::tuple((
-                tezos_encoding::nom::field(
-                    "Operation::branch",
-                    <BlockHash as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-                tezos_encoding::nom::field(
-                    "Operation::contents",
-                    tezos_encoding::nom::reserve(
-                        Signature::hash_size(),
-                        tezos_encoding::nom::list(
-                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
-                        ),
-                    ),
-                ),
-                tezos_encoding::nom::field(
-                    "Operation::signature",
-                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-            )),
-            |(branch, contents, signature)| Operation {
-                branch,
-                contents,
-                signature,
-            },
-        )(bytes)
-    }
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -91,36 +68,11 @@ impl TryFrom<P2POperation> for Operation {
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct OperationContents {
+    #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
     pub signature: Signature,
-}
-
-impl tezos_encoding::nom::NomReader for OperationContents {
-    fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
-        nom::combinator::map(
-            nom::sequence::tuple((
-                tezos_encoding::nom::field(
-                    "OperationContents::contents",
-                    tezos_encoding::nom::reserve(
-                        Signature::hash_size(),
-                        tezos_encoding::nom::list(
-                            <Contents as tezos_encoding::nom::NomReader>::nom_read,
-                        ),
-                    ),
-                ),
-                tezos_encoding::nom::field(
-                    "OperationContents::signature",
-                    <Signature as tezos_encoding::nom::NomReader>::nom_read,
-                ),
-            )),
-            |(contents, signature)| OperationContents {
-                contents,
-                signature,
-            },
-        )(bytes)
-    }
 }
 
 impl TryFrom<P2POperation> for OperationContents {
@@ -144,7 +96,7 @@ impl TryFrom<P2POperation> for OperationContents {
 ///
 /// Comparing to [super::super::proto_001::operation::Content], new variant [Operation::FailingNoop] is added.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[encoding(tags = "u8")]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Contents {
@@ -212,7 +164,8 @@ pub enum Contents {
 
 /// Register_global_constant (tag 111).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#register-global-constant-tag-111].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct RegisterGlobalConstantOperation {
     pub source: SignaturePublicKeyHash,
     pub fee: Mutez,
@@ -226,7 +179,7 @@ pub struct RegisterGlobalConstantOperation {
 /// Double_baking_evidence (tag 3).
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#double-baking-evidence-tag-3].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct DoubleBakingEvidenceOperation {
     #[encoding(dynamic)]
     pub bh1: FullHeader,
@@ -237,30 +190,23 @@ pub struct DoubleBakingEvidenceOperation {
 /// Full Header.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#endorsement-tag-0].
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct FullHeader {
     #[encoding(builtin = "Int32")]
     pub level: Level,
     pub proto: u8,
     pub predecessor: BlockHash,
-    #[encoding(timestamp)]
-    pub timestamp: i64,
+    pub timestamp: Timestamp,
     pub validation_pass: u8,
     pub operations_hash: OperationListListHash,
-    #[encoding(composite(
-        dynamic = "BLOCK_HEADER_FITNESS_MAX_SIZE",
-        list,
-        dynamic,
-        list,
-        builtin = "Uint8"
-    ))]
     pub fitness: Fitness,
     pub context: ContextHash,
     pub priority: u16,
-    #[encoding(sized = "8", bytes)]
-    pub proof_of_work_nonce: Vec<u8>,
-    #[encoding(option, sized = "32", bytes)]
-    pub seed_nonce_hash: Option<Vec<u8>>,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
+    pub proof_of_work_nonce: SizedBytes<8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "fuzzing", field_mutator(OptionMutator<SizedBytes<32>, SizedBytesMutator<32>>))]
+    pub seed_nonce_hash: Option<SizedBytes<32>>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,
 }
@@ -277,6 +223,7 @@ mod tests {
     use crate::p2p::binary_message::BinaryRead;
     use crate::p2p::encoding::block_header::display_fitness;
     use crate::p2p::encoding::operation::Operation as P2POperation;
+    use crate::protocol::proto_005_2::operation::Ballot;
 
     use super::*;
     use super::{Contents, Operation};
@@ -370,7 +317,7 @@ mod tests {
         match &contents[0] {
             Contents::SeedNonceRevelation(SeedNonceRevelationOperation { level, nonce }) => {
                 assert_eq!(*level, 1331);
-                assert_eq!(nonce, &[0; 32]);
+                assert_eq!(nonce, &[0; 32].into());
             }
             _ => assert!(false, "seed nonce revelation expected"),
         }
@@ -521,7 +468,7 @@ mod tests {
                     proposal.to_base58_check(),
                     "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp"
                 );
-                assert_eq!(*ballot, 0);
+                assert!(matches!(*ballot, Ballot::Nay));
             }
             _ => assert!(false, " expected"),
         }

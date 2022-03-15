@@ -568,7 +568,7 @@ pub fn test_decoding_generated_data<T>()
 where
     T: HasEncoding + BinaryMessage,
 {
-    with_generated_encoded_data(T::encoding(), |data, correct, _, _| {
+    with_generated_encoded_data(&T::encoding(), |data, correct, _, _| {
         let res = T::from_bytes(&data);
         match (correct, res) {
             (true, Err(e)) => panic!("Expected correct decoding, got {:?}", e),

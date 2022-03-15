@@ -1,0 +1,9 @@
+{
+  "branch": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
+  "contents": [{
+    "kind": "activate_account",
+    "pkh": "tz1ddb9NMYHZi5UzPdzTZMYQQZoMub195zgv",
+    "secret": "41f98b15efc63fa893d61d7d6eee4a2ce9427ac4"
+  }],
+  "signature": "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ"
+}
