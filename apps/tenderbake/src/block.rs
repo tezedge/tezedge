@@ -21,12 +21,12 @@ impl fmt::Display for BlockId {
 }
 
 #[derive(Clone)]
-pub struct Votes<I> {
-    pub ids: BTreeMap<u32, I>,
+pub struct Votes<Id, I> {
+    pub ids: BTreeMap<Id, I>,
     pub power: u32,
 }
 
-impl<I> Default for Votes<I> {
+impl<Id, I> Default for Votes<Id, I> {
     fn default() -> Self {
         Votes {
             ids: BTreeMap::default(),
@@ -35,30 +35,39 @@ impl<I> Default for Votes<I> {
     }
 }
 
-impl<I> Votes<I> {
+impl<Id, I> Votes<Id, I> {
     pub fn is_empty(&self) -> bool {
         self.ids.is_empty() && self.power == 0
     }
 }
 
-impl<I> FromIterator<(Validator, I)> for Votes<I> {
-    fn from_iter<T: IntoIterator<Item = (Validator, I)>>(iter: T) -> Self {
+impl<Id, I> FromIterator<(Validator<Id>, I)> for Votes<Id, I>
+where
+    Id: Ord,
+{
+    fn from_iter<T: IntoIterator<Item = (Validator<Id>, I)>>(iter: T) -> Self {
         let mut s = Votes::default();
         s.extend(iter);
         s
     }
 }
 
-impl<I> Extend<(Validator, I)> for Votes<I> {
-    fn extend<T: IntoIterator<Item = (Validator, I)>>(&mut self, iter: T) {
+impl<Id, I> Extend<(Validator<Id>, I)> for Votes<Id, I>
+where
+    Id: Ord,
+{
+    fn extend<T: IntoIterator<Item = (Validator<Id>, I)>>(&mut self, iter: T) {
         for v in iter {
             *self += v;
         }
     }
 }
 
-impl<I> AddAssign<(Validator, I)> for Votes<I> {
-    fn add_assign(&mut self, (Validator { id, power }, op): (Validator, I)) {
+impl<Id, I> AddAssign<(Validator<Id>, I)> for Votes<Id, I>
+where
+    Id: Ord,
+{
+    fn add_assign(&mut self, (Validator { id, power }, op): (Validator<Id>, I)) {
         if self.ids.insert(id, op).is_none() {
             self.power += power;
         }
@@ -66,20 +75,20 @@ impl<I> AddAssign<(Validator, I)> for Votes<I> {
 }
 
 #[derive(Clone)]
-pub struct Prequorum<I> {
+pub struct Prequorum<Id, I> {
     pub block_id: BlockId,
-    pub votes: Votes<I>,
+    pub votes: Votes<Id, I>,
 }
 
-impl<I> Eq for Prequorum<I> {}
+impl<Id, I> Eq for Prequorum<Id, I> {}
 
-impl<I> PartialEq for Prequorum<I> {
+impl<Id, I> PartialEq for Prequorum<Id, I> {
     fn eq(&self, other: &Self) -> bool {
         self.block_id.eq(&other.block_id)
     }
 }
 
-impl<I> PartialOrd for Prequorum<I> {
+impl<Id, I> PartialOrd for Prequorum<Id, I> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.block_id.payload_hash != other.block_id.payload_hash {
             None
@@ -92,8 +101,8 @@ impl<I> PartialOrd for Prequorum<I> {
 }
 
 #[derive(Clone)]
-pub struct Quorum<I> {
-    pub votes: Votes<I>,
+pub struct Quorum<Id, I> {
+    pub votes: Votes<Id, I>,
 }
 
 pub trait Payload {
@@ -105,7 +114,7 @@ pub trait Payload {
 }
 
 #[derive(Clone)]
-pub struct BlockInfo<P>
+pub struct BlockInfo<Id, P>
 where
     P: Payload,
 {
@@ -114,12 +123,12 @@ where
     pub block_id: BlockId,
     pub timestamp: Timestamp,
     pub transition: bool,
-    pub prequorum: Option<Prequorum<P::Item>>,
-    pub quorum: Option<Quorum<P::Item>>,
+    pub prequorum: Option<Prequorum<Id, P::Item>>,
+    pub quorum: Option<Quorum<Id, P::Item>>,
     pub payload: P,
 }
 
-impl<P> BlockInfo<P>
+impl<Id, P> BlockInfo<Id, P>
 where
     P: Payload,
 {
@@ -142,7 +151,7 @@ where
     };
 }
 
-impl<P> fmt::Display for BlockInfo<P>
+impl<Id, P> fmt::Display for BlockInfo<Id, P>
 where
     P: Payload,
 {

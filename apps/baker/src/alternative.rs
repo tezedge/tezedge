@@ -20,6 +20,7 @@ use crypto::{
     },
 };
 use tenderbake::{BlockId, Config, Machine, Validator, ValidatorMap};
+use tezos_encoding::types::SizedBytes;
 use tezos_messages::protocol::proto_012::operation::{
     Contents, InlinedEndorsement, Operation, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedEndorsementMempoolContents, InlinedPreendorsement, InlinedPreendorsementContents, InlinedPreendorsementVariant,
 };
@@ -73,60 +74,39 @@ impl tenderbake::Payload for BlockPayload {
 }
 
 struct SlotsInfo {
+    consensus_committee_size: u32,
     this: ContractTz1Hash,
-    validators: BTreeMap<ContractTz1Hash, u32>,
-    validators_rev: BTreeMap<u32, ContractTz1Hash>,
-    counter: u32,
     delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Slots>>,
 }
 
 impl SlotsInfo {
     fn populate(&mut self, level: i32, delegates: BTreeMap<ContractTz1Hash, Slots>) {
         self.delegates.insert(level, delegates.clone());
-        let SlotsInfo {
-            validators,
-            counter,
-            validators_rev,
-            ..
-        } = self;
-        for (validator, _) in delegates {
-            validators.entry(validator.clone()).or_insert_with(|| {
-                let id = *counter;
-                validators_rev.insert(id, validator);
-                *counter += 1;
-                id
-            });
-        }
     }
 
     fn slots(&self, level: i32) -> Option<&Vec<u16>> {
         self.delegates.get(&level)?.get(&self.this).map(|s| &s.0)
     }
 
-    fn slot(&self, id: u32, level: i32) -> Option<u16> {
+    fn slot(&self, id: &ContractTz1Hash, level: i32) -> Option<u16> {
         self.delegates
             .get(&level)?
-            .get(self.validators_rev.get(&id)?)?
+            .get(id)?
             .0
             .first()
             .cloned()
     }
 
-    fn id(&self) -> Option<u32> {
-        self.validators.get(&self.this).cloned()
-    }
-
-    fn validator(&self, level: i32, slot: u16) -> Option<Validator> {
+    fn validator(&self, level: i32, slot: u16) -> Option<Validator<ContractTz1Hash>> {
         let i = self.delegates.get(&level)?;
-        let (k, s) = i.iter().find(|&(_, v)| v.0.first() == Some(&slot))?;
-        let id = self.validators.get(k)?;
+        let (id, s) = i.iter().find(|&(_, v)| v.0.first() == Some(&slot))?;
         Some(Validator {
-            id: *id,
+            id: id.clone(),
             power: s.0.len() as u32,
         })
     }
 
-    fn convert_prequorum(&self, v: Prequorum) -> tenderbake::Prequorum<Operation> {
+    fn convert_prequorum(&self, v: Prequorum) -> tenderbake::Prequorum<ContractTz1Hash, Operation> {
         let level = v.level;
         tenderbake::Prequorum {
             block_id: BlockId {
@@ -139,18 +119,7 @@ impl SlotsInfo {
                 v.firsts_slot
                     .into_iter()
                     .zip(v.ops.into_iter())
-                    .filter_map(|(slot, op)| {
-                        let i = self.delegates.get(&level)?;
-                        let (k, s) = i.iter().find(|&(_, v)| v.0.first() == Some(&slot))?;
-                        let id = self.validators.get(k)?;
-                        Some((
-                            Validator {
-                                id: *id,
-                                power: s.0.len() as u32,
-                            },
-                            op,
-                        ))
-                    })
+                    .filter_map(|(slot, op)| Some((self.validator(level, slot)?, op)))
                     .collect()
             },
         }
@@ -159,27 +128,16 @@ impl SlotsInfo {
     fn convert_quorum(
         &self,
         v: &[(InlinedEndorsementMempoolContentsEndorsementVariant, Operation)],
-    ) -> tenderbake::Quorum<Operation> {
+    ) -> tenderbake::Quorum<ContractTz1Hash, Operation> {
         tenderbake::Quorum {
             votes: v
                 .iter()
-                .filter_map(|(v, op)| {
-                    let i = self.delegates.get(&v.level)?;
-                    let (k, s) = i.iter().find(|&(_, s)| s.0.first() == Some(&v.slot))?;
-                    let id = self.validators.get(k)?;
-                    Some((
-                        Validator {
-                            id: *id,
-                            power: s.0.len() as u32,
-                        },
-                        op.clone(),
-                    ))
-                })
+                .filter_map(|(v, op)| Some((self.validator(v.level, v.slot)?, op.clone())))
                 .collect(),
         }
     }
 
-    fn convert_block_info(&self, v: BlockInfo) -> tenderbake::BlockInfo<BlockPayload> {
+    fn convert_block_info(&self, v: BlockInfo) -> tenderbake::BlockInfo<ContractTz1Hash, BlockPayload> {
         tenderbake::BlockInfo {
             pred_hash: v.predecessor.0.as_slice().try_into().unwrap(),
             hash: v.hash.0.as_slice().try_into().unwrap(),
@@ -210,31 +168,25 @@ impl SlotsInfo {
 }
 
 impl ValidatorMap for SlotsInfo {
-    fn preendorser(&self, level: i32, round: i32) -> Option<Validator> {
+    type Id = ContractTz1Hash;
+
+    fn preendorser(&self, level: i32, round: i32) -> Option<Validator<Self::Id>> {
         let _ = round;
-        let id = self.id()?;
-        let slots = self.slots(level)?;
         Some(Validator {
-            id,
-            power: slots.len() as u32,
+            id: self.this.clone(),
+            power: self.slots(level)?.len() as u32,
         })
     }
 
-    fn endorser(&self, level: i32, round: i32) -> Option<Validator> {
-        let _ = round;
-        let id = self.id()?;
-        let slots = self.slots(level)?;
-        Some(Validator {
-            id,
-            power: slots.len() as u32,
-        })
+    fn endorser(&self, level: i32, round: i32) -> Option<Validator<Self::Id>> {
+        self.preendorser(level, round)
     }
 
     fn proposer(&self, level: i32, round: i32) -> Option<i32> {
         self.slots(level)
             .into_iter()
             .flatten()
-            .skip_while(|c| **c < round as u16)
+            .skip_while(|c| **c < (round as u32 % self.consensus_committee_size) as u16)
             .next()
             .map(|r| *r as i32)
     }
@@ -278,10 +230,8 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
     let mut state = Machine::empty();
 
     let mut slots_info = SlotsInfo {
+        consensus_committee_size: constants.consensus_committee_size,
         this: service.crypto.public_key_hash().clone(),
-        validators: BTreeMap::new(),
-        counter: 0,
-        validators_rev: BTreeMap::new(),
         delegates: BTreeMap::new(),
     };
 
@@ -408,7 +358,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
             }) => {
                 header.signature.0 = vec![0x00; 64];
                 let p = guess_proof_of_work(&header, proof_of_work_threshold);
-                header.proof_of_work_nonce = p.to_vec();
+                header.proof_of_work_nonce = SizedBytes(p);
                 slog::info!(service.logger, "{:?}", header);
                 header.signature.0.clear();
                 let (data, _) = service.crypto.sign(0x11, &chain_id, &header).unwrap();
@@ -416,7 +366,7 @@ pub fn run(service: &mut ServiceDefault, events: &mut Receiver<Action>) {
                     .client
                     .inject_block(
                         header.level,
-                        i32::from_be_bytes(header.fitness[4].as_slice().try_into().unwrap()),
+                        header.fitness.round().unwrap_or(0),
                         data,
                         operations.clone(),
                         i64::MAX,
@@ -452,7 +402,7 @@ fn perform(
     slots_info: &SlotsInfo,
     blocks_per_commitment: u32,
     service: &mut ServiceDefault,
-    action: tenderbake::Action<BlockPayload>,
+    action: tenderbake::Action<ContractTz1Hash, BlockPayload>,
 ) {
     match action {
         tenderbake::Action::ScheduleTimeout(timestamp) => {
@@ -538,7 +488,7 @@ fn perform(
                 branch: BlockHash(pred_hash.to_vec()),
                 operations: InlinedPreendorsementContents::Preendorsement(InlinedPreendorsementVariant {
                     slot: slots_info
-                        .slot(content.validator.id, content.block_id.level)
+                        .slot(&content.validator.id, content.block_id.level)
                         .unwrap(),
                     level: content.block_id.level,
                     round: content.block_id.round,
@@ -560,7 +510,7 @@ fn perform(
                 branch: BlockHash(pred_hash.to_vec()),
                 operations: InlinedEndorsementMempoolContents::Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant {
                     slot: slots_info
-                        .slot(content.validator.id, content.block_id.level)
+                        .slot(&content.validator.id, content.block_id.level)
                         .unwrap(),
                     level: content.block_id.level,
                     round: content.block_id.round,

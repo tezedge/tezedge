@@ -18,23 +18,23 @@ pub struct LockedRound {
     payload_hash: [u8; 32],
 }
 
-pub struct EndorsablePayload<P>
+pub struct EndorsablePayload<Id, P>
 where
     P: Payload,
 {
     pred_timestamp: Timestamp,
     pred_round: i32,
     pred_hash: [u8; 32],
-    prequorum: Prequorum<P::Item>,
+    prequorum: Prequorum<Id, P::Item>,
     locked: Option<LockedRound>,
 }
 
-pub struct ElectedBlock<P>
+pub struct ElectedBlock<Id, P>
 where
     P: Payload,
 {
-    head: BlockInfo<P>,
-    quorum: Quorum<P::Item>,
+    head: BlockInfo<Id, P>,
+    quorum: Quorum<Id, P::Item>,
 }
 
 pub enum ClosestRound {
@@ -63,16 +63,16 @@ impl Default for ClosestRound {
     }
 }
 
-pub struct Machine<P>
+pub struct Machine<Id, P>
 where
     P: Payload,
 {
-    proposal: Proposal<P>,
-    incomplete_prequorum: Votes<P::Item>,
-    incomplete_quorum: Votes<P::Item>,
+    proposal: Proposal<Id, P>,
+    incomplete_prequorum: Votes<Id, P::Item>,
+    incomplete_quorum: Votes<Id, P::Item>,
 
-    endorsable_payload: Option<EndorsablePayload<P>>,
-    elected_block: Option<ElectedBlock<P>>,
+    endorsable_payload: Option<EndorsablePayload<Id, P>>,
+    elected_block: Option<ElectedBlock<Id, P>>,
     payload: P,
 
     closest_timestamp_this_level: Option<Timestamp>,
@@ -80,10 +80,11 @@ where
     closest_round: ClosestRound,
 }
 
-impl<P> Machine<P>
+impl<Id, P> Machine<Id, P>
 where
     P: Payload + Clone,
     P::Item: Clone,
+    Id: Clone + Ord,
 {
     pub fn empty() -> Self {
         Machine {
@@ -111,9 +112,9 @@ where
     /// Endorsement -> [ ScheduleTimeout? ]
     /// Timeout -> [ Propose ]
     /// PayloadItem -> [ ]
-    pub fn handle<V>(&mut self, config: &Config, map: &V, event: Event<P>) -> ArrayVec<Action<P>, 2>
+    pub fn handle<V>(&mut self, config: &Config, map: &V, event: Event<Id, P>) -> ArrayVec<Action<Id, P>, 2>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         match event {
             Event::Proposal(proposal, now) => self.proposal(config, map, *proposal, now),
@@ -129,7 +130,7 @@ where
         }
     }
 
-    fn timeout(&mut self) -> ArrayVec<Action<P>, 2> {
+    fn timeout(&mut self) -> ArrayVec<Action<Id, P>, 2> {
         let level = self.proposal.head.block_id.level;
         log::info!(" .  will bake level: {level}, {}", self.closest_round);
         let block = match mem::take(&mut self.closest_round) {
@@ -180,11 +181,11 @@ where
         &mut self,
         config: &Config,
         map: &V,
-        new_proposal: Proposal<P>,
+        new_proposal: Proposal<Id, P>,
         now: Timestamp,
-    ) -> ArrayVec<Action<P>, 2>
+    ) -> ArrayVec<Action<Id, P>, 2>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         log::info!("Proposal: {}", new_proposal.head);
 
@@ -332,7 +333,7 @@ where
         actions
     }
 
-    fn update_endorsable_payload(&mut self, new_proposal: &Proposal<P>) {
+    fn update_endorsable_payload(&mut self, new_proposal: &Proposal<Id, P>) {
         if let Some(ref new) = &new_proposal.head.prequorum {
             if matches!(&self.endorsable_payload, Some(ref e) if &e.prequorum >= new) {
                 // our prequorum is better, do nothing
@@ -354,9 +355,9 @@ where
         }
     }
 
-    fn preendorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<P>>
+    fn preendorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         map.preendorser(block_id.level, block_id.round)
             .map(|validator| {
@@ -376,11 +377,11 @@ where
         config: &Config,
         map: &V,
         now: Timestamp,
-        content: Preendorsement,
+        content: Preendorsement<Id>,
         op: P::Item,
-    ) -> ArrayVec<Action<P>, 2>
+    ) -> ArrayVec<Action<Id, P>, 2>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         let current_round = self.proposal.round_local_coord(config, now);
 
@@ -428,9 +429,9 @@ where
         actions
     }
 
-    fn endorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<P>>
+    fn endorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         map.endorser(block_id.level, block_id.round)
             .map(|validator| {
@@ -450,9 +451,9 @@ where
         config: &Config,
         map: &V,
         now: Timestamp,
-        content: Endorsement,
+        content: Endorsement<Id>,
         op: P::Item,
-    ) -> ArrayVec<Action<P>, 2>
+    ) -> ArrayVec<Action<Id, P>, 2>
     where
         V: ValidatorMap,
     {

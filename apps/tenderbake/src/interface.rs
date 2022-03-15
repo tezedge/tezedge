@@ -58,16 +58,16 @@ impl Config {
 }
 
 /// Proposal of new head and its predecessor
-pub struct Proposal<P>
+pub struct Proposal<Id, P>
 where
     P: Payload,
 {
     pub pred_timestamp: Timestamp,
     pub pred_round: i32,
-    pub head: BlockInfo<P>,
+    pub head: BlockInfo<Id, P>,
 }
 
-impl<P> Proposal<P>
+impl<Id, P> Proposal<Id, P>
 where
     P: Payload,
 {
@@ -78,53 +78,59 @@ where
     }
 }
 
-pub struct Preendorsement {
-    pub validator: Validator,
+pub struct Preendorsement<Id> {
+    pub validator: Validator<Id>,
     pub block_id: BlockId,
 }
 
-impl fmt::Display for Preendorsement {
+impl<Id> fmt::Display for Preendorsement<Id>
+where
+    Id: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}, {}", self.block_id, self.validator)
     }
 }
 
-pub struct Endorsement {
-    pub validator: Validator,
+pub struct Endorsement<Id> {
+    pub validator: Validator<Id>,
     pub block_id: BlockId,
 }
 
-impl fmt::Display for Endorsement {
+impl<Id> fmt::Display for Endorsement<Id>
+where
+    Id: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}, {}", self.block_id, self.validator)
     }
 }
 
-pub enum Event<P>
+pub enum Event<Id, P>
 where
     P: Payload,
 {
-    Proposal(Box<Proposal<P>>, Timestamp),
-    Preendorsement(Preendorsement, P::Item, Timestamp),
-    Endorsement(Endorsement, P::Item, Timestamp),
+    Proposal(Box<Proposal<Id, P>>, Timestamp),
+    Preendorsement(Preendorsement<Id>, P::Item, Timestamp),
+    Endorsement(Endorsement<Id>, P::Item, Timestamp),
     Timeout,
     PayloadItem(P::Item),
 }
 
-pub enum Action<P>
+pub enum Action<Id, P>
 where
     P: Payload,
 {
     ScheduleTimeout(Timestamp),
     Preendorse {
         pred_hash: [u8; 32],
-        content: Preendorsement,
+        content: Preendorsement<Id>,
     },
     Endorse {
         pred_hash: [u8; 32],
-        content: Endorsement,
+        content: Endorsement<Id>,
     },
-    Propose(Box<BlockInfo<P>>),
+    Propose(Box<BlockInfo<Id, P>>),
 }
 
 #[cfg(test)]

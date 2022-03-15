@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryInto;
-
 use redux_rs::{ActionWithMeta, Store};
 
 use crate::types::{LevelState, RoundState};
@@ -200,7 +198,7 @@ pub fn effects(store: &mut Store<State, ServiceDefault, Action>, action: &Action
                 .client
                 .inject_block(
                     header.level,
-                    i32::from_be_bytes(header.fitness[4].as_slice().try_into().unwrap()),
+                    header.fitness.round().unwrap_or(0),
                     data,
                     operations.clone(),
                     i64::MAX,
