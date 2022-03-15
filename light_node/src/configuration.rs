@@ -391,12 +391,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Enable or disable prechecking of endorsements"))
-        .arg(Arg::with_name("disable-apply-retry")
-            .long("disable-apply-retry")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Enable or disable prechecking of endorsements"))
         .arg(Arg::with_name("disable-peer-graylist")
             .long("disable-peer-graylist")
             .global(true)
@@ -1090,10 +1084,6 @@ impl Environment {
                         s.parse()
                             .expect("Boolean value expected for disable-endorsements-precheck")
                     }),
-                disable_apply_retry: args.value_of("disable-apply-retry").map_or(false, |s| {
-                    s.parse()
-                        .expect("Boolean value expected for disable-apply-retry")
-                }),
                 randomness_seed: args.value_of("randomness-seed").map(|s| {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")

@@ -5,13 +5,16 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::net::SocketAddr;
 
-use crypto::hash::OperationHash;
+use crypto::hash::{BlockHash, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
+use tezos_messages::protocol::SupportedProtocol;
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::OperationKind;
 use crate::peers::remove::PeersRemoveAction;
+use crate::prechecker::PrecheckerState;
 use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
@@ -269,21 +272,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
 
-            if retry.is_some() {
-                if config.disable_apply_retry {
-                    slog::info!(
-                        &state.log,
-                        "Block `{new_block}` applied after retry, not using it as current head",
-                        new_block = block.hash.to_base58_check();
-                    );
-                    return;
-                } else {
-                    slog::info!(
-                        &state.log,
-                        "Block `{new_block}` applied after retry",
-                        new_block = block.hash.to_base58_check();
-                    );
-                }
+            // TODO currently supported protocols cache is mainained in the prechecker part
+            if should_skip_block_with_retry(&state.prechecker, &block.hash, retry) {
+                slog::info!(
+                    &state.log,
+                    "Block `{new_block}` applied after retry, not using it as current head",
+                    new_block = block.hash.to_base58_check();
+                );
+                return;
             }
 
             let old_head_state = mempool_state.local_head_state.clone();
@@ -1002,4 +998,29 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
         }
         _ => return,
     };
+}
+
+/// Checks if the block should be skipped using as the mempool head.
+///
+/// Block should be skipped iff
+/// - it has 012_PtHangz2 protocol
+/// - it has been applied successfully after failed attempt because of context mismatch
+///
+fn should_skip_block_with_retry(
+    state: &PrecheckerState,
+    block_hash: &BlockHash,
+    error: &Option<ProtocolServiceError>,
+) -> bool {
+    if !error.as_ref().map_or(
+        false,
+        ProtocolServiceError::is_cache_context_hash_mismatch_error,
+    ) {
+        return false;
+    }
+    let protocol = state
+        .protocol_version_cache
+        .protocol_versions
+        .get(block_hash)
+        .map(|(_, p)| p);
+    protocol.map_or(false, |p| *p == SupportedProtocol::Proto011)
 }
