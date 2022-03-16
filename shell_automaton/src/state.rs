@@ -257,22 +257,14 @@ impl State {
             None => return false,
         };
 
-        if current_head.header.level() > head.header.level() {
-            return false;
+        if head.header.level() < current_head.header.level() {
+            false
+        } else if head.header.level() == current_head.header.level() {
+            self.is_same_head(head.header.level(), &head.hash)
+                || head.header.fitness() > current_head.header.fitness()
+        } else {
+            true
         }
-
-        if current_head.header.level() == head.header.level()
-            && !self.is_same_head(head.header.level(), &head.hash)
-        {
-            return false;
-        }
-
-        // if !fitness_gt(current_head.header.fitness(), header.fitness()) {
-        //     return false;
-        // }
-
-        // TODO(zura): other checks
-        true
     }
 
     pub fn is_same_head(&self, level: Level, hash: &BlockHash) -> bool {
