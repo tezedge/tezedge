@@ -1,5 +1,6 @@
 import os
 import time
+import itertools
 from typing import Callable, Dict, List, Tuple
 
 from client.client import Client
@@ -7,6 +8,7 @@ from daemons.baker import Baker
 from daemons.endorser import Endorser
 from daemons.accuser import Accuser
 from daemons.node import Node
+from tools.constants import NodeParams
 
 NODE = 'light-node'
 CLIENT = 'tezos-client'
@@ -14,6 +16,16 @@ CLIENT_ADMIN = 'tezos-admin-client'
 BAKER = 'tezos-baker'
 ENDORSER = 'tezos-endorser'
 ACCUSER = 'tezos-accuser'
+NODE_LETTER = {
+    'T': 'light-node',
+    'O': 'tezos-node',
+}
+
+
+node_sequence = (
+    NODE_LETTER[l]
+    for l in itertools.cycle(os.getenv('TEZOS_NODE_SEQUENCE', 'T'))
+)
 
 
 class Sandbox:
@@ -140,6 +152,8 @@ class Sandbox:
             peers = list(range(self.num_peers))
         assert all(0 <= peer < self.num_peers for peer in peers)
 
+        node_name = next(node_sequence)
+
         log_file = None
         if self.log_dir:
             log_file = f'{self.log_dir}/node{node_id}_{self.counter}.txt'
@@ -148,15 +162,23 @@ class Sandbox:
 
         params = [] if params is None else params
         if private:
-            # TODO: FIX THIS IN TEZEDGE
-            params = params + ['--private-node', 'true']
-        params = params + ['--network=sandbox']
+            if node_name == 'light-node':
+                # TODO: FIX THIS IN TEZEDGE
+                params = params + ['--private-node', 'true']
+            else:
+                params = params + ['--private-mode']
+        if node_name == 'light-node':
+            params = params + ['--network=sandbox']
         if os.environ.get('CONTEXT_MUST_SURVIVE_RESTARTS'):
             # NOTE: The TezEdge in-memory context doesn't survive restarts,
             # and some tests require that, disable for now.
             params = params + ['--tezos-context-storage=irmin']
         peers_rpc = [self.p2p + p for p in peers]
-        node_bin = self._wrap_path(NODE, branch)
+        node_bin = self._wrap_path(node_name, branch)
+
+        if isinstance(params, NodeParams):
+            params = params[node_name]
+
         node = Node(
             node_bin,
             config=node_config,
@@ -283,8 +305,8 @@ class Sandbox:
 
     def init_node(self, node, snapshot, reconstruct):
         """Generate node id and import snapshot """
-        # node.init_id()
-        # node.init_config()
+        node.init_id()
+        node.init_config()
         if snapshot is not None:
             params = ['--reconstruct'] if reconstruct else []
             node.snapshot_import(snapshot, params)

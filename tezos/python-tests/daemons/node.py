@@ -99,6 +99,8 @@ class Node:
             elif '--network' not in params:
                 params = params + ['--network', 'sandbox']
 
+        self.node_name = os.path.basename(node)
+
         # the given config will be applied in :func:`init_config`
         self.config = config
         self.log_file = log_file
@@ -121,30 +123,43 @@ class Node:
             '--no-bootstrap-peers',
         ] + singleprocess_opt
         if params:
-            try:
-                i = params.index('--history-mode')
-                params[i:i+2] = []
-            except:
-                pass
             node_run.extend(params)
 
-        tezedge_node_run = [node, '--tezos-data-dir', node_dir, '--disable-bootstrap-lookup',
-                            '--identity-expected-pow', '0', '--p2p-port', str(p2p_port),
-                            '--rpc-port', str(rpc_port), '--identity-file', node_dir + '/identity.json']
+        tezedge_node_run = [
+            node,
+            '--tezos-data-dir',
+            node_dir,
+            '--disable-bootstrap-lookup',
+            '--identity-expected-pow',
+            '0',
+            '--p2p-port',
+            str(p2p_port),
+            '--rpc-port',
+            str(rpc_port),
+            '--identity-file',
+            node_dir + '/identity.json',
+        ]
         if 'TEZEDGE_NODE_PARAMS' in os.environ:
-            tezedge_node_run.extend(os.environ['TEZEDGE_NODE_PARAMS'].split(' '))
+            tezedge_node_run.extend(
+                os.environ['TEZEDGE_NODE_PARAMS'].split(' ')
+            )
 
-        if params:
+        if params and self.node_name == 'light-node':
+            # --history-mode is not currently supported by tezedge
+            params = params[:]
+            try:
+                i = params.index('--history-mode')
+                params[i : i + 2] = []
+            except:
+                pass
             tezedge_node_run.extend(params)
 
         if peers is not None:
-            tezedge_node_run.append('--peers')
-            tezedge_peers = []
             for peer in peers:
                 node_run.append('--peer')
                 node_run.append(f'127.0.0.1:{peer}')
-                tezedge_peers.append(f'127.0.0.1:{peer}')
-            tezedge_node_run.append(','.join(tezedge_peers))
+            tezedge_peers = [f'127.0.0.1:{peer}' for peer in peers]
+            tezedge_node_run += ['--peers', ','.join(tezedge_peers)]
 
         self.use_tls = use_tls
 
@@ -162,9 +177,10 @@ class Node:
         new_env = os.environ.copy()
         new_env['LD_LIBRARY_PATH'] = paths.TEZOS_HOME
         self._new_env = new_env
-        # TODO: differentiate tezedge
-        # self._node_run = node_run
-        self._node_run = tezedge_node_run
+        if self.node_name == 'tezos-node':
+            self._node_run = node_run
+        else:
+            self._node_run = tezedge_node_run
         self._process = None  # type: Optional[subprocess.Popen]
 
     def run(self):
@@ -184,7 +200,8 @@ class Node:
         # time.sleep(5)
 
     def init_config(self):
-        # TODO: whitch between tezos and tezedge nodes
+        if self.node_name == 'light-node':
+            return
         node_config = [
             self.node,
             'config',
@@ -223,6 +240,8 @@ class Node:
                 file.truncate()
 
     def init_id(self):
+        if self.node_name == 'light-node':
+            return
         node_identity = [
             self.node,
             'identity',
@@ -277,9 +296,8 @@ class Node:
     def terminate(self) -> None:
         """Send SIGTERM to node, do nothing if node hasn't been run yet"""
         if self._process is not None:
-            # self._process.terminate()
-            self._process.send_signal(signal.SIGINT)
-            time.sleep(3)
+            self._process.terminate()
+            # time.sleep(3)
 
     def kill(self) -> None:
         """Send SIGKILL to node, do nothing if node hasn't been run yet"""
@@ -294,8 +312,7 @@ class Node:
         """
         if self._process is None:
             return
-        # self._process.terminate()
-        self._process.send_signal(signal.SIGINT)
+        self._process.terminate()
         try:
             self._process.wait(timeout=TERM_TIMEOUT)
         except subprocess.TimeoutExpired:

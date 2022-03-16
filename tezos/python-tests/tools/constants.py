@@ -2,6 +2,7 @@ import json
 import os.path
 
 from tools import paths
+from typing import List
 
 
 def get_parameters(folder: str, network='test') -> dict:
@@ -249,19 +250,70 @@ A high-number of connections helps triggering the maintenance process
  ensures all nodes are bootstrapped when they start, which can avoid
  some spurious deadlocks (e.g. a node not broadcasting its head).
 """
-# NODE_PARAMS = ['--connections', '500', '--synchronisation-threshold', '0']
-NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-patch-context.json',
-               '--bootstrap-db-path', 'light-node', '--log-format', 'simple',
-               '--ocaml-log-enabled', 'false',
-               '--protocol-runner', paths.TEZOS_HOME + 'protocol-runner',
-               '--peer-thresh-low', '250', '--peer-thresh-high', '500',
-               '--disable-peer-graylist',
-               '--compute-context-action-tree-hashes=false',
-               '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
-               '--synchronization-thresh', '0',
-               # zcash-params files used for init, if zcash-params is not correctly setup it in OS
-               '--init-sapling-spend-params-file', paths.TEZOS_HOME + 'sapling-spend.params',
-               '--init-sapling-output-params-file', paths.TEZOS_HOME + 'sapling-output.params']
+OCTEZ_NODE_PARAMS = ['--connections', '100', '--synchronisation-threshold', '0']
+
+TEZEDGE_NODE_PARAMS = [
+    '--sandbox-patch-context-json-file',
+    paths.TEZOS_HOME + 'sandbox-patch-context.json',
+    '--bootstrap-db-path',
+    'light-node',
+    '--log-format',
+    'simple',
+    '--ocaml-log-enabled',
+    'false',
+    '--protocol-runner',
+    paths.TEZOS_HOME + 'protocol-runner',
+    '--peer-thresh-low',
+    '250',
+    '--peer-thresh-high',
+    '500',
+    '--disable-peer-graylist',
+    '--compute-context-action-tree-hashes=false',
+    '--tokio-threads=0',
+    '--enable-testchain=false',
+    '--log-level=debug',
+    '--synchronization-thresh',
+    '0',
+    # zcash-params files used for init, if zcash-params is not correctly setup it in OS
+    '--init-sapling-spend-params-file',
+    paths.TEZOS_HOME + 'sapling-spend.params',
+    '--init-sapling-output-params-file',
+    paths.TEZOS_HOME + 'sapling-output.params',
+]
+
+
+class NodeParams:
+    def __init__(
+        self,
+        octez_params: List[str],
+        tezedge_params: List[str],
+        more_params: List[str] = [],
+    ):
+        self._octez_params = octez_params
+        self._tezedge_params = tezedge_params
+        self._more_params = more_params
+
+    def __add__(self, more_params: List[str]):
+        return NodeParams(
+            self._octez_params,
+            self._tezedge_params,
+            self._more_params + more_params,
+        )
+
+    def __getitem__(self, node_name: str):
+        if node_name == 'tezos-node':
+            return self._octez_params + self._more_params
+        elif node_name == 'light-node':
+            return self._tezedge_params + self._more_params
+        else:
+            raise Exception(
+                message="NodeParams: Unknown node type: " + node_name
+            )
+
+
+NODE_PARAMS = NodeParams(
+    octez_params=OCTEZ_NODE_PARAMS, tezedge_params=TEZEDGE_NODE_PARAMS
+)
 
 TENDERBAKE_BAKER_LOG_LEVELS = {"alpha.baker.*": "debug"}
 
