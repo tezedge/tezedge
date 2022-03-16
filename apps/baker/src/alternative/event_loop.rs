@@ -242,14 +242,16 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                     block_id,
                 } => {
                     let this = crypto.public_key_hash();
+                    let slot = slots_info.slots(&this, block_id.level).and_then(|v| v.first());
+                    let slot = match slot {
+                        Some(s) => *s,
+                        None => continue,
+                    };
                     let preendorsement = InlinedPreendorsement {
                         branch: BlockHash(pred_hash.to_vec()),
                         operations: InlinedPreendorsementContents::Preendorsement(
                             InlinedPreendorsementVariant {
-                                slot: *slots_info
-                                    .slots(&this, block_id.level)
-                                    .and_then(|v| v.first())
-                                    .unwrap(),
+                                slot,
                                 level: block_id.level,
                                 round: block_id.round,
                                 block_payload_hash: BlockPayloadHash(
@@ -270,13 +272,15 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                     block_id,
                 } => {
                     let this = crypto.public_key_hash();
+                    let slot = slots_info.slots(&this, block_id.level).and_then(|v| v.first());
+                    let slot = match slot {
+                        Some(s) => *s,
+                        None => continue,
+                    };
                     let endorsement = InlinedEndorsement {
                         branch: BlockHash(pred_hash.to_vec()),
                         operations: InlinedEndorsementMempoolContents::Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant {
-                                slot: *slots_info
-                                    .slots(&this, block_id.level)
-                                    .and_then(|v| v.first())
-                                    .unwrap(),
+                                slot,
                                 level: block_id.level,
                                 round: block_id.round,
                                 block_payload_hash: BlockPayloadHash(
@@ -312,7 +316,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         payload_hash,
                         payload_round,
                         seed_nonce_hash: if pos_in_cycle == 0 {
-                            Some(NonceHash(blake2b::digest_256(&[1, 2, 3]).unwrap()))
+                            Some(NonceHash(blake2b::digest_256(&[1, 2, 3]).expect("constant")))
                         } else {
                             None
                         },
