@@ -31,7 +31,6 @@ tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
-monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
 async_ipc = { path = "../async-ipc" }
 signal-hook = "0.3.9"

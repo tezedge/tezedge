@@ -31,7 +31,6 @@ members = [
     "storage",
     "sandbox",
     "light_node",
-    "monitoring",
     "protocol_runner",
     "rpc",
     "edgekv",

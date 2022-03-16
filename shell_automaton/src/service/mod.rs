@@ -63,11 +63,11 @@ pub trait Service: TimeService {
 
     fn prevalidator(&mut self) -> &mut Self::Prevalidator;
 
-    fn statistics(&mut self) -> Option<&mut StatisticsService> {
+    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
         None
     }
 
-    fn websocket(&mut self) -> Option<&mut Self::Websocket> {
+    fn statistics(&mut self) -> Option<&mut StatisticsService> {
         None
     }
 }
@@ -81,8 +81,8 @@ pub struct ServiceDefault {
     pub rpc: RpcServiceDefault,
     pub actors: ActorsServiceDefault,
     pub prevalidator: PrevalidatorServiceDefault,
-    pub statistics: Option<StatisticsService>,
     pub websocket: Option<WebsocketServiceDefault>,
+    pub statistics: Option<StatisticsService>,
 }
 
 impl TimeService for ServiceDefault {}
@@ -126,19 +126,15 @@ impl Service for ServiceDefault {
         &mut self.actors
     }
 
-    fn websocket(&mut self) -> &mut Self::Websocket {
-        &mut self.websocket
-    }
-
     fn prevalidator(&mut self) -> &mut Self::Prevalidator {
         &mut self.prevalidator
     }
 
-    fn statistics(&mut self) -> Option<&mut StatisticsService> {
-        self.statistics.as_mut()
-    }
-
     fn websocket(&mut self) -> Option<&mut Self::Websocket> {
         self.websocket.as_mut()
+    }
+
+    fn statistics(&mut self) -> Option<&mut StatisticsService> {
+        self.statistics.as_mut()
     }
 }
