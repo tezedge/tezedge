@@ -32,10 +32,12 @@ fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: u64) -> boo
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use crypto::hash::{
         BlockHash, BlockPayloadHash, ContextHash, OperationListListHash, Signature,
     };
-    use tezos_encoding::enc::BinWriter;
+    use tezos_encoding::{enc::BinWriter, types::SizedBytes};
     use tezos_messages::protocol::proto_012::operation::FullHeader;
 
     use crate::proof_of_work::check_proof_of_work;
@@ -52,7 +54,8 @@ mod tests {
             .unwrap(),
             timestamp: chrono::DateTime::parse_from_rfc3339("2022-03-14T10:02:35Z")
                 .unwrap()
-                .timestamp(),
+                .timestamp()
+                .into(),
             validation_pass: 4,
             operations_hash: OperationListListHash::from_base58_check(
                 "LLoZMEAWjpyMPz19PKzYv2Zbs3kyFDe8XpDzj45wa998ZkCruePZo",
@@ -64,7 +67,8 @@ mod tests {
                 vec![],
                 vec![0xff, 0xff, 0xff, 0xff],
                 vec![0x00, 0x00, 0x00, 0x00],
-            ],
+            ]
+            .into(),
             context: ContextHash::from_base58_check(
                 "CoVmcqcynAhio4fodmyNgAcJGKNoyCHPygdBhKGredvUQSjTappc",
             )
@@ -74,7 +78,7 @@ mod tests {
             )
             .unwrap(),
             payload_round: 0,
-            proof_of_work_nonce: hex::decode("409a3f3ff9820000").unwrap(),
+            proof_of_work_nonce: SizedBytes(hex::decode("409a3f3ff9820000").unwrap().try_into().unwrap()),
             liquidity_baking_escape_vote: false,
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),
@@ -94,7 +98,7 @@ mod tests {
                 "BKnspHSGAkdjjRQ5k83tPzx73UueJLHmW1jgT4fwTrMyoXUPT2o",
             )
             .unwrap(),
-            timestamp: 1647280025,
+            timestamp: 1647280025.into(),
             validation_pass: 4,
             operations_hash: OperationListListHash::from_base58_check(
                 "LLoa6FrQ37toJPdS2PU1cepexNrvncEyqj8D4KtYf1qpccSu1NxSH",
@@ -106,7 +110,8 @@ mod tests {
                 vec![],
                 vec![255, 255, 255, 255],
                 vec![0, 0, 0, 0],
-            ],
+            ]
+            .into(),
             context: ContextHash::from_base58_check(
                 "CoUjRZrB2TVagSRRYJJcc3Y7SUTfSLqZc55EktpYPpfp8xnR6PM8",
             )
@@ -116,7 +121,7 @@ mod tests {
             )
             .unwrap(),
             payload_round: 0,
-            proof_of_work_nonce: vec![121, 133, 250, 254, 31, 183, 3, 1],
+            proof_of_work_nonce: SizedBytes([121, 133, 250, 254, 31, 183, 3, 1]),
             liquidity_baking_escape_vote: false,
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),

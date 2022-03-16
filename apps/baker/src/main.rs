@@ -31,10 +31,13 @@ fn main() {
         command,
     } = Arguments::from_args();
 
+    let env = env_logger::Env::default().default_filter_or("info");
+    env_logger::Builder::from_env(env)
+        .format_timestamp_millis()
+        .try_init()
+        .unwrap();
+
     let logger = logger::main_logger();
-    let (sender, mut events) = mpsc::channel();
-    let client = RpcClient::new(endpoint, logger.clone(), sender.clone());
-    let timer = Timer::spawn(sender);
 
     match command {
         Command::RunWithLocalNode { node_dir, baker } => {
@@ -50,13 +53,18 @@ fn main() {
             };
             slog::info!(logger, "crypto service ready: {}", crypto.public_key_hash());
 
-            let mut service = ServiceDefault {
+            alternative::run(endpoint.clone(), &crypto, &logger).unwrap();
+
+            let (sender, events) = mpsc::channel();
+            let client = RpcClient::new(endpoint, logger.clone(), sender.clone());
+            let timer = Timer::spawn(sender);
+        
+            let service = ServiceDefault {
                 logger: logger.clone(),
                 client,
                 crypto,
                 timer,
             };
-            alternative::run(&mut service, &mut events);
 
             let initial_time = SystemTime::now();
             let initial_state = State::Initial;
