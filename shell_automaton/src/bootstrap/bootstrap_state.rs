@@ -593,7 +593,7 @@ impl BootstrapState {
                     supporters1
                         .len()
                         .cmp(&supporters2.len())
-                        .then(block1.header.level().cmp(&block2.header.level()))
+                        .then(block1.header.fitness().cmp(block2.header.fitness()))
                 })
                 .map(|(_, (block, _))| block.clone()),
             _ => None,

@@ -382,7 +382,7 @@ where
                 .peers
                 .handshaked_iter()
                 .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
-                .max_by_key(|(_, b)| b.header.level())
+                .max_by_key(|(_, b)| b.header.fitness())
                 .filter(|(_, current_head)| {
                     !state.is_same_head(current_head.header.level(), &current_head.hash)
                 })
