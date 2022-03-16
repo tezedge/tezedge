@@ -64,11 +64,10 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
 
     client.monitor_heads(&chain_id)?;
 
-    let mut state = tb::Machine::<ContractTz1Hash, BlockPayload>::empty();
     let ours = vec![crypto.public_key_hash().clone()];
     let mut slots_info = SlotsInfo::new(constants.consensus_committee_size, ours);
+    let mut state = tb::Machine::<ContractTz1Hash, BlockPayload>::empty();
 
-    let mut has_initial = false;
     for event in rx {
         let unix_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -87,104 +86,80 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 };
                 let round = block.round;
                 let pred_hash = block.predecessor.0.as_slice().try_into().unwrap();
-                if !has_initial {
-                    let hash = block.hash.0.as_slice().try_into().unwrap();
-                    let block = tb::Pred {
-                        timestamp: tb::Timestamp { unix_epoch: Duration::from_secs(block.timestamp) },
+                let proposal = Box::new(tb::BlockInfo {
+                    pred_hash,
+                    hash: block.hash.0.as_slice().try_into().unwrap(),
+                    block_id: tb::BlockId {
                         level: block.level,
-                        round: block.round,
-                        transition: block.transition,
-                    };
-                    let event = tb::Event::InitialProposal(hash, block, now);
-                    if let Err(err) = client.monitor_operations() {
-                        slog::error!(log, "{}", err);
-                    }
-                    has_initial = true;
-                    state
-                        .handle(&config, &slots_info, event)
-                        .into_iter()
-                        .collect::<Vec<_>>()
-                } else if state.is_proposal_acceptable(&pred_hash) {
-                    let proposal = Box::new(tb::BlockInfo {
-                        pred_hash,
-                        hash: block.hash.0.as_slice().try_into().unwrap(),
-                        block_id: tb::BlockId {
-                            level: block.level,
-                            round,
-                            payload_hash: block.payload_hash.0.as_slice().try_into().unwrap(),
-                            payload_round: block.payload_round,
-                        },
-                        timestamp,
-                        transition: block.transition,
-                        prequorum: block.operations.first().and_then(|ops| {
-                            let v = ops
-                                .iter()
-                                .filter_map(|op| match op.kind()? {
-                                    OperationKind::Preendorsement(v) => Some((v, op.clone())),
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>();
+                        round,
+                        payload_hash: block.payload_hash.0.as_slice().try_into().unwrap(),
+                        payload_round: block.payload_round,
+                    },
+                    timestamp,
+                    transition: block.transition,
+                    prequorum: block.operations.first().and_then(|ops| {
+                        let v = ops
+                            .iter()
+                            .filter_map(|op| match op.kind()? {
+                                OperationKind::Preendorsement(v) => Some((v, op.clone())),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
 
-                            let (first, _) = v.first()?;
-                            let level = first.level;
-                            Some(tb::Prequorum {
-                                block_id: tb::BlockId {
-                                    level,
-                                    round: first.round,
-                                    payload_hash: first
-                                        .block_payload_hash
-                                        .0
-                                        .as_slice()
-                                        .try_into()
-                                        .unwrap(),
-                                    payload_round: first.round,
-                                },
-                                votes: {
-                                    v.into_iter()
-                                        .filter_map(|(v, op)| {
-                                            Some((slots_info.validator(level, v.slot)?, op))
-                                        })
-                                        .collect()
-                                },
-                            })
-                        }),
-                        quorum: block.operations.first().and_then(|ops| {
-                            Some(tb::Quorum {
-                                votes: {
-                                    ops.iter()
-                                        .filter_map(|op| match op.kind()? {
-                                            OperationKind::Endorsement(v) => Some((
-                                                slots_info.validator(v.level, v.slot)?,
-                                                op.clone(),
-                                            )),
-                                            _ => None,
-                                        })
-                                        .collect()
-                                },
-                            })
-                        }),
-                        payload: block.operations.into_iter().flatten().fold(
-                            BlockPayload::default(),
-                            |mut p, op| {
-                                p.update(op);
-                                p
+                        let (first, _) = v.first()?;
+                        let level = first.level;
+                        Some(tb::Prequorum {
+                            block_id: tb::BlockId {
+                                level,
+                                round: first.round,
+                                payload_hash: first
+                                    .block_payload_hash
+                                    .0
+                                    .as_slice()
+                                    .try_into()
+                                    .unwrap(),
+                                payload_round: first.round,
                             },
-                        ),
-                    });
-                    if let Err(err) = client.monitor_operations() {
-                        slog::error!(log, "{}", err);
-                    }
-                    let event = tb::Event::Proposal(proposal, now);
-                    state
-                        .handle(&config, &slots_info, event)
-                        .into_iter()
-                        .collect::<Vec<_>>()
-                } else {
-                    let level = block.level;
-                    let round = block.round;
-                    slog::warn!(log, "cannot accept {level}:{round}, try to skip");
-                    vec![]
+                            votes: {
+                                v.into_iter()
+                                    .filter_map(|(v, op)| {
+                                        Some((slots_info.validator(level, v.slot)?, op))
+                                    })
+                                    .collect()
+                            },
+                        })
+                    }),
+                    quorum: block.operations.first().and_then(|ops| {
+                        Some(tb::Quorum {
+                            votes: {
+                                ops.iter()
+                                    .filter_map(|op| match op.kind()? {
+                                        OperationKind::Endorsement(v) => Some((
+                                            slots_info.validator(v.level, v.slot)?,
+                                            op.clone(),
+                                        )),
+                                        _ => None,
+                                    })
+                                    .collect()
+                            },
+                        })
+                    }),
+                    payload: block.operations.into_iter().flatten().fold(
+                        BlockPayload::default(),
+                        |mut p, op| {
+                            p.update(op);
+                            p
+                        },
+                    ),
+                });
+                if let Err(err) = client.monitor_operations() {
+                    slog::error!(log, "{}", err);
                 }
+                let event = tb::Event::Proposal(proposal, now);
+                state
+                    .handle(&config, &slots_info, event)
+                    .into_iter()
+                    .collect::<Vec<_>>()
             }
             Ok(Event::Operations(ops)) => {
                 let mut actions = vec![];
