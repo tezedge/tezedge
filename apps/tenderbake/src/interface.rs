@@ -124,11 +124,11 @@ where
     ScheduleTimeout(Timestamp),
     Preendorse {
         pred_hash: [u8; 32],
-        content: Preendorsement<Id>,
+        block_id: BlockId,
     },
     Endorse {
         pred_hash: [u8; 32],
-        content: Endorsement<Id>,
+        block_id: BlockId,
     },
     Propose(Box<BlockInfo<Id, P>>),
 }

@@ -216,16 +216,15 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 tb::Action::ScheduleTimeout(timestamp) => {
                     timer.send(timestamp).expect("timer running");
                 }
-                tb::Action::Preendorse { pred_hash, content } => {
+                tb::Action::Preendorse { pred_hash, block_id } => {
+                    let this = crypto.public_key_hash();
                     let preendorsement = InlinedPreendorsement {
                         branch: BlockHash(pred_hash.to_vec()),
                         operations: InlinedPreendorsementContents::Preendorsement(InlinedPreendorsementVariant {
-                            slot: slots_info
-                                .slot(&content.validator.id, content.block_id.level)
-                                .unwrap(),
-                            level: content.block_id.level,
-                            round: content.block_id.round,
-                            block_payload_hash: BlockPayloadHash(content.block_id.payload_hash.to_vec()),
+                            slot: *slots_info.slots(&this, block_id.level).and_then(|v| v.first()).unwrap(),
+                            level: block_id.level,
+                            round: block_id.round,
+                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
                         }),
                         signature: Signature(vec![]),
                     };
@@ -235,16 +234,15 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         Err(err) => slog::error!(log, "{err}"),
                     }
                 }
-                tb::Action::Endorse { pred_hash, content } => {
+                tb::Action::Endorse { pred_hash, block_id } => {
+                    let this = crypto.public_key_hash();
                     let endorsement = InlinedEndorsement {
                         branch: BlockHash(pred_hash.to_vec()),
                         operations: InlinedEndorsementMempoolContents::Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant {
-                            slot: slots_info
-                                .slot(&content.validator.id, content.block_id.level)
-                                .unwrap(),
-                            level: content.block_id.level,
-                            round: content.block_id.round,
-                            block_payload_hash: BlockPayloadHash(content.block_id.payload_hash.to_vec()),
+                            slot: *slots_info.slots(&this, block_id.level).and_then(|v| v.first()).unwrap(),
+                            level: block_id.level,
+                            round: block_id.round,
+                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
                         }),
                         signature: Signature(vec![]),
                     };

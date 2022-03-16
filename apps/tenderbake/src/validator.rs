@@ -23,10 +23,6 @@ where
 pub trait ValidatorMap {
     type Id;
 
-    /// who can cast preendorsement for level and round
-    fn preendorser(&self, level: i32, round: i32) -> Option<Validator<Self::Id>>;
-    /// who can cast endorsement for level and round
-    fn endorser(&self, level: i32, round: i32) -> Option<Validator<Self::Id>>;
     /// the closest round where current baker is proposer
     fn proposer(&self, level: i32, round: i32) -> Option<i32>;
 }

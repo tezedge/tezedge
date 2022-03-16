@@ -222,7 +222,7 @@ where
 
                 if current_round == new_proposal.head.block_id.round {
                     let block_id = new_proposal.head.block_id.clone();
-                    actions.extend(Self::preendorse(map, block_id, new_proposal.head.pred_hash));
+                    actions.extend(Self::preendorse(block_id, new_proposal.head.pred_hash));
                 }
 
                 self.proposal = new_proposal;
@@ -312,7 +312,7 @@ where
                     if will_preendorse {
                         let block_id = new_proposal.head.block_id.clone();
                         let pred_hash = new_proposal.head.pred_hash;
-                        actions.extend(Self::preendorse(map, block_id, pred_hash));
+                        actions.extend(Self::preendorse(block_id, pred_hash));
                     }
                     self.proposal = new_proposal;
                 } else {
@@ -355,21 +355,12 @@ where
         }
     }
 
-    fn preendorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>>
-    where
-        V: ValidatorMap<Id = Id>,
-    {
-        map.preendorser(block_id.level, block_id.round)
-            .map(|validator| {
-                log::info!(" .  inject preendorsement: {block_id}");
-                Action::Preendorse {
-                    pred_hash,
-                    content: Preendorsement {
-                        validator,
-                        block_id,
-                    },
-                }
-            })
+    fn preendorse(block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>> {
+        log::info!(" .  inject preendorsement: {block_id}");
+        Some(Action::Preendorse {
+            pred_hash,
+            block_id,
+        })
     }
 
     fn preendorsement<V>(
@@ -419,7 +410,7 @@ where
 
         let mut actions = ArrayVec::new();
 
-        let endorsement = Self::endorse(map, head.block_id.clone(), self.proposal.head.pred_hash);
+        let endorsement = Self::endorse(head.block_id.clone(), self.proposal.head.pred_hash);
         let timeout = self
             .update_timeout_this_level(config, map, now)
             .map(Action::ScheduleTimeout);
@@ -429,21 +420,12 @@ where
         actions
     }
 
-    fn endorse<V>(map: &V, block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>>
-    where
-        V: ValidatorMap<Id = Id>,
-    {
-        map.endorser(block_id.level, block_id.round)
-            .map(|validator| {
-                log::info!(" .  inject endorsement: {block_id}");
-                Action::Endorse {
-                    pred_hash,
-                    content: Endorsement {
-                        validator,
-                        block_id,
-                    },
-                }
-            })
+    fn endorse(block_id: BlockId, pred_hash: [u8; 32]) -> Option<Action<Id, P>> {
+        log::info!(" .  inject endorsement: {block_id}");
+        Some(Action::Endorse {
+            pred_hash,
+            block_id,
+        })
     }
 
     fn endorsement<V>(
