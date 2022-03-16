@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{io, str, sync::mpsc, thread, time::Duration};
+use std::{io, str, sync::mpsc, thread, time::Duration, convert::TryInto};
 
 use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
@@ -62,6 +62,8 @@ pub enum RpcErrorInner {
     Chrono(ParseError),
     #[error("node: {_0}")]
     NodeError(String, StatusCode),
+    #[error("invalid fitness")]
+    InvalidFitness,
 }
 
 impl RpcClient {
@@ -140,6 +142,10 @@ impl RpcClient {
         let url = self.endpoint.join(&s).expect("valid url");
         let header = self
             .single_response_blocking::<BlockHeaderJson>(&url, None, None)
+            .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+        let timestamp = convert_timestamp(&header.timestamp)
+            .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+        let round = convert_fitness(&header.fitness)
             .map_err(|inner| RpcError::WithContext { url, inner })?;
 
         let transition = protocol != next_protocol;
@@ -165,13 +171,14 @@ impl RpcClient {
             level: header.level,
             proto: header.proto,
             predecessor: header.predecessor,
-            timestamp: header.timestamp,
+            timestamp,
             validation_pass: header.validation_pass,
             operations_hash: header.operations_hash,
             fitness: header.fitness,
             context: header.context,
             payload_hash: header.payload_hash,
             payload_round: header.payload_round,
+            round,
 
             transition,
             operations,
@@ -209,6 +216,9 @@ impl RpcClient {
 
         let this = self.clone();
         self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
+            let timestamp = convert_timestamp(&header.timestamp)?;
+            let round = convert_fitness(&header.fitness)?;
+
             let s = format!("chains/main/blocks/{}/operations", header.hash);
             let url = this.endpoint.join(&s).expect("valid url");
             let operations = this.single_response_blocking(&url, None, None)?;
@@ -226,13 +236,14 @@ impl RpcClient {
                 level: header.level,
                 proto: header.proto,
                 predecessor: header.predecessor,
-                timestamp: header.timestamp,
+                timestamp,
                 validation_pass: header.validation_pass,
                 operations_hash: header.operations_hash,
                 fitness: header.fitness,
                 context: header.context,
                 payload_hash: protocol_header.payload_hash,
                 payload_round: protocol_header.payload_round,
+                round,
 
                 transition: false,
                 operations,
@@ -540,4 +551,20 @@ impl RpcClient {
         let err = str::from_utf8(&buf)?.trim_end_matches('\0');
         Err(RpcErrorInner::NodeError(err.to_string(), status))
     }
+}
+
+fn convert_timestamp(v: &str) -> Result<u64, RpcErrorInner> {
+    v
+        .parse::<DateTime<Utc>>()
+        .map_err(Into::into)
+        .map(|v| v.timestamp() as u64)
+}
+
+fn convert_fitness(f: &[String]) -> Result<i32, RpcErrorInner> {
+    let round_bytes = hex::decode(f.get(4).ok_or(RpcErrorInner::InvalidFitness)?)?
+        .as_slice()
+        .try_into()
+        .ok()
+        .ok_or(RpcErrorInner::InvalidFitness)?;
+    Ok(i32::from_be_bytes(round_bytes))
 }

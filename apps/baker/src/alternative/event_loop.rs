@@ -8,7 +8,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use chrono::{DateTime, Utc};
 use reqwest::Url;
 use slog::Logger;
 
@@ -89,14 +88,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
         first_block.hash,
         Pred {
             timestamp: tb::Timestamp {
-                unix_epoch: {
-                    let secs = first_block
-                        .timestamp
-                        .parse::<DateTime<Utc>>()
-                        .unwrap()
-                        .timestamp();
-                    Duration::from_secs(secs as u64)
-                },
+                unix_epoch: Duration::from_secs(first_block.timestamp),
             },
             round: 0,
         },
@@ -122,21 +114,9 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 );
                 slots_info.insert(&block);
                 let timestamp = tb::Timestamp {
-                    unix_epoch: {
-                        let secs = block
-                            .timestamp
-                            .parse::<DateTime<Utc>>()
-                            .unwrap()
-                            .timestamp();
-                        Duration::from_secs(secs as u64)
-                    },
+                    unix_epoch: Duration::from_secs(block.timestamp),
                 };
-                let round_bytes = hex::decode(&block.fitness[4])
-                    .unwrap()
-                    .as_slice()
-                    .try_into()
-                    .unwrap();
-                let round = i32::from_be_bytes(round_bytes);
+                let round = block.round;
                 cache.insert(block.hash.clone(), Pred { timestamp, round });
                 if let Some(pred) = cache.get(&block.predecessor) {
                     let proposal = Box::new(tb::Proposal {
