@@ -136,6 +136,7 @@ where
     {
         match event {
             Event::InitialProposal(hash, pred, now) => {
+                log::info!("Proposal: {pred}");
                 self.cache.insert(hash, pred.clone());
                 if pred.transition {
                     let elected_duration = config.round_duration(pred.round);
@@ -234,7 +235,7 @@ where
     where
         V: ValidatorMap<Id = Id>,
     {
-        log::info!("Proposal: {}", new_proposal);
+        log::info!("Proposal: {new_proposal}");
 
         let mut actions = ArrayVec::new();
 
@@ -292,6 +293,7 @@ where
                 // }
             }
             Ordering::Greater => {
+                log::info!(" .  branch switch may have happened");
                 // The baker is ahead, a reorg may have happened. Do nothing:
                 // wait for the node to send us the branch's head. This new head
                 // should have a fitness that is greater than our current
@@ -332,11 +334,13 @@ where
                         log::warn!(" .  ignore proposal, will not change branch");
                         return ArrayVec::default();
                     }
+                    let old_pred = self.pred.clone();
                     self.pred = self
                         .cache
                         .get(&new_proposal.pred_hash)
                         .expect("the proposal cannot be accepted, use `is_proposal_acceptable`")
                         .clone();
+                    log::info!(" .  branch switch {old_pred} -> {}", self.pred);
                 }
 
                 let current_round = self.pred.round_local_coord(config, now);

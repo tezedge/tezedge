@@ -66,6 +66,12 @@ pub struct Pred {
     pub transition: bool,
 }
 
+impl fmt::Display for Pred {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}, {}", self.level, self.round, self.timestamp)
+    }
+}
+
 impl Pred {
     pub fn round_local_coord(&self, config: &Config, now: Timestamp) -> i32 {
         let (pred_timestamp, pred_round) = (self.timestamp, self.round);
