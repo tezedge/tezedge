@@ -236,7 +236,18 @@ pub fn spawn_server(
                                 let normalized_path = normalized_path.clone();
                                 let status = v.status();
 
-                                let (parts, data) = v.into_parts();
+                                let (mut parts, data) = v.into_parts();
+
+                                // If the size is known, set Content-Length now, because
+                                // the `map_data` call bellow prevents hyper from being able to
+                                // infer it automatically
+                                if !data.is_end_stream() {
+                                    if let Some(exact) = data.size_hint().exact() {
+                                        if !parts.headers.contains_key(hyper::header::CONTENT_LENGTH) {
+                                            parts.headers.append(hyper::header::CONTENT_LENGTH, exact.into());
+                                        }
+                                    }
+                                }
 
                                 let data = data.map_data(move |data| {
                                     slog::trace!(&log, "Rpc response";
