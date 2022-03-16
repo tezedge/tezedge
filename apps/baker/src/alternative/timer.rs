@@ -29,7 +29,7 @@ impl Timer {
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                    }
+                    },
                     None => match task_rx.recv() {
                         Ok(next) => next,
                         Err(mpsc::RecvError) => break,
@@ -43,7 +43,7 @@ impl Timer {
                 }
             }
         });
-    
+
         Timer {
             handle: Some(handle),
             task_tx: Some(task_tx),

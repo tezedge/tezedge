@@ -1,11 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-
-use crypto::{hash::OperationListHash, blake2b};
+use crypto::{blake2b, hash::OperationListHash};
 use tenderbake as tb;
 
-use super::event::{OperationSimple, OperationKind};
+use super::event::{OperationKind, OperationSimple};
 
 #[derive(Clone, Default)]
 pub struct BlockPayload {

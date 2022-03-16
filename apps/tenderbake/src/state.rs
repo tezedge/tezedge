@@ -112,7 +112,12 @@ where
     /// Endorsement -> [ ScheduleTimeout? ]
     /// Timeout -> [ Propose ]
     /// PayloadItem -> [ ]
-    pub fn handle<V>(&mut self, config: &Config, map: &V, event: Event<Id, P>) -> ArrayVec<Action<Id, P>, 2>
+    pub fn handle<V>(
+        &mut self,
+        config: &Config,
+        map: &V,
+        event: Event<Id, P>,
+    ) -> ArrayVec<Action<Id, P>, 2>
     where
         V: ValidatorMap<Id = Id>,
     {

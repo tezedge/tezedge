@@ -1,28 +1,36 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, sync::mpsc, time::{Duration, SystemTime}, convert::TryInto};
+use std::{
+    collections::BTreeMap,
+    convert::TryInto,
+    sync::mpsc,
+    time::{Duration, SystemTime},
+};
 
 use chrono::{DateTime, Utc};
 use reqwest::Url;
 use slog::Logger;
 
-use crypto::{hash::{ContractTz1Hash, BlockHash, BlockPayloadHash, Signature, NonceHash}, blake2b};
+use crypto::{
+    blake2b,
+    hash::{BlockHash, BlockPayloadHash, ContractTz1Hash, NonceHash, Signature},
+};
 use tb::Payload;
 use tenderbake as tb;
 use tezos_encoding::types::SizedBytes;
-use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedEndorsementMempoolContents};
+use tezos_messages::protocol::proto_012::operation::{
+    InlinedEndorsement, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement,
+};
 
 use super::{
+    block_payload::BlockPayload,
     client::{RpcClient, RpcError},
     event::{Event, OperationKind, ProtocolBlockHeader},
-    block_payload::BlockPayload,
     slots_info::SlotsInfo,
     timer::Timer,
-};
-use crate::{
-    proof_of_work::guess_proof_of_work,
-    key::CryptoService,
+    CryptoService,
+    guess_proof_of_work,
 };
 
 pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), RpcError> {
@@ -36,7 +44,11 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
 
     let constants = client.get_constants()?;
 
-    slog::info!(log, "committee size: {}", constants.consensus_committee_size);
+    slog::info!(
+        log,
+        "committee size: {}",
+        constants.consensus_committee_size
+    );
     slog::info!(log, "pow threshold: {}", constants.proof_of_work_threshold);
     let config = tb::Config {
         consensus_threshold: 2 * (constants.consensus_committee_size / 3) + 1,
@@ -66,31 +78,56 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
         round: i32,
     }
     let mut cache = BTreeMap::new();
-    slog::info!(log, "first block {} {} {}", first_block.level, first_block.predecessor, first_block.hash);
-    cache.insert(first_block.hash, Pred {
-        timestamp: tb::Timestamp {
-            unix_epoch: {
-                let secs = first_block.timestamp.parse::<DateTime<Utc>>().unwrap().timestamp();
-                Duration::from_secs(secs as u64)
+    slog::info!(
+        log,
+        "first block {} {} {}",
+        first_block.level,
+        first_block.predecessor,
+        first_block.hash
+    );
+    cache.insert(
+        first_block.hash,
+        Pred {
+            timestamp: tb::Timestamp {
+                unix_epoch: {
+                    let secs = first_block
+                        .timestamp
+                        .parse::<DateTime<Utc>>()
+                        .unwrap()
+                        .timestamp();
+                    Duration::from_secs(secs as u64)
+                },
             },
+            round: 0,
         },
-        round: 0,
-    });
+    );
 
     for event in rx {
-        let unix_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        let unix_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
         let now = tb::Timestamp { unix_epoch };
         let actions = match event {
             Err(err) => {
                 slog::error!(log, "{err}");
                 vec![]
-            },
+            }
             Ok(Event::Block(block)) => {
-                slog::info!(log, "block {} {} {}", block.level, block.predecessor, block.hash);
+                slog::info!(
+                    log,
+                    "block {} {} {}",
+                    block.level,
+                    block.predecessor,
+                    block.hash
+                );
                 slots_info.insert(&block);
                 let timestamp = tb::Timestamp {
                     unix_epoch: {
-                        let secs = block.timestamp.parse::<DateTime<Utc>>().unwrap().timestamp();
+                        let secs = block
+                            .timestamp
+                            .parse::<DateTime<Utc>>()
+                            .unwrap()
+                            .timestamp();
                         Duration::from_secs(secs as u64)
                     },
                 };
@@ -119,11 +156,9 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                             prequorum: block.operations.first().and_then(|ops| {
                                 let v = ops
                                     .iter()
-                                    .filter_map(|op| {
-                                        match op.kind()? {
-                                            OperationKind::Preendorsement(v) => Some((v, op.clone())),
-                                            _ => None,
-                                        }
+                                    .filter_map(|op| match op.kind()? {
+                                        OperationKind::Preendorsement(v) => Some((v, op.clone())),
+                                        _ => None,
                                     })
                                     .collect::<Vec<_>>();
 
@@ -133,12 +168,19 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                                     block_id: tb::BlockId {
                                         level,
                                         round: first.round,
-                                        payload_hash: first.block_payload_hash.0.as_slice().try_into().unwrap(),
+                                        payload_hash: first
+                                            .block_payload_hash
+                                            .0
+                                            .as_slice()
+                                            .try_into()
+                                            .unwrap(),
                                         payload_round: first.round,
                                     },
                                     votes: {
                                         v.into_iter()
-                                            .filter_map(|(v, op)| Some((slots_info.validator(level, v.slot)?, op)))
+                                            .filter_map(|(v, op)| {
+                                                Some((slots_info.validator(level, v.slot)?, op))
+                                            })
                                             .collect()
                                     },
                                 })
@@ -147,29 +189,24 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                                 Some(tb::Quorum {
                                     votes: {
                                         ops.iter()
-                                            .filter_map(|op| {
-                                                match op.kind()? {
-                                                    OperationKind::Endorsement(v) => {
-                                                        Some((
-                                                            slots_info.validator(v.level, v.slot)?,
-                                                            op.clone(),
-                                                        ))
-                                                    },
-                                                    _ => None,
-                                                }
+                                            .filter_map(|op| match op.kind()? {
+                                                OperationKind::Endorsement(v) => Some((
+                                                    slots_info.validator(v.level, v.slot)?,
+                                                    op.clone(),
+                                                )),
+                                                _ => None,
                                             })
                                             .collect()
-                                    },    
+                                    },
                                 })
                             }),
-                            payload: block
-                                .operations
-                                .into_iter()
-                                .flatten()
-                                .fold(BlockPayload::default(), |mut p, op| {
+                            payload: block.operations.into_iter().flatten().fold(
+                                BlockPayload::default(),
+                                |mut p, op| {
                                     p.update(op);
                                     p
-                                })
+                                },
+                            ),
                         },
                     });
                     if let Err(err) = client.monitor_operations() {
@@ -192,13 +229,15 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         Some(OperationKind::Preendorsement(content)) => {
                             if let Some(content) = slots_info.preendorsement(&content) {
                                 let event = tb::Event::Preendorsement(content, op, now);
-                                actions.extend(state.handle(&config, &slots_info, event).into_iter());
+                                actions
+                                    .extend(state.handle(&config, &slots_info, event).into_iter());
                             }
                         }
                         Some(OperationKind::Endorsement(content)) => {
                             if let Some(content) = slots_info.endorsement(&content) {
                                 let event = tb::Event::Endorsement(content, op, now);
-                                actions.extend(state.handle(&config, &slots_info, event).into_iter());
+                                actions
+                                    .extend(state.handle(&config, &slots_info, event).into_iter());
                             }
                         }
                         Some(_) => {
@@ -208,25 +247,36 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 }
                 actions
             }
-            Ok(Event::Tick) => {
-                state.handle(&config, &slots_info, tb::Event::Timeout).into_iter().collect()
-            }
+            Ok(Event::Tick) => state
+                .handle(&config, &slots_info, tb::Event::Timeout)
+                .into_iter()
+                .collect(),
         };
         for action in actions {
             match action {
                 tb::Action::ScheduleTimeout(timestamp) => {
                     timer.schedule(timestamp);
                 }
-                tb::Action::Preendorse { pred_hash, block_id } => {
+                tb::Action::Preendorse {
+                    pred_hash,
+                    block_id,
+                } => {
                     let this = crypto.public_key_hash();
                     let preendorsement = InlinedPreendorsement {
                         branch: BlockHash(pred_hash.to_vec()),
-                        operations: InlinedPreendorsementContents::Preendorsement(InlinedPreendorsementVariant {
-                            slot: *slots_info.slots(&this, block_id.level).and_then(|v| v.first()).unwrap(),
-                            level: block_id.level,
-                            round: block_id.round,
-                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
-                        }),
+                        operations: InlinedPreendorsementContents::Preendorsement(
+                            InlinedPreendorsementVariant {
+                                slot: *slots_info
+                                    .slots(&this, block_id.level)
+                                    .and_then(|v| v.first())
+                                    .unwrap(),
+                                level: block_id.level,
+                                round: block_id.round,
+                                block_payload_hash: BlockPayloadHash(
+                                    block_id.payload_hash.to_vec(),
+                                ),
+                            },
+                        ),
                         signature: Signature(vec![]),
                     };
                     let (data, _) = crypto.sign(0x12, &chain_id, &preendorsement).unwrap();
@@ -235,16 +285,25 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         Err(err) => slog::error!(log, "{err}"),
                     }
                 }
-                tb::Action::Endorse { pred_hash, block_id } => {
+                tb::Action::Endorse {
+                    pred_hash,
+                    block_id,
+                } => {
                     let this = crypto.public_key_hash();
                     let endorsement = InlinedEndorsement {
                         branch: BlockHash(pred_hash.to_vec()),
                         operations: InlinedEndorsementMempoolContents::Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant {
-                            slot: *slots_info.slots(&this, block_id.level).and_then(|v| v.first()).unwrap(),
-                            level: block_id.level,
-                            round: block_id.round,
-                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
-                        }),
+                                slot: *slots_info
+                                    .slots(&this, block_id.level)
+                                    .and_then(|v| v.first())
+                                    .unwrap(),
+                                level: block_id.level,
+                                round: block_id.round,
+                                block_payload_hash: BlockPayloadHash(
+                                    block_id.payload_hash.to_vec(),
+                                ),
+                            },
+                        ),
                         signature: Signature(vec![]),
                     };
                     let (data, _) = crypto.sign(0x13, &chain_id, &endorsement).unwrap();
@@ -263,12 +322,12 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                             payload_round as u32,
                             &operation_list_hash,
                         )
-                        .unwrap()        
+                        .unwrap()
                     } else {
                         BlockPayloadHash(block.block_id.payload_hash.to_vec())
                     };
-                    let pos_in_cycle = (block.block_id.level as u32) %
-                        constants.blocks_per_commitment;
+                    let pos_in_cycle =
+                        (block.block_id.level as u32) % constants.blocks_per_commitment;
                     let mut protocol_header = ProtocolBlockHeader {
                         payload_hash,
                         payload_round,
@@ -281,10 +340,8 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         liquidity_baking_escape_vote: false,
                         signature: Signature(vec![]),
                     };
-                    let (_, signature) = crypto
-                        .sign(0x11, &chain_id, &protocol_header)
-                        .unwrap();
-                        protocol_header.signature = signature;
+                    let (_, signature) = crypto.sign(0x11, &chain_id, &protocol_header).unwrap();
+                    protocol_header.signature = signature;
                     let timestamp = block.timestamp.unix_epoch.as_secs() as i64;
 
                     let endorsements = block
@@ -304,9 +361,12 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         block.payload.managers_payload,
                     ];
 
-                    let (mut header, operations) = match client
-                        .preapply_block(protocol_header, predecessor_hash, timestamp, operations)
-                    {
+                    let (mut header, operations) = match client.preapply_block(
+                        protocol_header,
+                        predecessor_hash,
+                        timestamp,
+                        operations,
+                    ) {
                         Ok(v) => v,
                         Err(err) => {
                             slog::error!(log, "{err}");

@@ -58,7 +58,7 @@ fn main() {
             let (sender, events) = mpsc::channel();
             let client = RpcClient::new(endpoint, logger.clone(), sender.clone());
             let timer = Timer::spawn(sender);
-        
+
             let service = ServiceDefault {
                 logger: logger.clone(),
                 client,

@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{str, fmt};
+use std::{fmt, str};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ContractTz1Hash, ProtocolHash, BlockHash, OperationListListHash, ContextHash, BlockPayloadHash, NonceHash, Signature, OperationHash};
+use crypto::hash::{
+    BlockHash, BlockPayloadHash, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
+    OperationListListHash, ProtocolHash, Signature,
+};
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader, types::SizedBytes};
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
-use tezos_encoding::{enc::BinWriter, nom::NomReader, encoding::HasEncoding, types::SizedBytes};
 
 // signature watermark: 0x11 | chain_id
 #[derive(BinWriter, HasEncoding, NomReader, Serialize, Clone, Debug)]
@@ -78,8 +81,12 @@ impl OperationSimple {
         let c = self.contents.first()?.clone();
 
         match op_kind(&c)? {
-            "preendorsement" => serde_json::from_value(c).ok().map(OperationKind::Preendorsement),
-            "endorsement" => serde_json::from_value(c).ok().map(OperationKind::Endorsement),
+            "preendorsement" => serde_json::from_value(c)
+                .ok()
+                .map(OperationKind::Preendorsement),
+            "endorsement" => serde_json::from_value(c)
+                .ok()
+                .map(OperationKind::Endorsement),
             "failing_noop" => None,
             "proposals" | "ballot" => Some(OperationKind::Votes),
             "seed_nonce_revelation"

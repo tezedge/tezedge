@@ -1,22 +1,25 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{sync::mpsc, io, str, time::Duration, thread};
+use std::{io, str, sync::mpsc, thread, time::Duration};
 
-use chrono::{DateTime, Utc, ParseError};
+use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
-use reqwest::{
-    blocking::Client,
-    StatusCode, Url,
-};
+use reqwest::{blocking::Client, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use crypto::hash::{ChainId, ProtocolHash, BlockHash, OperationListListHash, ContextHash, BlockPayloadHash, Signature, OperationHash};
-use tezos_messages::{p2p::{binary_message::BinaryRead, encoding::operation::DecodedOperation}, protocol::proto_012::operation::FullHeader};
+use crypto::hash::{
+    BlockHash, BlockPayloadHash, ChainId, ContextHash, OperationHash, OperationListListHash,
+    ProtocolHash, Signature,
+};
 use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_messages::{
+    p2p::{binary_message::BinaryRead, encoding::operation::DecodedOperation},
+    protocol::proto_012::operation::FullHeader,
+};
 
-use super::event::{Event, Block, OperationSimple, Constants, ProtocolBlockHeader};
+use super::event::{Block, Constants, Event, OperationSimple, ProtocolBlockHeader};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
@@ -36,10 +39,7 @@ pub enum RpcError {
         inner: RpcErrorInner,
     },
     #[error("{inner}, url: {url}")]
-    WithContext {
-        url: Url,
-        inner: RpcErrorInner,
-    },
+    WithContext { url: Url, inner: RpcErrorInner },
     #[error("{_0}")]
     Less(RpcErrorInner),
 }
@@ -95,7 +95,8 @@ impl RpcClient {
             #[allow(dead_code)]
             timestamp: String,
         }
-        let Bootstrapped { block, .. } = self.single_response_blocking(&url, None, None)
+        let Bootstrapped { block, .. } = self
+            .single_response_blocking(&url, None, None)
             .map_err(|inner| RpcError::WithContext { url, inner })?;
 
         Ok(block)
@@ -110,7 +111,11 @@ impl RpcClient {
 
         let s = format!("chains/main/blocks/{}/protocols", block_hash);
         let url = self.endpoint.join(&s).expect("valid url");
-        let Protocols { protocol, next_protocol } = self.single_response_blocking(&url, None, None)
+        let Protocols {
+            protocol,
+            next_protocol,
+        } = self
+            .single_response_blocking(&url, None, None)
             .map_err(|inner| RpcError::WithContext { url, inner })?;
         if next_protocol.to_base58_check() != PROTOCOL {
             return Ok(None);
@@ -130,10 +135,11 @@ impl RpcClient {
             payload_hash: BlockPayloadHash,
             payload_round: i32,
         }
-        
+
         let s = format!("chains/main/blocks/{}/header", block_hash);
         let url = self.endpoint.join(&s).expect("valid url");
-        let header = self.single_response_blocking::<BlockHeaderJson>(&url, None, None)
+        let header = self
+            .single_response_blocking::<BlockHeaderJson>(&url, None, None)
             .map_err(|inner| RpcError::WithContext { url, inner })?;
 
         let transition = protocol != next_protocol;
@@ -150,7 +156,8 @@ impl RpcClient {
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("level", &(header.level + 1).to_string());
-        let validators = self.single_response_blocking(&url, None, None)
+        let validators = self
+            .single_response_blocking(&url, None, None)
             .map_err(|inner| RpcError::WithContext { url, inner })?;
 
         Ok(Some(Block {
@@ -184,8 +191,7 @@ impl RpcClient {
     pub fn monitor_heads(&self, chain_id: &ChainId) -> Result<(), RpcError> {
         let s = format!("monitor/heads/{chain_id}");
         let mut url = self.endpoint.join(&s).expect("valid constant url");
-        url.query_pairs_mut()
-            .append_pair("next_protocol", PROTOCOL);
+        url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
 
         #[derive(Deserialize, Serialize, Debug, Clone)]
         struct BlockHeaderJsonGeneric {
@@ -202,40 +208,38 @@ impl RpcClient {
         }
 
         let this = self.clone();
-        self
-            .multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
-                let s = format!("chains/main/blocks/{}/operations", header.hash);
-                let url = this.endpoint.join(&s).expect("valid url");
-                let operations =
-                    this.single_response_blocking(&url, None, None)?;
-                let s = format!("chains/main/blocks/head/helpers/validators");
-                let mut url = this.endpoint.join(&s).expect("valid constant url");
-                url.query_pairs_mut()
-                    .append_pair("level", &(header.level + 1).to_string());
-                let validators = this.single_response_blocking(&url, None, None)?;
+        self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
+            let s = format!("chains/main/blocks/{}/operations", header.hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let operations = this.single_response_blocking(&url, None, None)?;
+            let s = format!("chains/main/blocks/head/helpers/validators");
+            let mut url = this.endpoint.join(&s).expect("valid constant url");
+            url.query_pairs_mut()
+                .append_pair("level", &(header.level + 1).to_string());
+            let validators = this.single_response_blocking(&url, None, None)?;
 
-                let protocol_data_bytes = hex::decode(header.protocol_data)?;
-                let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)?;
+            let protocol_data_bytes = hex::decode(header.protocol_data)?;
+            let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)?;
 
-                Ok(Event::Block(Block {
-                    hash: header.hash,
-                    level: header.level,
-                    proto: header.proto,
-                    predecessor: header.predecessor,
-                    timestamp: header.timestamp,
-                    validation_pass: header.validation_pass,
-                    operations_hash: header.operations_hash,
-                    fitness: header.fitness,
-                    context: header.context,
-                    payload_hash: protocol_header.payload_hash,
-                    payload_round: protocol_header.payload_round,
+            Ok(Event::Block(Block {
+                hash: header.hash,
+                level: header.level,
+                proto: header.proto,
+                predecessor: header.predecessor,
+                timestamp: header.timestamp,
+                validation_pass: header.validation_pass,
+                operations_hash: header.operations_hash,
+                fitness: header.fitness,
+                context: header.context,
+                payload_hash: protocol_header.payload_hash,
+                payload_round: protocol_header.payload_round,
 
-                    transition: false,
-                    operations,
-                    validators,
-                }))
-            })
-            .map_err(|inner| RpcError::WithContext { url, inner })
+                transition: false,
+                operations,
+                validators,
+            }))
+        })
+        .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     pub fn monitor_operations(&self) -> Result<(), RpcError> {
@@ -249,11 +253,10 @@ impl RpcClient {
             .append_pair("outdated", "no")
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
-        self
-            .multiple_responses(&url, None, move |operations| {
-                Ok(Event::Operations(operations))
-            })
-            .map_err(|inner| RpcError::WithContext { url, inner })
+        self.multiple_responses(&url, None, move |operations| {
+            Ok(Event::Operations(operations))
+        })
+        .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     pub fn inject_operation(
@@ -277,7 +280,7 @@ impl RpcClient {
         protocol_header: ProtocolBlockHeader,
         predecessor_hash: BlockHash,
         timestamp: i64,
-        mut operations: [Vec<OperationSimple>; 4]
+        mut operations: [Vec<OperationSimple>; 4],
     ) -> Result<(FullHeader, Vec<Vec<DecodedOperation>>), RpcError> {
         #[derive(Serialize)]
         struct BlockData {
@@ -296,7 +299,7 @@ impl RpcClient {
             fitness: Vec<String>,
             context: ContextHash,
         }
-        
+
         #[derive(Deserialize)]
         struct PreapplyResponse {
             shell_header: ShellBlockShortHeader,
@@ -338,14 +341,19 @@ impl RpcClient {
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("timestamp", &timestamp.to_string());
-        let body = serde_json::to_string(&block_data).map_err(Into::into).map_err(RpcError::Less)?;
-        let PreapplyResponse { shell_header, operations } =
-            self.single_response_blocking(&url, Some(body.clone()), None)
-                .map_err(|inner| RpcError::WithBody {
-                    url: url.clone(),
-                    body,
-                    inner,
-                })?;
+        let body = serde_json::to_string(&block_data)
+            .map_err(Into::into)
+            .map_err(RpcError::Less)?;
+        let PreapplyResponse {
+            shell_header,
+            operations,
+        } = self
+            .single_response_blocking(&url, Some(body.clone()), None)
+            .map_err(|inner| RpcError::WithBody {
+                url: url.clone(),
+                body,
+                inner,
+            })?;
 
         let ShellBlockShortHeader {
             level,
@@ -357,9 +365,13 @@ impl RpcClient {
             fitness,
             context,
         } = shell_header;
-        let timestamp = timestamp.parse::<DateTime<Utc>>()
+        let timestamp = timestamp
+            .parse::<DateTime<Utc>>()
             .map_err(Into::into)
-            .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?
+            .map_err(|inner| RpcError::WithContext {
+                url: url.clone(),
+                inner,
+            })?
             .timestamp()
             .into();
         let ProtocolBlockHeader {
