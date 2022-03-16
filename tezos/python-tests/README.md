@@ -15,7 +15,7 @@ Examples:
 - `TO` = launch `light-node` followed by `tezos-node`, and repeat
 - `OOT` = launch two `tezos-node` followed by one `light-node` and repeat
 
-## Tests
+## Tests (THIS TABLE IS OUTDATED)
 
 |             Test              |Tezedge compatibility          |local  | drone  |               Description                                               | Modifications                            |       Comment
 |-------------------------------|-------------------------------|-------|--------|-------------------------------------------------------------------------|------------------------------------------|-------------------------------------------------|
