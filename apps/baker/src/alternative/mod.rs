@@ -9,6 +9,8 @@ mod slots_info;
 
 mod client;
 
+mod timer;
+
 mod event_loop;
 
 pub use self::event_loop::run;

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, sync::mpsc, time::{Duration, SystemTime}, convert::TryInto, thread};
+use std::{collections::BTreeMap, sync::mpsc, time::{Duration, SystemTime}, convert::TryInto};
 
 use chrono::{DateTime, Utc};
 use reqwest::Url;
@@ -18,6 +18,7 @@ use super::{
     event::{Event, OperationKind, ProtocolBlockHeader},
     block_payload::BlockPayload,
     slots_info::SlotsInfo,
+    timer::Timer,
 };
 use crate::{
     proof_of_work::guess_proof_of_work,
@@ -27,7 +28,7 @@ use crate::{
 pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), RpcError> {
     let (tx, rx) = mpsc::channel();
     let client = RpcClient::new(endpoint, tx.clone());
-    let (timer_handle, timer) = spawn_timer(tx);
+    let timer = Timer::spawn(tx);
 
     let chain_id = client.get_chain_id()?;
     // TODO: transition
@@ -214,7 +215,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
         for action in actions {
             match action {
                 tb::Action::ScheduleTimeout(timestamp) => {
-                    timer.send(timestamp).expect("timer running");
+                    timer.schedule(timestamp);
                 }
                 tb::Action::Preendorse { pred_hash, block_id } => {
                     let this = crypto.public_key_hash();
@@ -328,41 +329,5 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
         }
     }
 
-    drop(client);
-    drop(timer);
-    timer_handle.join().unwrap();
-
     Ok(())
-}
-
-fn spawn_timer(
-    event_sender: mpsc::Sender<Result<Event, RpcError>>,
-) -> (thread::JoinHandle<()>, mpsc::Sender<tb::Timestamp>) {
-    let (task_tx, task_rx) = mpsc::channel::<tb::Timestamp>();
-    let handle = thread::spawn(move || {
-        let mut timeout_duration = None;
-        loop {
-            let next = match timeout_duration.take() {
-                Some(duration) => match task_rx.recv_timeout(duration) {
-                    Ok(next) => next,
-                    Err(mpsc::RecvTimeoutError::Timeout) => {
-                        let _ = event_sender.send(Ok(Event::Tick));
-                        continue;
-                    }
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                }
-                None => match task_rx.recv() {
-                    Ok(next) => next,
-                    Err(mpsc::RecvError) => break,
-                },
-            };
-            let now = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("the unix epoch has begun");
-            if next.unix_epoch > now {
-                timeout_duration = Some(next.unix_epoch - now);
-            }
-        }
-    });
-    (handle, task_tx)
 }
