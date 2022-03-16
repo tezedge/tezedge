@@ -57,22 +57,18 @@ impl Config {
     }
 }
 
-/// Proposal of new head and its predecessor
-pub struct Proposal<Id, P>
-where
-    P: Payload,
-{
-    pub pred_timestamp: Timestamp,
-    pub pred_round: i32,
-    pub head: BlockInfo<Id, P>,
+/// The first proposal
+#[derive(Clone)]
+pub struct Pred {
+    pub timestamp: Timestamp,
+    pub level: i32,
+    pub round: i32,
+    pub transition: bool,
 }
 
-impl<Id, P> Proposal<Id, P>
-where
-    P: Payload,
-{
+impl Pred {
     pub fn round_local_coord(&self, config: &Config, now: Timestamp) -> i32 {
-        let (pred_timestamp, pred_round) = (self.pred_timestamp, self.pred_round);
+        let (pred_timestamp, pred_round) = (self.timestamp, self.round);
         let start_this_level = pred_timestamp + config.round_duration(pred_round);
         config.round(now, start_this_level)
     }
@@ -110,7 +106,8 @@ pub enum Event<Id, P>
 where
     P: Payload,
 {
-    Proposal(Box<Proposal<Id, P>>, Timestamp),
+    InitialProposal([u8; 32], Pred, Timestamp),
+    Proposal(Box<BlockInfo<Id, P>>, Timestamp),
     Preendorsement(Preendorsement<Id>, P::Item, Timestamp),
     Endorsement(Endorsement<Id>, P::Item, Timestamp),
     Timeout,

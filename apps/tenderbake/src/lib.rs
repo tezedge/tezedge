@@ -16,7 +16,7 @@ mod block;
 pub use self::block::{BlockId, Votes, Prequorum, Quorum, Payload, BlockInfo};
 
 mod interface;
-pub use self::interface::{Config, Action, Event, Proposal, Preendorsement, Endorsement};
+pub use self::interface::{Config, Action, Event, Pred, Preendorsement, Endorsement};
 
 mod state;
 pub use self::state::Machine;
