@@ -6,7 +6,7 @@ use std::{fmt, str};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
+    BlockHash, BlockPayloadHash, ContextHash, NonceHash, OperationHash,
     OperationListListHash, ProtocolHash, Signature,
 };
 use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader, types::SizedBytes};
@@ -22,12 +22,6 @@ pub struct ProtocolBlockHeader {
     pub seed_nonce_hash: Option<NonceHash>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Validator {
-    pub delegate: ContractTz1Hash,
-    pub slots: Vec<u16>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -115,7 +109,6 @@ pub struct Block {
 
     pub transition: bool,
     pub operations: Vec<Vec<OperationSimple>>,
-    pub validators: Vec<Validator>,
 }
 
 pub enum Event {

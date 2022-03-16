@@ -1,45 +1,59 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, convert::TryInto};
+use std::{collections::BTreeMap, convert::TryInto, mem};
 
 use crypto::hash::ContractTz1Hash;
 use tenderbake as tb;
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
-use super::event::{Block, Validator};
-
 pub struct SlotsInfo {
-    consensus_committee_size: u32,
+    committee_size: u32,
     ours: Vec<ContractTz1Hash>,
-    delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Vec<u16>>>,
+    level: i32,
+    this_level: BTreeMap<ContractTz1Hash, Vec<u16>>,
+    next_level: BTreeMap<ContractTz1Hash, Vec<u16>>,
 }
 
 impl SlotsInfo {
-    pub fn new(consensus_committee_size: u32, ours: Vec<ContractTz1Hash>) -> Self {
+    pub fn new(committee_size: u32, ours: Vec<ContractTz1Hash>) -> Self {
         SlotsInfo {
-            consensus_committee_size,
+            committee_size,
             ours,
-            delegates: BTreeMap::new(),
+            level: 0,
+            this_level: BTreeMap::new(),
+            next_level: BTreeMap::new(),
         }
     }
 
-    pub fn insert(&mut self, block: &Block) {
-        let delegates = block
-            .validators
-            .clone()
-            .into_iter()
-            .map(|Validator { delegate, slots }| (delegate, slots))
-            .collect();
-        self.delegates.insert(block.level + 1, delegates);
+    pub fn level(&self) -> i32 {
+        self.level
+    }
+
+    pub fn insert(&mut self, level: i32, delegates: BTreeMap<ContractTz1Hash, Vec<u16>>) {
+        self.level = level - 1;
+        mem::swap(&mut self.this_level, &mut self.next_level);
+        self.next_level = delegates;
     }
 
     pub fn slots(&self, id: &ContractTz1Hash, level: i32) -> Option<&Vec<u16>> {
-        self.delegates.get(&level)?.get(id)
+        if level == self.level {
+            self.this_level.get(id)
+        } else if level == self.level + 1 {
+            self.next_level.get(id)
+        } else {
+            None
+        }
     }
 
     pub fn validator(&self, level: i32, slot: u16) -> Option<tb::Validator<ContractTz1Hash>> {
-        let i = self.delegates.get(&level)?;
+        let i = if level == self.level {
+            &self.this_level
+        } else if level == self.level + 1 {
+            &self.next_level
+        } else {
+            return None;
+        };
         let (id, s) = i.iter().find(|&(_, v)| v.first() == Some(&slot))?;
         Some(tb::Validator {
             id: id.clone(),
@@ -92,7 +106,7 @@ impl tb::ValidatorMap for SlotsInfo {
                 self.slots(our, level)
                     .into_iter()
                     .flatten()
-                    .skip_while(|c| **c < (round as u32 % self.consensus_committee_size) as u16)
+                    .skip_while(|c| **c < (round as u32 % self.committee_size) as u16)
                     .next()
                     .map(|r| (*r as i32, our.clone()))
             })

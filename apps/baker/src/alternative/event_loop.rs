@@ -12,7 +12,7 @@ use slog::Logger;
 
 use crypto::{
     blake2b,
-    hash::{BlockHash, BlockPayloadHash, ContractTz1Hash, NonceHash, Signature, ChainId},
+    hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, NonceHash, Signature},
 };
 use tb::Payload;
 use tenderbake as tb;
@@ -25,10 +25,10 @@ use super::{
     block_payload::BlockPayload,
     client::{RpcClient, RpcError},
     event::{Event, OperationKind, ProtocolBlockHeader},
+    guess_proof_of_work,
     slots_info::SlotsInfo,
     timer::Timer,
     CryptoService,
-    guess_proof_of_work,
 };
 
 pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), RpcError> {
@@ -79,8 +79,10 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 vec![]
             }
             Ok(Event::Block(block)) => {
-                slog::info!(log, "new block {}:{}", block.level, block.round);
-                slots_info.insert(&block);
+                if block.level > slots_info.level() {
+                    let delegates = client.validators(block.level + 1)?;
+                    slots_info.insert(block.level + 1, delegates);
+                }
                 let timestamp = tb::Timestamp {
                     unix_epoch: Duration::from_secs(block.timestamp),
                 };
@@ -192,7 +194,17 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                 .into_iter()
                 .collect(),
         };
-        perform(&client, log, &timer, crypto, &slots_info, &chain_id, constants.blocks_per_commitment, proof_of_work_threshold, actions);
+        perform(
+            &client,
+            log,
+            &timer,
+            crypto,
+            &slots_info,
+            &chain_id,
+            constants.blocks_per_commitment,
+            proof_of_work_threshold,
+            actions,
+        );
     }
 
     Ok(())
@@ -219,7 +231,9 @@ fn perform(
                 block_id,
             } => {
                 let this = crypto.public_key_hash();
-                let slot = slots_info.slots(&this, block_id.level).and_then(|v| v.first());
+                let slot = slots_info
+                    .slots(&this, block_id.level)
+                    .and_then(|v| v.first());
                 let slot = match slot {
                     Some(s) => *s,
                     None => continue,
@@ -231,9 +245,7 @@ fn perform(
                             slot,
                             level: block_id.level,
                             round: block_id.round,
-                            block_payload_hash: BlockPayloadHash(
-                                block_id.payload_hash.to_vec(),
-                            ),
+                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
                         },
                     ),
                     signature: Signature(vec![]),
@@ -249,7 +261,9 @@ fn perform(
                 block_id,
             } => {
                 let this = crypto.public_key_hash();
-                let slot = slots_info.slots(&this, block_id.level).and_then(|v| v.first());
+                let slot = slots_info
+                    .slots(&this, block_id.level)
+                    .and_then(|v| v.first());
                 let slot = match slot {
                     Some(s) => *s,
                     None => continue,
@@ -261,9 +275,7 @@ fn perform(
                             slot,
                             level: block_id.level,
                             round: block_id.round,
-                            block_payload_hash: BlockPayloadHash(
-                                block_id.payload_hash.to_vec(),
-                            ),
+                            block_payload_hash: BlockPayloadHash(block_id.payload_hash.to_vec()),
                         },
                     ),
                     signature: Signature(vec![]),
@@ -290,13 +302,14 @@ fn perform(
                 } else {
                     BlockPayloadHash(block.block_id.payload_hash.to_vec())
                 };
-                let pos_in_cycle =
-                    (block.block_id.level as u32) % blocks_per_commitment;
+                let pos_in_cycle = (block.block_id.level as u32) % blocks_per_commitment;
                 let mut protocol_header = ProtocolBlockHeader {
                     payload_hash,
                     payload_round,
                     seed_nonce_hash: if pos_in_cycle == 0 {
-                        Some(NonceHash(blake2b::digest_256(&[1, 2, 3]).expect("constant")))
+                        Some(NonceHash(
+                            blake2b::digest_256(&[1, 2, 3]).expect("constant"),
+                        ))
                     } else {
                         None
                     },

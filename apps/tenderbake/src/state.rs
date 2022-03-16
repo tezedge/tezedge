@@ -39,8 +39,16 @@ where
 
 pub enum ClosestRound<Id> {
     Never,
-    ThisLevel { proposer: Id, round: i32, timestamp: Timestamp },
-    NextLevel { proposer: Id, round: i32, timestamp: Timestamp },
+    ThisLevel {
+        proposer: Id,
+        round: i32,
+        timestamp: Timestamp,
+    },
+    NextLevel {
+        proposer: Id,
+        round: i32,
+        timestamp: Timestamp,
+    },
 }
 
 impl<Id> fmt::Display for ClosestRound<Id>
@@ -50,11 +58,19 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClosestRound::Never => write!(f, "nor this level not next level"),
-            ClosestRound::ThisLevel { proposer, round, timestamp } => {
-                write!(f, "this level, round: {round}, {timestamp}, proposer: {proposer}")
+            ClosestRound::ThisLevel {
+                proposer,
+                round,
+                timestamp,
+            } => {
+                write!(f, "this level, round: {round}, {timestamp}, {proposer}")
             }
-            ClosestRound::NextLevel { proposer, round, timestamp } => {
-                write!(f, "next level, round: {round}, {timestamp}, proposer: {proposer}")
+            ClosestRound::NextLevel {
+                proposer,
+                round,
+                timestamp,
+            } => {
+                write!(f, "next level, round: {round}, {timestamp}, {proposer}")
             }
         }
     }
@@ -158,7 +174,7 @@ where
                 } else {
                     self.proposal(config, map, *proposal, now)
                 }
-            },
+            }
             Event::Preendorsement(content, op, now) => {
                 self.preendorsement(config, map, now, content, op)
             }
@@ -176,7 +192,11 @@ where
         log::info!(" .  will bake level: {level}, {}", self.closest_round);
         let block = match mem::take(&mut self.closest_round) {
             ClosestRound::Never => None,
-            ClosestRound::NextLevel { proposer, round, timestamp } => {
+            ClosestRound::NextLevel {
+                proposer,
+                round,
+                timestamp,
+            } => {
                 let elected_block = self.elected_block.as_ref().expect("msg");
                 let new_block = BlockInfo {
                     pred_hash: elected_block.head.hash,
@@ -196,7 +216,11 @@ where
                 self.closest_timestamp_next_level = None;
                 Some((Box::new(new_block), proposer))
             }
-            ClosestRound::ThisLevel { proposer, round, timestamp } => {
+            ClosestRound::ThisLevel {
+                proposer,
+                round,
+                timestamp,
+            } => {
                 let mut head = self.head.clone();
                 head.timestamp = timestamp;
                 head.block_id.round = round;
@@ -215,7 +239,10 @@ where
                 Some((Box::new(head), proposer))
             }
         };
-        block.map(|(head, proposer)| Action::Propose(head, proposer)).into_iter().collect()
+        block
+            .map(|(head, proposer)| Action::Propose(head, proposer))
+            .into_iter()
+            .collect()
     }
 
     fn initial_proposal<V>(
@@ -249,8 +276,14 @@ where
                     + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
                 let timestamp = start_next_level + d;
                 self.closest_timestamp_next_level = Some(timestamp);
-                self.closest_round = ClosestRound::NextLevel { proposer, round, timestamp };
-                Some(Action::ScheduleTimeout(timestamp)).into_iter().collect()
+                self.closest_round = ClosestRound::NextLevel {
+                    proposer,
+                    round,
+                    timestamp,
+                };
+                Some(Action::ScheduleTimeout(timestamp))
+                    .into_iter()
+                    .collect()
             } else {
                 ArrayVec::default()
             }
@@ -271,12 +304,7 @@ where
     {
         let mut actions = ArrayVec::new();
 
-        match self
-            .head
-            .block_id
-            .level
-            .cmp(&new_proposal.block_id.level)
-        {
+        match self.head.block_id.level.cmp(&new_proposal.block_id.level) {
             Ordering::Less => {
                 // we received a block for a next level
                 // TODO: transition
@@ -384,7 +412,13 @@ where
                                 round: new_proposal.block_id.round,
                                 transition: new_proposal.transition,
                             };
-                            return self.initial_proposal(config, map, new_proposal.hash, pred, now);
+                            return self.initial_proposal(
+                                config,
+                                map,
+                                new_proposal.hash,
+                                pred,
+                                now,
+                            );
                         }
                     };
                     self.pred = pred.clone();
@@ -493,7 +527,10 @@ where
     where
         V: ValidatorMap<Id = Id>,
     {
-        if !matches!(self.initialization_state, InitializationState::ReadyReceiveConsensusOps) {
+        if !matches!(
+            self.initialization_state,
+            InitializationState::ReadyReceiveConsensusOps
+        ) {
             return ArrayVec::default();
         }
 
@@ -562,7 +599,10 @@ where
     where
         V: ValidatorMap<Id = Id>,
     {
-        if !matches!(self.initialization_state, InitializationState::ReadyReceiveConsensusOps) {
+        if !matches!(
+            self.initialization_state,
+            InitializationState::ReadyReceiveConsensusOps
+        ) {
             return ArrayVec::default();
         }
 
@@ -620,7 +660,11 @@ where
                         return None;
                     }
                 }
-                self.closest_round = ClosestRound::NextLevel { proposer, round, timestamp };
+                self.closest_round = ClosestRound::NextLevel {
+                    proposer,
+                    round,
+                    timestamp,
+                };
                 return Some(timestamp);
             }
         }
@@ -658,7 +702,11 @@ where
                     return None;
                 }
             }
-            self.closest_round = ClosestRound::ThisLevel { proposer, round, timestamp };
+            self.closest_round = ClosestRound::ThisLevel {
+                proposer,
+                round,
+                timestamp,
+            };
             return Some(timestamp);
         }
 

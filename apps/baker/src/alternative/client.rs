@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{io, str, sync::mpsc, thread, time::Duration, convert::TryInto};
+use std::{collections::BTreeMap, convert::TryInto, io, str, sync::mpsc, thread, time::Duration};
 
 use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
@@ -10,8 +10,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContextHash, OperationHash, OperationListListHash,
-    ProtocolHash, Signature,
+    BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, OperationHash,
+    OperationListListHash, ProtocolHash, Signature,
 };
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::{
@@ -113,12 +113,36 @@ impl RpcClient {
             .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
+    pub fn validators(&self, level: i32) -> Result<BTreeMap<ContractTz1Hash, Vec<u16>>, RpcError> {
+        let mut url = self
+            .endpoint
+            .join("chains/main/blocks/head/helpers/validators")
+            .expect("valid constant url");
+        url.query_pairs_mut()
+            .append_pair("level", &level.to_string());
+
+        #[derive(Deserialize)]
+        pub struct Validator {
+            pub delegate: ContractTz1Hash,
+            pub slots: Vec<u16>,
+        }
+
+        let validators = self
+            .single_response_blocking::<Vec<_>>(&url, None, None)
+            .map_err(|inner| RpcError::WithContext { url, inner })?;
+        let validators = validators
+            .into_iter()
+            .map(|Validator { delegate, slots }| (delegate, slots))
+            .collect();
+        Ok(validators)
+    }
+
     pub fn monitor_heads(&self, chain_id: &ChainId) -> Result<(), RpcError> {
         let s = format!("monitor/heads/{chain_id}");
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
 
-        #[derive(Deserialize, Serialize, Debug, Clone)]
+        #[derive(Deserialize)]
         struct BlockHeaderJsonGeneric {
             hash: BlockHash,
             level: i32,
@@ -139,33 +163,33 @@ impl RpcClient {
             #[derive(Deserialize)]
             struct Protocols {
                 protocol: ProtocolHash,
-                next_protocol: ProtocolHash,
             }
-            
+
             let s = format!("chains/main/blocks/{}/protocols", header.hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let Protocols {
-                protocol,
-                next_protocol,
-            } = this
-                .single_response_blocking(&url, None, None)?;
+            let Protocols { protocol } = this.single_response_blocking(&url, None, None)?;
 
-            let s = format!("chains/main/blocks/{}/operations", header.hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let operations = this.single_response_blocking(&url, None, None)?;
-            let s = format!("chains/main/blocks/head/helpers/validators");
-            let mut url = this.endpoint.join(&s).expect("valid constant url");
-            url.query_pairs_mut()
-                .append_pair("level", &(header.level + 1).to_string());
-            let validators = this.single_response_blocking(&url, None, None)?;
+            let transition = protocol.to_base58_check() != PROTOCOL;
 
-            let (payload_hash, payload_round, round) = if protocol.to_base58_check() == PROTOCOL {
+            let (payload_hash, payload_round, round) = if !transition {
                 let protocol_data_bytes = hex::decode(header.protocol_data)?;
                 let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)?;
                 let round = convert_fitness(&header.fitness)?;
-                (protocol_header.payload_hash, protocol_header.payload_round, round)
+                (
+                    protocol_header.payload_hash,
+                    protocol_header.payload_round,
+                    round,
+                )
             } else {
                 (BlockPayloadHash(vec![0; 32]), 0, 0)
+            };
+
+            let operations = if transition {
+                vec![]
+            } else {
+                let s = format!("chains/main/blocks/{}/operations", header.hash);
+                let url = this.endpoint.join(&s).expect("valid url");
+                this.single_response_blocking(&url, None, None)?
             };
 
             Ok(Event::Block(Block {
@@ -182,9 +206,8 @@ impl RpcClient {
                 payload_round,
                 round,
 
-                transition: protocol != next_protocol,
+                transition,
                 operations,
-                validators,
             }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
@@ -426,7 +449,7 @@ impl RpcClient {
             } else {
                 let status = response.status();
                 let mut response = response;
-                match Self::read_error(&mut response, status) {
+                match read_error(&mut response, status) {
                     Ok(()) => unreachable!(),
                     Err(inner) => {
                         let _ = tx.send(Err(RpcError::WithContext { url, inner }));
@@ -476,23 +499,22 @@ impl RpcClient {
             serde_json::from_reader::<_, T>(response).map_err(Into::into)
         } else {
             let status = response.status();
-            Self::read_error(&mut response, status)?;
+            read_error(&mut response, status)?;
             unreachable!()
         }
     }
+}
 
-    // it may be string without quotes, it is invalid json, let's read it manually
-    fn read_error(response: &mut impl io::Read, status: StatusCode) -> Result<(), RpcErrorInner> {
-        let mut buf = [0; 0x1000];
-        io::Read::read(response, &mut buf)?;
-        let err = str::from_utf8(&buf)?.trim_end_matches('\0');
-        Err(RpcErrorInner::NodeError(err.to_string(), status))
-    }
+// it may be string without quotes, it is invalid json, let's read it manually
+fn read_error(response: &mut impl io::Read, status: StatusCode) -> Result<(), RpcErrorInner> {
+    let mut buf = [0; 0x1000];
+    io::Read::read(response, &mut buf)?;
+    let err = str::from_utf8(&buf)?.trim_end_matches('\0');
+    Err(RpcErrorInner::NodeError(err.to_string(), status))
 }
 
 fn convert_timestamp(v: &str) -> Result<u64, RpcErrorInner> {
-    v
-        .parse::<DateTime<Utc>>()
+    v.parse::<DateTime<Utc>>()
         .map_err(Into::into)
         .map(|v| v.timestamp() as u64)
 }
