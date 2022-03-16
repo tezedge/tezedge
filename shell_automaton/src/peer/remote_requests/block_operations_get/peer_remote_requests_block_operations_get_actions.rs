@@ -14,8 +14,13 @@ use crate::{EnablingCondition, State};
 
 use super::MAX_PEER_REMOTE_BLOCK_OPERATIONS_REQUESTS;
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetEnqueueAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub key: OperationKey,
 }
@@ -38,8 +43,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetEnqueueAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetInitNextAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -55,8 +62,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetInitNextAc
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub key: OperationKey,
     pub storage_req_id: RequestId,
@@ -73,8 +82,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetPendingAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetErrorAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub error: StorageError,
 }
@@ -89,8 +100,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetErrorActio
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub result: Option<OperationsForBlocksMessage>,
 }
@@ -105,8 +118,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetSuccessAct
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsBlockOperationsGetFinishAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 

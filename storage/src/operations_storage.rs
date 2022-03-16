@@ -109,6 +109,7 @@ impl KVStoreKeyValueSchema for OperationsStorage {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct OperationKey {
     pub block_hash: BlockHash,

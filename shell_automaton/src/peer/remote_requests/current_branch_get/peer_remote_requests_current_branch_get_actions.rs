@@ -11,8 +11,13 @@ use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 use crate::{EnablingCondition, State};
 
+#[cfg(feature = "fuzzing")]
+use crate::fuzzing::net::SocketAddrMutator;
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetInitAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -27,8 +32,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -42,8 +49,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetPendingActio
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetNextBlockInitAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -62,8 +71,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetNextBlockIni
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub storage_req_id: RequestId,
 }
@@ -79,8 +90,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetNextBlockPen
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub error: StorageError,
 }
@@ -96,8 +109,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetNextBlockErr
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub result: Option<BlockHash>,
 }
@@ -113,8 +128,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetNextBlockSuc
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetSuccessAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 
@@ -128,8 +145,10 @@ impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetSuccessActio
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerRemoteRequestsCurrentBranchGetFinishAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
 }
 

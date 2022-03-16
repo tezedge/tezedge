@@ -13,6 +13,7 @@ use crate::{EnablingCondition, State};
 
 use super::CurrentHeadState;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydrateInitAction {}
 
@@ -33,6 +34,7 @@ impl EnablingCondition<State> for CurrentHeadRehydrateInitAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydratePendingAction {
     pub storage_req_id: RequestId,
@@ -47,6 +49,7 @@ impl EnablingCondition<State> for CurrentHeadRehydratePendingAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydrateErrorAction {
     pub error: StorageError,
@@ -61,6 +64,7 @@ impl EnablingCondition<State> for CurrentHeadRehydrateErrorAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydrateSuccessAction {
     pub head: BlockHeaderWithHash,
@@ -76,6 +80,7 @@ impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadRehydratedAction {}
 
@@ -88,6 +93,7 @@ impl EnablingCondition<State> for CurrentHeadRehydratedAction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadUpdateAction {
     pub new_head: BlockHeaderWithHash,
