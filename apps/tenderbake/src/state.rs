@@ -37,27 +37,30 @@ where
     quorum: Quorum<Id, P::Item>,
 }
 
-pub enum ClosestRound {
+pub enum ClosestRound<Id> {
     Never,
-    ThisLevel { round: i32, timestamp: Timestamp },
-    NextLevel { round: i32, timestamp: Timestamp },
+    ThisLevel { proposer: Id, round: i32, timestamp: Timestamp },
+    NextLevel { proposer: Id, round: i32, timestamp: Timestamp },
 }
 
-impl fmt::Display for ClosestRound {
+impl<Id> fmt::Display for ClosestRound<Id>
+where
+    Id: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClosestRound::Never => write!(f, "nor this level not next level"),
-            ClosestRound::ThisLevel { round, timestamp } => {
-                write!(f, "this level, round: {round}, {timestamp}")
+            ClosestRound::ThisLevel { proposer, round, timestamp } => {
+                write!(f, "this level, round: {round}, {timestamp}, proposer: {proposer}")
             }
-            ClosestRound::NextLevel { round, timestamp } => {
-                write!(f, "next level, round: {round}, {timestamp}")
+            ClosestRound::NextLevel { proposer, round, timestamp } => {
+                write!(f, "next level, round: {round}, {timestamp}, proposer: {proposer}")
             }
         }
     }
 }
 
-impl Default for ClosestRound {
+impl<Id> Default for ClosestRound<Id> {
     fn default() -> Self {
         ClosestRound::Never
     }
@@ -80,14 +83,14 @@ where
 
     closest_timestamp_this_level: Option<Timestamp>,
     closest_timestamp_next_level: Option<Timestamp>,
-    closest_round: ClosestRound,
+    closest_round: ClosestRound<Id>,
 }
 
 impl<Id, P> Machine<Id, P>
 where
     P: Payload + Clone,
     P::Item: Clone,
-    Id: Clone + Ord,
+    Id: Clone + Ord + fmt::Display,
 {
     pub fn empty() -> Self {
         Machine {
@@ -138,7 +141,7 @@ where
                     let elected_duration = config.round_duration(pred.round);
                     let start_next_level = pred.timestamp + elected_duration;
                     let round = config.round(now, start_next_level);
-                    if let Some(round) = map.proposer(pred.level + 1, round) {
+                    if let Some((round, proposer)) = map.proposer(pred.level + 1, round) {
                         let mut head = BlockInfo::GENESIS;
                         head.hash = hash;
                         head.block_id.level = pred.level;
@@ -152,7 +155,7 @@ where
                             + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
                         let timestamp = start_next_level + d;
                         self.closest_timestamp_next_level = Some(timestamp);
-                        self.closest_round = ClosestRound::NextLevel { round, timestamp };
+                        self.closest_round = ClosestRound::NextLevel { proposer, round, timestamp };
                         Some(Action::ScheduleTimeout(timestamp)).into_iter().collect()
                     } else {
                         ArrayVec::default()
@@ -179,7 +182,7 @@ where
         log::info!(" .  will bake level: {level}, {}", self.closest_round);
         let block = match mem::take(&mut self.closest_round) {
             ClosestRound::Never => None,
-            ClosestRound::NextLevel { round, timestamp } => {
+            ClosestRound::NextLevel { proposer, round, timestamp } => {
                 let elected_block = self.elected_block.as_ref().expect("msg");
                 let new_block = BlockInfo {
                     pred_hash: elected_block.head.hash,
@@ -197,9 +200,9 @@ where
                     payload: mem::replace(&mut self.payload, P::EMPTY),
                 };
                 self.closest_timestamp_next_level = None;
-                Some(Box::new(new_block))
+                Some((Box::new(new_block), proposer))
             }
-            ClosestRound::ThisLevel { round, timestamp } => {
+            ClosestRound::ThisLevel { proposer, round, timestamp } => {
                 let mut head = self.head.clone();
                 head.timestamp = timestamp;
                 head.block_id.round = round;
@@ -215,10 +218,10 @@ where
                     head.prequorum = None;
                 }
                 self.closest_timestamp_this_level = None;
-                Some(Box::new(head))
+                Some((Box::new(head), proposer))
             }
         };
-        block.map(Action::Propose).into_iter().collect()
+        block.map(|(head, proposer)| Action::Propose(head, proposer)).into_iter().collect()
     }
 
     fn proposal<V>(
@@ -498,7 +501,7 @@ where
         op: P::Item,
     ) -> ArrayVec<Action<Id, P>, 2>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         let current_round = self.pred.round_local_coord(config, now);
 
@@ -536,14 +539,14 @@ where
         now: Timestamp,
     ) -> Option<Timestamp>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         if let Some(ref elected_block) = self.elected_block {
             let elected_round = elected_block.head.block_id.round;
             let elected_duration = config.round_duration(elected_round);
             let start_next_level = elected_block.head.timestamp + elected_duration;
             let round = config.round(now, start_next_level);
-            if let Some(round) = map.proposer(self.head.block_id.level + 1, round) {
+            if let Some((round, proposer)) = map.proposer(self.head.block_id.level + 1, round) {
                 let d = config.minimal_block_delay * (round as u32)
                     + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
                 let timestamp = start_next_level + d;
@@ -554,7 +557,7 @@ where
                         return None;
                     }
                 }
-                self.closest_round = ClosestRound::NextLevel { round, timestamp };
+                self.closest_round = ClosestRound::NextLevel { proposer, round, timestamp };
                 return Some(timestamp);
             }
         }
@@ -570,7 +573,7 @@ where
         now: Timestamp,
     ) -> Option<Timestamp>
     where
-        V: ValidatorMap,
+        V: ValidatorMap<Id = Id>,
     {
         // let current_round = self.round_local_coord(config, now);
         let (pred_timestamp, pred_round) = self
@@ -581,7 +584,7 @@ where
         let start_this_level = pred_timestamp + config.round_duration(pred_round);
         let round = config.round(now, start_this_level);
 
-        if let Some(round) = map.proposer(self.head.block_id.level, round + 1) {
+        if let Some((round, proposer)) = map.proposer(self.head.block_id.level, round + 1) {
             let d = config.minimal_block_delay * (round as u32)
                 + config.delay_increment_per_round * (round * (round - 1) / 2) as u32;
             let timestamp = start_this_level + d;
@@ -592,7 +595,7 @@ where
                     return None;
                 }
             }
-            self.closest_round = ClosestRound::ThisLevel { round, timestamp };
+            self.closest_round = ClosestRound::ThisLevel { proposer, round, timestamp };
             return Some(timestamp);
         }
 

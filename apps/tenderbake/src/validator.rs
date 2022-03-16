@@ -24,5 +24,5 @@ pub trait ValidatorMap {
     type Id;
 
     /// the closest round where current baker is proposer
-    fn proposer(&self, level: i32, round: i32) -> Option<i32>;
+    fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)>;
 }

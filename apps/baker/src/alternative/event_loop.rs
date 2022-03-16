@@ -299,7 +299,9 @@ fn perform(
                     Err(err) => slog::error!(log, "{err}"),
                 }
             }
-            tb::Action::Propose(block) => {
+            tb::Action::Propose(block, proposer) => {
+                // TODO: multiple bakers
+                let _ = proposer;
                 let predecessor_hash = BlockHash(block.pred_hash.to_vec());
                 let payload_round = block.block_id.payload_round;
                 let payload_hash = if block.block_id.payload_hash == [0; 32] {

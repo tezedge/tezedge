@@ -85,7 +85,7 @@ impl SlotsInfo {
 impl tb::ValidatorMap for SlotsInfo {
     type Id = ContractTz1Hash;
 
-    fn proposer(&self, level: i32, round: i32) -> Option<i32> {
+    fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {
         self.ours
             .iter()
             .filter_map(|our| {
@@ -94,8 +94,8 @@ impl tb::ValidatorMap for SlotsInfo {
                     .flatten()
                     .skip_while(|c| **c < (round as u32 % self.consensus_committee_size) as u16)
                     .next()
-                    .map(|r| *r as i32)
+                    .map(|r| (*r as i32, our.clone()))
             })
-            .min()
+            .min_by(|(a, _), (b, _)| a.cmp(b))
     }
 }
