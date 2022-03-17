@@ -31,6 +31,9 @@ use super::{
     CryptoService,
 };
 
+const WAIT_HEAD_TIMEOUT: Duration = Duration::from_secs(3600 * 24);
+const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
+
 pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), RpcError> {
     let (tx, rx) = mpsc::channel();
     let client = RpcClient::new(endpoint, tx.clone());
@@ -62,7 +65,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
             .to_be_bytes(),
     );
 
-    client.monitor_heads(&chain_id)?;
+    client.monitor_heads(&chain_id, WAIT_HEAD_TIMEOUT)?;
 
     let ours = vec![crypto.public_key_hash().clone()];
     let mut slots_info = SlotsInfo::new(constants.consensus_committee_size, ours);
@@ -154,7 +157,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
                         },
                     ),
                 });
-                if let Err(err) = client.monitor_operations() {
+                if let Err(err) = client.monitor_operations(WAIT_OPERATION_TIMEOUT) {
                     slog::error!(log, "{}", err);
                 }
                 let event = tb::Event::Proposal(proposal, now);

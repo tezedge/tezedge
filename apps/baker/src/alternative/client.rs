@@ -137,7 +137,7 @@ impl RpcClient {
         Ok(validators)
     }
 
-    pub fn monitor_heads(&self, chain_id: &ChainId) -> Result<(), RpcError> {
+    pub fn monitor_heads(&self, chain_id: &ChainId, timeout: Duration) -> Result<(), RpcError> {
         let s = format!("monitor/heads/{chain_id}");
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
@@ -157,7 +157,7 @@ impl RpcClient {
         }
 
         let this = self.clone();
-        self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
+        self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, Some(timeout), move |header| {
             let timestamp = convert_timestamp(&header.timestamp)?;
 
             #[derive(Deserialize)]
@@ -213,7 +213,7 @@ impl RpcClient {
         .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
-    pub fn monitor_operations(&self) -> Result<(), RpcError> {
+    pub fn monitor_operations(&self, timeout: Duration) -> Result<(), RpcError> {
         let mut url = self
             .endpoint
             .join("chains/main/mempool/monitor_operations")
@@ -224,7 +224,7 @@ impl RpcClient {
             .append_pair("outdated", "no")
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
-        self.multiple_responses(&url, None, move |operations| {
+        self.multiple_responses(&url, Some(timeout), move |operations| {
             Ok(Event::Operations(operations))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
