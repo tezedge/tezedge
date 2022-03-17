@@ -21,6 +21,7 @@ use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::BlockReference;
+use tezedge_actor_system::actors::ActorReference;
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
