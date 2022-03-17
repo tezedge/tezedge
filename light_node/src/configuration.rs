@@ -39,15 +39,15 @@ struct CliArgs {
     validate_cfg_identity_and_stop: bool,
 
     /// Configuration file with start-up arguments (same format as cli arguments)
-    #[clap(long, parse(from_os_str), validator = validate_path_exists)]
+    #[clap(long, global = true, parse(from_os_str), validator = validate_path_exists)]
     config_file: Option<PathBuf>,
 
     /// Context storage to use
-    #[clap(long, arg_enum, parse(try_from_str), default_value_t = TezosContextStorageChoice::Irmin)]
+    #[clap(long, global = true, arg_enum, parse(try_from_str), default_value_t = TezosContextStorageChoice::Irmin)]
     tezos_context_storage: TezosContextStorageChoice,
 
     /// A directory for Tezos OCaml runtime storage (context/store)
-    #[clap(long, validator = validate_directory_exists_create, parse(from_os_str), default_value = "/tmp/tezedge")]
+    #[clap(long, global = true, validator = validate_directory_exists_create, parse(from_os_str), default_value = "/tmp/tezedge")]
     tezos_data_dir: PathBuf,
 
     /// Enable or not the integrity check on persistent tezedge context
@@ -56,7 +56,7 @@ struct CliArgs {
 
     /// Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
     /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
-    #[clap(long, validator = validate_path_exists, default_value = "./light_node/etc/tezedge/identity.json")]
+    #[clap(long, global = true, default_value = "./light_node/etc/tezedge/identity.json")]
     identity_file: PathBuf,
 
     /// Expected power of identity for node. It is used to generate new identity
@@ -65,7 +65,7 @@ struct CliArgs {
 
     /// Path to bootstrap database directory.
     /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
-    #[clap(long, default_value = "bootstrap_db")]
+    #[clap(long, global = true, default_value = "bootstrap_db")]
     bootstrap_db_path: PathBuf,
 
     /// Path to context-stats database directory.
@@ -192,15 +192,15 @@ struct CliArgs {
     synchronization_thresh: Option<usize>,
 
     /// Path to a tezos protocol runner executable
-    #[clap(long, validator = validate_path_exists, default_value = "./target/release/protocol-runner")]
+    #[clap(long, global = true, validator = validate_path_exists, default_value = "./target/release/protocol-runner")]
     protocol_runner: PathBuf,
 
     /// Path to a init file for sapling-spend.params
-    #[clap(long, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)]
+    #[clap(long, global = true, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)]
     init_sapling_spend_params_file: PathBuf,
 
     /// Path to a init file for sapling-output.params
-    #[clap(long, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)]
+    #[clap(long, global = true, validator = validate_path_exists, default_value = Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)]
     init_sapling_output_params_file: PathBuf,
 
     /// Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.
