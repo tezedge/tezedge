@@ -349,7 +349,8 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetTimeoutAction {
                     .as_nanos() as u64;
                 pending
                     .get(&self.block_hash)
-                    .and_then(|p| p.peers.get(&self.peer))
+                    .filter(|b| !b.peers.iter().any(|p| p.is_success()))
+                    .and_then(|b| b.peers.get(&self.peer))
                     .map_or(false, |p| p.is_pending_timed_out(timeout, current_time))
             }
             _ => false,
@@ -411,8 +412,8 @@ impl EnablingCondition<State> for BootstrapPeerBlockOperationsGetSuccessAction {
         match &state.bootstrap {
             BootstrapState::PeersBlockOperationsGetPending { pending, .. } => pending
                 .get(&self.block_hash)
-                .and_then(|v| v.peers.iter().find(|(_, p)| p.is_complete()))
-                .is_some(),
+                .filter(|v| !v.peers.iter().any(|(_, p)| p.is_success()))
+                .map_or(false, |v| v.peers.iter().any(|(_, p)| p.is_complete())),
             _ => false,
         }
     }
