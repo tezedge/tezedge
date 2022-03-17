@@ -65,7 +65,7 @@ struct CliArgs {
 
     /// Path to bootstrap database directory.
     /// In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir
-    #[clap(long, validator = validate_path_exists, default_value = "bootstrap_db")]
+    #[clap(long, default_value = "bootstrap_db")]
     bootstrap_db_path: PathBuf,
 
     /// Path to context-stats database directory.
