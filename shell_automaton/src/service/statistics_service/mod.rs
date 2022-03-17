@@ -27,7 +27,7 @@ pub type BlocksApplyStats = HashMap<BlockHash, BlockApplyStats>;
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct BlockApplyStats {
     pub level: Level,
-    pub block_timestamp: Option<i64>,
+    pub block_timestamp: i64,
     pub validation_pass: u8,
 
     pub receive_timestamp: u64,
@@ -295,7 +295,7 @@ impl StatisticsService {
         &mut self,
         block_hash: BlockHash,
         level: Level,
-        block_timestamp: Option<i64>,
+        block_timestamp: i64,
         validation_pass: u8,
         receive_timestamp: u64,
         peer: Option<SocketAddr>,

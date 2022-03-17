@@ -67,7 +67,7 @@ fn stats_message_received(
                         stats.block_new(
                             b.clone(),
                             block_header.level(),
-                            Some(block_header.timestamp()),
+                            block_header.timestamp(),
                             block_header.validation_pass(),
                             time,
                             Some(address),
@@ -88,7 +88,7 @@ fn stats_message_received(
                     stats.block_new(
                         b.clone(),
                         block_header.level(),
-                        Some(block_header.timestamp()),
+                        block_header.timestamp(),
                         block_header.validation_pass(),
                         time,
                         Some(address),
