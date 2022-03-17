@@ -41,12 +41,12 @@ pub fn current_head_precheck_reducer(state: &mut crate::State, action: &crate::A
                 None => return,
             };
             let applied_level = applied_head.level();
-            let applied_timestamp = applied_head.timestamp();
+            let applied_timestamp = applied_head.timestamp().i64();
             let candidates = &mut state.current_heads.candidates;
             candidates.get_mut(block_hash).map(|current_head_state| {
                 if let CurrentHeadState::Received { block_header } = current_head_state {
 
-                    let max_priority = match max_priority_for_prechecking(applied_timestamp, block_header.timestamp(), MINIMAL_BLOCK_TIME, TIME_BETWEEN_BLOCKS, action.duration_since_epoch().as_secs()) {
+                    let max_priority = match max_priority_for_prechecking(applied_timestamp, block_header.timestamp().into(), MINIMAL_BLOCK_TIME, TIME_BETWEEN_BLOCKS, action.duration_since_epoch().as_secs()) {
                         Ok(v) => v,
                         Err(err) => {
                             *current_head_state = CurrentHeadState::Error { error: err.into() };

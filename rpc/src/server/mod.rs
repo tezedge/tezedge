@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
 };
 
+use anyhow::Result;
 use getset::{CopyGetters, Getters};
 use hyper::body::HttpBody;
 use hyper::server::conn::AddrStream;
@@ -19,7 +20,7 @@ use slog::{error, Logger};
 use tezos_protocol_ipc_client::ProtocolRunnerApi;
 use tokio::runtime::Handle;
 
-use crypto::hash::ChainId;
+use crypto::hash::{ChainId, HashTrait};
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_integration::{StreamCounter, StreamWakers};
 use storage::{BlockHeaderWithHash, PersistentStorage};
@@ -328,6 +329,16 @@ pub trait HasSingleValue {
 
     fn contains_key(&self, key: &str) -> bool {
         self.get_str(key).is_some()
+    }
+
+    fn get_hash<T>(&self, key: &str) -> Result<Option<T>>
+    where
+        T: HashTrait,
+    {
+        self.get_str(key)
+            .map(T::from_b58check)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("{err}"))
     }
 }
 

@@ -252,7 +252,7 @@ impl RightsParams {
 
         Ok(Self::new(
             block_level,
-            block_header.header.timestamp(),
+            block_header.header.timestamp().into(),
             param_delegate.map(String::from),
             requested_cycle,
             requested_level,

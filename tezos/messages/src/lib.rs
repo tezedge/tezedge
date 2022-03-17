@@ -87,9 +87,50 @@ impl From<Head> for Level {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Timestamp(i64);
+
+impl Timestamp {
+    pub fn i64(self) -> i64 {
+        self.0
+    }
+
+    pub fn as_u64(self) -> u64 {
+        self.0 as u64
+    }
+
+    pub fn to_rfc3339(&self) -> Result<String, TimestampOutOfRangeError> {
+        ts_to_rfc3339(self.0)
+    }
+}
+
+impl From<i64> for Timestamp {
+    fn from(source: i64) -> Self {
+        Self(source)
+    }
+}
+
+impl std::fmt::Debug for Timestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl std::fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.to_rfc3339() {
+            Ok(ts) => ts.fmt(f),
+            Err(_) => Err(std::fmt::Error),
+        }
+    }
+}
+
+impl From<Timestamp> for i64 {
+    fn from(source: Timestamp) -> Self {
+        source.0
+    }
+}
 
 impl NomReader for Timestamp {
     fn nom_read(input: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
@@ -118,14 +159,14 @@ impl Serialize for Timestamp {
         S: serde::Serializer,
     {
         if serializer.is_human_readable() {
-            match ts_to_rfc3339(self.0) {
-                Ok(ts) => serializer.serialize_str(&ts),
+            match self.to_rfc3339() {
+                Ok(ts) => ts.serialize(serializer),
                 Err(err) => Err(serde::ser::Error::custom(format!(
                     "cannot convert timestamp to rfc3339: {err}"
                 ))),
             }
         } else {
-            serializer.serialize_newtype_struct("Timestamp", &self.0)
+            self.0.serialize(serializer)
         }
     }
 }
@@ -181,9 +222,13 @@ impl<'de> Deserialize<'de> for Timestamp {
         }
 
         if deserializer.is_human_readable() {
-            deserializer.deserialize_str(TimestampVisitor)
+            let string: String = serde::Deserialize::deserialize(deserializer)?;
+            let parsed: OffsetDateTime = OffsetDateTime::parse(&string, &Rfc3339).map_err(|e| {
+                serde::de::Error::custom(format!("error parsing Rfc3339 timestamp: {e}"))
+            })?;
+            Ok(Self(parsed.unix_timestamp()))
         } else {
-            deserializer.deserialize_newtype_struct("Timestamp", TimestampVisitor)
+            Ok(Self(serde::Deserialize::deserialize(deserializer)?))
         }
     }
 }

@@ -552,14 +552,14 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, anyh
                 .level(level)
                 .proto(0)
                 .predecessor("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?)
-                .timestamp(5_635_634)
+                .timestamp(5_635_634.into())
                 .validation_pass(0)
                 .operations_hash(
                     "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
                 )
                 .fitness(Fitness::default())
                 .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
-                .protocol_data(vec![])
+                .protocol_data(vec![].into())
                 .build()
                 .unwrap(),
         ),

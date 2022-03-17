@@ -1,8 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::{BlockHash, ChainId};
 use std::collections::HashMap;
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
+use crate::block_applier::BlockApplierApplyState;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
@@ -18,6 +21,7 @@ use crate::{Action, ActionWithMeta, Store};
 
 use super::rpc_actions::{
     RpcBootstrappedAction, RpcBootstrappedDoneAction, RpcBootstrappedNewBlockAction,
+    RpcMonitorValidBlocksAction, RpcReplyValidBlockAction,
 };
 use super::BootstrapState;
 
@@ -28,6 +32,9 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                 match msg {
                     RpcRequestStream::Bootstrapped => {
                         store.dispatch(RpcBootstrappedAction { rpc_id });
+                    }
+                    RpcRequestStream::ValidBlocks(query) => {
+                        store.dispatch(RpcMonitorValidBlocksAction { query, rpc_id });
                     }
                     RpcRequestStream::GetOperations {
                         applied,
@@ -220,7 +227,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .ops
                             .iter()
                             .filter(|(_, op)| {
-                                OperationKind::from_operation_content_raw(op.data())
+                                OperationKind::from_operation_content_raw(op.data().as_ref())
                                     .is_endorsement()
                             })
                             .map(|(op_hash, _)| op_hash.clone())
@@ -241,12 +248,29 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
         }
 
         Action::CurrentHeadUpdate(content) => {
-            let is_bootstrapped = store.state().is_bootstrapped();
+            let is_bootstrapped = store.state().is_bootstrapped_strict();
             store.dispatch(RpcBootstrappedNewBlockAction {
                 block: content.new_head.hash.clone(),
-                timestamp: content.new_head.header.timestamp(),
+                timestamp: content.new_head.header.timestamp().into(),
                 is_bootstrapped,
             });
+            for rpc_id in store
+                .state
+                .get()
+                .rpc
+                .valid_blocks
+                .requests
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                store.dispatch(RpcReplyValidBlockAction {
+                    rpc_id,
+                    block: content.new_head.clone(),
+                    protocol: content.protocol.clone(),
+                    next_protocol: content.next_protocol.clone(),
+                });
+            }
         }
 
         Action::RpcBootstrapped(RpcBootstrappedAction { rpc_id }) => {
@@ -290,6 +314,52 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                 store.service.rpc().respond_stream(*rpc_id, None);
             }
         }
+
+        Action::RpcMonitorValidBlocks(RpcMonitorValidBlocksAction { rpc_id, .. }) => {
+            let (block, protocol, next_protocol) = if let BlockApplierApplyState::Success {
+                block,
+                block_additional_data,
+                ..
+            } = &store.state.get().block_applier.current
+            {
+                (
+                    block.clone(),
+                    block_additional_data.protocol_hash.clone(),
+                    block_additional_data.next_protocol_hash.clone(),
+                )
+            } else {
+                return;
+            };
+            store.dispatch(RpcReplyValidBlockAction {
+                rpc_id: *rpc_id,
+                block,
+                protocol,
+                next_protocol,
+            });
+        }
+        Action::RpcReplyValidBlock(RpcReplyValidBlockAction { rpc_id, block, .. }) => {
+            #[derive(serde::Serialize)]
+            struct ValidBlock<'a> {
+                chain_id: &'a ChainId,
+                hash: &'a BlockHash,
+                #[serde(flatten)]
+                header: &'a BlockHeader,
+            }
+
+            let json = match serde_json::to_value(ValidBlock {
+                chain_id: &store.state.get().config.chain_id,
+                hash: &block.hash,
+                header: block.header.as_ref(),
+            }) {
+                Ok(json) => json,
+                Err(err) => {
+                    slog::warn!(store.state.get().log, "Error converting valid block to json"; "error" => slog::FnValue(|_| err.to_string()));
+                    return;
+                }
+            };
+            store.service.rpc().respond_stream(*rpc_id, Some(json));
+        }
+
         _ => {}
     }
 }

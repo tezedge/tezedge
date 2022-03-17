@@ -49,7 +49,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .filter(|pred| &pred.hash == content.new_head.header.predecessor())
                 .cloned();
             state.current_head = CurrentHeadState::Rehydrated {
-                head: content.new_head.clone(),
+                head: content.new_head.as_ref().clone(),
                 head_pred,
             };
         }

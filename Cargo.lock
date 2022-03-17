@@ -4323,6 +4323,7 @@ dependencies = [
  "num-bigint 0.3.3",
  "num-traits",
  "serde 1.0.136",
+ "serde_json",
  "tezos_encoding_derive",
  "thiserror",
 ]

@@ -8,6 +8,7 @@ use crate::{block_applier::BlockApplierApplyState, Action};
 use super::{
     rpc_actions::{
         RpcBootstrappedAction, RpcBootstrappedDoneAction, RpcBootstrappedNewBlockAction,
+        RpcMonitorValidBlocksAction,
     },
     BootstrapState,
 };
@@ -23,7 +24,7 @@ pub fn rpc_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
                     bootstrapped.state = Some(BootstrapState {
                         json: serde_json::json!({
                             "block": block.hash,
-                            "timestamp": ts_to_rfc3339(block.header.timestamp()).unwrap_or("<invalid timestamp>".to_string()),
+                            "timestamp": block.header.timestamp(),
                         }),
                         is_bootstrapped: true,
                     });
@@ -52,6 +53,15 @@ pub fn rpc_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
                 bootstrapped.state = None;
             }
         }
+
+        Action::RpcMonitorValidBlocks(RpcMonitorValidBlocksAction { rpc_id, query }) => {
+            state
+                .rpc
+                .valid_blocks
+                .requests
+                .insert(*rpc_id, query.clone());
+        }
+
         _ => (),
     }
 }

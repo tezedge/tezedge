@@ -25,7 +25,7 @@ use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
-use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use tezos_messages::TimestampOutOfRangeError;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -238,7 +238,7 @@ impl BlockHeaderShellInfo {
             level: block.header.level(),
             proto: block.header.proto(),
             predecessor: block.header.predecessor().to_base58_check(),
-            timestamp: ts_to_rfc3339(block.header.timestamp())?,
+            timestamp: block.header.timestamp().to_rfc3339()?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
             fitness: block.header.fitness().as_hex_vec(),
@@ -256,7 +256,7 @@ impl BlockHeaderInfo {
     ) -> Result<Self, TimestampOutOfRangeError> {
         let header: &BlockHeader = &block.header;
         let predecessor = header.predecessor().to_base58_check();
-        let timestamp = ts_to_rfc3339(header.timestamp())?;
+        let timestamp = header.timestamp().to_rfc3339()?;
         let operations_hash = header.operations_hash().to_base58_check();
         let fitness = header.fitness().as_hex_vec();
         let context = header.context().to_base58_check();
