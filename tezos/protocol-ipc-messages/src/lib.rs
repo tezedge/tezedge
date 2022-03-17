@@ -95,7 +95,6 @@ pub struct InitProtocolContextParams {
     pub commit_genesis: bool,
     pub enable_testchain: bool,
     pub readonly: bool,
-    pub turn_off_context_raw_inspector: bool,
     pub patch_context: Option<PatchContext>,
     pub context_stats_db_path: Option<PathBuf>,
 }

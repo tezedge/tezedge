@@ -624,7 +624,6 @@ impl ProtocolRunnerConnection {
             commit_genesis,
             enable_testchain,
             readonly,
-            turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
             patch_context,
             context_stats_db_path,
         };

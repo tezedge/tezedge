@@ -413,7 +413,6 @@ impl_to_ocaml_record! {
         commit_genesis: bool,
         enable_testchain: bool,
         readonly: bool,
-        //turn_off_context_raw_inspector: bool,
         patch_context: Option<OCamlPatchContext>,
         context_stats_db_path: Option<String> =>
             context_stats_db_path.clone().map(|path| path.to_string_lossy().to_string()),

@@ -36,7 +36,6 @@ fn init_protocol_context(
         commit_genesis: true,
         enable_testchain: false,
         readonly: false,
-        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
         patch_context: context_config.sandbox_json_patch_context,
         context_stats_db_path: None,
     };
