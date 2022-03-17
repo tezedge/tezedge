@@ -268,34 +268,38 @@ where
                     return;
                 }
             }
-            match &content.response.result {
+            let ok = match &content.response.result {
                 Ok(StorageResponseSuccess::PrepareApplyBlockDataSuccess {
                     block,
                     block_meta,
                     apply_block_req,
-                }) => {
-                    store.dispatch(BlockApplierApplyPrepareDataSuccessAction {
-                        block: block.clone(),
-                        block_meta: block_meta.clone(),
-                        apply_block_req: apply_block_req.clone(),
-                    });
-                }
+                }) => store.dispatch(BlockApplierApplyPrepareDataSuccessAction {
+                    block: block.clone(),
+                    block_meta: block_meta.clone(),
+                    apply_block_req: apply_block_req.clone(),
+                }),
                 Err(StorageResponseError::PrepareApplyBlockDataError(err)) => {
                     store.dispatch(BlockApplierApplyErrorAction {
                         error: BlockApplierApplyError::PrepareData(err.clone()),
-                    });
+                    })
                 }
                 Ok(StorageResponseSuccess::StoreApplyBlockResultSuccess(data)) => {
                     store.dispatch(BlockApplierApplyStoreApplyResultSuccessAction {
                         block_additional_data: data.clone(),
-                    });
+                    })
                 }
                 Err(StorageResponseError::StoreApplyBlockResultError(err)) => {
                     store.dispatch(BlockApplierApplyErrorAction {
                         error: BlockApplierApplyError::StoreApplyResult(err.clone()),
-                    });
+                    })
                 }
-                _ => return,
+                _ => false,
+            };
+
+            if !ok {
+                slog::warn!(&store.state().log, "BlockApplier - unexpected storage response";
+                    "block_applier_state" => format!("{:?}", store.state().block_applier),
+                    "storage_response" => format!("{:?}", content.response));
             }
         }
         _ => {}
