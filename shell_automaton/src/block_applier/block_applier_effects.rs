@@ -57,7 +57,28 @@ where
                 .map(|s| s.block_load_data_start(&block_hash, action.time_as_nanos()));
         }
         Action::BlockApplierApplyPrepareDataSuccess(content) => {
+            let start_time = match &store.state().block_applier.current {
+                BlockApplierApplyState::PrepareDataSuccess {
+                    time,
+                    prepare_data_duration,
+                    ..
+                } => time.saturating_sub(*prepare_data_duration),
+                _ => return,
+            };
             store.service().statistics().map(|s| {
+                if !s.block_stats_get_all().contains_key(&content.block.hash) {
+                    s.block_new(
+                        content.block.hash.clone(),
+                        content.block.header.level(),
+                        content.block.header.timestamp().into(),
+                        content.block.header.validation_pass(),
+                        start_time,
+                        None,
+                        None,
+                        None,
+                    );
+                }
+                s.block_load_data_start(&content.block.hash, start_time);
                 s.block_load_data_end(
                     &content.block.hash,
                     content.block.header.level(),

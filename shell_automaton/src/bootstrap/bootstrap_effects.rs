@@ -234,29 +234,6 @@ where
                 None => return,
             };
 
-            store.service.statistics().map(|stats| {
-                let level = match &state.bootstrap {
-                    BootstrapState::PeersBlockOperationsGetPending {
-                        last_level, queue, ..
-                    } => *last_level - queue.len() as i32,
-                    _ => return,
-                };
-
-                let time = state.time_as_nanos();
-                if !stats.block_stats_get_all().contains_key(&block_hash) {
-                    stats.block_new(
-                        block_hash.clone(),
-                        level,
-                        None,
-                        validation_pass,
-                        time,
-                        Some(peer),
-                        None,
-                        None,
-                    );
-                }
-            });
-
             request_block_operations(store, peer, block_hash, validation_pass);
         }
         Action::BootstrapPeerBlockOperationsGetRetry(content) => {
