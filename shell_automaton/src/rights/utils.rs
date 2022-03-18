@@ -11,7 +11,7 @@ use storage::{
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use super::{Cycle, Delegate, ProtocolConstants};
+use super::{Cycle, Delegate};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
@@ -141,7 +141,7 @@ impl TezosPRNG {
 }
 
 pub(super) fn random_owner(
-    constants: &ProtocolConstants,
+    nonce_length: u8,
     cycle_meta_data: &CycleData,
     rolls_map: &BTreeMap<i32, Delegate>,
     use_: &[u8],
@@ -150,7 +150,7 @@ pub(super) fn random_owner(
 ) -> Result<Delegate, TezosPRNGError> {
     let mut prng = TezosPRNG::initialize(
         cycle_meta_data.seed_bytes(),
-        constants.nonce_length.into(),
+        nonce_length.into(),
         use_,
         cycle_position,
         offset.into(),
@@ -167,14 +167,14 @@ pub(super) fn random_owner(
 }
 
 pub(super) fn endorser_rights_owner(
-    constants: &ProtocolConstants,
+    nonce_length: u8,
     cycle_meta_data: &CycleData,
     rolls_map: &BTreeMap<i32, Delegate>,
     cycle_position: i32,
     slot: u16,
 ) -> Result<Delegate, TezosPRNGError> {
     random_owner(
-        constants,
+        nonce_length,
         cycle_meta_data,
         rolls_map,
         b"endorsement",
@@ -184,14 +184,14 @@ pub(super) fn endorser_rights_owner(
 }
 
 pub(super) fn baking_rights_owner(
-    constants: &ProtocolConstants,
+    nonce_length: u8,
     cycle_meta_data: &CycleData,
     rolls_map: &BTreeMap<i32, Delegate>,
     cycle_position: i32,
     priority: u16,
 ) -> Result<Delegate, TezosPRNGError> {
     random_owner(
-        constants,
+        nonce_length,
         cycle_meta_data,
         rolls_map,
         b"baking",

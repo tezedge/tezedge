@@ -45,7 +45,9 @@ fn init() -> HashMap<String, SupportedProtocol> {
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(EnumIter, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    EnumIter, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SupportedProtocol {
     Proto001,
     Proto002,

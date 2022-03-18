@@ -456,12 +456,20 @@ where
             }) = requests.get(key)
             {
                 let block_level = block_header.level();
-                let get_cycle = get_cycle(
-                    block_level,
-                    key.level(),
-                    cycle_eras,
-                    protocol_constants.preserved_cycles,
-                );
+                let preserved_cycles =
+                    if let Some(preserved_cycles) = protocol_constants.preserved_cycles() {
+                        preserved_cycles
+                    } else {
+                        store.dispatch(RightsErrorAction {
+                            key: key.clone(),
+                            error: RightsCalculationError::MissingProtocolConstant(
+                                "preserved_cycles".into(),
+                            )
+                            .into(),
+                        });
+                        return;
+                    };
+                let get_cycle = get_cycle(block_level, key.level(), cycle_eras, preserved_cycles);
                 match get_cycle {
                     Ok((cycle, position)) => store.dispatch(RightsCycleReadyAction {
                         key: key.clone(),
@@ -648,6 +656,8 @@ pub enum RightsCalculationError {
     Conversion(#[from] ConversionError),
     #[error("Error calculating pseudo-random number: `{0}`")]
     PRNG(#[from] TezosPRNGError),
+    #[error("Missing protocol constant: `{0}`")]
+    MissingProtocolConstant(String),
 }
 
 impl From<TryFromIntError> for RightsCalculationError {
@@ -673,9 +683,29 @@ fn calculate_endorsing_rights(
         }
     }
 
-    let endorsers_slots = (0..constants.endorsers_per_block)
+    let endorsers_per_block = if let Some(endorsers_per_block) = constants.endorsers_per_block() {
+        endorsers_per_block
+    } else {
+        return Err(RightsCalculationError::MissingProtocolConstant(
+            "endorsers_per_block".into(),
+        ));
+    };
+    let nonce_length = if let Some(nonce_length) = constants.nonce_length() {
+        nonce_length
+    } else {
+        return Err(RightsCalculationError::MissingProtocolConstant(
+            "nonce_length".into(),
+        ));
+    };
+    let endorsers_slots = (0..endorsers_per_block)
         .map(|slot| {
-            endorser_rights_owner(constants, cycle_meta_data, &rolls_map, cycle_position, slot)
+            endorser_rights_owner(
+                nonce_length,
+                cycle_meta_data,
+                &rolls_map,
+                cycle_position,
+                slot,
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -707,10 +737,17 @@ fn calculate_baking_rights(
         }
     }
 
+    let nonce_length = if let Some(nonce_length) = constants.nonce_length() {
+        nonce_length
+    } else {
+        return Err(RightsCalculationError::MissingProtocolConstant(
+            "nonce_length".into(),
+        ));
+    };
     let priorities = (0..max_priority)
         .map(|priority| {
             baking_rights_owner(
-                constants,
+                nonce_length,
                 cycle_meta_data,
                 &rolls_map,
                 cycle_position,

@@ -38,22 +38,24 @@ impl EnablingCondition<State> for CurrentHeadReceivedAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentHeadPrecheckAction {
     pub block_hash: BlockHash,
+    pub prev_block_hash: BlockHash,
     pub injected: bool,
 }
 
 impl EnablingCondition<State> for CurrentHeadPrecheckAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .current_head_level()
-            .map_or(false, |applied_head_level| {
-                if let Some(CurrentHeadState::Received { block_header }) =
-                    state.current_heads.candidates.get(&self.block_hash)
-                {
-                    block_header.level() == applied_head_level + 1
-                } else {
-                    false
-                }
-            })
+        super::block_prechecking_possible(state, &self.prev_block_hash)
+            && state
+                .current_head_level()
+                .map_or(false, |applied_head_level| {
+                    if let Some(CurrentHeadState::Received { block_header }) =
+                        state.current_heads.candidates.get(&self.block_hash)
+                    {
+                        block_header.level() == applied_head_level + 1
+                    } else {
+                        false
+                    }
+                })
     }
 }
 
@@ -99,10 +101,14 @@ impl EnablingCondition<State> for CurrentHeadErrorAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadPrecacheBakingRightsAction {}
+pub struct CurrentHeadPrecacheBakingRightsAction {
+    pub prev_block_hash: BlockHash,
+}
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.current_head.get().is_some()
+        super::block_prechecking_possible(state, &self.prev_block_hash)
+            && state.current_head.get().is_some()
+            && state.is_bootstrapped()
     }
 }
