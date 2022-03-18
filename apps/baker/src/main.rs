@@ -9,6 +9,7 @@ mod logger;
 mod machine;
 mod proof_of_work;
 mod rpc_client;
+mod seed_nonce;
 mod timer;
 mod types;
 
@@ -53,7 +54,7 @@ fn main() {
             };
             slog::info!(logger, "crypto service ready: {}", crypto.public_key_hash());
 
-            alternative::run(endpoint.clone(), &crypto, &logger).unwrap();
+            alternative::run(endpoint.clone(), &crypto, &logger, &base_dir, &baker).unwrap();
 
             let (sender, events) = mpsc::channel();
             let client = RpcClient::new(endpoint, logger.clone(), sender.clone());

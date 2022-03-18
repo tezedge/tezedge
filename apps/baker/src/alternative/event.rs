@@ -26,6 +26,8 @@ pub struct ProtocolBlockHeader {
 
 #[derive(Deserialize, Debug)]
 pub struct Constants {
+    pub nonce_length: usize,
+    pub blocks_per_cycle: u32,
     pub consensus_committee_size: u32,
     pub minimal_block_delay: String,
     pub delay_increment_per_round: String,

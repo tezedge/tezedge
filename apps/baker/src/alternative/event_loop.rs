@@ -5,14 +5,14 @@ use std::{
     convert::TryInto,
     sync::mpsc,
     time::{Duration, SystemTime},
+    path::PathBuf,
 };
 
 use reqwest::Url;
 use slog::Logger;
 
 use crypto::{
-    blake2b,
-    hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, NonceHash, Signature},
+    hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, Signature, ProtocolHash},
 };
 use tb::Payload;
 use tenderbake as tb;
@@ -20,6 +20,8 @@ use tezos_encoding::types::SizedBytes;
 use tezos_messages::protocol::proto_012::operation::{
     InlinedEndorsement, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement,
 };
+
+use crate::alternative::event::OperationSimple;
 
 use super::{
     block_payload::BlockPayload,
@@ -29,12 +31,14 @@ use super::{
     slots_info::SlotsInfo,
     timer::Timer,
     CryptoService,
+    SeedNonceService,
 };
 
 const WAIT_HEAD_TIMEOUT: Duration = Duration::from_secs(3600 * 24);
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
-pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), RpcError> {
+pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathBuf, baker: &str) -> Result<(), RpcError> {
+
     let (tx, rx) = mpsc::channel();
     let client = RpcClient::new(endpoint, tx.clone());
     let timer = Timer::spawn(tx);
@@ -43,6 +47,13 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
     client.wait_bootstrapped()?;
 
     let constants = client.get_constants()?;
+    let mut seed_nonce = SeedNonceService::new(
+        &base_dir,
+        baker,
+        constants.blocks_per_commitment,
+        constants.blocks_per_cycle,
+        constants.nonce_length,
+    ).unwrap();
 
     slog::info!(
         log,
@@ -202,9 +213,9 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger) -> Result<(), Rp
             log,
             &timer,
             crypto,
+            &mut seed_nonce,
             &slots_info,
             &chain_id,
-            constants.blocks_per_commitment,
             proof_of_work_threshold,
             actions,
         );
@@ -218,9 +229,9 @@ fn perform(
     log: &Logger,
     timer: &Timer,
     crypto: &CryptoService,
+    seed_nonce: &mut SeedNonceService,
     slots_info: &SlotsInfo,
     chain_id: &ChainId,
-    blocks_per_commitment: u32,
     proof_of_work_threshold: u64,
     actions: impl IntoIterator<Item = tb::Action<ContractTz1Hash, BlockPayload>>,
 ) {
@@ -305,17 +316,13 @@ fn perform(
                 } else {
                     BlockPayloadHash(block.block_id.payload_hash.to_vec())
                 };
-                let pos_in_cycle = (block.block_id.level as u32) % blocks_per_commitment;
+                let seed_nonce_hash = seed_nonce
+                    .gen_nonce(block.block_id.level)
+                    .unwrap();
                 let mut protocol_header = ProtocolBlockHeader {
                     payload_hash,
                     payload_round,
-                    seed_nonce_hash: if pos_in_cycle == 0 {
-                        Some(NonceHash(
-                            blake2b::digest_256(&[1, 2, 3]).expect("constant"),
-                        ))
-                    } else {
-                        None
-                    },
+                    seed_nonce_hash,
                     proof_of_work_nonce: SizedBytes(hex::decode("7985fafe1fb70300").unwrap().try_into().unwrap()),
                     liquidity_baking_escape_vote: false,
                     signature: Signature(vec![]),
@@ -334,10 +341,33 @@ fn perform(
                     .map(|q| q.votes.ids.into_values())
                     .into_iter()
                     .flatten();
+                let mut anon = block.payload.anonymous_payload;
+                let reveal_ops = seed_nonce
+                    .reveal_nonce(block.block_id.level)
+                    .into_iter()
+                    .flatten()
+                    .map(|nonce_content| OperationSimple {
+                        branch: predecessor_hash.clone(),
+                        contents: vec![{
+                            let mut content = serde_json::to_value(&nonce_content).unwrap();
+                            let content_obj = content.as_object_mut().unwrap();
+                            content_obj.insert("kind".to_string(), serde_json::Value::String("seed_nonce_revelation".to_string()));
+                            content
+                        }],
+                        signature: Some(Signature(vec![0; 64])),
+                        hash: None,
+                        protocol: Some(ProtocolHash::from_base58_check(super::client::PROTOCOL).unwrap()),
+                    });
+                for op in &mut anon {
+                    if op.signature.is_none() {
+                        op.signature = Some(Signature(vec![0; 64]));
+                    }
+                }
+                anon.extend(reveal_ops);
                 let operations = [
                     endorsements.chain(preendorsements).collect::<Vec<_>>(),
                     block.payload.votes_payload,
-                    block.payload.anonymous_payload,
+                    anon,
                     block.payload.managers_payload,
                 ];
 

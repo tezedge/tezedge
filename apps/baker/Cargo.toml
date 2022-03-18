@@ -18,6 +18,7 @@ chrono = { version = "0.4.19" }
 nom = "6.1"
 lazy_static = "1.4"
 env_logger = { version = "0.9.0" }
+rand = { version = "0.8.5" }
 
 redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.11.0", features = ["serde"] }
 crypto = { path = "../../crypto" }
