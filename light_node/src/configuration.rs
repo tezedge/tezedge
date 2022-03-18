@@ -176,7 +176,7 @@ struct CliArgs {
 
     /// Peers to bootstrap the network from.
     #[clap(long, parse(try_from_str))]
-    peers: String,
+    peers: Option<String>,
 
     /// Minimal number of peers to connect to
     #[clap(long, parse(try_from_str), default_value_t = 20)]
@@ -408,7 +408,7 @@ impl Display for InvalidVariant {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 enum TezosContextStorageChoice {
     Irmin,
-    TezEdge,
+    Tezedge,
     Both,
 }
 
@@ -419,7 +419,7 @@ impl FromStr for TezosContextStorageChoice {
         match s.to_ascii_lowercase().as_ref() {
             "both" => Ok(TezosContextStorageChoice::Both),
             "irmin" => Ok(TezosContextStorageChoice::Irmin),
-            "tezedge" => Ok(TezosContextStorageChoice::TezEdge),
+            "tezedge" => Ok(TezosContextStorageChoice::Tezedge),
             _ => Err(InvalidVariant(format!(
                 "Invalid context storage name: {}",
                 s
@@ -743,7 +743,7 @@ impl Environment {
             )
         }
 
-        let bootstrap_addresses = if cli_args.bootstrap_lookup_address.is_empty() && cli_args.peers.is_empty() && !cli_args.private_node {
+        let bootstrap_addresses = if cli_args.bootstrap_lookup_address.is_empty() && cli_args.peers.is_none() && !cli_args.private_node {
             tezos_network_config.bootstrap_lookup_addresses.clone()
         } else {
             cli_args.bootstrap_lookup_address.clone()
@@ -771,7 +771,7 @@ impl Environment {
                                         )
                                     })
                     }).collect(),
-                bootstrap_peers: parse_delimited_socket_addr(&cli_args.peers),
+                bootstrap_peers: parse_delimited_socket_addr(cli_args.peers),
                 peer_threshold: PeerConnectionThreshold::try_new(
                     cli_args.peer_thresh_low,
                     cli_args.peer_thresh_high,
@@ -853,7 +853,7 @@ impl Environment {
                     async_ipc::temp_sock().to_string_lossy().as_ref().to_owned();
 
                 let context_storage_configuration = match cli_args.tezos_context_storage {
-                    TezosContextStorageChoice::TezEdge => {
+                    TezosContextStorageChoice::Tezedge => {
                         TezosContextStorageConfiguration::TezEdgeOnly(
                             TezosContextTezEdgeStorageConfiguration {
                                 backend: context_kv_store,
@@ -962,6 +962,10 @@ impl Environment {
     }
 }
 
-fn parse_delimited_socket_addr(delimited_str: &str) -> Vec<SocketAddr> {
-    delimited_str.split(',').map(|ip_port| ip_port.parse().expect(&format!("Expected IP:PORT, got: {}", ip_port))).collect()
+fn parse_delimited_socket_addr(delimited_str: Option<String>) -> Vec<SocketAddr> {
+    if let Some(delimited_str) = delimited_str {
+        delimited_str.split(',').map(|ip_port| ip_port.parse().expect(&format!("Expected IP:PORT, got: {}", ip_port))).collect()
+    } else {
+        vec![]
+    }
 }
