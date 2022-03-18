@@ -147,7 +147,7 @@ struct CliArgs {
     private_node: bool,
 
     /// Tezos network to connect to
-    #[clap(long, global = true, arg_enum)]
+    #[clap(long, global = true, arg_enum, default_value_t = TezosEnvironment::Hangzhounet)]
     network: TezosEnvironment,
 
     /// Path to a JSON file defining a custom network using the same format used by Octez
