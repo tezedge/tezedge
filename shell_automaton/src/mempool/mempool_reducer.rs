@@ -57,7 +57,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .ops
                             .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
-                        for (_, peer) in &mut mempool_state.peer_state {
+                        for peer in mempool_state.peer_state.values_mut() {
                             if !peer.seen_operations.contains(&v.hash) {
                                 peer.known_valid_to_send.push(v.hash.clone());
                             }
@@ -362,7 +362,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .validated_operations
                         .outdated
                         .retain(|v| v.hash.ne(op));
-                    for (_, peer_state) in &mut mempool_state.peer_state {
+                    for peer_state in mempool_state.peer_state.values_mut() {
                         peer_state.seen_operations.remove(op);
                     }
 
@@ -423,7 +423,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .validated_operations
                         .outdated
                         .retain(|v| v.hash.ne(op));
-                    for (_, peer_state) in &mut mempool_state.peer_state {
+                    for peer_state in mempool_state.peer_state.values_mut() {
                         peer_state.seen_operations.remove(op);
                     }
                 }

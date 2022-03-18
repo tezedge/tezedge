@@ -287,6 +287,7 @@ impl StatisticsService {
             });
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn block_new(
         &mut self,
         block_hash: BlockHash,
@@ -353,7 +354,7 @@ impl StatisticsService {
         node_id: Option<&CryptoboxPublicKeyHash>,
         time: u64,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.peers
                 .entry(peer)
                 .or_insert_with(|| BlockPeerStats {
@@ -363,7 +364,7 @@ impl StatisticsService {
                 .head_send_end
                 .push(time);
             v.head_send_end = Some(time);
-        });
+        }
     }
 
     pub fn block_precheck_start(&mut self, block_hash: &BlockHash, time: u64) {
@@ -379,11 +380,11 @@ impl StatisticsService {
         priority: u16,
         time: u64,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.precheck_end = Some(time);
             v.baker = Some(baker);
             v.priority = Some(priority);
-        });
+        }
     }
 
     pub fn block_header_download_start(&mut self, block_hash: &BlockHash, time: u64) {
@@ -408,31 +409,34 @@ impl StatisticsService {
     }
 
     pub fn block_operations_download_end(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply
+        if let Some(v) = self
+            .blocks_apply
             .get_mut(block_hash)
             .filter(|v| v.load_data_start.is_none())
-            .map(|v| v.download_block_operations_end = Some(time));
+        {
+            v.download_block_operations_end = Some(time)
+        }
     }
 
     /// Started loading block data from storage for block application.
     pub fn block_load_data_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply
-            .get_mut(block_hash)
-            .map(|v| v.load_data_start = Some(time));
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.load_data_start = Some(time)
+        }
     }
 
     /// Finished loading block data from storage for block application.
     pub fn block_load_data_end(&mut self, block_hash: &BlockHash, block_level: Level, time: u64) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.level = block_level;
             v.load_data_end = Some(time);
-        });
+        }
     }
 
     pub fn block_apply_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply
-            .get_mut(block_hash)
-            .map(|v| v.apply_block_start = Some(time));
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.apply_block_start = Some(time)
+        }
     }
 
     pub fn block_apply_end(
@@ -441,22 +445,22 @@ impl StatisticsService {
         time: u64,
         result: &ApplyBlockResponse,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.apply_block_stats = Some((&result.execution_timestamps).into());
             v.apply_block_end = Some(time)
-        });
+        }
     }
 
     pub fn block_store_result_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply
-            .get_mut(block_hash)
-            .map(|v| v.store_result_start = Some(time));
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.store_result_start = Some(time);
+        }
     }
 
     pub fn block_store_result_end(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply
-            .get_mut(block_hash)
-            .map(|v| v.store_result_end = Some(time));
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.store_result_end = Some(time);
+        }
     }
 
     pub fn block_get_operations_recv(

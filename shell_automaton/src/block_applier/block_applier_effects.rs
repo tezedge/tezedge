@@ -62,7 +62,7 @@ where
                 } => time.saturating_sub(*prepare_data_duration),
                 _ => return,
             };
-            store.service().statistics().map(|s| {
+            if let Some(s) = store.service().statistics() {
                 if !s.block_stats_get_all().contains_key(&content.block.hash) {
                     s.block_new(
                         content.block.hash.clone(),
@@ -81,7 +81,7 @@ where
                     content.block.header.level(),
                     action.time_as_nanos(),
                 )
-            });
+            }
 
             store.dispatch(BlockApplierApplyProtocolRunnerApplyInitAction {});
         }

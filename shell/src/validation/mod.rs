@@ -202,81 +202,54 @@ mod tests {
 
     #[test]
     fn test_can_update_current_head() -> Result<(), anyhow::Error> {
-        assert_eq!(
-            false,
-            can_update_current_head(
-                &new_head(fitness!([0]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            false,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 1]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            false,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 1]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            false,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 2]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            true,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 3]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            true,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 1], [0]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
-        assert_eq!(
-            true,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 0, 1]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 2]),
-            )
-        );
+        assert!(!can_update_current_head(
+            &new_head(fitness!([0]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(!can_update_current_head(
+            &new_head(fitness!([0], [0, 1]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(!can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 1]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(!can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 2]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 3]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 1], [0]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
+        assert!(can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 0, 1]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 2]),
+        ));
 
         // context fitnes is lower than current head
-        assert_eq!(
-            true,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 2]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 1]),
-            )
-        );
+        assert!(can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 2]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 1]),
+        ));
         // context fitnes is higher than current head
-        assert_eq!(
-            false,
-            can_update_current_head(
-                &new_head(fitness!([0], [0, 0, 2]))?,
-                &current_head(fitness!([0], [0, 0, 2]))?,
-                &fitness!([0], [0, 0, 3]),
-            )
-        );
+        assert!(!can_update_current_head(
+            &new_head(fitness!([0], [0, 0, 2]))?,
+            &current_head(fitness!([0], [0, 0, 2]))?,
+            &fitness!([0], [0, 0, 3]),
+        ));
 
         Ok(())
     }

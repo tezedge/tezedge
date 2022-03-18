@@ -67,8 +67,8 @@ where
                     Some(v) => v,
                     None => return,
                 };
-                match &peer.status {
-                    PeerStatus::Connecting(connection_state) => match connection_state {
+                if let PeerStatus::Connecting(connection_state) = &peer.status {
+                    match connection_state {
                         PeerConnectionState::Incoming(PeerConnectionIncomingState::Pending {
                             ..
                         }) => {
@@ -80,8 +80,7 @@ where
                             store.dispatch(PeerConnectionOutgoingSuccessAction { address });
                         }
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 }
 
                 store.dispatch(PeerTryWriteLoopStartAction { address });
@@ -176,16 +175,15 @@ where
 
             finish(store, address, PeerIOLoopResult::MaxIOSyscallBoundReached);
         }
-        Action::PeerTryWriteLoopFinish(action) => match &action.result {
-            PeerIOLoopResult::MaxIOSyscallBoundReached => {
+        Action::PeerTryWriteLoopFinish(action) => {
+            if let PeerIOLoopResult::MaxIOSyscallBoundReached = &action.result {
                 store.dispatch(PausedLoopsAddAction {
                     data: PausedLoop::PeerTryWrite {
                         peer_address: action.address,
                     },
                 });
             }
-            _ => {}
-        },
+        }
         Action::PeerTryReadLoopStart(action) => {
             let address = action.address;
             let peer_max_io_syscalls = store.state().config.peer_max_io_syscalls;
@@ -278,16 +276,15 @@ where
 
             finish(store, address, PeerIOLoopResult::MaxIOSyscallBoundReached);
         }
-        Action::PeerTryReadLoopFinish(action) => match &action.result {
-            PeerIOLoopResult::MaxIOSyscallBoundReached => {
+        Action::PeerTryReadLoopFinish(action) => {
+            if let PeerIOLoopResult::MaxIOSyscallBoundReached = &action.result {
                 store.dispatch(PausedLoopsAddAction {
                     data: PausedLoop::PeerTryRead {
                         peer_address: action.address,
                     },
                 });
             }
-            _ => {}
-        },
+        }
         Action::StorageResponseReceived(content) => {
             let address = match &content.requestor {
                 StorageRequestor::Peer(address) => *address,

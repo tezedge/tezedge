@@ -40,7 +40,7 @@ fn stats_message_write_start(
     message: &PeerMessage,
     action_id: ActionId,
 ) {
-    stats_service.map(|stats| {
+    if let Some(stats) = stats_service {
         let time: u64 = action_id.into();
         match message {
             PeerMessage::GetBlockHeaders(m) => m.get_block_headers().iter().for_each(|b| {
@@ -52,7 +52,7 @@ fn stats_message_write_start(
                 .for_each(|b| stats.block_operations_download_start(b.block_hash(), time)),
             _ => {}
         }
-    });
+    }
 }
 
 pub fn peer_message_write_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)

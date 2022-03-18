@@ -274,11 +274,8 @@ impl ShellAutomatonManager {
     pub fn shutdown_and_wait(self) {
         self.send_shutdown_signal();
 
-        match self.shell_automaton_thread_handle {
-            Some(ShellAutomatonThreadHandle::Running(th)) => {
-                th.join().unwrap();
-            }
-            _ => {}
+        if let Some(ShellAutomatonThreadHandle::Running(th)) = self.shell_automaton_thread_handle {
+            th.join().unwrap();
         }
     }
 }

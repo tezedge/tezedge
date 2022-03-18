@@ -139,49 +139,48 @@ where
                         },
                         _ => {}
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => match binary_message_read {
-                                PeerBinaryMessageReadState::PendingFirstChunk {
-                                    chunk:
-                                        PeerChunkRead {
-                                            state: PeerChunkReadState::Ready { chunk },
-                                            ..
-                                        },
-                                    ..
-                                } => match PeerMessageResponse::size_from_chunk(&chunk) {
-                                    Ok(size) => {
-                                        store.dispatch(PeerBinaryMessageReadSizeReadyAction {
-                                            address: action.address,
-                                            size,
-                                        });
-                                    }
-                                    Err(err) => {
-                                        store.dispatch(PeerBinaryMessageReadErrorAction {
-                                            address: action.address,
-                                            error: err.into(),
-                                        });
-                                    }
-                                },
-                                PeerBinaryMessageReadState::Pending { .. } => {
-                                    store.dispatch(PeerBinaryMessageReadChunkReadyAction {
-                                        address: action.address,
-                                    });
-                                }
-                                PeerBinaryMessageReadState::Ready { message, .. } => {
-                                    let message = message.clone();
-                                    store.dispatch(PeerBinaryMessageReadReadyAction {
-                                        address: action.address,
-                                        message,
-                                    });
-                                }
-                                _ => {}
                             },
-                            _ => {}
+                        ..
+                    }) => match binary_message_read {
+                        PeerBinaryMessageReadState::PendingFirstChunk {
+                            chunk:
+                                PeerChunkRead {
+                                    state: PeerChunkReadState::Ready { chunk },
+                                    ..
+                                },
+                            ..
+                        } => match PeerMessageResponse::size_from_chunk(&chunk) {
+                            Ok(size) => {
+                                store.dispatch(PeerBinaryMessageReadSizeReadyAction {
+                                    address: action.address,
+                                    size,
+                                });
+                            }
+                            Err(err) => {
+                                store.dispatch(PeerBinaryMessageReadErrorAction {
+                                    address: action.address,
+                                    error: err.into(),
+                                });
+                            }
+                        },
+                        PeerBinaryMessageReadState::Pending { .. } => {
+                            store.dispatch(PeerBinaryMessageReadChunkReadyAction {
+                                address: action.address,
+                            });
                         }
-                    }
+                        PeerBinaryMessageReadState::Ready { message, .. } => {
+                            let message = message.clone();
+                            store.dispatch(PeerBinaryMessageReadReadyAction {
+                                address: action.address,
+                                message,
+                            });
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }

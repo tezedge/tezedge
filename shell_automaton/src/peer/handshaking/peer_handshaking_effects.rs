@@ -97,12 +97,12 @@ where
         },
         Action::PeerHandshakingConnectionMessageEncode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status:
-                            PeerHandshakingStatus::ConnectionMessageEncoded { binary_message, .. },
-                        ..
-                    }) => match BinaryChunk::from_content(binary_message) {
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::ConnectionMessageEncoded { binary_message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    match BinaryChunk::from_content(binary_message) {
                         Ok(chunk) => {
                             store.dispatch(PeerHandshakingConnectionMessageWriteAction {
                                 address: action.address,
@@ -115,41 +115,35 @@ where
                                 error: err.into(),
                             });
                         }
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
         Action::PeerHandshakingConnectionMessageWrite(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status:
-                            PeerHandshakingStatus::ConnectionMessageWritePending { local_chunk, .. },
-                        ..
-                    }) => {
-                        let content = local_chunk.content().to_vec();
-                        store.dispatch(PeerChunkWriteSetContentAction {
-                            address: action.address,
-                            content,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::ConnectionMessageWritePending { local_chunk, .. },
+                    ..
+                }) = &peer.status
+                {
+                    let content = local_chunk.content().to_vec();
+                    store.dispatch(PeerChunkWriteSetContentAction {
+                        address: action.address,
+                        content,
+                    });
                 }
             }
         }
         Action::PeerChunkWriteReady(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::ConnectionMessageWritePending { .. },
-                        ..
-                    }) => {
-                        store.dispatch(PeerHandshakingConnectionMessageReadAction {
-                            address: action.address,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::ConnectionMessageWritePending { .. },
+                    ..
+                }) = &peer.status
+                {
+                    store.dispatch(PeerHandshakingConnectionMessageReadAction {
+                        address: action.address,
+                    });
                 }
             }
         }
@@ -161,89 +155,74 @@ where
         Action::PeerChunkReadReady(action) => {
             let state = store.state.get();
             if let Some(peer) = state.peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status:
-                            PeerHandshakingStatus::ConnectionMessageReadPending {
-                                chunk_state:
-                                    PeerChunkReadState::Ready {
-                                        chunk: remote_chunk,
-                                    },
-                                ..
-                            },
-                        ..
-                    }) => {
-                        // check proof of work.
-                        if let Err(err) = check_proof_of_work(state.config.pow_target, remote_chunk)
-                        {
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status:
+                        PeerHandshakingStatus::ConnectionMessageReadPending {
+                            chunk_state:
+                                PeerChunkReadState::Ready {
+                                    chunk: remote_chunk,
+                                },
+                            ..
+                        },
+                    ..
+                }) = &peer.status
+                {
+                    // check proof of work.
+                    if let Err(err) = check_proof_of_work(state.config.pow_target, remote_chunk) {
+                        return {
+                            store.dispatch(PeerHandshakingErrorAction {
+                                address: action.address,
+                                error: err.into(),
+                            });
+                        };
+                    }
+
+                    let connection_message = match ConnectionMessage::from_bytes(remote_chunk) {
+                        Ok(v) => v,
+                        Err(err) => {
                             return {
                                 store.dispatch(PeerHandshakingErrorAction {
                                     address: action.address,
                                     error: err.into(),
                                 });
-                            };
+                            }
                         }
+                    };
 
-                        let connection_message = match ConnectionMessage::from_bytes(remote_chunk) {
-                            Ok(v) => v,
-                            Err(err) => {
-                                return {
-                                    store.dispatch(PeerHandshakingErrorAction {
-                                        address: action.address,
-                                        error: err.into(),
-                                    });
-                                }
-                            }
-                        };
-
-                        match BinaryChunk::from_content(remote_chunk) {
-                            Ok(remote_chunk) => {
-                                store.dispatch(PeerHandshakingConnectionMessageDecodeAction {
-                                    address: action.address,
-                                    message: connection_message,
-                                    remote_chunk,
-                                });
-                            }
-                            Err(err) => {
-                                store.dispatch(PeerHandshakingErrorAction {
-                                    address: action.address,
-                                    error: err.into(),
-                                });
-                            }
+                    match BinaryChunk::from_content(remote_chunk) {
+                        Ok(remote_chunk) => {
+                            store.dispatch(PeerHandshakingConnectionMessageDecodeAction {
+                                address: action.address,
+                                message: connection_message,
+                                remote_chunk,
+                            });
+                        }
+                        Err(err) => {
+                            store.dispatch(PeerHandshakingErrorAction {
+                                address: action.address,
+                                error: err.into(),
+                            });
                         }
                     }
-                    _ => {}
                 }
             }
         }
         Action::PeerHandshakingConnectionMessageDecode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        incoming,
-                        status:
-                            PeerHandshakingStatus::ConnectionMessageReady {
-                                local_chunk,
-                                remote_chunk,
-                                remote_message,
-                                ..
-                            },
-                        ..
-                    }) => {
-                        let nonce_pair =
-                            match generate_nonces(local_chunk.raw(), remote_chunk.raw(), *incoming)
-                            {
-                                Ok(v) => v,
-                                Err(err) => {
-                                    store.dispatch(PeerHandshakingErrorAction {
-                                        address: action.address,
-                                        error: err.into(),
-                                    });
-                                    return;
-                                }
-                            };
-
-                        let public_key = match PublicKey::from_bytes(&remote_message.public_key) {
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    incoming,
+                    status:
+                        PeerHandshakingStatus::ConnectionMessageReady {
+                            local_chunk,
+                            remote_chunk,
+                            remote_message,
+                            ..
+                        },
+                    ..
+                }) = &peer.status
+                {
+                    let nonce_pair =
+                        match generate_nonces(local_chunk.raw(), remote_chunk.raw(), *incoming) {
                             Ok(v) => v,
                             Err(err) => {
                                 store.dispatch(PeerHandshakingErrorAction {
@@ -254,50 +233,58 @@ where
                             }
                         };
 
-                        let precomputed_key = PrecomputedKey::precompute(
-                            &public_key,
-                            &store.state.get().config.identity.secret_key,
-                        );
+                    let public_key = match PublicKey::from_bytes(&remote_message.public_key) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            store.dispatch(PeerHandshakingErrorAction {
+                                address: action.address,
+                                error: err.into(),
+                            });
+                            return;
+                        }
+                    };
 
-                        let crypto = PeerCrypto::new(precomputed_key, nonce_pair);
+                    let precomputed_key = PrecomputedKey::precompute(
+                        &public_key,
+                        &store.state.get().config.identity.secret_key,
+                    );
 
-                        store.dispatch(PeerHandshakingEncryptionInitAction {
-                            address: action.address,
-                            crypto,
-                        });
-                    }
-                    _ => {}
+                    let crypto = PeerCrypto::new(precomputed_key, nonce_pair);
+
+                    store.dispatch(PeerHandshakingEncryptionInitAction {
+                        address: action.address,
+                        crypto,
+                    });
                 }
             }
         }
 
         Action::PeerHandshakingEncryptionInit(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::EncryptionReady { .. },
-                        ..
-                    }) => {
-                        let config = &store.state.get().config;
-                        let metadata_message =
-                            MetadataMessage::new(config.disable_mempool, config.private_node);
-                        store.dispatch(PeerHandshakingMetadataMessageInitAction {
-                            address: action.address,
-                            message: metadata_message,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::EncryptionReady { .. },
+                    ..
+                }) = &peer.status
+                {
+                    let config = &store.state.get().config;
+                    let metadata_message =
+                        MetadataMessage::new(config.disable_mempool, config.private_node);
+                    store.dispatch(PeerHandshakingMetadataMessageInitAction {
+                        address: action.address,
+                        message: metadata_message,
+                    });
                 }
             }
         }
 
         Action::PeerHandshakingMetadataMessageInit(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::MetadataMessageInit { message, .. },
-                        ..
-                    }) => match message.as_bytes() {
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::MetadataMessageInit { message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    match message.as_bytes() {
                         Ok(binary_message) => {
                             store.dispatch(PeerHandshakingMetadataMessageEncodeAction {
                                 address: action.address,
@@ -310,44 +297,37 @@ where
                                 error: err.into(),
                             });
                         }
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
 
         Action::PeerHandshakingMetadataMessageEncode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::MetadataMessageEncoded { .. },
-                        ..
-                    }) => {
-                        store.dispatch(PeerHandshakingMetadataMessageWriteAction {
-                            address: action.address,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::MetadataMessageEncoded { .. },
+                    ..
+                }) = &peer.status
+                {
+                    store.dispatch(PeerHandshakingMetadataMessageWriteAction {
+                        address: action.address,
+                    });
                 }
             }
         }
         Action::PeerHandshakingMetadataMessageWrite(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status:
-                            PeerHandshakingStatus::MetadataMessageWritePending {
-                                binary_message, ..
-                            },
-                        ..
-                    }) => {
-                        let message = binary_message.clone();
-                        store.dispatch(PeerBinaryMessageWriteSetContentAction {
-                            address: action.address,
-                            message,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status:
+                        PeerHandshakingStatus::MetadataMessageWritePending { binary_message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    let message = binary_message.clone();
+                    store.dispatch(PeerBinaryMessageWriteSetContentAction {
+                        address: action.address,
+                        message,
+                    });
                 }
             }
         }
@@ -376,23 +356,21 @@ where
         }
         Action::PeerHandshakingMetadataMessageRead(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::MetadataMessageReadPending { .. },
-                        ..
-                    }) => {
-                        store.dispatch(PeerBinaryMessageReadInitAction {
-                            address: action.address,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::MetadataMessageReadPending { .. },
+                    ..
+                }) = &peer.status
+                {
+                    store.dispatch(PeerBinaryMessageReadInitAction {
+                        address: action.address,
+                    });
                 }
             }
         }
         Action::PeerBinaryMessageReadReady(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
+                if let PeerStatus::Handshaking(PeerHandshaking { status, .. }) = &peer.status {
+                    match status {
                         PeerHandshakingStatus::MetadataMessageReadPending {
                             binary_message_state: PeerBinaryMessageReadState::Ready { message, .. },
                             ..
@@ -428,45 +406,38 @@ where
                             }
                         },
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
         Action::PeerHandshakingMetadataMessageDecode(action) => {
             let state = store.state.get();
             if let Some(peer) = state.peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::MetadataMessageReady { .. },
-                        nack_motive,
-                        ..
-                    }) => {
-                        let message = match nack_motive.as_ref() {
-                            Some(motive) => {
-                                let potential_peers =
-                                    state.peers.potential_iter().collect::<Vec<_>>();
-                                let nack_potential_peers = store
-                                    .service
-                                    .randomness()
-                                    .choose_potential_peers_for_nack(&potential_peers)
-                                    .into_iter()
-                                    .map(|x| x.to_string())
-                                    .collect::<Vec<_>>();
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::MetadataMessageReady { .. },
+                    nack_motive,
+                    ..
+                }) = &peer.status
+                {
+                    let message = match nack_motive.as_ref() {
+                        Some(motive) => {
+                            let potential_peers = state.peers.potential_iter().collect::<Vec<_>>();
+                            let nack_potential_peers = store
+                                .service
+                                .randomness()
+                                .choose_potential_peers_for_nack(&potential_peers)
+                                .into_iter()
+                                .map(|x| x.to_string())
+                                .collect::<Vec<_>>();
 
-                                AckMessage::Nack(NackInfo::new(
-                                    motive.clone(),
-                                    &nack_potential_peers,
-                                ))
-                            }
-                            None => AckMessage::Ack,
-                        };
-                        store.dispatch(PeerHandshakingAckMessageInitAction {
-                            address: action.address,
-                            message,
-                        });
-                    }
-                    _ => {}
+                            AckMessage::Nack(NackInfo::new(motive.clone(), &nack_potential_peers))
+                        }
+                        None => AckMessage::Ack,
+                    };
+                    store.dispatch(PeerHandshakingAckMessageInitAction {
+                        address: action.address,
+                        message,
+                    });
                 }
             }
         }
@@ -474,11 +445,12 @@ where
         // ack message
         Action::PeerHandshakingAckMessageInit(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageInit { message, .. },
-                        ..
-                    }) => match message.as_bytes() {
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::AckMessageInit { message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    match message.as_bytes() {
                         Ok(binary_message) => {
                             store.dispatch(PeerHandshakingAckMessageEncodeAction {
                                 address: action.address,
@@ -491,41 +463,36 @@ where
                                 error: err.into(),
                             });
                         }
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
 
         Action::PeerHandshakingAckMessageEncode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageEncoded { .. },
-                        ..
-                    }) => {
-                        store.dispatch(PeerHandshakingAckMessageWriteAction {
-                            address: action.address,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::AckMessageEncoded { .. },
+                    ..
+                }) = &peer.status
+                {
+                    store.dispatch(PeerHandshakingAckMessageWriteAction {
+                        address: action.address,
+                    });
                 }
             }
         }
         Action::PeerHandshakingAckMessageWrite(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageWritePending { binary_message, .. },
-                        ..
-                    }) => {
-                        let message = binary_message.clone();
-                        store.dispatch(PeerBinaryMessageWriteSetContentAction {
-                            address: action.address,
-                            message,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::AckMessageWritePending { binary_message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    let message = binary_message.clone();
+                    store.dispatch(PeerBinaryMessageWriteSetContentAction {
+                        address: action.address,
+                        message,
+                    });
                 }
             }
         }
@@ -533,45 +500,41 @@ where
         // Action::PeerBinaryMessageWriteReady(action) => {}
         Action::PeerHandshakingAckMessageRead(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageReadPending { .. },
-                        ..
-                    }) => {
-                        store.dispatch(PeerBinaryMessageReadInitAction {
-                            address: action.address,
-                        });
-                    }
-                    _ => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::AckMessageReadPending { .. },
+                    ..
+                }) = &peer.status
+                {
+                    store.dispatch(PeerBinaryMessageReadInitAction {
+                        address: action.address,
+                    });
                 }
             }
         }
 
         Action::PeerHandshakingAckMessageDecode(action) => {
             if let Some(peer) = store.state.get().peers.get(&action.address) {
-                match &peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking {
-                        status: PeerHandshakingStatus::AckMessageReady { remote_message, .. },
-                        ..
-                    }) => {
-                        match remote_message {
-                            AckMessage::Ack => {
-                                return {
-                                    store.dispatch(PeerHandshakingFinishAction {
-                                        address: action.address,
-                                    });
-                                };
-                            }
-                            // TODO: use potential peers in nack message.
-                            AckMessage::Nack(_) => {}
-                            AckMessage::NackV0 => {}
+                if let PeerStatus::Handshaking(PeerHandshaking {
+                    status: PeerHandshakingStatus::AckMessageReady { remote_message, .. },
+                    ..
+                }) = &peer.status
+                {
+                    match remote_message {
+                        AckMessage::Ack => {
+                            return {
+                                store.dispatch(PeerHandshakingFinishAction {
+                                    address: action.address,
+                                });
+                            };
                         }
-                        // peer nacked us so we should graylist him.
-                        store.dispatch(PeersGraylistAddressAction {
-                            address: action.address,
-                        });
+                        // TODO: use potential peers in nack message.
+                        AckMessage::Nack(_) => {}
+                        AckMessage::NackV0 => {}
                     }
-                    _ => {}
+                    // peer nacked us so we should graylist him.
+                    store.dispatch(PeersGraylistAddressAction {
+                        address: action.address,
+                    });
                 }
             }
         }
@@ -583,19 +546,13 @@ where
                 Some(peer) => match &peer.status {
                     PeerStatus::Handshaked(v) => v,
                     status => {
-                        match status {
-                            PeerStatus::Handshaking(handshaking) => {
-                                match &handshaking.nack_motive {
-                                    Some(NackMotive::AlreadyConnected) => {
-                                        store.dispatch(PeerDisconnectAction {
-                                            address: action.address,
-                                        });
-                                        return;
-                                    }
-                                    _ => {}
-                                }
+                        if let PeerStatus::Handshaking(handshaking) = status {
+                            if let Some(NackMotive::AlreadyConnected) = &handshaking.nack_motive {
+                                store.dispatch(PeerDisconnectAction {
+                                    address: action.address,
+                                });
+                                return;
                             }
-                            _ => {}
                         }
                         store.dispatch(PeersGraylistAddressAction {
                             address: action.address,

@@ -22,74 +22,67 @@ pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithMeta) {
                 Some(v) => v,
                 None => return,
             };
-            match &mut peer.message_read {
-                PeerMessageReadState::Success {
-                    read_crypto,
-                    message,
-                    ..
-                } => {
-                    peer.crypto = PeerCrypto::unsplit_after_reading(
-                        read_crypto.clone(),
-                        peer.crypto.local_nonce(),
-                    );
+            if let PeerMessageReadState::Success {
+                read_crypto,
+                message,
+                ..
+            } = &mut peer.message_read
+            {
+                peer.crypto = PeerCrypto::unsplit_after_reading(
+                    read_crypto.clone(),
+                    peer.crypto.local_nonce(),
+                );
 
-                    match message.message() {
-                        PeerMessage::BlockHeader(m) => {
-                            let pending_requests = &mut state.peers.pending_block_header_requests;
-                            let _ = m
-                                .block_header()
-                                .message_typed_hash()
-                                .map(|b| pending_requests.remove(&b));
-                        }
-                        _ => {}
-                    };
+                if let PeerMessage::BlockHeader(m) = message.message() {
+                    let pending_requests = &mut state.peers.pending_block_header_requests;
+                    let _ = m
+                        .block_header()
+                        .message_typed_hash()
+                        .map(|b| pending_requests.remove(&b));
+                };
 
-                    peer.message_read = PeerMessageReadState::Pending {
-                        binary_message_read: PeerBinaryMessageReadState::Init {
-                            crypto: read_crypto.clone(),
-                        },
-                    };
-                }
-                _ => {}
+                peer.message_read = PeerMessageReadState::Pending {
+                    binary_message_read: PeerBinaryMessageReadState::Init {
+                        crypto: read_crypto.clone(),
+                    },
+                };
             }
         }
         Action::PeerMessageReadError(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
-                match &mut peer.status {
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
-                            PeerMessageReadState::Pending { .. } => {}
-                            _ => return,
-                        };
+                if let PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) =
+                    &mut peer.status
+                {
+                    match message_read {
+                        PeerMessageReadState::Pending { .. } => {}
+                        _ => return,
+                    };
 
-                        *message_read = PeerMessageReadState::Error {
-                            error: action.error.clone(),
-                        };
-                    }
-                    _ => {}
+                    *message_read = PeerMessageReadState::Error {
+                        error: action.error.clone(),
+                    };
                 }
             }
         }
         Action::PeerMessageReadSuccess(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
-                match &mut peer.status {
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        let read_crypto = match message_read {
-                            PeerMessageReadState::Pending {
-                                binary_message_read,
-                            } => match binary_message_read {
-                                PeerBinaryMessageReadState::Ready { crypto, .. } => crypto,
-                                _ => return,
-                            },
+                if let PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) =
+                    &mut peer.status
+                {
+                    let read_crypto = match message_read {
+                        PeerMessageReadState::Pending {
+                            binary_message_read,
+                        } => match binary_message_read {
+                            PeerBinaryMessageReadState::Ready { crypto, .. } => crypto,
                             _ => return,
-                        };
+                        },
+                        _ => return,
+                    };
 
-                        *message_read = PeerMessageReadState::Success {
-                            read_crypto: read_crypto.clone(),
-                            message: action.message.clone(),
-                        };
-                    }
-                    _ => {}
+                    *message_read = PeerMessageReadState::Success {
+                        read_crypto: read_crypto.clone(),
+                        message: action.message.clone(),
+                    };
                 }
             }
         }

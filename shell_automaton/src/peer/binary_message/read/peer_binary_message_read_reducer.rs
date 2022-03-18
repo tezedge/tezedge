@@ -36,16 +36,13 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageReadState::Init { crypto } => {
-                        *binary_message_state = PeerBinaryMessageReadState::PendingFirstChunk {
-                            chunk: PeerChunkRead {
-                                crypto: crypto.clone(),
-                                state: PeerChunkReadState::Init,
-                            },
-                        }
+                if let PeerBinaryMessageReadState::Init { crypto } = binary_message_state {
+                    *binary_message_state = PeerBinaryMessageReadState::PendingFirstChunk {
+                        chunk: PeerChunkRead {
+                            crypto: crypto.clone(),
+                            state: PeerChunkReadState::Init,
+                        },
                     }
-                    _ => {}
                 }
             }
         }
@@ -74,31 +71,28 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageReadState::PendingFirstChunk {
-                        chunk:
-                            PeerChunkRead {
-                                crypto,
-                                state: PeerChunkReadState::Ready { chunk },
-                            },
-                    } => {
-                        if action.size > chunk.len() {
-                            *binary_message_state = PeerBinaryMessageReadState::Pending {
-                                buffer: chunk.clone(),
-                                size: action.size,
-                                chunk: PeerChunkRead {
-                                    crypto: crypto.clone(),
-                                    state: PeerChunkReadState::Init,
-                                },
-                            };
-                        } else {
-                            *binary_message_state = PeerBinaryMessageReadState::Ready {
+                if let PeerBinaryMessageReadState::PendingFirstChunk {
+                                        chunk:
+                                            PeerChunkRead {
+                                                crypto,
+                                                state: PeerChunkReadState::Ready { chunk },
+                                            },
+                                    } = binary_message_state {
+                    if action.size > chunk.len() {
+                        *binary_message_state = PeerBinaryMessageReadState::Pending {
+                            buffer: chunk.clone(),
+                            size: action.size,
+                            chunk: PeerChunkRead {
                                 crypto: crypto.clone(),
-                                message: chunk.clone(),
-                            };
-                        }
+                                state: PeerChunkReadState::Init,
+                            },
+                        };
+                    } else {
+                        *binary_message_state = PeerBinaryMessageReadState::Ready {
+                            crypto: crypto.clone(),
+                            message: chunk.clone(),
+                        };
                     }
-                    _ => {}
                 };
             }
         }
@@ -127,30 +121,28 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageReadState::Pending {
-                        buffer,
-                        size,
-                        chunk: PeerChunkRead { crypto, state },
-                    } => {
-                        if let PeerChunkReadState::Ready {
-                            chunk: chunk_content,
-                        } = state
-                        {
-                            if buffer.len() + chunk_content.len() <= *size {
-                                buffer.extend_from_slice(chunk_content);
-                                if buffer.len() == *size {
-                                    *binary_message_state = PeerBinaryMessageReadState::Ready {
-                                        crypto: crypto.clone(),
-                                        message: buffer.clone(),
-                                    }
-                                } else {
-                                    *state = PeerChunkReadState::Init;
+                if let PeerBinaryMessageReadState::Pending {
+                    buffer,
+                    size,
+                    chunk: PeerChunkRead { crypto, state },
+                } = binary_message_state
+                {
+                    if let PeerChunkReadState::Ready {
+                        chunk: chunk_content,
+                    } = state
+                    {
+                        if buffer.len() + chunk_content.len() <= *size {
+                            buffer.extend_from_slice(chunk_content);
+                            if buffer.len() == *size {
+                                *binary_message_state = PeerBinaryMessageReadState::Ready {
+                                    crypto: crypto.clone(),
+                                    message: buffer.clone(),
                                 }
+                            } else {
+                                *state = PeerChunkReadState::Init;
                             }
                         }
                     }
-                    _ => {}
                 }
             }
         }

@@ -136,14 +136,13 @@ where
                 };
                 match binary_message_state {
                     PeerBinaryMessageReadState::PendingFirstChunk { chunk }
-                    | PeerBinaryMessageReadState::Pending { chunk, .. } => match &chunk.state {
-                        PeerChunkReadState::Ready { .. } => {
+                    | PeerBinaryMessageReadState::Pending { chunk, .. } => {
+                        if let PeerChunkReadState::Ready { .. } = &chunk.state {
                             store.dispatch(PeerChunkReadReadyAction {
                                 address: action.address,
                             });
                         }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 };
             }

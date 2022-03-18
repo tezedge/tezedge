@@ -39,23 +39,21 @@ where
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageWriteState::Pending {
-                        chunk:
-                            PeerChunkWrite {
-                                state: PeerChunkWriteState::Init,
-                                ..
-                            },
-                        chunk_content,
-                        ..
-                    } => {
-                        let content = chunk_content.clone();
-                        store.dispatch(PeerChunkWriteSetContentAction {
-                            address: action.address,
-                            content,
-                        });
-                    }
-                    _ => {}
+                if let PeerBinaryMessageWriteState::Pending {
+                    chunk:
+                        PeerChunkWrite {
+                            state: PeerChunkWriteState::Init,
+                            ..
+                        },
+                    chunk_content,
+                    ..
+                } = binary_message_state
+                {
+                    let content = chunk_content.clone();
+                    store.dispatch(PeerChunkWriteSetContentAction {
+                        address: action.address,
+                        content,
+                    });
                 }
             }
         }

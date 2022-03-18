@@ -66,18 +66,17 @@ where
                 message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
             });
 
-            match &store.state().bootstrap {
-                BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                    let blocks = pending
-                        .iter()
-                        .filter(|(_, b)| !b.peers.iter().any(|(_, p)| p.is_pending()))
-                        .map(|(block_hash, _)| block_hash.clone())
-                        .collect::<Vec<_>>();
-                    for block_hash in blocks {
-                        retry_block_operations_request(store, block_hash);
-                    }
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &store.state().bootstrap
+            {
+                let blocks = pending
+                    .iter()
+                    .filter(|(_, b)| !b.peers.iter().any(|(_, p)| p.is_pending()))
+                    .map(|(block_hash, _)| block_hash.clone())
+                    .collect::<Vec<_>>();
+                for block_hash in blocks {
+                    retry_block_operations_request(store, block_hash);
                 }
-                _ => {}
             }
         }
         Action::BootstrapPeersMainBranchFindInit(_) => {
@@ -292,15 +291,15 @@ where
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
         }
-        Action::BootstrapScheduleBlocksForApply(_) => loop {
-            let block_hash = match store.state().bootstrap.next_block_for_apply() {
-                Some(v) => v.clone(),
-                None => break,
-            };
-            if !store.dispatch(BootstrapScheduleBlockForApplyAction { block_hash }) {
-                break;
+        Action::BootstrapScheduleBlocksForApply(_) => {
+            while let Some(v) = store.state().bootstrap.next_block_for_apply() {
+                let block_hash = v.clone();
+
+                if !store.dispatch(BootstrapScheduleBlockForApplyAction { block_hash }) {
+                    break;
+                }
             }
-        },
+        }
         Action::BootstrapScheduleBlockForApply(content) => {
             slog::debug!(&store.state().log, "Scheduled BlockForApply";
                 "block_hash" => format!("{:?}", content.block_hash));
@@ -341,13 +340,10 @@ where
             store.dispatch(BootstrapFinishedAction {});
         }
         Action::BootstrapError(content) => {
-            match &content.error {
-                BootstrapError::CementedBlockReorg { peers, .. } => {
-                    for address in peers.iter().cloned() {
-                        store.dispatch(PeersGraylistAddressAction { address });
-                    }
+            if let BootstrapError::CementedBlockReorg { peers, .. } = &content.error {
+                for address in peers.iter().cloned() {
+                    store.dispatch(PeersGraylistAddressAction { address });
                 }
-                _ => {}
             }
             store.dispatch(BootstrapFinishedAction {});
         }

@@ -26,42 +26,37 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
             ) {
                 return;
             }
-            match content.message.message() {
-                PeerMessage::GetBlockHeaders(m) => {
-                    m.get_block_headers().iter().for_each(|b| {
-                        state
-                            .peers
-                            .pending_block_header_requests
-                            .insert(b.clone(), action.time_as_nanos());
-                    });
-                }
-                _ => {}
+            if let PeerMessage::GetBlockHeaders(m) = content.message.message() {
+                m.get_block_headers().iter().for_each(|b| {
+                    state
+                        .peers
+                        .pending_block_header_requests
+                        .insert(b.clone(), action.time_as_nanos());
+                });
             }
         }
         Action::PeerMessageWriteSuccess(content) => {
             if let Some(peer) = state.peers.get_mut(&content.address) {
-                match &mut peer.status {
-                    PeerStatus::Handshaked(PeerHandshaked {
-                        crypto,
-                        message_write,
-                        ..
-                    }) => match &message_write.current {
-                        PeerBinaryMessageWriteState::Ready {
+                if let PeerStatus::Handshaked(PeerHandshaked {
+                    crypto,
+                    message_write,
+                    ..
+                }) = &mut peer.status
+                {
+                    if let PeerBinaryMessageWriteState::Ready {
+                        crypto: write_crypto,
+                    } = &message_write.current
+                    {
+                        let write_crypto = write_crypto.clone();
+                        *crypto = PeerCrypto::unsplit_after_writing(
+                            write_crypto.clone(),
+                            crypto.remote_nonce(),
+                        );
+                        message_write.current = PeerBinaryMessageWriteState::Init {
                             crypto: write_crypto,
-                        } => {
-                            let write_crypto = write_crypto.clone();
-                            *crypto = PeerCrypto::unsplit_after_writing(
-                                write_crypto.clone(),
-                                crypto.remote_nonce(),
-                            );
-                            message_write.current = PeerBinaryMessageWriteState::Init {
-                                crypto: write_crypto,
-                            };
-                            message_write.queue.pop_front();
-                        }
-                        _ => {}
-                    },
-                    _ => {}
+                        };
+                        message_write.queue.pop_front();
+                    }
                 }
             }
         }
