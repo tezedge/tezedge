@@ -84,7 +84,7 @@ struct CliArgs {
     #[clap(long, parse(try_from_str))]
     db_cfg_max_threads: Option<usize>,
 
-    /// A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon.
+    /// A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a space inside double qoutes.
     /// Used according to --network parameter see TezosEnvironment
     #[clap(long, parse(try_from_str), group = "bootstrap_lookup")]
     bootstrap_lookup_address: Vec<String>,
@@ -147,7 +147,7 @@ struct CliArgs {
     private_node: bool,
 
     /// Tezos network to connect to
-    #[clap(long, arg_enum)]
+    #[clap(long, global = true, arg_enum)]
     network: TezosEnvironment,
 
     /// Path to a JSON file defining a custom network using the same format used by Octez
@@ -176,7 +176,7 @@ struct CliArgs {
 
     /// Peers to bootstrap the network from.
     #[clap(long, parse(try_from_str))]
-    peers: Vec<SocketAddr>,
+    peers: String,
 
     /// Minimal number of peers to connect to
     #[clap(long, parse(try_from_str), default_value_t = 20)]
@@ -771,7 +771,7 @@ impl Environment {
                                         )
                                     })
                     }).collect(),
-                bootstrap_peers: cli_args.peers,
+                bootstrap_peers: parse_delimited_socket_addr(&cli_args.peers),
                 peer_threshold: PeerConnectionThreshold::try_new(
                     cli_args.peer_thresh_low,
                     cli_args.peer_thresh_high,
@@ -960,4 +960,8 @@ impl Environment {
     pub fn create_logger(&self) -> Result<Logger, NoDrainError> {
         self.logging.slog.create_logger()
     }
+}
+
+fn parse_delimited_socket_addr(delimited_str: &str) -> Vec<SocketAddr> {
+    delimited_str.split(',').map(|ip_port| ip_port.parse().expect(&format!("Expected IP:PORT, got: {}", ip_port))).collect()
 }
