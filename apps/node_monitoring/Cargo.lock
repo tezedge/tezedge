@@ -872,7 +872,7 @@ dependencies = [
 
 [[package]]
 name = "node-monitoring"
-version = "1.17.0"
+version = "1.16.2"
 dependencies = [
  "cfg-if",
  "clap",
