@@ -167,7 +167,7 @@ impl RpcClient {
 
             let s = format!("chains/main/blocks/{}/protocols", header.hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let Protocols { protocol } = this.single_response_blocking(&url, None, None)?;
+            let Protocols { protocol } = this.single_response_blocking(&url, None, Some(timeout))?;
 
             let transition = protocol.to_base58_check() != PROTOCOL;
 
@@ -189,7 +189,7 @@ impl RpcClient {
             } else {
                 let s = format!("chains/main/blocks/{}/operations", header.hash);
                 let url = this.endpoint.join(&s).expect("valid url");
-                this.single_response_blocking(&url, None, None)?
+                this.single_response_blocking(&url, None, Some(timeout))?
             };
 
             Ok(Event::Block(Block {

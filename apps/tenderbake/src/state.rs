@@ -371,7 +371,7 @@ where
             }
             Ordering::Equal => {
                 if self.head.pred_hash != new_proposal.pred_hash {
-                    let switch = match (&self.endorsable_payload, &self.head.prequorum) {
+                    let switch = match (&self.endorsable_payload, &new_proposal.prequorum) {
                         (None, _) => {
                             // The new branch contains a PQC (and we do not) or a better
                             // fitness, we switch.
