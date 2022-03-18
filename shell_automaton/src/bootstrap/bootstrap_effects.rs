@@ -438,8 +438,7 @@ where
                         .filter(|(_, b)| {
                             b.peers
                                 .get(&content.address)
-                                .map(|p| p.is_disconnected())
-                                .unwrap_or(false)
+                                .map_or(false, |p| p.is_disconnected())
                                 && b.peers.iter().all(|(_, p)| !p.is_pending())
                         })
                         .map(|(block_hash, _)| block_hash.clone())

@@ -95,7 +95,7 @@ fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &Acti
 }
 
 /// All the actions which trigger checking for timeouts are called here.
-fn check_timeouts_effects<S: Service>(store: &mut Store<S>, _: &ActionWithMeta) {
+pub fn check_timeouts<S: Service>(store: &mut Store<S>) {
     store.dispatch(PeersCheckTimeoutsInitAction {});
     store.dispatch(BootstrapCheckTimeoutsInitAction {});
 }
@@ -189,8 +189,4 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_operations_effects(store, action);
 
     shutdown_effects(store, action);
-
-    // Must be last as the timeout check can be triggered by
-    // any action and that might break some assumptions.
-    check_timeouts_effects(store, action);
 }

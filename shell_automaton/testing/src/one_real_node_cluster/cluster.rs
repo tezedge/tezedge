@@ -9,7 +9,10 @@ use crypto::nonce::Nonce;
 use shell_automaton::event::{P2pPeerEvent, P2pServerEvent};
 use shell_automaton::peer::PeerCrypto;
 use shell_automaton::peers::add::multi::PeersAddMultiAction;
-use shell_automaton::{effects, reducer, Action, EnablingCondition, State, Store};
+use shell_automaton::{
+    check_timeouts, effects, reducer, Action, EnablingCondition, MioWaitForEventsAction, State,
+    Store,
+};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
@@ -151,6 +154,12 @@ impl Cluster {
         T: Into<Action> + EnablingCondition<State>,
     {
         self.store.dispatch(action)
+    }
+
+    /// End current simulated `make_progress` loop's current iteration.
+    pub fn loop_next(&mut self) {
+        self.dispatch(MioWaitForEventsAction {});
+        check_timeouts(&mut self.store);
     }
 
     pub fn dispatch_peer_ready_event(
