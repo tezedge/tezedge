@@ -925,8 +925,7 @@ impl Environment {
                 }
 
                 // ~num is an offset from HEAD
-                if b.starts_with('~') {
-                    let maybe_num = &b[1..];
+                if let Some(maybe_num) = b.strip_prefix('~') {
                     if let Ok(offset) = maybe_num.parse::<u32>() {
                         return BlockReference::OffsetFromHead(offset);
                     }

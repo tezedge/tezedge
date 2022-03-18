@@ -55,17 +55,13 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::PeerHandshakingConnectionMessageInit(action) => {
             if let Some(peer) = state.peers.get_mut(&action.address) {
-                match &mut peer.status {
-                    PeerStatus::Handshaking(PeerHandshaking { status, .. }) => match status {
-                        PeerHandshakingStatus::Init { .. } => {
-                            *status = PeerHandshakingStatus::ConnectionMessageInit {
-                                time: action_time,
-                                message: action.message.clone(),
-                            }
+                if let PeerStatus::Handshaking(PeerHandshaking { status, .. }) = &mut peer.status {
+                    if let PeerHandshakingStatus::Init { .. } = status {
+                        *status = PeerHandshakingStatus::ConnectionMessageInit {
+                            time: action_time,
+                            message: action.message.clone(),
                         }
-                        _ => {}
-                    },
-                    _ => {}
+                    }
                 }
             }
         }

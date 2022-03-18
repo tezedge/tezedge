@@ -361,7 +361,7 @@ mod tests {
                     "CoVDyf9y9gHfAkPWofBJffo4X4bWjmehH2LeVonDcCKKzyQYwqdk"
                 );
                 assert_eq!(bh1.priority, 0);
-                assert_eq!(bh1.liquidity_baking_escape_vote, false);
+                assert!(!bh1.liquidity_baking_escape_vote);
                 assert_eq!(hex::encode(&bh1.proof_of_work_nonce), "101895ca00000000");
                 assert_eq!(bh1.signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
 
@@ -383,7 +383,7 @@ mod tests {
                     "CoVDyf9y9gHfAkPWofBJffo4X4bWjmehH2LeVonDcCKKzyQYwqdk"
                 );
                 assert_eq!(bh2.priority, 0);
-                assert_eq!(bh2.liquidity_baking_escape_vote, false);
+                assert!(!bh2.liquidity_baking_escape_vote);
                 assert_eq!(hex::encode(&bh2.proof_of_work_nonce), "101895ca00000000");
                 assert_eq!(bh2.signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
             }

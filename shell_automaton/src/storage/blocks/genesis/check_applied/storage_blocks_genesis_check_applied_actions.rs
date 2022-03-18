@@ -14,12 +14,12 @@ pub struct StorageBlocksGenesisCheckAppliedInitAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.check_applied {
-            StorageBlocksGenesisCheckAppliedState::Idle => true,
-            StorageBlocksGenesisCheckAppliedState::GetMetaError { .. } => true,
-            StorageBlocksGenesisCheckAppliedState::Success { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.check_applied,
+            StorageBlocksGenesisCheckAppliedState::Idle
+                | StorageBlocksGenesisCheckAppliedState::GetMetaError { .. }
+                | StorageBlocksGenesisCheckAppliedState::Success { .. }
+        )
     }
 }
 
@@ -29,10 +29,10 @@ pub struct StorageBlocksGenesisCheckAppliedGetMetaPendingAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.check_applied {
-            StorageBlocksGenesisCheckAppliedState::GetMetaInit => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.check_applied,
+            StorageBlocksGenesisCheckAppliedState::GetMetaInit
+        )
     }
 }
 
@@ -42,10 +42,10 @@ pub struct StorageBlocksGenesisCheckAppliedGetMetaErrorAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.check_applied {
-            StorageBlocksGenesisCheckAppliedState::GetMetaPending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.check_applied,
+            StorageBlocksGenesisCheckAppliedState::GetMetaPending { .. }
+        )
     }
 }
 
@@ -58,10 +58,10 @@ pub struct StorageBlocksGenesisCheckAppliedGetMetaSuccessAction {
 impl EnablingCondition<State> for StorageBlocksGenesisCheckAppliedGetMetaSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
         self.meta.as_ref().map_or(true, |meta| meta.level() == 0)
-            && match &state.storage.blocks.genesis.check_applied {
-                StorageBlocksGenesisCheckAppliedState::GetMetaPending { .. } => true,
-                _ => false,
-            }
+            && matches!(
+                &state.storage.blocks.genesis.check_applied,
+                StorageBlocksGenesisCheckAppliedState::GetMetaPending { .. }
+            )
     }
 }
 

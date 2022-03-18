@@ -187,12 +187,10 @@ impl BlockApplierApplyState {
 
     #[inline(always)]
     pub fn is_pending(&self) -> bool {
-        match self {
-            Self::Idle { .. } => false,
-            Self::Error { .. } => false,
-            Self::Success { .. } => false,
-            _ => true,
-        }
+        !matches!(
+            self,
+            Self::Idle { .. } | Self::Error { .. } | Self::Success { .. }
+        )
     }
 }
 

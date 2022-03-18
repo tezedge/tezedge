@@ -19,12 +19,12 @@ pub struct StorageBlocksGenesisInitCommitResultGetInitAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::AdditionalDataPut(
                 StorageBlocksGenesisInitAdditionalDataPutState::Success { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -36,12 +36,12 @@ pub struct StorageBlocksGenesisInitCommitResultGetPendingAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultGet(
                 StorageBlocksGenesisInitCommitResultGetState::Init { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -53,12 +53,12 @@ pub struct StorageBlocksGenesisInitCommitResultGetErrorAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultGet(
                 StorageBlocksGenesisInitCommitResultGetState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -70,11 +70,11 @@ pub struct StorageBlocksGenesisInitCommitResultGetSuccessAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultGetSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultGet(
                 StorageBlocksGenesisInitCommitResultGetState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }

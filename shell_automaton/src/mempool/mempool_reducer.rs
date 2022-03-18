@@ -168,7 +168,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .branch_delayed
                             .push(v.clone());
                         if v.is_endorsement.unwrap_or(false) {
-                            for (_, peer) in &mut mempool_state.peer_state {
+                            for peer in mempool_state.peer_state.values_mut() {
                                 if !peer.seen_operations.contains(&v.hash) {
                                     peer.known_valid_to_send.push(v.hash.clone());
                                 }
@@ -589,7 +589,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
-                .or_insert(OperationStats::new())
+                .or_insert_with(OperationStats::new)
                 .received_via_rpc(
                     &pkh,
                     OperationNodeCurrentHeadStats {
@@ -801,7 +801,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .operation_stats
                 .entry(op_hash)
-                .or_insert(OperationStats::new())
+                .or_insert_with(OperationStats::new)
                 .validation_started(action.time_as_nanos(), current_head_level);
         }
         Action::PeerMessageReadSuccess(content) => {
@@ -834,7 +834,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert(OperationStats::new())
+                            .or_insert_with(OperationStats::new)
                             .received_in_current_head(
                                 peer_pkh,
                                 OperationNodeCurrentHeadStats {
@@ -850,7 +850,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert(OperationStats::new())
+                            .or_insert_with(OperationStats::new)
                             .content_requested_remote(peer_pkh, time);
                     }
                 }
@@ -863,7 +863,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .operation_stats
                         .entry(op_hash)
-                        .or_insert(OperationStats::new())
+                        .or_insert_with(OperationStats::new)
                         .content_received(peer_pkh, time, msg.operation().data().as_ref());
                 }
                 _ => {}
@@ -937,7 +937,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert(OperationStats::new())
+                    .or_insert_with(OperationStats::new)
                     .sent_in_current_head(
                         pkh,
                         OperationNodeCurrentHeadStats {
@@ -954,7 +954,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert(OperationStats::new())
+                    .or_insert_with(OperationStats::new)
                     .content_requested(&peer.public_key_hash, time);
             }
         }
@@ -968,7 +968,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 .mempool
                 .operation_stats
                 .entry(op_hash)
-                .or_insert(OperationStats::new())
+                .or_insert_with(OperationStats::new)
                 .content_sent(&peer.public_key_hash, time);
         }
         _ => {}

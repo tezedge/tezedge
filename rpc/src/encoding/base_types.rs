@@ -34,10 +34,7 @@ pub enum UniString {
 impl UniString {
     #[inline]
     pub fn is_valid(&self) -> bool {
-        match *self {
-            UniString::Valid(_) => true,
-            _ => false,
-        }
+        matches!(*self, UniString::Valid(_))
     }
 
     #[inline]

@@ -17,10 +17,10 @@ pub struct ProtocolRunnerInitRuntimeAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitRuntimeAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
-            ProtocolRunnerState::Init(ProtocolRunnerInitState::Init { .. }) => true,
-            _ => false,
-        }
+        matches!(
+            &state.protocol_runner,
+            ProtocolRunnerState::Init(ProtocolRunnerInitState::Init { .. })
+        )
     }
 }
 
@@ -32,12 +32,12 @@ pub struct ProtocolRunnerInitRuntimePendingAction {
 
 impl EnablingCondition<State> for ProtocolRunnerInitRuntimePendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::Runtime(
                 ProtocolRunnerInitRuntimeState::Init,
-            )) => true,
-            _ => false,
-        }
+            ))
+        )
     }
 }
 

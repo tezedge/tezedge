@@ -265,15 +265,23 @@ impl OperationDecodedContents {
 
     pub(super) fn is_endorsement(&self) -> bool {
         match self {
-            OperationDecodedContents::Proto010(operation) if operation.contents.len() == 1 => match operation.contents[0] {
-                tezos_messages::protocol::proto_010::operation::Contents::Endorsement(_) |
-                tezos_messages::protocol::proto_010::operation::Contents::EndorsementWithSlot(_) => true,
-                _ => false,
+            OperationDecodedContents::Proto010(operation) if operation.contents.len() == 1 => {
+                matches!(
+                operation.contents[0],
+                tezos_messages::protocol::proto_010::operation::Contents::Endorsement(_)
+                    | tezos_messages::protocol::proto_010::operation::Contents::EndorsementWithSlot(
+                        _
+                    )
+            )
             }
-            OperationDecodedContents::Proto011(operation) if operation.contents.len() == 1 => match operation.contents[0] {
-                tezos_messages::protocol::proto_011::operation::Contents::Endorsement(_) |
-                tezos_messages::protocol::proto_011::operation::Contents::EndorsementWithSlot(_) => true,
-                _ => false,
+            OperationDecodedContents::Proto011(operation) if operation.contents.len() == 1 => {
+                matches!(
+                operation.contents[0],
+                tezos_messages::protocol::proto_011::operation::Contents::Endorsement(_)
+                    | tezos_messages::protocol::proto_011::operation::Contents::EndorsementWithSlot(
+                        _
+                    )
+            )
             }
             _ => false,
         }

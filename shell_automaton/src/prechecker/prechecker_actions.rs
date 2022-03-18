@@ -394,12 +394,12 @@ pub struct PrecheckerPruneOperationAction {
 impl EnablingCondition<State> for PrecheckerPruneOperationAction {
     fn is_enabled(&self, state: &State) -> bool {
         match state.prechecker.operations.get(&self.key) {
-            Some(op) => match op.state {
+            Some(op) => matches!(
+                op.state,
                 PrecheckerOperationState::Applied { .. }
-                | PrecheckerOperationState::Refused { .. }
-                | PrecheckerOperationState::ProtocolNeeded => true,
-                _ => false,
-            },
+                    | PrecheckerOperationState::Refused { .. }
+                    | PrecheckerOperationState::ProtocolNeeded
+            ),
             None => false,
         }
     }

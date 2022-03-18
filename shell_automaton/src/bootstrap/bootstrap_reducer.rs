@@ -446,7 +446,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .downloaded
                         .first()
                         .map(|(l, h, ..)| (*l, h))
-                        .or(pred.current.block_level_with_hash().map(|(l, h)| (l, h)))
+                        .or_else(|| pred.current.block_level_with_hash().map(|(l, h)| (l, h)))
                     {
                         Some((pred_level, pred_hash)) => {
                             if pred.current.is_error() {

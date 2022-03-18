@@ -18,12 +18,10 @@ pub struct ProtocolRunnerInitContextAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
-            ProtocolRunnerState::Init(ProtocolRunnerInitState::CheckGenesisAppliedSuccess {
-                ..
-            }) => true,
-            _ => false,
-        }
+        matches!(
+            &state.protocol_runner,
+            ProtocolRunnerState::Init(ProtocolRunnerInitState::CheckGenesisAppliedSuccess { .. })
+        )
     }
 }
 
@@ -35,12 +33,12 @@ pub struct ProtocolRunnerInitContextPendingAction {
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::Context(
                 ProtocolRunnerInitContextState::Init { .. },
-            )) => true,
-            _ => false,
-        }
+            ))
+        )
     }
 }
 

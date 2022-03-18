@@ -45,10 +45,7 @@ pub struct CurrentHeadRehydratePendingAction {
 
 impl EnablingCondition<State> for CurrentHeadRehydratePendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.current_head {
-            CurrentHeadState::RehydrateInit { .. } => true,
-            _ => false,
-        }
+        matches!(&state.current_head, CurrentHeadState::RehydrateInit { .. })
     }
 }
 
@@ -60,10 +57,10 @@ pub struct CurrentHeadRehydrateErrorAction {
 
 impl EnablingCondition<State> for CurrentHeadRehydrateErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.current_head {
-            CurrentHeadState::RehydratePending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.current_head,
+            CurrentHeadState::RehydratePending { .. }
+        )
     }
 }
 
@@ -76,10 +73,10 @@ pub struct CurrentHeadRehydrateSuccessAction {
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.current_head {
-            CurrentHeadState::RehydratePending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.current_head,
+            CurrentHeadState::RehydratePending { .. }
+        )
     }
 }
 
@@ -89,10 +86,10 @@ pub struct CurrentHeadRehydratedAction {}
 
 impl EnablingCondition<State> for CurrentHeadRehydratedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.current_head {
-            CurrentHeadState::RehydrateSuccess { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.current_head,
+            CurrentHeadState::RehydrateSuccess { .. }
+        )
     }
 }
 
@@ -106,9 +103,6 @@ pub struct CurrentHeadUpdateAction {
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.current_head {
-            CurrentHeadState::Rehydrated { .. } => true,
-            _ => false,
-        }
+        matches!(&state.current_head, CurrentHeadState::Rehydrated { .. })
     }
 }

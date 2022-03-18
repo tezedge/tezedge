@@ -126,7 +126,7 @@ fn generate_bounded_encoding<'a>(
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::Bounded(#size, Box::new(#encoding)))
 }
 
-fn generate_short_dynamic_encoding<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_short_dynamic_encoding(encoding: &Encoding, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::ShortDynamic(Box::new(#encoding)))
 }

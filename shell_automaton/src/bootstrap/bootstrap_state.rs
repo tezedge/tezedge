@@ -183,10 +183,7 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn is_timed_out_or_disconnected(&self) -> bool {
-        match self {
-            Self::TimedOut { .. } | Self::Disconnected { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::TimedOut { .. } | Self::Disconnected { .. })
     }
 
     /// If we are in pending state and it is timed out.
@@ -270,21 +267,19 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn to_timed_out(&mut self, time: u64) {
-        match self {
-            Self::Pending {
-                peer,
-                block_level,
-                block_hash,
-                ..
-            } => {
-                *self = Self::TimedOut {
-                    time,
-                    peer: *peer,
-                    block_level: *block_level,
-                    block_hash: block_hash.clone(),
-                };
-            }
-            _ => {}
+        if let Self::Pending {
+            peer,
+            block_level,
+            block_hash,
+            ..
+        } = self
+        {
+            *self = Self::TimedOut {
+                time,
+                peer: *peer,
+                block_level: *block_level,
+                block_hash: block_hash.clone(),
+            };
         }
     }
 

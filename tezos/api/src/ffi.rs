@@ -1047,14 +1047,12 @@ pub enum ProtocolError {
 impl ProtocolError {
     /// Returns true if this a context hash mismatch error for which the cache was loaded
     pub fn is_cache_context_hash_mismatch_error(&self) -> bool {
-        if let Self::ApplyBlockError { reason } = self {
-            matches!(
-                reason,
-                ApplyBlockError::ContextHashResultMismatch { cache: true, .. }
-            )
-        } else {
-            false
-        }
+        matches!(
+            self,
+            Self::ApplyBlockError {
+                reason: ApplyBlockError::ContextHashResultMismatch { cache: true, .. }
+            }
+        )
     }
 }
 
@@ -1079,16 +1077,13 @@ mod tests {
         assert_eq!(2, validate_result1.branch_refused.len());
 
         // merge empty -> no change
-        assert_eq!(
-            false,
-            validate_result1.merge(ValidateOperationResult {
-                applied: vec![],
-                refused: vec![],
-                branch_refused: vec![],
-                branch_delayed: vec![],
-                outdated: vec![],
-            })
-        );
+        assert!(!validate_result1.merge(ValidateOperationResult {
+            applied: vec![],
+            refused: vec![],
+            branch_refused: vec![],
+            branch_delayed: vec![],
+            outdated: vec![],
+        }));
         assert_eq!(2, validate_result1.applied.len());
         assert_eq!(2, validate_result1.refused.len());
         assert_eq!(2, validate_result1.branch_delayed.len());
@@ -1116,10 +1111,10 @@ mod tests {
             outdated: vec![],
         };
         assert_eq!(0, validate_result.applied.len());
-        assert_eq!(
-            false,
-            ValidateOperationResult::merge_items(&mut validate_result.applied, vec![])
-        );
+        assert!(!ValidateOperationResult::merge_items(
+            &mut validate_result.applied,
+            vec![],
+        ));
 
         assert!(ValidateOperationResult::merge_items(
             &mut validate_result.applied,
