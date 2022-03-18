@@ -1,8 +1,7 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
@@ -33,6 +32,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 
 - Nothing.
+
+## [1.17.0] - 2022-03-18
+
+### Added
+
+- Preliminary support for protocol 012 (Ithaca 2).
+- Re-implemented bootstrapping logic in the state machine.
+- In-memory context context now supports loading it's state from disk.
+- Disk usage measurements for the context stats db.
+- Implemented Octez `tezos-accuser` support.
+
+### Changed
+
+- In-memory context storage now has a new garbage collector that collects everything that doesn't belong to the last few levels.
+- Block application retry logic is now more alike Octez, and can handle protocol runner failures.
+
+### Fixed
+
+- Fixed `/monitoring/valid_blocks` RPC.
+- Cache-related block application retry logic now in synch with the one in Octez.
 
 ## [1.16.1] - 2022-03-04
 
@@ -719,7 +738,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.1...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.17.0...develop
+[1.17.0]: https://github.com/tezedge/tezedge/releases/v1.17.0
 [1.16.1]: https://github.com/tezedge/tezedge/releases/v1.16.1
 [1.16.0]: https://github.com/tezedge/tezedge/releases/v1.16.0
 [1.15.1]: https://github.com/tezedge/tezedge/releases/v1.15.1
