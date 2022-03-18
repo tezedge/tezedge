@@ -34,6 +34,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.16.2] - 18.03.2022
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- RPC `/monitoring/valid_blocks` requred for Octez `accuser` now works properly.
+- __TBD_
+
+### Security
+
+- Nothing.
+
+### Performance
+
+- Nothing.
+
 ## [1.16.1] - 2022-03-04
 
 ### Changed
@@ -719,7 +750,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.1...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.16.2...develop
+[1.16.2]: https://github.com/tezedge/tezedge/releases/v1.16.2
 [1.16.1]: https://github.com/tezedge/tezedge/releases/v1.16.1
 [1.16.0]: https://github.com/tezedge/tezedge/releases/v1.16.0
 [1.15.1]: https://github.com/tezedge/tezedge/releases/v1.15.1
